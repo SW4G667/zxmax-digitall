@@ -28,12 +28,7 @@ function Dashboard() {
         </div>
       )}
 
-      <Header />
-
-      {/* Profile trigger overlay on avatar */}
-      <div className="fixed top-3 right-4 z-[55]">
-        <button onClick={() => setProfileOpen(true)} className="w-9 h-9 rounded-full opacity-0" aria-label="Open profile" />
-      </div>
+      <Header onProfileClick={() => setProfileOpen(true)} />
 
       <main className="max-w-7xl mx-auto px-4 py-6">
         {view === "store" && <StoreView />}
