@@ -102,6 +102,10 @@ interface StoreContextType {
   addTicket: (subject: string, message: string) => void;
   replyTicket: (id: number, text: string) => void;
   setGlobalNotice: (notice: string) => void;
+  sendPurchaseMessage: (purchaseId: number, from: string, text: string) => void;
+  confirmDelivery: (purchaseId: number) => void;
+  openDispute: (purchaseId: number) => void;
+  reviewPurchase: (purchaseId: number, stars: number, comment: string) => void;
   isDark: boolean;
   toggleDark: () => void;
 }
