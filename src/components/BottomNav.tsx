@@ -2,7 +2,7 @@ import React from "react";
 import { FireEmoji, PackageEmoji, HeadsetEmoji, ShieldEmoji, BagCheckEmoji } from "@/components/CustomEmojis";
 import { useStore } from "@/store/StoreContext";
 
-type View = "store" | "inventory" | "support" | "admin" | "profile";
+type View = "store" | "inventory" | "purchases" | "support" | "admin" | "profile";
 
 interface Props {
   current: View;
