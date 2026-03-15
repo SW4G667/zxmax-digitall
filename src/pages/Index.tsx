@@ -8,9 +8,10 @@ import StoreView from "@/components/StoreView";
 import InventoryView from "@/components/InventoryView";
 import SupportView from "@/components/SupportView";
 import AdminView from "@/components/AdminView";
+import MyPurchasesView from "@/components/MyPurchasesView";
 import { toast } from "sonner";
 
-type View = "store" | "inventory" | "support" | "admin" | "profile";
+type View = "store" | "inventory" | "purchases" | "support" | "admin" | "profile";
 
 function Dashboard() {
   const { state } = useStore();
