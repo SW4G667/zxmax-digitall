@@ -216,6 +216,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       status: "paid",
       createdAt: new Date().toISOString(),
       amount: product.price,
+      messages: [],
+      reviewed: false,
     };
     setState((s) => ({
       ...s,
