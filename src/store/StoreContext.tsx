@@ -25,6 +25,12 @@ export interface Product {
   deliveryContent?: string;
 }
 
+export interface PurchaseMessage {
+  from: string;
+  text: string;
+  date: string;
+}
+
 export interface Purchase {
   id: number;
   productId: number;
@@ -33,6 +39,10 @@ export interface Purchase {
   status: "pending" | "paid" | "delivered" | "dispute";
   createdAt: string;
   amount: number;
+  messages: PurchaseMessage[];
+  reviewed?: boolean;
+  reviewStars?: number;
+  reviewComment?: string;
 }
 
 export interface Withdrawal {
