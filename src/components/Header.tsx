@@ -2,7 +2,11 @@ import React from "react";
 import { useStore } from "@/store/StoreContext";
 import { Sun, Moon, Search } from "lucide-react";
 
-export default function Header() {
+interface Props {
+  onProfileClick?: () => void;
+}
+
+export default function Header({ onProfileClick }: Props) {
   const { state, isDark, toggleDark } = useStore();
   const user = state.currentUser;
 
@@ -23,26 +27,18 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={toggleDark}
-            className="p-2 rounded-xl hover:bg-muted transition"
-            title="Mudar tema"
-          >
+          <button onClick={toggleDark} className="p-2 rounded-xl hover:bg-muted transition" title="Mudar tema">
             {isDark ? <Sun className="w-5 h-5 text-muted-foreground" /> : <Moon className="w-5 h-5 text-muted-foreground" />}
           </button>
 
           {user && (
-            <div className="flex items-center gap-2.5">
+            <button onClick={onProfileClick} className="flex items-center gap-2.5 hover:bg-muted p-1.5 rounded-2xl transition">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-bold text-foreground leading-tight">{user.name}</p>
                 <p className="text-xs font-medium text-success">R$ {user.balance.toFixed(2)}</p>
               </div>
-              <img
-                src={user.avatar}
-                alt="Avatar"
-                className="w-9 h-9 rounded-full bg-primary/10 border-2 border-card shadow-sm"
-              />
-            </div>
+              <img src={user.avatar} alt="Avatar" className="w-9 h-9 rounded-full bg-primary/10 border-2 border-card shadow-sm" />
+            </button>
           )}
         </div>
       </div>
