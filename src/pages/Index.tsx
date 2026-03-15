@@ -8,9 +8,10 @@ import StoreView from "@/components/StoreView";
 import InventoryView from "@/components/InventoryView";
 import SupportView from "@/components/SupportView";
 import AdminView from "@/components/AdminView";
+import MyPurchasesView from "@/components/MyPurchasesView";
 import { toast } from "sonner";
 
-type View = "store" | "inventory" | "support" | "admin" | "profile";
+type View = "store" | "inventory" | "purchases" | "support" | "admin" | "profile";
 
 function Dashboard() {
   const { state } = useStore();
@@ -33,6 +34,7 @@ function Dashboard() {
       <main className="max-w-7xl mx-auto px-4 py-6">
         {view === "store" && <StoreView />}
         {view === "inventory" && <InventoryView />}
+        {view === "purchases" && <MyPurchasesView />}
         {view === "support" && <SupportView />}
         {view === "admin" && state.currentUser.isAdmin && <AdminView />}
       </main>

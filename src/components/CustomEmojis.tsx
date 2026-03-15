@@ -155,6 +155,22 @@ export const CameraEmoji = ({ className = "w-5 h-5" }: { className?: string }) =
   </svg>
 );
 
+export const BagCheckEmoji = ({ className = "w-6 h-6" }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={`${className} animate-emoji-float`} fill="none">
+    <defs>
+      <linearGradient id="bagcheck-grad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="#8b5cf6" />
+        <stop offset="100%" stopColor="#10b981" />
+      </linearGradient>
+    </defs>
+    <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4H6z" fill="url(#bagcheck-grad)" opacity="0.15" stroke="url(#bagcheck-grad)" strokeWidth="1.5" />
+    <path d="M3 6h18" stroke="url(#bagcheck-grad)" strokeWidth="1.5" />
+    <path d="M16 10a4 4 0 01-8 0" stroke="url(#bagcheck-grad)" strokeWidth="1.5" strokeLinecap="round" />
+    <circle cx="17" cy="17" r="4" fill="#10b981" />
+    <path d="M15.5 17l1 1 2-2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 export const ChatEmoji = ({ className = "w-6 h-6" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={`${className} animate-emoji-float`} fill="none">
     <defs>

@@ -1,8 +1,8 @@
 import React from "react";
-import { FireEmoji, PackageEmoji, HeadsetEmoji, ShieldEmoji } from "@/components/CustomEmojis";
+import { FireEmoji, PackageEmoji, HeadsetEmoji, ShieldEmoji, BagCheckEmoji } from "@/components/CustomEmojis";
 import { useStore } from "@/store/StoreContext";
 
-type View = "store" | "inventory" | "support" | "admin" | "profile";
+type View = "store" | "inventory" | "purchases" | "support" | "admin" | "profile";
 
 interface Props {
   current: View;
@@ -16,6 +16,7 @@ export default function BottomNav({ current, onChange }: Props) {
   const items: { key: View; label: string; emoji: React.ReactNode }[] = [
     { key: "store", label: "Loja", emoji: <FireEmoji className="w-6 h-6" /> },
     { key: "inventory", label: "Anúncios", emoji: <PackageEmoji className="w-6 h-6" /> },
+    { key: "purchases", label: "Compras", emoji: <BagCheckEmoji className="w-6 h-6" /> },
     { key: "support", label: "Suporte", emoji: <HeadsetEmoji className="w-6 h-6" /> },
   ];
 

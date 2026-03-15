@@ -25,6 +25,12 @@ export interface Product {
   deliveryContent?: string;
 }
 
+export interface PurchaseMessage {
+  from: string;
+  text: string;
+  date: string;
+}
+
 export interface Purchase {
   id: number;
   productId: number;
@@ -33,6 +39,10 @@ export interface Purchase {
   status: "pending" | "paid" | "delivered" | "dispute";
   createdAt: string;
   amount: number;
+  messages: PurchaseMessage[];
+  reviewed?: boolean;
+  reviewStars?: number;
+  reviewComment?: string;
 }
 
 export interface Withdrawal {
@@ -92,6 +102,10 @@ interface StoreContextType {
   addTicket: (subject: string, message: string) => void;
   replyTicket: (id: number, text: string) => void;
   setGlobalNotice: (notice: string) => void;
+  sendPurchaseMessage: (purchaseId: number, from: string, text: string) => void;
+  confirmDelivery: (purchaseId: number) => void;
+  openDispute: (purchaseId: number) => void;
+  reviewPurchase: (purchaseId: number, stars: number, comment: string) => void;
   isDark: boolean;
   toggleDark: () => void;
 }
@@ -202,6 +216,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       status: "paid",
       createdAt: new Date().toISOString(),
       amount: product.price,
+      messages: [],
+      reviewed: false,
     };
     setState((s) => ({
       ...s,
@@ -304,6 +320,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  const sendPurchaseMessage = (purchaseId: number, from: string, text: string) =>
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) =>
+        p.id === purchaseId
+          ? { ...p, messages: [...(p.messages || []), { from, text, date: new Date().toISOString() }] }
+          : p
+      ),
+    }));
+
+  const confirmDelivery = (purchaseId: number) =>
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) =>
+        p.id === purchaseId ? { ...p, status: "delivered" as const } : p
+      ),
+    }));
+
+  const openDispute = (purchaseId: number) =>
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) =>
+        p.id === purchaseId ? { ...p, status: "dispute" as const } : p
+      ),
+    }));
+
+  const reviewPurchase = (purchaseId: number, stars: number, comment: string) =>
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) =>
+        p.id === purchaseId ? { ...p, reviewed: true, reviewStars: stars, reviewComment: comment } : p
+      ),
+    }));
+
   const setGlobalNotice = (notice: string) => updateConfig({ globalNotice: notice });
   const toggleDark = () => setIsDark((d) => !d);
 
@@ -314,6 +364,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         buyProduct, approvePurchase, revertPurchase, requestWithdraw,
         approveWithdraw, rejectWithdraw, updateConfig, updateProfile,
         banUser, unbanUser, addTicket, replyTicket, setGlobalNotice,
+        sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
         isDark, toggleDark,
       }}
     >
