@@ -320,6 +320,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  const sendPurchaseMessage = (purchaseId: number, from: string, text: string) =>
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) =>
+        p.id === purchaseId
+          ? { ...p, messages: [...(p.messages || []), { from, text, date: new Date().toISOString() }] }
+          : p
+      ),
+    }));
+
+  const confirmDelivery = (purchaseId: number) =>
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) =>
+        p.id === purchaseId ? { ...p, status: "delivered" as const } : p
+      ),
+    }));
+
+  const openDispute = (purchaseId: number) =>
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) =>
+        p.id === purchaseId ? { ...p, status: "dispute" as const } : p
+      ),
+    }));
+
+  const reviewPurchase = (purchaseId: number, stars: number, comment: string) =>
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) =>
+        p.id === purchaseId ? { ...p, reviewed: true, reviewStars: stars, reviewComment: comment } : p
+      ),
+    }));
+
   const setGlobalNotice = (notice: string) => updateConfig({ globalNotice: notice });
   const toggleDark = () => setIsDark((d) => !d);
 
