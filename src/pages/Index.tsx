@@ -1,14 +1,57 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import React, { useState } from "react";
+import { useStore, StoreProvider } from "@/store/StoreContext";
+import AuthScreen from "@/components/AuthScreen";
+import Header from "@/components/Header";
+import BottomNav from "@/components/BottomNav";
+import ProfileModal from "@/components/ProfileModal";
+import StoreView from "@/components/StoreView";
+import InventoryView from "@/components/InventoryView";
+import SupportView from "@/components/SupportView";
+import AdminView from "@/components/AdminView";
+import { toast } from "sonner";
 
-const Index = () => {
+type View = "store" | "inventory" | "support" | "admin" | "profile";
+
+function Dashboard() {
+  const { state } = useStore();
+  const [view, setView] = useState<View>(() => state.currentUser?.isAdmin ? "admin" : "store");
+  const [profileOpen, setProfileOpen] = useState(false);
+
+  if (!state.currentUser) return <AuthScreen />;
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
+    <div className="bg-gradient-page min-h-screen pb-24">
+      {/* Global notice */}
+      {state.config.globalNotice && (
+        <div className="bg-primary text-primary-foreground text-center text-sm py-2 px-4 font-medium">
+          {state.config.globalNotice}
+        </div>
+      )}
+
+      <Header />
+
+      {/* Profile trigger overlay on avatar */}
+      <div className="fixed top-3 right-4 z-[55]">
+        <button onClick={() => setProfileOpen(true)} className="w-9 h-9 rounded-full opacity-0" aria-label="Open profile" />
       </div>
+
+      <main className="max-w-7xl mx-auto px-4 py-6">
+        {view === "store" && <StoreView />}
+        {view === "inventory" && <InventoryView />}
+        {view === "support" && <SupportView />}
+        {view === "admin" && state.currentUser.isAdmin && <AdminView />}
+      </main>
+
+      <BottomNav current={view} onChange={setView} />
+      <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
     </div>
   );
-};
+}
 
-export default Index;
+export default function Index() {
+  return (
+    <StoreProvider>
+      <Dashboard />
+    </StoreProvider>
+  );
+}
