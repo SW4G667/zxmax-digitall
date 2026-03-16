@@ -1,6 +1,8 @@
 import React from "react";
 import { useStore } from "@/store/StoreContext";
 import { Sun, Moon, Search } from "lucide-react";
+import NotificationBell from "@/components/NotificationBell";
+import DiscordIcon from "@/components/DiscordIcon";
 
 interface Props {
   onProfileClick?: () => void;
@@ -26,11 +28,29 @@ export default function Header({ onProfileClick }: Props) {
           />
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Discord link */}
+          {state.config.discordLink && (
+            <a
+              href={state.config.discordLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 rounded-xl hover:bg-muted transition"
+              title="Discord"
+            >
+              <DiscordIcon className="w-5 h-5 text-muted-foreground" />
+            </a>
+          )}
+
+          {/* Notification bell */}
+          <NotificationBell />
+
+          {/* Theme toggle */}
           <button onClick={toggleDark} className="p-2 rounded-xl hover:bg-muted transition" title="Mudar tema">
             {isDark ? <Sun className="w-5 h-5 text-muted-foreground" /> : <Moon className="w-5 h-5 text-muted-foreground" />}
           </button>
 
+          {/* Profile */}
           {user && (
             <button onClick={onProfileClick} className="flex items-center gap-2.5 hover:bg-muted p-1.5 rounded-2xl transition">
               <div className="text-right hidden sm:block">

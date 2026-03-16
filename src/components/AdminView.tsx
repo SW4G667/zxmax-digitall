@@ -1,16 +1,25 @@
 import React, { useState } from "react";
-import { useStore } from "@/store/StoreContext";
-import { ShieldEmoji } from "@/components/CustomEmojis";
+import { useStore, Product, SupportTicket } from "@/store/StoreContext";
+import { ShieldEmoji, StarEmoji } from "@/components/CustomEmojis";
+import { X, Eye } from "lucide-react";
 import { toast } from "sonner";
 
 type AdminTab = "config" | "categories" | "products" | "purchases" | "withdrawals" | "support" | "notices" | "users";
 
 export default function AdminView() {
-  const { state, updateConfig, approveProduct, rejectProduct, approvePurchase, revertPurchase, approveWithdraw, rejectWithdraw, banUser, unbanUser, replyTicket, setGlobalNotice } = useStore();
+  const {
+    state, updateConfig, approveProduct, rejectProduct, approvePurchase, revertPurchase,
+    approveWithdraw, rejectWithdraw, banUser, unbanUser, replyTicket, setGlobalNotice,
+    deleteProduct, closeTicket, resolveTicket,
+  } = useStore();
   const [tab, setTab] = useState<AdminTab>("config");
   const [newCat, setNewCat] = useState("");
   const [notice, setNotice] = useState(state.config.globalNotice);
   const [adminReply, setAdminReply] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
+  const [previewProduct, setPreviewProduct] = useState<Product | null>(null);
+  const [showRejectModal, setShowRejectModal] = useState<number | null>(null);
+  const [ticketFilter, setTicketFilter] = useState<"open" | "closed">("open");
 
   const tabs: { key: AdminTab; label: string }[] = [
     { key: "config", label: "Config" },
@@ -84,7 +93,7 @@ export default function AdminView() {
         </div>
       )}
 
-      {/* Products */}
+      {/* Products with preview modal */}
       {tab === "products" && (
         <div className="glass-card overflow-hidden">
           <div className="p-5 border-b border-border/30 flex justify-between items-center">
@@ -100,16 +109,100 @@ export default function AdminView() {
                   <p className="text-xs text-muted-foreground">{p.seller} · {p.category}</p>
                 </div>
                 <p className="font-bold text-foreground text-sm">R$ {p.price.toFixed(2)}</p>
+                <button onClick={() => setPreviewProduct(p)} className="p-1.5 rounded-lg hover:bg-muted transition" title="Visualizar">
+                  <Eye className="w-4 h-4 text-muted-foreground" />
+                </button>
                 {!p.approved ? (
                   <div className="flex gap-2">
+                    <button onClick={() => { setPreviewProduct(p); }} className="text-primary font-bold text-xs">Preview</button>
                     <button onClick={() => { approveProduct(p.id); toast.success("Aprovado!"); }} className="text-success font-bold text-xs">Aprovar</button>
-                    <button onClick={() => { rejectProduct(p.id); toast.error("Rejeitado!"); }} className="text-destructive font-bold text-xs">Rejeitar</button>
+                    <button onClick={() => setShowRejectModal(p.id)} className="text-destructive font-bold text-xs">Rejeitar</button>
                   </div>
                 ) : (
-                  <span className="text-[10px] font-bold text-success bg-success/10 px-2 py-0.5 rounded-full">Ativo</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-success bg-success/10 px-2 py-0.5 rounded-full">Ativo</span>
+                    <button onClick={() => { deleteProduct(p.id); toast.success("Produto removido!"); }} className="text-destructive text-xs font-bold hover:underline">Excluir</button>
+                  </div>
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Product Preview Modal */}
+      {previewProduct && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm" onClick={() => setPreviewProduct(null)}>
+          <div className="glass-card w-full max-w-2xl p-0 bg-card animate-fade-in-up overflow-hidden max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            {/* Banner/Image */}
+            <div className="relative h-56 sm:h-72">
+              <img src={previewProduct.banner || previewProduct.image} className="w-full h-full object-cover" alt={previewProduct.name} />
+              <button onClick={() => setPreviewProduct(null)} className="absolute top-3 right-3 bg-card/90 backdrop-blur p-2 rounded-xl">
+                <X className="w-5 h-5 text-foreground" />
+              </button>
+              {!previewProduct.approved && (
+                <div className="absolute top-3 left-3 admin-badge">Pendente</div>
+              )}
+            </div>
+            <div className="p-6">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <h2 className="text-xl font-black text-foreground">{previewProduct.name}</h2>
+                  <p className="text-sm text-muted-foreground">{previewProduct.category} · por <span className="text-primary font-semibold">{previewProduct.seller}</span></p>
+                </div>
+                <p className="text-2xl font-black text-foreground">R$ {previewProduct.price.toFixed(2)}</p>
+              </div>
+              <p className="text-sm text-foreground mb-4 leading-relaxed">{previewProduct.description}</p>
+
+              {/* Variations */}
+              {previewProduct.variations && previewProduct.variations.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Variações</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {previewProduct.variations.map((v, i) => (
+                      <span key={i} className="px-3 py-1.5 bg-muted rounded-full text-xs font-semibold text-foreground">
+                        {v.name} — R$ {v.price.toFixed(2)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
+                <div className="bg-muted p-3 rounded-xl">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase">Vendas</p>
+                  <p className="font-black text-foreground">{previewProduct.sales}</p>
+                </div>
+                <div className="bg-muted p-3 rounded-xl">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase">Entrega</p>
+                  <p className="font-black text-foreground">{previewProduct.deliveryType === "auto" ? "Automática" : "Manual"}</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                {!previewProduct.approved && (
+                  <>
+                    <button onClick={() => { approveProduct(previewProduct.id); toast.success("Produto aprovado!"); setPreviewProduct(null); }} className="flex-1 btn-gradient py-3 text-sm">Aprovar</button>
+                    <button onClick={() => { setShowRejectModal(previewProduct.id); setPreviewProduct(null); }} className="flex-1 bg-destructive text-destructive-foreground py-3 rounded-2xl font-bold text-sm">Rejeitar</button>
+                  </>
+                )}
+                <button onClick={() => { deleteProduct(previewProduct.id); toast.success("Produto excluído!"); setPreviewProduct(null); }} className="px-4 py-3 border border-destructive text-destructive rounded-2xl font-bold text-sm">Excluir</button>
+                <button onClick={() => setPreviewProduct(null)} className="px-4 py-3 border border-border rounded-2xl font-bold text-sm text-muted-foreground">Fechar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject modal */}
+      {showRejectModal !== null && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm" onClick={() => setShowRejectModal(null)}>
+          <div className="glass-card w-full max-w-sm p-6 bg-card animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-foreground mb-3">Motivo da Rejeição</h3>
+            <textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Explique o motivo..." rows={3} className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary resize-none mb-3" />
+            <div className="flex gap-2">
+              <button onClick={() => { rejectProduct(showRejectModal); toast.error("Produto rejeitado! Motivo: " + (rejectReason || "Sem motivo")); setShowRejectModal(null); setRejectReason(""); }} className="flex-1 bg-destructive text-destructive-foreground py-2.5 rounded-xl font-bold text-sm">Rejeitar</button>
+              <button onClick={() => { setShowRejectModal(null); setRejectReason(""); }} className="flex-1 border border-border py-2.5 rounded-xl font-bold text-sm text-muted-foreground">Cancelar</button>
+            </div>
           </div>
         </div>
       )}
@@ -133,7 +226,9 @@ export default function AdminView() {
                       <p className="text-xs text-muted-foreground">Comprador: {p.buyerEmail}</p>
                     </div>
                     <p className="font-bold text-foreground text-sm">R$ {p.amount.toFixed(2)}</p>
-                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${p.status === "paid" ? "bg-primary/10 text-primary" : p.status === "delivered" ? "bg-success/10 text-success" : p.status === "dispute" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}`}>{p.status}</span>
+                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${p.status === "paid" ? "bg-success/10 text-success" : p.status === "delivered" ? "bg-primary/10 text-primary" : p.status === "dispute" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}`}>
+                      {p.status === "paid" ? "Pago" : p.status === "delivered" ? "Entregue" : p.status === "dispute" ? "Disputa" : "Pendente"}
+                    </span>
                     {p.status === "paid" && (
                       <div className="flex gap-2">
                         <button onClick={() => { approvePurchase(p.id); toast.success("Entrega aprovada!"); }} className="text-success font-bold text-xs">Aprovar</button>
@@ -179,37 +274,57 @@ export default function AdminView() {
         </div>
       )}
 
-      {/* Support */}
+      {/* Support with open/closed filter */}
       {tab === "support" && (
         <div className="glass-card overflow-hidden">
-          <div className="p-5 border-b border-border/30">
+          <div className="p-5 border-b border-border/30 flex justify-between items-center">
             <h3 className="font-bold text-foreground">Tickets de Suporte</h3>
-          </div>
-          {state.tickets.length === 0 ? (
-            <p className="p-6 text-muted-foreground text-center text-sm">Nenhum ticket.</p>
-          ) : (
-            <div className="divide-y divide-border/20">
-              {state.tickets.map((t) => (
-                <div key={t.id} className="p-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <p className="font-medium text-foreground text-sm">{t.subject}</p>
-                    <p className="text-xs text-muted-foreground">{t.userEmail}</p>
-                  </div>
-                  <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
-                    {t.messages.map((m, i) => (
-                      <div key={i} className={`p-2 rounded-xl text-xs ${m.from === "admin@keybot.com" ? "bg-primary/10 ml-6" : "bg-muted mr-6"} text-foreground`}>
-                        <span className="font-bold">{m.from === "admin@keybot.com" ? "Admin" : m.from}:</span> {m.text}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <input value={adminReply} onChange={(e) => setAdminReply(e.target.value)} placeholder="Responder..." className="flex-1 p-2 rounded-xl bg-muted text-foreground text-xs border-none outline-none focus:ring-2 ring-primary" />
-                    <button onClick={() => { if (adminReply) { replyTicket(t.id, adminReply); setAdminReply(""); toast.success("Resposta enviada!"); } }} className="btn-gradient px-3 py-1 text-xs">Enviar</button>
-                  </div>
-                </div>
-              ))}
+            <div className="flex gap-1.5">
+              <button onClick={() => setTicketFilter("open")} className={`px-3 py-1 rounded-lg text-xs font-bold transition ${ticketFilter === "open" ? "bg-success/10 text-success" : "text-muted-foreground"}`}>Abertos</button>
+              <button onClick={() => setTicketFilter("closed")} className={`px-3 py-1 rounded-lg text-xs font-bold transition ${ticketFilter === "closed" ? "bg-muted text-foreground" : "text-muted-foreground"}`}>Fechados</button>
             </div>
-          )}
+          </div>
+          {(() => {
+            const filtered = state.tickets.filter((t) => ticketFilter === "open" ? t.status === "open" : t.status === "closed");
+            return filtered.length === 0 ? (
+              <p className="p-6 text-muted-foreground text-center text-sm">Nenhum ticket {ticketFilter === "open" ? "aberto" : "fechado"}.</p>
+            ) : (
+              <div className="divide-y divide-border/20">
+                {filtered.map((t) => (
+                  <div key={t.id} className="p-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <p className="font-medium text-foreground text-sm">{t.subject}</p>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${t.status === "open" ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}>
+                          {t.status === "open" ? "Aberto" : "Fechado"}
+                        </span>
+                        <p className="text-xs text-muted-foreground">{t.userEmail}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
+                      {t.messages.map((m, i) => (
+                        <div key={i} className={`p-2 rounded-xl text-xs ${m.from === "admin@keybot.com" ? "bg-primary/10 ml-6" : "bg-muted mr-6"} text-foreground`}>
+                          <span className="font-bold">{m.from === "admin@keybot.com" ? "Admin" : m.from}:</span> {m.text}
+                        </div>
+                      ))}
+                    </div>
+                    {t.status === "open" && (
+                      <>
+                        <div className="flex gap-2 mb-2">
+                          <input value={adminReply} onChange={(e) => setAdminReply(e.target.value)} placeholder="Responder..." className="flex-1 p-2 rounded-xl bg-muted text-foreground text-xs border-none outline-none focus:ring-2 ring-primary" />
+                          <button onClick={() => { if (adminReply) { replyTicket(t.id, adminReply); setAdminReply(""); toast.success("Resposta enviada!"); } }} className="btn-gradient px-3 py-1 text-xs">Enviar</button>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => { closeTicket(t.id); toast.success("Ticket fechado!"); }} className="text-xs font-bold text-muted-foreground hover:text-foreground">Fechar Ticket</button>
+                          <button onClick={() => { resolveTicket(t.id); toast.success("Ticket resolvido!"); }} className="text-xs font-bold text-success">Marcar Resolvido</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       )}
 
