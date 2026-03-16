@@ -9,6 +9,11 @@ export interface User {
   isAdmin: boolean;
 }
 
+export interface ProductVariation {
+  name: string;
+  price: number;
+}
+
 export interface Product {
   id: number;
   name: string;
@@ -19,10 +24,12 @@ export interface Product {
   sales: number;
   rating: number;
   image: string;
+  banner?: string;
   description: string;
   approved: boolean;
   deliveryType: "auto" | "manual";
   deliveryContent?: string;
+  variations?: ProductVariation[];
 }
 
 export interface PurchaseMessage {
@@ -89,6 +96,7 @@ interface StoreContextType {
   addProduct: (p: Omit<Product, "id" | "sales" | "rating" | "approved">) => void;
   approveProduct: (id: number) => void;
   rejectProduct: (id: number) => void;
+  deleteProduct: (id: number) => void;
   buyProduct: (id: number) => void;
   approvePurchase: (id: number) => void;
   revertPurchase: (id: number) => void;
@@ -101,6 +109,8 @@ interface StoreContextType {
   unbanUser: (email: string) => void;
   addTicket: (subject: string, message: string) => void;
   replyTicket: (id: number, text: string) => void;
+  closeTicket: (id: number) => void;
+  resolveTicket: (id: number) => void;
   setGlobalNotice: (notice: string) => void;
   sendPurchaseMessage: (purchaseId: number, from: string, text: string) => void;
   confirmDelivery: (purchaseId: number) => void;
@@ -109,15 +119,6 @@ interface StoreContextType {
   isDark: boolean;
   toggleDark: () => void;
 }
-
-const defaultProducts: Product[] = [
-  { id: 1, name: "Discord Nitro 1 Mês", price: 15.90, category: "Assinaturas", seller: "ZX Store", sellerEmail: "zxstore@zx.com", sales: 142, rating: 4.9, image: "https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=400", description: "Discord Nitro Gaming com boost de servidor incluído. Entrega imediata por DM.", approved: true, deliveryType: "auto", deliveryContent: "NITRO-XXXX-XXXX" },
-  { id: 2, name: "Script Auto-Farm Blox Fruits", price: 45.00, category: "Scripts", seller: "DevMaster", sellerEmail: "dev@zx.com", sales: 89, rating: 4.7, image: "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=400", description: "Script completo para farm automático em Blox Fruits. Atualizações vitalícias.", approved: true, deliveryType: "auto", deliveryContent: "https://pastebin.com/xxxxx" },
-  { id: 3, name: "Conta Valorant - Skins Faca", price: 250.00, category: "Contas", seller: "SmurfShop", sellerEmail: "smurf@zx.com", sales: 12, rating: 5.0, image: "https://images.unsplash.com/photo-1560419015-7c427e8ae5ba?w=400", description: "Conta Valorant com 3 facas e mais de 50 skins. Rank Diamante.", approved: true, deliveryType: "manual" },
-  { id: 4, name: "Bot Discord Moderação Premium", price: 89.90, category: "Bots Discord", seller: "BotFactory", sellerEmail: "bot@zx.com", sales: 67, rating: 4.8, image: "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=400", description: "Bot completo de moderação com anti-raid, auto-mod, logs e dashboard web.", approved: true, deliveryType: "auto", deliveryContent: "https://discord.com/oauth2/invite/xxxx" },
-  { id: 5, name: "Design Pack - 50 Banners", price: 35.00, category: "Designs Digitais", seller: "DesignPro", sellerEmail: "design@zx.com", sales: 203, rating: 4.6, image: "https://images.unsplash.com/photo-1561070791-2526d30994b5?w=400", description: "Pack com 50 banners editáveis para YouTube, Twitch e Discord. PSD + PNG.", approved: true, deliveryType: "auto", deliveryContent: "https://drive.google.com/xxxxx" },
-  { id: 6, name: "Consultoria SEO 1 Hora", price: 120.00, category: "Consultoria Virtual", seller: "SEO Master", sellerEmail: "seo@zx.com", sales: 34, rating: 4.9, image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400", description: "1 hora de consultoria ao vivo sobre SEO, análise de site e plano de ação.", approved: true, deliveryType: "manual" },
-];
 
 const defaultConfig: AppConfig = {
   commission: 10,
@@ -145,13 +146,13 @@ function loadState(): AppState {
       return {
         ...parsed,
         config: { ...defaultConfig, ...parsed.config },
-        products: parsed.products?.length ? parsed.products : defaultProducts,
+        products: parsed.products?.length ? parsed.products : [],
       };
     }
   } catch {}
   return {
     currentUser: null,
-    products: defaultProducts,
+    products: [],
     purchases: [],
     withdrawals: [],
     tickets: [],
@@ -205,6 +206,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const rejectProduct = (id: number) =>
     setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
 
+  const deleteProduct = (id: number) =>
+    setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
+
   const buyProduct = (id: number) => {
     const product = state.products.find((p) => p.id === id);
     if (!product || !state.currentUser) return;
@@ -227,26 +231,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const approvePurchase = (id: number) =>
-    setState((s) => {
-      const purchase = s.purchases.find((p) => p.id === id);
-      if (!purchase) return s;
-      const commission = (purchase.amount * s.config.commission) / 100;
-      const sellerAmount = purchase.amount - commission;
-      return {
-        ...s,
-        purchases: s.purchases.map((p) => (p.id === id ? { ...p, status: "delivered" } : p)),
-        products: s.products.map((p) => {
-          const prod = s.products.find((pr) => pr.id === purchase.productId);
-          if (prod && p.sellerEmail === purchase.sellerEmail) return p;
-          return p;
-        }),
-      };
-    });
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) => (p.id === id ? { ...p, status: "delivered" as const } : p)),
+    }));
 
   const revertPurchase = (id: number) =>
     setState((s) => ({
       ...s,
-      purchases: s.purchases.map((p) => (p.id === id ? { ...p, status: "dispute" } : p)),
+      purchases: s.purchases.map((p) => (p.id === id ? { ...p, status: "dispute" as const } : p)),
     }));
 
   const requestWithdraw = (method: "normal" | "instant") => {
@@ -320,6 +313,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  const closeTicket = (id: number) =>
+    setState((s) => ({
+      ...s,
+      tickets: s.tickets.map((t) => (t.id === id ? { ...t, status: "closed" as const } : t)),
+    }));
+
+  const resolveTicket = (id: number) =>
+    setState((s) => ({
+      ...s,
+      tickets: s.tickets.map((t) => (t.id === id ? { ...t, status: "closed" as const } : t)),
+    }));
+
   const sendPurchaseMessage = (purchaseId: number, from: string, text: string) =>
     setState((s) => ({
       ...s,
@@ -360,11 +365,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return (
     <StoreContext.Provider
       value={{
-        state, login, logout, addProduct, approveProduct, rejectProduct,
+        state, login, logout, addProduct, approveProduct, rejectProduct, deleteProduct,
         buyProduct, approvePurchase, revertPurchase, requestWithdraw,
         approveWithdraw, rejectWithdraw, updateConfig, updateProfile,
-        banUser, unbanUser, addTicket, replyTicket, setGlobalNotice,
-        sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
+        banUser, unbanUser, addTicket, replyTicket, closeTicket, resolveTicket,
+        setGlobalNotice, sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
         isDark, toggleDark,
       }}
     >
