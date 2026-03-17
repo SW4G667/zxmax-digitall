@@ -7,6 +7,19 @@ export interface User {
   earnings: number;
   avatar: string;
   isAdmin: boolean;
+  pixKey?: string;
+}
+
+export interface GlobalNotice {
+  id: number;
+  text: string;
+  date: string;
+}
+
+export interface AdminChatMessage {
+  from: string;
+  text: string;
+  date: string;
 }
 
 export interface ProductVariation {
