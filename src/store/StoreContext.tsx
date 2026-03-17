@@ -7,6 +7,19 @@ export interface User {
   earnings: number;
   avatar: string;
   isAdmin: boolean;
+  pixKey?: string;
+}
+
+export interface GlobalNotice {
+  id: number;
+  text: string;
+  date: string;
+}
+
+export interface AdminChatMessage {
+  from: string;
+  text: string;
+  date: string;
 }
 
 export interface ProductVariation {
@@ -87,6 +100,8 @@ interface AppState {
   tickets: SupportTicket[];
   config: AppConfig;
   bannedUsers: string[];
+  globalNotices: GlobalNotice[];
+  adminChat: AdminChatMessage[];
 }
 
 interface StoreContextType {
@@ -112,6 +127,9 @@ interface StoreContextType {
   closeTicket: (id: number) => void;
   resolveTicket: (id: number) => void;
   setGlobalNotice: (notice: string) => void;
+  publishNotice: (text: string) => void;
+  updatePixKey: (key: string) => void;
+  sendAdminChat: (from: string, text: string) => void;
   sendPurchaseMessage: (purchaseId: number, from: string, text: string) => void;
   confirmDelivery: (purchaseId: number) => void;
   openDispute: (purchaseId: number) => void;
@@ -158,6 +176,8 @@ function loadState(): AppState {
     tickets: [],
     config: defaultConfig,
     bannedUsers: [],
+    globalNotices: [],
+    adminChat: [],
   };
 }
 
@@ -360,6 +380,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
 
   const setGlobalNotice = (notice: string) => updateConfig({ globalNotice: notice });
+
+  const publishNotice = (text: string) => {
+    if (!text.trim()) return;
+    const n: GlobalNotice = { id: Date.now(), text: text.trim(), date: new Date().toISOString() };
+    setState((s) => ({ ...s, globalNotices: [n, ...(s.globalNotices || [])] }));
+    updateConfig({ globalNotice: text.trim() });
+  };
+
+  const updatePixKey = (key: string) =>
+    setState((s) => ({
+      ...s,
+      currentUser: s.currentUser ? { ...s.currentUser, pixKey: key } : null,
+    }));
+
+  const sendAdminChat = (from: string, text: string) =>
+    setState((s) => ({
+      ...s,
+      adminChat: [...(s.adminChat || []), { from, text, date: new Date().toISOString() }],
+    }));
+
   const toggleDark = () => setIsDark((d) => !d);
 
   return (
@@ -369,7 +409,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         buyProduct, approvePurchase, revertPurchase, requestWithdraw,
         approveWithdraw, rejectWithdraw, updateConfig, updateProfile,
         banUser, unbanUser, addTicket, replyTicket, closeTicket, resolveTicket,
-        setGlobalNotice, sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
+        setGlobalNotice, publishNotice, updatePixKey, sendAdminChat,
+        sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
         isDark, toggleDark,
       }}
     >

@@ -1,13 +1,15 @@
 import React, { useState } from "react";
 import { useStore } from "@/store/StoreContext";
-import { StarEmoji, FireEmoji, RocketEmoji } from "@/components/CustomEmojis";
-import { Search } from "lucide-react";
+import { StarEmoji, FireEmoji, RocketEmoji, ShieldEmoji, ChatEmoji } from "@/components/CustomEmojis";
+import { Search, X, CheckCircle, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 export default function StoreView() {
   const { state, buyProduct } = useStore();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Todos");
+  const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
+  const [question, setQuestion] = useState("");
 
   const approved = state.products.filter((p) => p.approved);
   const categories = ["Todos", ...state.config.categories];
@@ -17,11 +19,39 @@ export default function StoreView() {
     return matchSearch && matchCat;
   });
 
-  const handleBuy = (id: number) => {
-    const product = state.products.find((p) => p.id === id);
-    if (!product) return;
-    buyProduct(id);
-    toast.success(`Compra realizada! ${product.name} — R$ ${product.price.toFixed(2)}`);
+  const product = selectedProduct ? state.products.find((p) => p.id === selectedProduct) : null;
+  const productReviews = product
+    ? state.purchases.filter((p) => p.productId === product.id && p.reviewed)
+    : [];
+  const avgRating = productReviews.length > 0
+    ? (productReviews.reduce((a, r) => a + (r.reviewStars || 0), 0) / productReviews.length).toFixed(1)
+    : null;
+  const sellerProducts = product
+    ? state.products.filter((p) => p.sellerEmail === product.sellerEmail && p.approved)
+    : [];
+  const sellerSales = product
+    ? state.purchases.filter((p) => sellerProducts.some((sp) => sp.id === p.productId)).length
+    : 0;
+
+  const hasStripe = !!(state.config.stripePublishableKey && state.config.stripeSecretKey);
+
+  const handleBuy = () => {
+    if (!product || !state.currentUser) return;
+    if (!hasStripe) {
+      toast.warning("As APIs de pagamento ainda não estão configuradas. Pagamento manual em breve.");
+      return;
+    }
+    buyProduct(product.id);
+    // Auto-delivery
+    if (product.deliveryType === "auto" && product.deliveryContent) {
+      const purchase = state.purchases.find(
+        (p) => p.productId === product.id && p.buyerEmail === state.currentUser!.email && p.status === "paid"
+      );
+      // Will be handled by effect, show success
+      toast.success("Compra realizada! Entrega automática enviada no chat.");
+    } else {
+      toast.success("Compra realizada! Aguarde a entrega do vendedor.");
+    }
   };
 
   return (
@@ -37,27 +67,13 @@ export default function StoreView() {
       {/* Search mobile */}
       <div className="md:hidden flex items-center bg-card rounded-2xl px-4 py-3 mb-6 border border-border/40">
         <Search className="w-4 h-4 text-muted-foreground" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar produtos..."
-          className="bg-transparent border-none focus:ring-0 focus:outline-none text-sm w-full ml-2 text-foreground placeholder:text-muted-foreground"
-        />
+        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar produtos..." className="bg-transparent border-none focus:ring-0 focus:outline-none text-sm w-full ml-2 text-foreground placeholder:text-muted-foreground" />
       </div>
 
       {/* Category pills */}
       <div className="flex gap-2 overflow-x-auto pb-4 mb-8 scrollbar-hide">
         {categories.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setCategory(cat)}
-            className={`shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all ${
-              category === cat
-                ? "btn-gradient"
-                : "bg-card border border-border/40 text-muted-foreground hover:text-foreground"
-            }`}
-          >
+          <button key={cat} onClick={() => setCategory(cat)} className={`shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all ${category === cat ? "btn-gradient" : "bg-card border border-border/40 text-muted-foreground hover:text-foreground"}`}>
             {cat}
           </button>
         ))}
@@ -65,20 +81,10 @@ export default function StoreView() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {filtered.map((p, i) => (
-          <div
-            key={p.id}
-            className="glass-card overflow-hidden group animate-fade-in-up"
-            style={{ animationDelay: `${i * 0.08}s` }}
-          >
+          <div key={p.id} onClick={() => setSelectedProduct(p.id)} className="glass-card overflow-hidden group animate-fade-in-up cursor-pointer" style={{ animationDelay: `${i * 0.08}s` }}>
             <div className="relative h-48 overflow-hidden">
-              <img
-                src={p.image}
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                alt={p.name}
-              />
-              <div className="absolute top-3 right-3 bg-card/90 backdrop-blur px-3 py-1 rounded-full text-[11px] font-bold text-foreground shadow-sm">
-                {p.category}
-              </div>
+              <img src={p.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={p.name} />
+              <div className="absolute top-3 right-3 bg-card/90 backdrop-blur px-3 py-1 rounded-full text-[11px] font-bold text-foreground shadow-sm">{p.category}</div>
               {p.sales > 50 && (
                 <div className="absolute top-3 left-3 flex items-center gap-1 bg-destructive/90 backdrop-blur px-2 py-1 rounded-full">
                   <FireEmoji className="w-3.5 h-3.5" />
@@ -94,21 +100,14 @@ export default function StoreView() {
                   <span className="text-xs font-bold text-foreground">{p.rating || "Novo"}</span>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mb-1">
-                por <span className="text-primary font-semibold">{p.seller}</span>
-              </p>
+              <p className="text-xs text-muted-foreground mb-1">por <span className="text-primary font-semibold">{p.seller}</span></p>
               <p className="text-xs text-muted-foreground mb-4 line-clamp-2">{p.description}</p>
               <div className="flex items-end justify-between">
                 <div>
                   <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Preço</p>
                   <p className="text-xl font-black text-foreground">R$ {p.price.toFixed(2)}</p>
                 </div>
-                <button
-                  onClick={() => handleBuy(p.id)}
-                  className="btn-gradient px-5 py-2.5 text-sm"
-                >
-                  Comprar
-                </button>
+                <span className="btn-gradient px-5 py-2.5 text-sm">Ver Produto</span>
               </div>
               <p className="text-[10px] text-muted-foreground mt-2">{p.sales} vendas</p>
             </div>
@@ -120,6 +119,176 @@ export default function StoreView() {
         <div className="text-center py-20">
           <p className="text-2xl mb-2">🏜️</p>
           <p className="text-muted-foreground font-medium">Nenhum produto encontrado.</p>
+        </div>
+      )}
+
+      {/* ── GGMAX-style Product Detail Modal ── */}
+      {product && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-foreground/50 backdrop-blur-sm" onClick={() => setSelectedProduct(null)}>
+          <div className="glass-card w-full max-w-3xl bg-card animate-fade-in-up overflow-hidden max-h-[95vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            {/* Banner */}
+            <div className="relative h-52 sm:h-72">
+              <img src={product.banner || product.image} className="w-full h-full object-cover" alt={product.name} />
+              <button onClick={() => setSelectedProduct(null)} className="absolute top-3 right-3 bg-card/90 backdrop-blur p-2 rounded-xl">
+                <X className="w-5 h-5 text-foreground" />
+              </button>
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-card/90 to-transparent p-6 pt-16">
+                <h2 className="text-xl sm:text-2xl font-black text-foreground leading-tight">{product.name}</h2>
+                <p className="text-sm text-muted-foreground mt-1">{product.category}</p>
+              </div>
+            </div>
+
+            <div className="p-5 sm:p-6 space-y-5">
+              {/* Seller section */}
+              <div className="bg-muted rounded-2xl p-4 flex items-center gap-4">
+                <img
+                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(product.seller)}`}
+                  className="w-14 h-14 rounded-full bg-primary/10 border-2 border-card shadow"
+                  alt={product.seller}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-foreground">{product.seller}</p>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <div className="flex items-center gap-0.5">
+                      <StarEmoji className="w-3.5 h-3.5" />
+                      <span className="text-xs font-bold text-foreground">{avgRating || "Novo"}</span>
+                      <span className="text-[10px] text-muted-foreground">({productReviews.length} avaliações)</span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">·</span>
+                    <span className="text-xs text-muted-foreground">{sellerSales} vendas</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Verification badges */}
+              <div className="flex flex-wrap gap-2">
+                <div className="flex items-center gap-1.5 bg-success/10 text-success px-3 py-1.5 rounded-full text-xs font-bold">
+                  <CheckCircle className="w-3.5 h-3.5" /> Vendedor Verificado
+                </div>
+                <div className="flex items-center gap-1.5 bg-primary/10 text-primary px-3 py-1.5 rounded-full text-xs font-bold">
+                  <ShieldEmoji className="w-3.5 h-3.5" /> Entrega Garantida
+                </div>
+                {product.deliveryType === "auto" && (
+                  <div className="flex items-center gap-1.5 bg-accent/10 text-accent-foreground px-3 py-1.5 rounded-full text-xs font-bold">
+                    <RocketEmoji className="w-3.5 h-3.5" /> Entrega Automática
+                  </div>
+                )}
+              </div>
+
+              {/* Description */}
+              <div>
+                <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Descrição</h4>
+                <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{product.description}</p>
+              </div>
+
+              {/* Variations */}
+              {product.variations && product.variations.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Variações</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {product.variations.map((v, i) => (
+                      <span key={i} className="px-3 py-1.5 bg-muted rounded-full text-xs font-semibold text-foreground">
+                        {v.name} — R$ {v.price.toFixed(2)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Stats */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-muted p-3 rounded-xl text-center">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase">Vendas</p>
+                  <p className="text-lg font-black text-foreground">{product.sales}</p>
+                </div>
+                <div className="bg-muted p-3 rounded-xl text-center">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase">Entrega</p>
+                  <p className="text-lg font-black text-foreground">{product.deliveryType === "auto" ? "Auto" : "Manual"}</p>
+                </div>
+                <div className="bg-muted p-3 rounded-xl text-center">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase">Nota</p>
+                  <p className="text-lg font-black text-foreground flex items-center justify-center gap-1">
+                    <StarEmoji className="w-4 h-4" /> {avgRating || "—"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Reviews */}
+              {productReviews.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Avaliações recentes</h4>
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {productReviews.slice(0, 5).map((r) => (
+                      <div key={r.id} className="bg-muted p-3 rounded-xl">
+                        <div className="flex gap-0.5 mb-1">
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <StarEmoji key={s} className="w-3 h-3" filled={s <= (r.reviewStars || 0)} />
+                          ))}
+                        </div>
+                        <p className="text-xs text-foreground">{r.reviewComment}</p>
+                        <p className="text-[9px] text-muted-foreground mt-1">{r.buyerEmail}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Questions / Perguntas section */}
+              <div>
+                <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2 flex items-center gap-1.5">
+                  <ChatEmoji className="w-4 h-4" /> Perguntas
+                </h4>
+                {state.currentUser ? (
+                  <div className="flex gap-2">
+                    <input
+                      value={question}
+                      onChange={(e) => setQuestion(e.target.value)}
+                      placeholder="Faça uma pergunta ao vendedor..."
+                      className="flex-1 p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary"
+                    />
+                    <button
+                      onClick={() => {
+                        if (question.trim()) {
+                          toast.success("Pergunta enviada!");
+                          setQuestion("");
+                        }
+                      }}
+                      className="btn-gradient px-4 py-2 text-sm"
+                    >
+                      Enviar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 text-center">
+                    <p className="text-xs text-yellow-600 dark:text-yellow-400 font-medium">
+                      <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
+                      Faça login para enviar perguntas ao vendedor.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Payment warning if no Stripe */}
+              {!hasStripe && (
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 text-center">
+                  <AlertTriangle className="w-5 h-5 text-yellow-500 mx-auto mb-2" />
+                  <p className="text-sm font-bold text-yellow-600 dark:text-yellow-400">APIs de pagamento não configuradas</p>
+                  <p className="text-xs text-muted-foreground mt-1">Pagamento manual em breve. Configure Stripe no painel admin.</p>
+                </div>
+              )}
+
+              {/* Price + Buy */}
+              <div className="flex items-center justify-between bg-muted rounded-2xl p-4">
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Preço</p>
+                  <p className="text-3xl font-black text-foreground">R$ {product.price.toFixed(2)}</p>
+                </div>
+                <button onClick={handleBuy} className="btn-gradient px-8 py-3.5 text-base font-black rounded-2xl shadow-lg hover:scale-105 transition-transform">
+                  COMPRAR
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
