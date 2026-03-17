@@ -176,6 +176,8 @@ function loadState(): AppState {
     tickets: [],
     config: defaultConfig,
     bannedUsers: [],
+    globalNotices: [],
+    adminChat: [],
   };
 }
 
