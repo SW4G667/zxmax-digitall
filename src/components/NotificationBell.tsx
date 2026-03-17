@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useStore } from "@/store/StoreContext";
 import { Bell } from "lucide-react";
-import { BagCheckEmoji, StarEmoji, ChatEmoji } from "@/components/CustomEmojis";
+import { BagCheckEmoji, StarEmoji, ChatEmoji, ShieldEmoji } from "@/components/CustomEmojis";
 
 export default function NotificationBell() {
   const { state } = useStore();
@@ -20,7 +20,7 @@ export default function NotificationBell() {
   if (!state.currentUser) return null;
   const email = state.currentUser.email;
 
-  // Purchase notifications: purchases where user is seller and has new messages or reviews
+  // Purchase notifications
   const purchaseNotifs = state.purchases
     .filter((p) => {
       const product = state.products.find((pr) => pr.id === p.productId);
@@ -28,25 +28,26 @@ export default function NotificationBell() {
       const isSeller = product.sellerEmail === email;
       const isBuyer = p.buyerEmail === email;
       if (!isSeller && !isBuyer) return false;
-      // Seller gets notified of new purchases and reviews
       if (isSeller && (p.status === "paid" || p.reviewed)) return true;
-      // Buyer gets notified of delivery
       if (isBuyer && p.status === "delivered" && !p.reviewed) return true;
       return false;
     })
     .slice(0, 10);
 
-  // Global messages from support tickets
-  const globalNotifs = state.tickets
+  // Global: support ticket replies + published global notices
+  const ticketNotifs = state.tickets
     .filter((t) => {
       if (t.userEmail === email) {
         return t.messages.some((m) => m.from !== email);
       }
       return false;
     })
-    .slice(0, 10);
+    .slice(0, 5);
 
-  const totalCount = purchaseNotifs.length + globalNotifs.length;
+  const globalNotices = (state.globalNotices || []).slice(0, 10);
+
+  const globalCount = ticketNotifs.length + globalNotices.length;
+  const totalCount = purchaseNotifs.length + globalCount;
 
   return (
     <div className="relative" ref={ref}>
@@ -86,6 +87,9 @@ export default function NotificationBell() {
               }`}
             >
               <ChatEmoji className="w-4 h-4" /> Mensagens Globais
+              {globalCount > 0 && (
+                <span className="ml-1 bg-destructive text-destructive-foreground text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{globalCount}</span>
+              )}
             </button>
           </div>
 
@@ -128,23 +132,38 @@ export default function NotificationBell() {
 
             {tab === "global" && (
               <>
-                {globalNotifs.length === 0 ? (
-                  <p className="text-center text-muted-foreground text-xs py-8">Nenhuma mensagem nova.</p>
-                ) : (
-                  globalNotifs.map((t) => {
-                    const lastMsg = t.messages.filter((m) => m.from !== email).pop();
-                    return (
-                      <div key={t.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition border-b border-border/20 cursor-pointer">
-                        <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                          <ChatEmoji className="w-5 h-5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold text-foreground truncate">{t.subject}</p>
-                          <p className="text-[10px] text-muted-foreground truncate">{lastMsg?.text}</p>
-                        </div>
+                {/* Global notices */}
+                {globalNotices.map((n) => (
+                  <div key={`notice-${n.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition border-b border-border/20 cursor-pointer">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <ShieldEmoji className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-foreground truncate">Aviso Global</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{n.text}</p>
+                      <p className="text-[9px] text-muted-foreground">{new Date(n.date).toLocaleDateString("pt-BR")}</p>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Ticket replies */}
+                {ticketNotifs.map((t) => {
+                  const lastMsg = t.messages.filter((m) => m.from !== email).pop();
+                  return (
+                    <div key={t.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition border-b border-border/20 cursor-pointer">
+                      <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                        <ChatEmoji className="w-5 h-5" />
                       </div>
-                    );
-                  })
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-foreground truncate">{t.subject}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{lastMsg?.text}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {globalNotices.length === 0 && ticketNotifs.length === 0 && (
+                  <p className="text-center text-muted-foreground text-xs py-8">Nenhuma mensagem nova.</p>
                 )}
               </>
             )}

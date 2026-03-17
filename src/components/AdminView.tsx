@@ -1,25 +1,26 @@
 import React, { useState } from "react";
 import { useStore, Product, SupportTicket } from "@/store/StoreContext";
-import { ShieldEmoji, StarEmoji } from "@/components/CustomEmojis";
-import { X, Eye } from "lucide-react";
+import { ShieldEmoji, StarEmoji, ChatEmoji } from "@/components/CustomEmojis";
+import { X, Eye, Send } from "lucide-react";
 import { toast } from "sonner";
 
-type AdminTab = "config" | "categories" | "products" | "purchases" | "withdrawals" | "support" | "notices" | "users";
+type AdminTab = "config" | "categories" | "products" | "purchases" | "withdrawals" | "support" | "notices" | "users" | "adminchat";
 
 export default function AdminView() {
   const {
     state, updateConfig, approveProduct, rejectProduct, approvePurchase, revertPurchase,
     approveWithdraw, rejectWithdraw, banUser, unbanUser, replyTicket, setGlobalNotice,
-    deleteProduct, closeTicket, resolveTicket,
+    deleteProduct, closeTicket, resolveTicket, publishNotice, sendAdminChat,
   } = useStore();
   const [tab, setTab] = useState<AdminTab>("config");
   const [newCat, setNewCat] = useState("");
-  const [notice, setNotice] = useState(state.config.globalNotice);
+  const [notice, setNotice] = useState("");
   const [adminReply, setAdminReply] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [previewProduct, setPreviewProduct] = useState<Product | null>(null);
   const [showRejectModal, setShowRejectModal] = useState<number | null>(null);
   const [ticketFilter, setTicketFilter] = useState<"open" | "closed">("open");
+  const [chatMsg, setChatMsg] = useState("");
 
   const tabs: { key: AdminTab; label: string }[] = [
     { key: "config", label: "Config" },
@@ -30,7 +31,10 @@ export default function AdminView() {
     { key: "support", label: "Suporte" },
     { key: "notices", label: "Avisos" },
     { key: "users", label: "Usuários" },
+    { key: "adminchat", label: "Chat Equipe" },
   ];
+
+  const adminMessages = state.adminChat || [];
 
   return (
     <div className="animate-fade-in-up">
@@ -65,11 +69,24 @@ export default function AdminView() {
               <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Link Discord</label>
               <input value={state.config.discordLink} onChange={(e) => updateConfig({ discordLink: e.target.value })} className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
             </div>
-            <div>
-              <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Stripe Publishable Key</label>
-              <input value={state.config.stripePublishableKey} onChange={(e) => updateConfig({ stripePublishableKey: e.target.value })} className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
-            </div>
           </div>
+
+          {/* Stripe / Pagamentos */}
+          <div className="border-t border-border/40 pt-4 mt-4">
+            <h4 className="font-bold text-foreground mb-3">Pagamentos (Stripe)</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Stripe Publishable Key</label>
+                <input value={state.config.stripePublishableKey} onChange={(e) => updateConfig({ stripePublishableKey: e.target.value })} placeholder="pk_..." className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Stripe Secret Key</label>
+                <input value={state.config.stripeSecretKey} onChange={(e) => updateConfig({ stripeSecretKey: e.target.value })} placeholder="sk_..." type="password" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-2">Configure ambas as chaves para ativar pagamentos automáticos via Stripe Checkout.</p>
+          </div>
+
           <button onClick={() => toast.success("Configurações salvas!")} className="btn-gradient px-5 py-2.5 text-sm mt-2">Salvar</button>
         </div>
       )}
@@ -100,33 +117,36 @@ export default function AdminView() {
             <h3 className="font-bold text-foreground">Todos os Produtos</h3>
             <span className="admin-badge">{state.products.filter((p) => !p.approved).length} pendentes</span>
           </div>
-          <div className="divide-y divide-border/20">
-            {state.products.map((p) => (
-              <div key={p.id} className="p-4 flex items-center gap-4">
-                <img src={p.image} className="w-12 h-12 rounded-xl object-cover" alt="" />
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-foreground text-sm truncate">{p.name}</p>
-                  <p className="text-xs text-muted-foreground">{p.seller} · {p.category}</p>
+          {state.products.length === 0 ? (
+            <p className="p-6 text-muted-foreground text-center text-sm">Nenhum produto cadastrado.</p>
+          ) : (
+            <div className="divide-y divide-border/20">
+              {state.products.map((p) => (
+                <div key={p.id} className="p-4 flex items-center gap-4">
+                  <img src={p.image} className="w-12 h-12 rounded-xl object-cover" alt="" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-foreground text-sm truncate">{p.name}</p>
+                    <p className="text-xs text-muted-foreground">{p.seller} · {p.category}</p>
+                  </div>
+                  <p className="font-bold text-foreground text-sm">R$ {p.price.toFixed(2)}</p>
+                  <button onClick={() => setPreviewProduct(p)} className="p-1.5 rounded-lg hover:bg-muted transition" title="Visualizar">
+                    <Eye className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                  {!p.approved ? (
+                    <div className="flex gap-2">
+                      <button onClick={() => { approveProduct(p.id); toast.success("Aprovado!"); }} className="text-success font-bold text-xs">Aprovar</button>
+                      <button onClick={() => setShowRejectModal(p.id)} className="text-destructive font-bold text-xs">Rejeitar</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-success bg-success/10 px-2 py-0.5 rounded-full">Ativo</span>
+                      <button onClick={() => { deleteProduct(p.id); toast.success("Produto removido!"); }} className="text-destructive text-xs font-bold hover:underline">Excluir</button>
+                    </div>
+                  )}
                 </div>
-                <p className="font-bold text-foreground text-sm">R$ {p.price.toFixed(2)}</p>
-                <button onClick={() => setPreviewProduct(p)} className="p-1.5 rounded-lg hover:bg-muted transition" title="Visualizar">
-                  <Eye className="w-4 h-4 text-muted-foreground" />
-                </button>
-                {!p.approved ? (
-                  <div className="flex gap-2">
-                    <button onClick={() => { setPreviewProduct(p); }} className="text-primary font-bold text-xs">Preview</button>
-                    <button onClick={() => { approveProduct(p.id); toast.success("Aprovado!"); }} className="text-success font-bold text-xs">Aprovar</button>
-                    <button onClick={() => setShowRejectModal(p.id)} className="text-destructive font-bold text-xs">Rejeitar</button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-success bg-success/10 px-2 py-0.5 rounded-full">Ativo</span>
-                    <button onClick={() => { deleteProduct(p.id); toast.success("Produto removido!"); }} className="text-destructive text-xs font-bold hover:underline">Excluir</button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -134,15 +154,12 @@ export default function AdminView() {
       {previewProduct && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm" onClick={() => setPreviewProduct(null)}>
           <div className="glass-card w-full max-w-2xl p-0 bg-card animate-fade-in-up overflow-hidden max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            {/* Banner/Image */}
             <div className="relative h-56 sm:h-72">
               <img src={previewProduct.banner || previewProduct.image} className="w-full h-full object-cover" alt={previewProduct.name} />
               <button onClick={() => setPreviewProduct(null)} className="absolute top-3 right-3 bg-card/90 backdrop-blur p-2 rounded-xl">
                 <X className="w-5 h-5 text-foreground" />
               </button>
-              {!previewProduct.approved && (
-                <div className="absolute top-3 left-3 admin-badge">Pendente</div>
-              )}
+              {!previewProduct.approved && <div className="absolute top-3 left-3 admin-badge">Pendente</div>}
             </div>
             <div className="p-6">
               <div className="flex justify-between items-start mb-3">
@@ -153,21 +170,16 @@ export default function AdminView() {
                 <p className="text-2xl font-black text-foreground">R$ {previewProduct.price.toFixed(2)}</p>
               </div>
               <p className="text-sm text-foreground mb-4 leading-relaxed">{previewProduct.description}</p>
-
-              {/* Variations */}
               {previewProduct.variations && previewProduct.variations.length > 0 && (
                 <div className="mb-4">
                   <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Variações</h4>
                   <div className="flex flex-wrap gap-2">
                     {previewProduct.variations.map((v, i) => (
-                      <span key={i} className="px-3 py-1.5 bg-muted rounded-full text-xs font-semibold text-foreground">
-                        {v.name} — R$ {v.price.toFixed(2)}
-                      </span>
+                      <span key={i} className="px-3 py-1.5 bg-muted rounded-full text-xs font-semibold text-foreground">{v.name} — R$ {v.price.toFixed(2)}</span>
                     ))}
                   </div>
                 </div>
               )}
-
               <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
                 <div className="bg-muted p-3 rounded-xl">
                   <p className="text-[10px] font-bold text-muted-foreground uppercase">Vendas</p>
@@ -328,14 +340,82 @@ export default function AdminView() {
         </div>
       )}
 
-      {/* Notices */}
+      {/* Notices - textarea starts empty */}
       {tab === "notices" && (
         <div className="glass-card p-6">
           <h3 className="font-bold text-foreground mb-4">Aviso Global</h3>
-          <textarea value={notice} onChange={(e) => setNotice(e.target.value)} rows={4} placeholder="Escreva um aviso para todos os usuários..." className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary resize-none mb-3" />
+          <textarea
+            value={notice}
+            onChange={(e) => setNotice(e.target.value)}
+            rows={4}
+            placeholder="Escreva um aviso para todos os usuários..."
+            className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary resize-none mb-3"
+          />
           <div className="flex gap-2">
-            <button onClick={() => { setGlobalNotice(notice); toast.success("Aviso publicado!"); }} className="btn-gradient px-5 py-2 text-sm">Publicar</button>
+            <button onClick={() => {
+              if (!notice.trim()) { toast.error("Escreva algo antes de publicar."); return; }
+              publishNotice(notice.trim());
+              toast.success("Aviso publicado! Aparecerá no sininho de todos os usuários.");
+              setNotice("");
+            }} className="btn-gradient px-5 py-2 text-sm">Publicar</button>
             <button onClick={() => { setGlobalNotice(""); setNotice(""); toast.success("Aviso removido!"); }} className="px-5 py-2 text-sm text-destructive font-bold">Limpar</button>
+          </div>
+
+          {/* Published notices history */}
+          {(state.globalNotices || []).length > 0 && (
+            <div className="mt-6">
+              <h4 className="text-xs font-bold text-muted-foreground uppercase mb-3">Avisos Publicados</h4>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {(state.globalNotices || []).map((n) => (
+                  <div key={n.id} className="bg-muted rounded-xl p-3 flex justify-between items-center">
+                    <div>
+                      <p className="text-sm text-foreground">{n.text}</p>
+                      <p className="text-[10px] text-muted-foreground">{new Date(n.date).toLocaleString("pt-BR")}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Admin Team Chat */}
+      {tab === "adminchat" && (
+        <div className="glass-card p-6">
+          <h3 className="font-bold text-foreground mb-4 flex items-center gap-2">
+            <ChatEmoji className="w-5 h-5" /> Chat da Equipe
+          </h3>
+          <div className="bg-muted rounded-2xl p-4 mb-4 min-h-[250px] max-h-[400px] overflow-y-auto flex flex-col gap-2">
+            {adminMessages.length === 0 && (
+              <p className="text-center text-muted-foreground text-sm py-10">Nenhuma mensagem. Inicie a conversa!</p>
+            )}
+            {adminMessages.map((m, i) => {
+              const isMe = m.from === state.currentUser?.email;
+              return (
+                <div key={i} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm ${isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-card text-foreground rounded-bl-md"}`}>
+                    <p className={`text-[10px] font-bold mb-0.5 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}>{m.from}</p>
+                    <p>{m.text}</p>
+                    <p className={`text-[9px] mt-0.5 ${isMe ? "text-primary-foreground/50" : "text-muted-foreground"}`}>
+                      {new Date(m.date).toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={chatMsg}
+              onChange={(e) => setChatMsg(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && chatMsg.trim()) { sendAdminChat(state.currentUser!.email, chatMsg.trim()); setChatMsg(""); } }}
+              placeholder="Mensagem para a equipe..."
+              className="flex-1 p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary"
+            />
+            <button onClick={() => { if (chatMsg.trim()) { sendAdminChat(state.currentUser!.email, chatMsg.trim()); setChatMsg(""); } }} className="btn-gradient p-3 rounded-xl">
+              <Send className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}

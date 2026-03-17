@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useStore } from "@/store/StoreContext";
-import { StarEmoji, MoneyEmoji, DoorEmoji, CameraEmoji } from "@/components/CustomEmojis";
+import { StarEmoji, MoneyEmoji, DoorEmoji, CameraEmoji, KeyEmoji } from "@/components/CustomEmojis";
 import { X, Edit, Upload } from "lucide-react";
 import { toast } from "sonner";
 
@@ -10,10 +10,12 @@ interface Props {
 }
 
 export default function ProfileModal({ open, onClose }: Props) {
-  const { state, updateProfile, requestWithdraw, logout } = useStore();
+  const { state, updateProfile, requestWithdraw, logout, updatePixKey } = useStore();
   const user = state.currentUser;
   const [editName, setEditName] = useState(user?.name || "");
   const [editing, setEditing] = useState(false);
+  const [pixKey, setPixKey] = useState(user?.pixKey || "");
+  const [editingPix, setEditingPix] = useState(false);
 
   if (!open || !user) return null;
 
@@ -25,15 +27,24 @@ export default function ProfileModal({ open, onClose }: Props) {
     setEditing(false);
   };
 
+  const handleSavePix = () => {
+    if (pixKey.trim()) {
+      updatePixKey(pixKey.trim());
+      toast.success("Chave Pix salva!");
+    }
+    setEditingPix(false);
+  };
+
   const handleWithdraw = (method: "normal" | "instant") => {
     if (user.balance <= 0) return toast.error("Saldo insuficiente.");
+    if (!user.pixKey) return toast.error("Cadastre sua chave Pix antes de solicitar saque.");
     requestWithdraw(method);
     toast.success(`Saque ${method === "instant" ? "instantâneo" : "normal"} solicitado!`);
   };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm" onClick={onClose}>
-      <div className="glass-card w-full max-w-lg p-7 bg-card animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
+      <div className="glass-card w-full max-w-lg p-7 bg-card animate-fade-in-up max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-start mb-6">
           <h3 className="text-2xl font-bold text-foreground">Meu Perfil</h3>
           <button onClick={onClose} className="p-2 hover:bg-muted rounded-xl"><X className="w-5 h-5 text-muted-foreground" /></button>
@@ -74,6 +85,33 @@ export default function ProfileModal({ open, onClose }: Props) {
             <p className="text-[10px] font-bold text-success uppercase">Ganhos Totais</p>
             <p className="text-2xl font-black text-success">R$ {user.earnings.toFixed(2)}</p>
           </div>
+        </div>
+
+        {/* Pix Key */}
+        <div className="mb-4 p-4 bg-muted rounded-2xl">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
+              <KeyEmoji className="w-4 h-4" /> Dados para Saque (Pix)
+            </p>
+            {!editingPix && (
+              <button onClick={() => setEditingPix(true)} className="text-primary text-xs font-bold">{user.pixKey ? "Editar" : "Cadastrar"}</button>
+            )}
+          </div>
+          {editingPix ? (
+            <div className="flex gap-2">
+              <input
+                value={pixKey}
+                onChange={(e) => setPixKey(e.target.value)}
+                placeholder="CPF, email, telefone ou chave aleatória"
+                className="flex-1 p-2.5 rounded-xl bg-card text-foreground text-sm border border-border outline-none focus:ring-2 ring-primary"
+                autoFocus
+              />
+              <button onClick={handleSavePix} className="btn-gradient px-3 py-1 text-xs">Salvar</button>
+              <button onClick={() => setEditingPix(false)} className="text-xs text-muted-foreground">Cancelar</button>
+            </div>
+          ) : (
+            <p className="text-sm text-foreground">{user.pixKey || <span className="text-muted-foreground italic">Nenhuma chave cadastrada</span>}</p>
+          )}
         </div>
 
         <div className="space-y-2">
