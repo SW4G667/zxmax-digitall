@@ -100,6 +100,8 @@ interface AppState {
   tickets: SupportTicket[];
   config: AppConfig;
   bannedUsers: string[];
+  globalNotices: GlobalNotice[];
+  adminChat: AdminChatMessage[];
 }
 
 interface StoreContextType {
