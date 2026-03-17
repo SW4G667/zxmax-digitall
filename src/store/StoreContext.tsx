@@ -127,6 +127,9 @@ interface StoreContextType {
   closeTicket: (id: number) => void;
   resolveTicket: (id: number) => void;
   setGlobalNotice: (notice: string) => void;
+  publishNotice: (text: string) => void;
+  updatePixKey: (key: string) => void;
+  sendAdminChat: (from: string, text: string) => void;
   sendPurchaseMessage: (purchaseId: number, from: string, text: string) => void;
   confirmDelivery: (purchaseId: number) => void;
   openDispute: (purchaseId: number) => void;
