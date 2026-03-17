@@ -409,7 +409,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         buyProduct, approvePurchase, revertPurchase, requestWithdraw,
         approveWithdraw, rejectWithdraw, updateConfig, updateProfile,
         banUser, unbanUser, addTicket, replyTicket, closeTicket, resolveTicket,
-        setGlobalNotice, sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
+        setGlobalNotice, publishNotice, updatePixKey, sendAdminChat,
+        sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
         isDark, toggleDark,
       }}
     >
