@@ -380,6 +380,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
 
   const setGlobalNotice = (notice: string) => updateConfig({ globalNotice: notice });
+
+  const publishNotice = (text: string) => {
+    if (!text.trim()) return;
+    const n: GlobalNotice = { id: Date.now(), text: text.trim(), date: new Date().toISOString() };
+    setState((s) => ({ ...s, globalNotices: [n, ...(s.globalNotices || [])] }));
+    updateConfig({ globalNotice: text.trim() });
+  };
+
+  const updatePixKey = (key: string) =>
+    setState((s) => ({
+      ...s,
+      currentUser: s.currentUser ? { ...s.currentUser, pixKey: key } : null,
+    }));
+
+  const sendAdminChat = (from: string, text: string) =>
+    setState((s) => ({
+      ...s,
+      adminChat: [...(s.adminChat || []), { from, text, date: new Date().toISOString() }],
+    }));
+
   const toggleDark = () => setIsDark((d) => !d);
 
   return (
