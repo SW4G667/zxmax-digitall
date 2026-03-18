@@ -27,6 +27,16 @@ export interface ProductVariation {
   price: number;
 }
 
+export interface ProductQuestion {
+  id: number;
+  userEmail: string;
+  userName: string;
+  text: string;
+  date: string;
+  answer?: string;
+  answerDate?: string;
+}
+
 export interface Product {
   id: number;
   name: string;
@@ -43,6 +53,7 @@ export interface Product {
   deliveryType: "auto" | "manual";
   deliveryContent?: string;
   variations?: ProductVariation[];
+  questions?: ProductQuestion[];
 }
 
 export interface PurchaseMessage {
