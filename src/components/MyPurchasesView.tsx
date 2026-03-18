@@ -22,6 +22,8 @@ export default function MyPurchasesView() {
   const [showReview, setShowReview] = useState(false);
   const [showSupportConfirm, setShowSupportConfirm] = useState(false);
   const [showDisputeConfirm, setShowDisputeConfirm] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   if (!state.currentUser) return null;
 
