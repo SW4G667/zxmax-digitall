@@ -358,7 +358,7 @@ export default function AdminView() {
               toast.success("Aviso publicado! Aparecerá no sininho de todos os usuários.");
               setNotice("");
             }} className="btn-gradient px-5 py-2 text-sm">Publicar</button>
-            <button onClick={() => { setGlobalNotice(""); setNotice(""); toast.success("Aviso removido!"); }} className="px-5 py-2 text-sm text-destructive font-bold">Limpar</button>
+            <button onClick={() => { updateConfig({ globalNotice: "" }); setNotice(""); toast.success("Aviso removido!"); }} className="px-5 py-2 text-sm text-destructive font-bold">Limpar</button>
           </div>
 
           {/* Published notices history */}
