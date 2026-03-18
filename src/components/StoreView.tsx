@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useStore } from "@/store/StoreContext";
 import { StarEmoji, FireEmoji, RocketEmoji, ShieldEmoji, ChatEmoji } from "@/components/CustomEmojis";
-import { Search, X, CheckCircle, AlertTriangle } from "lucide-react";
+import { Search, X, CheckCircle, AlertTriangle, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 
 export default function StoreView() {
-  const { state, buyProduct } = useStore();
+  const { state, buyProduct, addProductQuestion } = useStore();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Todos");
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
@@ -38,21 +38,25 @@ export default function StoreView() {
   const handleBuy = () => {
     if (!product || !state.currentUser) return;
     if (!hasStripe) {
-      toast.warning("As APIs de pagamento ainda não estão configuradas. Pagamento manual em breve.");
+      toast.warning("As APIs de pagamento ainda não estão configuradas. Configure Stripe no painel admin para ativar pagamentos.");
       return;
     }
     buyProduct(product.id);
-    // Auto-delivery
     if (product.deliveryType === "auto" && product.deliveryContent) {
-      const purchase = state.purchases.find(
-        (p) => p.productId === product.id && p.buyerEmail === state.currentUser!.email && p.status === "paid"
-      );
-      // Will be handled by effect, show success
       toast.success("Compra realizada! Entrega automática enviada no chat.");
     } else {
       toast.success("Compra realizada! Aguarde a entrega do vendedor.");
     }
   };
+
+  const handleSendQuestion = () => {
+    if (!question.trim() || !product) return;
+    addProductQuestion(product.id, question.trim());
+    toast.success("Pergunta enviada ao vendedor!");
+    setQuestion("");
+  };
+
+  const productQuestions = product?.questions || [];
 
   return (
     <div className="animate-fade-in-up">
@@ -124,38 +128,49 @@ export default function StoreView() {
 
       {/* ── GGMAX-style Product Detail Modal ── */}
       {product && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-foreground/50 backdrop-blur-sm" onClick={() => setSelectedProduct(null)}>
-          <div className="glass-card w-full max-w-3xl bg-card animate-fade-in-up overflow-hidden max-h-[95vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-foreground/50 backdrop-blur-sm"
+          onClick={() => setSelectedProduct(null)}
+        >
+          <div
+            className="glass-card w-full max-w-2xl bg-card animate-fade-in-up overflow-hidden max-h-[90vh] overflow-y-auto relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Fixed close button - always visible */}
+            <button
+              onClick={() => setSelectedProduct(null)}
+              className="absolute top-3 right-3 z-[10] bg-card/90 backdrop-blur p-2 rounded-full shadow-lg hover:bg-muted transition"
+              title="Fechar"
+            >
+              <X className="w-5 h-5 text-foreground" />
+            </button>
+
             {/* Banner */}
-            <div className="relative h-52 sm:h-72">
+            <div className="relative h-44 sm:h-64">
               <img src={product.banner || product.image} className="w-full h-full object-cover" alt={product.name} />
-              <button onClick={() => setSelectedProduct(null)} className="absolute top-3 right-3 bg-card/90 backdrop-blur p-2 rounded-xl">
-                <X className="w-5 h-5 text-foreground" />
-              </button>
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-card/90 to-transparent p-6 pt-16">
-                <h2 className="text-xl sm:text-2xl font-black text-foreground leading-tight">{product.name}</h2>
-                <p className="text-sm text-muted-foreground mt-1">{product.category}</p>
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-card/95 to-transparent p-5 pt-14">
+                <h2 className="text-lg sm:text-2xl font-black text-foreground leading-tight">{product.name}</h2>
+                <p className="text-xs text-muted-foreground mt-1">{product.category}</p>
               </div>
             </div>
 
-            <div className="p-5 sm:p-6 space-y-5">
+            <div className="p-4 sm:p-6 space-y-4">
               {/* Seller section */}
               <div className="bg-muted rounded-2xl p-4 flex items-center gap-4">
                 <img
                   src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(product.seller)}`}
-                  className="w-14 h-14 rounded-full bg-primary/10 border-2 border-card shadow"
+                  className="w-12 h-12 rounded-full bg-primary/10 border-2 border-card shadow"
                   alt={product.seller}
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-foreground">{product.seller}</p>
+                  <p className="font-bold text-foreground text-sm">{product.seller}</p>
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <div className="flex items-center gap-0.5">
                       <StarEmoji className="w-3.5 h-3.5" />
                       <span className="text-xs font-bold text-foreground">{avgRating || "Novo"}</span>
-                      <span className="text-[10px] text-muted-foreground">({productReviews.length} avaliações)</span>
+                      <span className="text-[10px] text-muted-foreground">({productReviews.length})</span>
                     </div>
-                    <span className="text-[10px] text-muted-foreground">·</span>
-                    <span className="text-xs text-muted-foreground">{sellerSales} vendas</span>
+                    <span className="text-[10px] text-muted-foreground">· {sellerSales} vendas</span>
                   </div>
                 </div>
               </div>
@@ -236,25 +251,45 @@ export default function StoreView() {
               {/* Questions / Perguntas section */}
               <div>
                 <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2 flex items-center gap-1.5">
-                  <ChatEmoji className="w-4 h-4" /> Perguntas
+                  <ChatEmoji className="w-4 h-4" /> Perguntas ({productQuestions.length})
                 </h4>
+
+                {/* Existing questions */}
+                {productQuestions.length > 0 && (
+                  <div className="space-y-2 mb-3 max-h-48 overflow-y-auto">
+                    {productQuestions.map((q) => (
+                      <div key={q.id} className="bg-muted rounded-xl p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <img
+                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(q.userName)}`}
+                            className="w-5 h-5 rounded-full"
+                            alt=""
+                          />
+                          <span className="text-xs font-bold text-foreground">{q.userName}</span>
+                          <span className="text-[9px] text-muted-foreground">{new Date(q.date).toLocaleDateString("pt-BR")}</span>
+                        </div>
+                        <p className="text-xs text-foreground">{q.text}</p>
+                        {q.answer && (
+                          <div className="mt-2 pl-3 border-l-2 border-primary/40">
+                            <p className="text-[10px] font-bold text-primary mb-0.5">Resposta do vendedor:</p>
+                            <p className="text-xs text-foreground">{q.answer}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {state.currentUser ? (
                   <div className="flex gap-2">
                     <input
                       value={question}
                       onChange={(e) => setQuestion(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleSendQuestion(); }}
                       placeholder="Faça uma pergunta ao vendedor..."
                       className="flex-1 p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary"
                     />
-                    <button
-                      onClick={() => {
-                        if (question.trim()) {
-                          toast.success("Pergunta enviada!");
-                          setQuestion("");
-                        }
-                      }}
-                      className="btn-gradient px-4 py-2 text-sm"
-                    >
+                    <button onClick={handleSendQuestion} className="btn-gradient px-4 py-2 text-sm">
                       Enviar
                     </button>
                   </div>
@@ -268,12 +303,18 @@ export default function StoreView() {
                 )}
               </div>
 
-              {/* Payment warning if no Stripe */}
-              {!hasStripe && (
+              {/* Payment section */}
+              {!hasStripe ? (
                 <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 text-center">
                   <AlertTriangle className="w-5 h-5 text-yellow-500 mx-auto mb-2" />
                   <p className="text-sm font-bold text-yellow-600 dark:text-yellow-400">APIs de pagamento não configuradas</p>
-                  <p className="text-xs text-muted-foreground mt-1">Pagamento manual em breve. Configure Stripe no painel admin.</p>
+                  <p className="text-xs text-muted-foreground mt-1">Configure as chaves Stripe no painel admin para ativar pagamentos.</p>
+                </div>
+              ) : (
+                <div className="bg-success/10 border border-success/30 rounded-xl p-4 text-center">
+                  <CheckCircle className="w-5 h-5 text-success mx-auto mb-2" />
+                  <p className="text-sm font-bold text-success">Pagamento via Stripe ativado</p>
+                  <p className="text-xs text-muted-foreground mt-1">Ao clicar em COMPRAR, você será redirecionado para o checkout seguro.</p>
                 </div>
               )}
 
@@ -281,9 +322,9 @@ export default function StoreView() {
               <div className="flex items-center justify-between bg-muted rounded-2xl p-4">
                 <div>
                   <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Preço</p>
-                  <p className="text-3xl font-black text-foreground">R$ {product.price.toFixed(2)}</p>
+                  <p className="text-2xl sm:text-3xl font-black text-foreground">R$ {product.price.toFixed(2)}</p>
                 </div>
-                <button onClick={handleBuy} className="btn-gradient px-8 py-3.5 text-base font-black rounded-2xl shadow-lg hover:scale-105 transition-transform">
+                <button onClick={handleBuy} className="btn-gradient px-6 sm:px-8 py-3 text-sm sm:text-base font-black rounded-2xl shadow-lg hover:scale-105 transition-transform">
                   COMPRAR
                 </button>
               </div>

@@ -4,7 +4,7 @@ import { BagCheckEmoji, StarEmoji, ChatEmoji, ShieldEmoji } from "@/components/C
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ArrowLeft, Send, Copy, ExternalLink, Lock } from "lucide-react";
+import { ArrowLeft, Send, Copy, ExternalLink, Lock, Image as ImageIcon } from "lucide-react";
 
 const statusMap: Record<Purchase["status"], { label: string; cls: string }> = {
   pending: { label: "Pendente", cls: "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30" },
@@ -22,6 +22,8 @@ export default function MyPurchasesView() {
   const [showReview, setShowReview] = useState(false);
   const [showSupportConfirm, setShowSupportConfirm] = useState(false);
   const [showDisputeConfirm, setShowDisputeConfirm] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   if (!state.currentUser) return null;
 
@@ -180,10 +182,15 @@ export default function MyPurchasesView() {
           )}
           {!isChatLocked && chat.map((m, i) => {
             const isMe = m.from === state.currentUser!.email;
+            const isImage = m.text.startsWith("data:image/");
             return (
               <div key={i} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm ${isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-secondary text-foreground rounded-bl-md"}`}>
-                  <p>{m.text}</p>
+                  {isImage ? (
+                    <img src={m.text} alt="Imagem" className="max-w-full max-h-48 rounded-lg cursor-pointer" onClick={() => window.open(m.text, "_blank")} />
+                  ) : (
+                    <p>{m.text}</p>
+                  )}
                   <p className={`text-[10px] mt-1 ${isMe ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
                     {new Date(m.date).toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
                   </p>
@@ -195,17 +202,51 @@ export default function MyPurchasesView() {
 
         {/* Message input */}
         {!isChatLocked ? (
-          <div className="glass-card p-3 flex gap-2 items-center mb-4">
-            <input
-              value={msg}
-              onChange={(e) => setMsg(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              placeholder="Digite sua mensagem..."
-              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-            />
-            <Button size="icon" onClick={handleSend} className="btn-gradient shrink-0 w-9 h-9">
-              <Send className="w-4 h-4" />
-            </Button>
+          <div className="glass-card p-3 mb-4">
+            {/* Image preview */}
+            {imagePreview && (
+              <div className="mb-2 relative inline-block">
+                <img src={imagePreview} alt="Preview" className="max-h-24 rounded-lg" />
+                <button onClick={() => setImagePreview(null)} className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs">×</button>
+              </div>
+            )}
+            <div className="flex gap-2 items-center">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => setImagePreview(reader.result as string);
+                  reader.readAsDataURL(file);
+                  e.target.value = "";
+                }}
+              />
+              <button onClick={() => fileInputRef.current?.click()} className="p-2 rounded-xl hover:bg-muted transition shrink-0" title="Enviar imagem">
+                <ImageIcon className="w-4 h-4 text-muted-foreground" />
+              </button>
+              <input
+                value={msg}
+                onChange={(e) => setMsg(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                placeholder="Digite sua mensagem..."
+                className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+              />
+              <Button size="icon" onClick={() => {
+                if (imagePreview && selected) {
+                  sendPurchaseMessage(selected.id, state.currentUser!.email, imagePreview);
+                  setImagePreview(null);
+                  toast.success("Imagem enviada!");
+                } else {
+                  handleSend();
+                }
+              }} className="btn-gradient shrink-0 w-9 h-9">
+                <Send className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="glass-card p-3 mb-4 text-center">
