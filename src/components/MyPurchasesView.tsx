@@ -182,10 +182,15 @@ export default function MyPurchasesView() {
           )}
           {!isChatLocked && chat.map((m, i) => {
             const isMe = m.from === state.currentUser!.email;
+            const isImage = m.text.startsWith("data:image/");
             return (
               <div key={i} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm ${isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-secondary text-foreground rounded-bl-md"}`}>
-                  <p>{m.text}</p>
+                  {isImage ? (
+                    <img src={m.text} alt="Imagem" className="max-w-full max-h-48 rounded-lg cursor-pointer" onClick={() => window.open(m.text, "_blank")} />
+                  ) : (
+                    <p>{m.text}</p>
+                  )}
                   <p className={`text-[10px] mt-1 ${isMe ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
                     {new Date(m.date).toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
                   </p>
