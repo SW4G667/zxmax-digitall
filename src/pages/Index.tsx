@@ -22,10 +22,10 @@ function Dashboard() {
 
   return (
     <div className="bg-gradient-page min-h-screen pb-24">
-      {/* Global notice */}
-      {state.config.globalNotice && (
-        <div className="bg-primary text-primary-foreground text-center text-sm py-2 px-4 font-medium">
-          {state.config.globalNotice}
+      {/* Global notice banner - only show if set */}
+      {state.config.globalNotice && state.config.globalNotice.trim() && (
+        <div className="bg-primary text-primary-foreground text-center text-xs sm:text-sm py-2 px-4 font-medium flex items-center justify-center gap-2">
+          <span>{state.config.globalNotice}</span>
         </div>
       )}
 
