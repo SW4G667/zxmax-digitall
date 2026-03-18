@@ -4,7 +4,7 @@ import { BagCheckEmoji, StarEmoji, ChatEmoji, ShieldEmoji } from "@/components/C
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ArrowLeft, Send, Copy, ExternalLink, Lock } from "lucide-react";
+import { ArrowLeft, Send, Copy, ExternalLink, Lock, Image as ImageIcon } from "lucide-react";
 
 const statusMap: Record<Purchase["status"], { label: string; cls: string }> = {
   pending: { label: "Pendente", cls: "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30" },
