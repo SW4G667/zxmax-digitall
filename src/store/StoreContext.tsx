@@ -413,6 +413,39 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       adminChat: [...(s.adminChat || []), { from, text, date: new Date().toISOString() }],
     }));
 
+  const addProductQuestion = (productId: number, text: string) => {
+    if (!state.currentUser) return;
+    const q: ProductQuestion = {
+      id: Date.now(),
+      userEmail: state.currentUser.email,
+      userName: state.currentUser.name,
+      text,
+      date: new Date().toISOString(),
+    };
+    setState((s) => ({
+      ...s,
+      products: s.products.map((p) =>
+        p.id === productId ? { ...p, questions: [...(p.questions || []), q] } : p
+      ),
+    }));
+  };
+
+  const answerProductQuestion = (productId: number, questionId: number, answer: string) => {
+    setState((s) => ({
+      ...s,
+      products: s.products.map((p) =>
+        p.id === productId
+          ? {
+              ...p,
+              questions: (p.questions || []).map((q) =>
+                q.id === questionId ? { ...q, answer, answerDate: new Date().toISOString() } : q
+              ),
+            }
+          : p
+      ),
+    }));
+  };
+
   const toggleDark = () => setIsDark((d) => !d);
 
   return (
@@ -424,6 +457,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         banUser, unbanUser, addTicket, replyTicket, closeTicket, resolveTicket,
         setGlobalNotice, publishNotice, updatePixKey, sendAdminChat,
         sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
+        addProductQuestion, answerProductQuestion,
         isDark, toggleDark,
       }}
     >
