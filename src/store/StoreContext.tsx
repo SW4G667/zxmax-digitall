@@ -145,6 +145,8 @@ interface StoreContextType {
   confirmDelivery: (purchaseId: number) => void;
   openDispute: (purchaseId: number) => void;
   reviewPurchase: (purchaseId: number, stars: number, comment: string) => void;
+  addProductQuestion: (productId: number, text: string) => void;
+  answerProductQuestion: (productId: number, questionId: number, answer: string) => void;
   isDark: boolean;
   toggleDark: () => void;
 }
