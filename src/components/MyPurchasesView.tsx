@@ -202,17 +202,51 @@ export default function MyPurchasesView() {
 
         {/* Message input */}
         {!isChatLocked ? (
-          <div className="glass-card p-3 flex gap-2 items-center mb-4">
-            <input
-              value={msg}
-              onChange={(e) => setMsg(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              placeholder="Digite sua mensagem..."
-              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-            />
-            <Button size="icon" onClick={handleSend} className="btn-gradient shrink-0 w-9 h-9">
-              <Send className="w-4 h-4" />
-            </Button>
+          <div className="glass-card p-3 mb-4">
+            {/* Image preview */}
+            {imagePreview && (
+              <div className="mb-2 relative inline-block">
+                <img src={imagePreview} alt="Preview" className="max-h-24 rounded-lg" />
+                <button onClick={() => setImagePreview(null)} className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs">×</button>
+              </div>
+            )}
+            <div className="flex gap-2 items-center">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => setImagePreview(reader.result as string);
+                  reader.readAsDataURL(file);
+                  e.target.value = "";
+                }}
+              />
+              <button onClick={() => fileInputRef.current?.click()} className="p-2 rounded-xl hover:bg-muted transition shrink-0" title="Enviar imagem">
+                <ImageIcon className="w-4 h-4 text-muted-foreground" />
+              </button>
+              <input
+                value={msg}
+                onChange={(e) => setMsg(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                placeholder="Digite sua mensagem..."
+                className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+              />
+              <Button size="icon" onClick={() => {
+                if (imagePreview && selected) {
+                  sendPurchaseMessage(selected.id, state.currentUser!.email, imagePreview);
+                  setImagePreview(null);
+                  toast.success("Imagem enviada!");
+                } else {
+                  handleSend();
+                }
+              }} className="btn-gradient shrink-0 w-9 h-9">
+                <Send className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="glass-card p-3 mb-4 text-center">
