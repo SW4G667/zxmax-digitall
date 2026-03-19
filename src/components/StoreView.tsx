@@ -5,7 +5,7 @@ import { Search, X, CheckCircle, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 
 export default function StoreView() {
-  const { state, buyProduct, addProductQuestion } = useStore();
+  const { state, addProductQuestion } = useStore();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Todos");
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
