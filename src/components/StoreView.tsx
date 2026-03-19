@@ -35,17 +35,33 @@ export default function StoreView() {
 
   const hasStripe = !!(state.config.stripePublishableKey && state.config.stripeSecretKey);
 
-  const handleBuy = () => {
+  const [buyLoading, setBuyLoading] = useState(false);
+
+  const handleBuy = async () => {
     if (!product || !state.currentUser) return;
-    if (!hasStripe) {
-      toast.warning("As APIs de pagamento ainda não estão configuradas. Configure Stripe no painel admin para ativar pagamentos.");
-      return;
-    }
-    buyProduct(product.id);
-    if (product.deliveryType === "auto" && product.deliveryContent) {
-      toast.success("Compra realizada! Entrega automática enviada no chat.");
-    } else {
-      toast.success("Compra realizada! Aguarde a entrega do vendedor.");
+    setBuyLoading(true);
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data, error } = await supabase.functions.invoke("create-checkout", {
+        body: {
+          productId: product.id,
+          productName: product.name,
+          priceInCents: Math.round(product.price * 100),
+          sellerEmail: product.sellerEmail,
+          buyerEmail: state.currentUser.email,
+        },
+      });
+      if (error) throw error;
+      if (data?.url) {
+        window.open(data.url, "_blank");
+      } else {
+        toast.error("Erro ao criar sessão de pagamento.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Erro ao conectar com Stripe: " + (err.message || "Tente novamente."));
+    } finally {
+      setBuyLoading(false);
     }
   };
 
