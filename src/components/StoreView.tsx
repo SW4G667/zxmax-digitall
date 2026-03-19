@@ -33,7 +33,7 @@ export default function StoreView() {
     ? state.purchases.filter((p) => sellerProducts.some((sp) => sp.id === p.productId)).length
     : 0;
 
-  const hasStripe = !!(state.config.stripePublishableKey && state.config.stripeSecretKey);
+  
 
   const [buyLoading, setBuyLoading] = useState(false);
 
