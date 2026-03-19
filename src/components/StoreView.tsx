@@ -319,20 +319,12 @@ export default function StoreView() {
                 )}
               </div>
 
-              {/* Payment section */}
-              {!hasStripe ? (
-                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 text-center">
-                  <AlertTriangle className="w-5 h-5 text-yellow-500 mx-auto mb-2" />
-                  <p className="text-sm font-bold text-yellow-600 dark:text-yellow-400">APIs de pagamento não configuradas</p>
-                  <p className="text-xs text-muted-foreground mt-1">Configure as chaves Stripe no painel admin para ativar pagamentos.</p>
-                </div>
-              ) : (
-                <div className="bg-success/10 border border-success/30 rounded-xl p-4 text-center">
-                  <CheckCircle className="w-5 h-5 text-success mx-auto mb-2" />
-                  <p className="text-sm font-bold text-success">Pagamento via Stripe ativado</p>
-                  <p className="text-xs text-muted-foreground mt-1">Ao clicar em COMPRAR, você será redirecionado para o checkout seguro.</p>
-                </div>
-              )}
+              {/* Payment info */}
+              <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 text-center">
+                <ShieldEmoji className="w-5 h-5 mx-auto mb-2" />
+                <p className="text-sm font-bold text-foreground">Pagamento seguro via Stripe</p>
+                <p className="text-xs text-muted-foreground mt-1">Ao clicar em COMPRAR, você será redirecionado para o checkout seguro.</p>
+              </div>
 
               {/* Price + Buy */}
               <div className="flex items-center justify-between bg-muted rounded-2xl p-4">
