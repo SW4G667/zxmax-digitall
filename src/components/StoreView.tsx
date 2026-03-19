@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { useStore } from "@/store/StoreContext";
 import { StarEmoji, FireEmoji, RocketEmoji, ShieldEmoji, ChatEmoji } from "@/components/CustomEmojis";
-import { Search, X, CheckCircle, Image as ImageIcon } from "lucide-react";
+import { Search, X, CheckCircle, AlertTriangle, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 
 export default function StoreView() {
