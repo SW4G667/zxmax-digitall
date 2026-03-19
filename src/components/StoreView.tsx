@@ -5,7 +5,7 @@ import { Search, X, CheckCircle, AlertTriangle, Image as ImageIcon } from "lucid
 import { toast } from "sonner";
 
 export default function StoreView() {
-  const { state, buyProduct, addProductQuestion } = useStore();
+  const { state, addProductQuestion } = useStore();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Todos");
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
@@ -33,19 +33,35 @@ export default function StoreView() {
     ? state.purchases.filter((p) => sellerProducts.some((sp) => sp.id === p.productId)).length
     : 0;
 
-  const hasStripe = !!(state.config.stripePublishableKey && state.config.stripeSecretKey);
+  
 
-  const handleBuy = () => {
+  const [buyLoading, setBuyLoading] = useState(false);
+
+  const handleBuy = async () => {
     if (!product || !state.currentUser) return;
-    if (!hasStripe) {
-      toast.warning("As APIs de pagamento ainda não estão configuradas. Configure Stripe no painel admin para ativar pagamentos.");
-      return;
-    }
-    buyProduct(product.id);
-    if (product.deliveryType === "auto" && product.deliveryContent) {
-      toast.success("Compra realizada! Entrega automática enviada no chat.");
-    } else {
-      toast.success("Compra realizada! Aguarde a entrega do vendedor.");
+    setBuyLoading(true);
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data, error } = await supabase.functions.invoke("create-checkout", {
+        body: {
+          productId: product.id,
+          productName: product.name,
+          priceInCents: Math.round(product.price * 100),
+          sellerEmail: product.sellerEmail,
+          buyerEmail: state.currentUser.email,
+        },
+      });
+      if (error) throw error;
+      if (data?.url) {
+        window.open(data.url, "_blank");
+      } else {
+        toast.error("Erro ao criar sessão de pagamento.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Erro ao conectar com Stripe: " + (err.message || "Tente novamente."));
+    } finally {
+      setBuyLoading(false);
     }
   };
 
@@ -303,20 +319,12 @@ export default function StoreView() {
                 )}
               </div>
 
-              {/* Payment section */}
-              {!hasStripe ? (
-                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 text-center">
-                  <AlertTriangle className="w-5 h-5 text-yellow-500 mx-auto mb-2" />
-                  <p className="text-sm font-bold text-yellow-600 dark:text-yellow-400">APIs de pagamento não configuradas</p>
-                  <p className="text-xs text-muted-foreground mt-1">Configure as chaves Stripe no painel admin para ativar pagamentos.</p>
-                </div>
-              ) : (
-                <div className="bg-success/10 border border-success/30 rounded-xl p-4 text-center">
-                  <CheckCircle className="w-5 h-5 text-success mx-auto mb-2" />
-                  <p className="text-sm font-bold text-success">Pagamento via Stripe ativado</p>
-                  <p className="text-xs text-muted-foreground mt-1">Ao clicar em COMPRAR, você será redirecionado para o checkout seguro.</p>
-                </div>
-              )}
+              {/* Payment info */}
+              <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 text-center">
+                <ShieldEmoji className="w-5 h-5 mx-auto mb-2" />
+                <p className="text-sm font-bold text-foreground">Pagamento seguro via Stripe</p>
+                <p className="text-xs text-muted-foreground mt-1">Ao clicar em COMPRAR, você será redirecionado para o checkout seguro.</p>
+              </div>
 
               {/* Price + Buy */}
               <div className="flex items-center justify-between bg-muted rounded-2xl p-4">
@@ -324,8 +332,8 @@ export default function StoreView() {
                   <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Preço</p>
                   <p className="text-2xl sm:text-3xl font-black text-foreground">R$ {product.price.toFixed(2)}</p>
                 </div>
-                <button onClick={handleBuy} className="btn-gradient px-6 sm:px-8 py-3 text-sm sm:text-base font-black rounded-2xl shadow-lg hover:scale-105 transition-transform">
-                  COMPRAR
+                <button onClick={handleBuy} disabled={buyLoading} className="btn-gradient px-6 sm:px-8 py-3 text-sm sm:text-base font-black rounded-2xl shadow-lg hover:scale-105 transition-transform disabled:opacity-50">
+                  {buyLoading ? "Processando..." : "COMPRAR"}
                 </button>
               </div>
             </div>
