@@ -332,8 +332,8 @@ export default function StoreView() {
                   <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Preço</p>
                   <p className="text-2xl sm:text-3xl font-black text-foreground">R$ {product.price.toFixed(2)}</p>
                 </div>
-                <button onClick={handleBuy} className="btn-gradient px-6 sm:px-8 py-3 text-sm sm:text-base font-black rounded-2xl shadow-lg hover:scale-105 transition-transform">
-                  COMPRAR
+                <button onClick={handleBuy} disabled={buyLoading} className="btn-gradient px-6 sm:px-8 py-3 text-sm sm:text-base font-black rounded-2xl shadow-lg hover:scale-105 transition-transform disabled:opacity-50">
+                  {buyLoading ? "Processando..." : "COMPRAR"}
                 </button>
               </div>
             </div>
