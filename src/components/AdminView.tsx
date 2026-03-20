@@ -355,7 +355,7 @@ export default function AdminView() {
             <button onClick={() => {
               if (!notice.trim()) { toast.error("Escreva algo antes de publicar."); return; }
               publishNotice(notice.trim());
-              toast.success("Aviso publicado! Aparecerá no sininho de todos os usuários.");
+              toast.success("Aviso publicado nas Mensagens Globais!");
               setNotice("");
             }} className="btn-gradient px-5 py-2 text-sm">Publicar</button>
             <button onClick={() => { updateConfig({ globalNotice: "" }); setNotice(""); toast.success("Aviso removido!"); }} className="px-5 py-2 text-sm text-destructive font-bold">Limpar</button>
