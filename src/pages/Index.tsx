@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useStore, StoreProvider } from "@/store/StoreContext";
 import AuthScreen from "@/components/AuthScreen";
 import Header from "@/components/Header";
@@ -14,9 +14,30 @@ import { toast } from "sonner";
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "profile";
 
 function Dashboard() {
-  const { state } = useStore();
+  const { state, markPurchasePaid } = useStore();
   const [view, setView] = useState<View>(() => state.currentUser?.isAdmin ? "admin" : "store");
   const [profileOpen, setProfileOpen] = useState(false);
+
+  // Handle payment success redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("payment") === "success" && state.currentUser) {
+      // Mark the most recent pending purchase as paid
+      const pendingPurchase = state.purchases
+        .filter((p) => p.buyerEmail === state.currentUser!.email && p.status === "pending")
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+      if (pendingPurchase) {
+        markPurchasePaid(pendingPurchase.id);
+        toast.success("Pagamento confirmado! Acesse 'Minhas Compras' para ver seu pedido.");
+      }
+      // Clean URL
+      window.history.replaceState({}, "", "/");
+      setView("purchases");
+    } else if (params.get("payment") === "canceled") {
+      toast.info("Pagamento cancelado.");
+      window.history.replaceState({}, "", "/");
+    }
+  }, []);
 
   if (!state.currentUser) return <AuthScreen />;
 

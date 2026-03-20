@@ -124,6 +124,7 @@ interface StoreContextType {
   rejectProduct: (id: number) => void;
   deleteProduct: (id: number) => void;
   buyProduct: (id: number) => void;
+  markPurchasePaid: (purchaseId: number) => void;
   approvePurchase: (id: number) => void;
   revertPurchase: (id: number) => void;
   requestWithdraw: (method: "normal" | "instant") => void;
@@ -245,12 +246,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const buyProduct = (id: number) => {
     const product = state.products.find((p) => p.id === id);
     if (!product || !state.currentUser) return;
+    // Check if already has a pending purchase for this product
+    const existingPending = state.purchases.find(
+      (p) => p.productId === id && p.buyerEmail === state.currentUser!.email && p.status === "pending"
+    );
+    if (existingPending) return; // Don't duplicate
     const purchase: Purchase = {
       id: Date.now(),
       productId: id,
       buyerEmail: state.currentUser.email,
       sellerEmail: product.sellerEmail,
-      status: "paid",
+      status: "pending",
       createdAt: new Date().toISOString(),
       amount: product.price,
       messages: [],
@@ -259,9 +265,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState((s) => ({
       ...s,
       purchases: [...s.purchases, purchase],
-      products: s.products.map((p) => (p.id === id ? { ...p, sales: p.sales + 1 } : p)),
     }));
   };
+
+  const markPurchasePaid = (id: number) =>
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) => (p.id === id ? { ...p, status: "paid" as const } : p)),
+      products: s.products.map((pr) => {
+        const purchase = s.purchases.find((p) => p.id === id);
+        if (purchase && pr.id === purchase.productId) return { ...pr, sales: pr.sales + 1 };
+        return pr;
+      }),
+    }));
 
   const approvePurchase = (id: number) =>
     setState((s) => ({
@@ -451,7 +467,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     <StoreContext.Provider
       value={{
         state, login, logout, addProduct, approveProduct, rejectProduct, deleteProduct,
-        buyProduct, approvePurchase, revertPurchase, requestWithdraw,
+        buyProduct, markPurchasePaid, approvePurchase, revertPurchase, requestWithdraw,
         approveWithdraw, rejectWithdraw, updateConfig, updateProfile,
         banUser, unbanUser, addTicket, replyTicket, closeTicket, resolveTicket,
         setGlobalNotice, publishNotice, updatePixKey, sendAdminChat,

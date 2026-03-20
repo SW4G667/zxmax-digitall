@@ -5,7 +5,7 @@ import { Search, X, CheckCircle, AlertTriangle, Image as ImageIcon } from "lucid
 import { toast } from "sonner";
 
 export default function StoreView() {
-  const { state, addProductQuestion } = useStore();
+  const { state, addProductQuestion, buyProduct } = useStore();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Todos");
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
@@ -39,6 +39,16 @@ export default function StoreView() {
 
   const handleBuy = async () => {
     if (!product || !state.currentUser) return;
+
+    // Stripe minimum for BRL is R$0.50 (50 centavos)
+    if (product.price < 0.50) {
+      toast.error("O preço mínimo para pagamento via Stripe é R$ 0,50.");
+      return;
+    }
+
+    // Create purchase as "pending" immediately so it shows in "Minhas Compras"
+    buyProduct(product.id);
+
     setBuyLoading(true);
     try {
       const { supabase } = await import("@/integrations/supabase/client");
@@ -53,6 +63,7 @@ export default function StoreView() {
       });
       if (error) throw error;
       if (data?.url) {
+        toast.success("Redirecionando para pagamento... Após pagar, volte em 'Minhas Compras'.");
         window.open(data.url, "_blank");
       } else {
         toast.error("Erro ao criar sessão de pagamento.");
