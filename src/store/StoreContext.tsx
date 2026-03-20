@@ -268,6 +268,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  const markPurchasePaid = (id: number) =>
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) => (p.id === id ? { ...p, status: "paid" as const } : p)),
+      products: s.products.map((pr) => {
+        const purchase = s.purchases.find((p) => p.id === id);
+        if (purchase && pr.id === purchase.productId) return { ...pr, sales: pr.sales + 1 };
+        return pr;
+      }),
+    }));
+
   const approvePurchase = (id: number) =>
     setState((s) => ({
       ...s,
