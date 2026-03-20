@@ -124,6 +124,7 @@ interface StoreContextType {
   rejectProduct: (id: number) => void;
   deleteProduct: (id: number) => void;
   buyProduct: (id: number) => void;
+  markPurchasePaid: (purchaseId: number) => void;
   approvePurchase: (id: number) => void;
   revertPurchase: (id: number) => void;
   requestWithdraw: (method: "normal" | "instant") => void;
