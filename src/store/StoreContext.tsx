@@ -245,12 +245,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const buyProduct = (id: number) => {
     const product = state.products.find((p) => p.id === id);
     if (!product || !state.currentUser) return;
+    // Check if already has a pending purchase for this product
+    const existingPending = state.purchases.find(
+      (p) => p.productId === id && p.buyerEmail === state.currentUser!.email && p.status === "pending"
+    );
+    if (existingPending) return; // Don't duplicate
     const purchase: Purchase = {
       id: Date.now(),
       productId: id,
       buyerEmail: state.currentUser.email,
       sellerEmail: product.sellerEmail,
-      status: "paid",
+      status: "pending",
       createdAt: new Date().toISOString(),
       amount: product.price,
       messages: [],
@@ -259,7 +264,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState((s) => ({
       ...s,
       purchases: [...s.purchases, purchase],
-      products: s.products.map((p) => (p.id === id ? { ...p, sales: p.sales + 1 } : p)),
     }));
   };
 
