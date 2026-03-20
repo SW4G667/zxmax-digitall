@@ -132,6 +132,20 @@ export default function NotificationBell() {
 
             {tab === "global" && (
               <>
+                {/* Global notices */}
+                {globalNotices.map((n) => (
+                  <div key={n.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition border-b border-border/20">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <ShieldEmoji className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-foreground truncate">Aviso Global</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{n.text}</p>
+                      <p className="text-[9px] text-muted-foreground/60 mt-0.5">{new Date(n.date).toLocaleDateString("pt-BR")}</p>
+                    </div>
+                  </div>
+                ))}
+
                 {/* Ticket replies */}
                 {ticketNotifs.map((t) => {
                   const lastMsg = t.messages.filter((m) => m.from !== email).pop();
@@ -148,7 +162,7 @@ export default function NotificationBell() {
                   );
                 })}
 
-                {ticketNotifs.length === 0 && (
+                {globalNotices.length === 0 && ticketNotifs.length === 0 && (
                   <p className="text-center text-muted-foreground text-xs py-8">Nenhuma mensagem nova.</p>
                 )}
               </>
