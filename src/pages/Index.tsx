@@ -39,6 +39,8 @@ function Dashboard() {
     }
   }, []);
 
+  if (!state.currentUser) return <AuthScreen />;
+
   return (
     <div className="bg-gradient-page min-h-screen pb-24">
 
