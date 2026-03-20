@@ -5,7 +5,7 @@ import { Search, X, CheckCircle, AlertTriangle, Image as ImageIcon } from "lucid
 import { toast } from "sonner";
 
 export default function StoreView() {
-  const { state, addProductQuestion } = useStore();
+  const { state, addProductQuestion, buyProduct } = useStore();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Todos");
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
