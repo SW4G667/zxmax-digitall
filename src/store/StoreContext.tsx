@@ -398,7 +398,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!text.trim()) return;
     const n: GlobalNotice = { id: Date.now(), text: text.trim(), date: new Date().toISOString() };
     setState((s) => ({ ...s, globalNotices: [n, ...(s.globalNotices || [])] }));
-    updateConfig({ globalNotice: text.trim() });
   };
 
   const updatePixKey = (key: string) =>

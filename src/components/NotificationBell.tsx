@@ -34,7 +34,7 @@ export default function NotificationBell() {
     })
     .slice(0, 10);
 
-  // Global: support ticket replies only (notices show in top banner only)
+  // Global: support ticket replies + global notices
   const ticketNotifs = state.tickets
     .filter((t) => {
       if (t.userEmail === email) {
@@ -44,7 +44,9 @@ export default function NotificationBell() {
     })
     .slice(0, 5);
 
-  const globalCount = ticketNotifs.length;
+  const globalNotices = (state.globalNotices || []).slice(0, 10);
+
+  const globalCount = ticketNotifs.length + globalNotices.length;
   const totalCount = purchaseNotifs.length + globalCount;
 
   return (
