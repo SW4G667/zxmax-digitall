@@ -58,11 +58,11 @@ export default function InventoryView() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm" onClick={() => setShowForm(false)}>
-          <div className="glass-card w-full max-w-lg p-6 bg-card animate-fade-in-up max-h-[90vh] overflow-y-auto overscroll-contain touch-pan-y" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-6">
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-foreground/40 p-4 pt-20 pb-24 backdrop-blur-sm md:flex md:items-center md:justify-center md:pt-4 md:pb-4" onClick={() => setShowForm(false)}>
+          <div className="glass-card w-full max-w-lg bg-card p-6 animate-fade-in-up touch-pan-y md:max-h-[90vh] md:overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-6 flex items-center justify-between bg-card px-6 py-4">
               <h3 className="text-xl font-bold text-foreground">Criar Produto</h3>
-              <button onClick={() => setShowForm(false)} className="p-2 hover:bg-muted rounded-xl"><X className="w-5 h-5 text-muted-foreground" /></button>
+              <button onClick={() => setShowForm(false)} className="rounded-xl p-2 hover:bg-muted"><X className="w-5 h-5 text-muted-foreground" /></button>
             </div>
             <form onSubmit={handleCreate} className="space-y-3">
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nome do Produto" className="w-full p-3 rounded-xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground text-sm" />
