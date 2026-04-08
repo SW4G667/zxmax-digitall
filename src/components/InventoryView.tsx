@@ -58,8 +58,8 @@ export default function InventoryView() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm">
-          <div className="glass-card w-full max-w-lg p-6 bg-card animate-fade-in-up max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm" onClick={() => setShowForm(false)}>
+          <div className="glass-card w-full max-w-lg p-6 bg-card animate-fade-in-up max-h-[90vh] overflow-y-auto overscroll-contain touch-pan-y" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-bold text-foreground">Criar Produto</h3>
               <button onClick={() => setShowForm(false)} className="p-2 hover:bg-muted rounded-xl"><X className="w-5 h-5 text-muted-foreground" /></button>

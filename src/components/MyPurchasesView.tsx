@@ -214,11 +214,15 @@ export default function MyPurchasesView() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,application/pdf,.doc,.docx,.txt,.zip,.rar,.xlsx,.csv"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
+                  if (file.size > 5 * 1024 * 1024) {
+                    toast.error("Arquivo muito grande! Máximo 5MB.");
+                    return;
+                  }
                   const reader = new FileReader();
                   reader.onload = () => setImagePreview(reader.result as string);
                   reader.readAsDataURL(file);

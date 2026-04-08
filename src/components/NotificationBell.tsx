@@ -7,6 +7,11 @@ export default function NotificationBell() {
   const { state } = useStore();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"purchases" | "global">("purchases");
+  const [lastSeenCount, setLastSeenCount] = useState(() => {
+    try {
+      return parseInt(localStorage.getItem("zxmax_notif_seen") || "0", 10);
+    } catch { return 0; }
+  });
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
