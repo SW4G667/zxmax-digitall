@@ -183,11 +183,17 @@ export default function MyPurchasesView() {
           {!isChatLocked && chat.map((m, i) => {
             const isMe = m.from === state.currentUser!.email;
             const isImage = m.text.startsWith("data:image/");
+            const isFile = !isImage && m.text.startsWith("data:");
+            const fileName = isFile ? (m.text.match(/data:([^;]+)/)?.[1] || "arquivo") : "";
             return (
               <div key={i} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm ${isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-secondary text-foreground rounded-bl-md"}`}>
                   {isImage ? (
                     <img src={m.text} alt="Imagem" className="max-w-full max-h-48 rounded-lg cursor-pointer" onClick={() => window.open(m.text, "_blank")} />
+                  ) : isFile ? (
+                    <a href={m.text} download={`arquivo.${fileName.split("/")[1] || "bin"}`} className="flex items-center gap-2 underline">
+                      📎 Baixar arquivo ({fileName.split("/")[1] || "arquivo"})
+                    </a>
                   ) : (
                     <p>{m.text}</p>
                   )}
@@ -206,7 +212,11 @@ export default function MyPurchasesView() {
             {/* Image preview */}
             {imagePreview && (
               <div className="mb-2 relative inline-block">
-                <img src={imagePreview} alt="Preview" className="max-h-24 rounded-lg" />
+                {imagePreview.startsWith("data:image/") ? (
+                  <img src={imagePreview} alt="Preview" className="max-h-24 rounded-lg" />
+                ) : (
+                  <div className="bg-muted rounded-lg px-3 py-2 text-xs text-foreground">📎 Arquivo selecionado</div>
+                )}
                 <button onClick={() => setImagePreview(null)} className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs">×</button>
               </div>
             )}
@@ -214,11 +224,15 @@ export default function MyPurchasesView() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,application/pdf,.doc,.docx,.txt,.zip,.rar,.xlsx,.csv"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
+                  if (file.size > 5 * 1024 * 1024) {
+                    toast.error("Arquivo muito grande! Máximo 5MB.");
+                    return;
+                  }
                   const reader = new FileReader();
                   reader.onload = () => setImagePreview(reader.result as string);
                   reader.readAsDataURL(file);
