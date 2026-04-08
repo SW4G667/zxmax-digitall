@@ -183,11 +183,17 @@ export default function MyPurchasesView() {
           {!isChatLocked && chat.map((m, i) => {
             const isMe = m.from === state.currentUser!.email;
             const isImage = m.text.startsWith("data:image/");
+            const isFile = !isImage && m.text.startsWith("data:");
+            const fileName = isFile ? (m.text.match(/data:([^;]+)/)?.[1] || "arquivo") : "";
             return (
               <div key={i} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm ${isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-secondary text-foreground rounded-bl-md"}`}>
                   {isImage ? (
                     <img src={m.text} alt="Imagem" className="max-w-full max-h-48 rounded-lg cursor-pointer" onClick={() => window.open(m.text, "_blank")} />
+                  ) : isFile ? (
+                    <a href={m.text} download={`arquivo.${fileName.split("/")[1] || "bin"}`} className="flex items-center gap-2 underline">
+                      📎 Baixar arquivo ({fileName.split("/")[1] || "arquivo"})
+                    </a>
                   ) : (
                     <p>{m.text}</p>
                   )}
