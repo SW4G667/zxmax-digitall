@@ -53,18 +53,27 @@ export default function NotificationBell() {
 
   const globalCount = ticketNotifs.length + globalNotices.length;
   const totalCount = purchaseNotifs.length + globalCount;
+  const hasNew = totalCount > lastSeenCount;
+
+  const handleOpen = () => {
+    setOpen(!open);
+    if (!open) {
+      setLastSeenCount(totalCount);
+      localStorage.setItem("zxmax_notif_seen", String(totalCount));
+    }
+  };
 
   return (
     <div className="relative" ref={ref}>
       <button
-        onClick={() => setOpen(!open)}
+        onClick={handleOpen}
         className="p-2 rounded-xl hover:bg-muted transition relative"
         title="Notificações"
       >
         <Bell className="w-5 h-5 text-muted-foreground" />
-        {totalCount > 0 && (
+        {hasNew && (
           <span className="absolute -top-0.5 -right-0.5 w-4.5 h-4.5 min-w-[18px] min-h-[18px] flex items-center justify-center bg-destructive text-destructive-foreground text-[9px] font-black rounded-full border-2 border-card animate-emoji-pulse">
-            {totalCount > 9 ? "9+" : totalCount}
+            {totalCount - lastSeenCount > 9 ? "9+" : totalCount - lastSeenCount}
           </span>
         )}
       </button>
