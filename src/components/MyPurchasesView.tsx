@@ -212,7 +212,11 @@ export default function MyPurchasesView() {
             {/* Image preview */}
             {imagePreview && (
               <div className="mb-2 relative inline-block">
-                <img src={imagePreview} alt="Preview" className="max-h-24 rounded-lg" />
+                {imagePreview.startsWith("data:image/") ? (
+                  <img src={imagePreview} alt="Preview" className="max-h-24 rounded-lg" />
+                ) : (
+                  <div className="bg-muted rounded-lg px-3 py-2 text-xs text-foreground">📎 Arquivo selecionado</div>
+                )}
                 <button onClick={() => setImagePreview(null)} className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs">×</button>
               </div>
             )}
