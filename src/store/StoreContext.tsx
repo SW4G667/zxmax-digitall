@@ -174,6 +174,12 @@ const defaultConfig: AppConfig = {
   stripeSecretKey: "",
   categories: ["Bots Discord", "Contas", "Scripts", "Assinaturas", "Designs Digitais", "Serviços Online", "Consultoria Virtual", "Keys de Software", "Arquivos"],
   globalNotice: "",
+  googleClientId: "",
+  googleClientSecret: "",
+  discordClientId: "",
+  discordClientSecret: "",
+  asaasApiKey: "",
+  asaasEnv: "sandbox",
 };
 
 const StoreContext = createContext<StoreContextType | null>(null);
