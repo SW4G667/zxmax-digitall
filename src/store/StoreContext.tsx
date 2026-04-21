@@ -113,6 +113,10 @@ export interface AppConfig {
   discordClientSecret: string;
   asaasApiKey: string;
   asaasEnv: "sandbox" | "production";
+  discordRedirectUri: string;
+  discordScopes: string;
+  googleRedirectUri: string;
+  googleScopes: string;
 }
 
 interface AppState {
@@ -185,6 +189,10 @@ const defaultConfig: AppConfig = {
   discordClientSecret: "",
   asaasApiKey: "",
   asaasEnv: "sandbox",
+  discordRedirectUri: typeof window !== "undefined" ? window.location.origin + "/" : "",
+  discordScopes: "identify",
+  googleRedirectUri: typeof window !== "undefined" ? window.location.origin + "/" : "",
+  googleScopes: "openid email profile",
 };
 
 const StoreContext = createContext<StoreContextType | null>(null);

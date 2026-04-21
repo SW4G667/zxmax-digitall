@@ -139,8 +139,31 @@ export default function AdminView() {
                 <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Discord Client Secret</label>
                 <input value={state.config.discordClientSecret} onChange={(e) => updateConfig({ discordClientSecret: e.target.value })} placeholder="Secret da aplicação Discord" type="password" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
               </div>
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Discord Redirect URI</label>
+                <input value={state.config.discordRedirectUri} onChange={(e) => updateConfig({ discordRedirectUri: e.target.value })} placeholder="https://seusite.com/" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Discord Scopes</label>
+                <input value={state.config.discordScopes} onChange={(e) => updateConfig({ discordScopes: e.target.value })} placeholder="identify email" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-2">As chaves OAuth ficam salvas para configuração visual. O login social efetivo precisa ser ativado nas configurações de autenticação do backend.</p>
+            <p className="text-[10px] text-muted-foreground mt-2">URL gerada: <code className="text-foreground/70 break-all">https://discord.com/oauth2/authorize?client_id=...&response_type=code&redirect_uri=...&scope=...</code></p>
+          </div>
+
+          {/* Google Redirect/Scopes extras */}
+          <div className="border-t border-border/40 pt-4 mt-4">
+            <h4 className="font-bold text-foreground mb-3">Google OAuth — Avançado</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Google Redirect URI</label>
+                <input value={state.config.googleRedirectUri} onChange={(e) => updateConfig({ googleRedirectUri: e.target.value })} placeholder="https://seusite.com/" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Google Scopes</label>
+                <input value={state.config.googleScopes} onChange={(e) => updateConfig({ googleScopes: e.target.value })} placeholder="openid email profile" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+            </div>
           </div>
 
           <button onClick={() => toast.success("Configurações salvas!")} className="btn-gradient px-5 py-2.5 text-sm mt-2">Salvar</button>
