@@ -505,6 +505,110 @@ export default function AdminView() {
         </div>
       )}
 
+      {/* Tags */}
+      {tab === "tags" && (
+        <div className="space-y-6">
+          <div className="glass-card p-6">
+            <h3 className="font-bold text-foreground mb-4">Criar Tag</h3>
+            <div className="flex gap-2 items-end flex-wrap">
+              <div className="flex-1 min-w-[180px]">
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Nome</label>
+                <input value={newTagName} onChange={(e) => setNewTagName(e.target.value.slice(0, 20))} placeholder="VIP, Verificado..." className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Cor</label>
+                <input type="color" value={newTagColor} onChange={(e) => setNewTagColor(e.target.value)} className="w-14 h-12 rounded-xl bg-muted border-none cursor-pointer" />
+              </div>
+              <button
+                onClick={() => {
+                  if (!newTagName.trim()) { toast.error("Digite um nome para a tag."); return; }
+                  createUserTag(newTagName, newTagColor);
+                  setNewTagName("");
+                  toast.success("Tag criada!");
+                }}
+                className="btn-gradient px-5 py-3 text-sm"
+              >
+                Criar Tag
+              </button>
+            </div>
+
+            {(state.userTags || []).length > 0 && (
+              <div className="mt-5">
+                <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Tags existentes</h4>
+                <div className="flex flex-wrap gap-2">
+                  {state.userTags.map((t) => (
+                    <span key={t.id} className="px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 text-white" style={{ backgroundColor: t.color }}>
+                      {t.name}
+                      <button onClick={() => { deleteUserTag(t.id); toast.success("Tag removida!"); }} className="font-black hover:opacity-70" title="Excluir tag">×</button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="glass-card p-6">
+            <h3 className="font-bold text-foreground mb-4">Atribuir Tag a Usuário</h3>
+            {(state.userTags || []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">Crie uma tag primeiro.</p>
+            ) : (
+              <div className="flex gap-2 items-end flex-wrap">
+                <div className="flex-1 min-w-[180px]">
+                  <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Email do usuário</label>
+                  <input value={tagAssignEmail} onChange={(e) => setTagAssignEmail(e.target.value)} placeholder="usuario@email.com" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+                </div>
+                <div className="min-w-[140px]">
+                  <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Tag</label>
+                  <select value={tagAssignTagId} onChange={(e) => setTagAssignTagId(e.target.value ? +e.target.value : "")} className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary">
+                    <option value="">Selecione...</option>
+                    {state.userTags.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={() => {
+                    if (!tagAssignEmail.trim() || !tagAssignTagId) { toast.error("Preencha email e selecione tag."); return; }
+                    assignUserTag(tagAssignEmail.trim(), Number(tagAssignTagId));
+                    toast.success("Tag atribuída!");
+                    setTagAssignEmail("");
+                    setTagAssignTagId("");
+                  }}
+                  className="btn-gradient px-5 py-3 text-sm"
+                >
+                  Atribuir
+                </button>
+              </div>
+            )}
+
+            {Object.keys(state.userTagAssignments || {}).length > 0 && (
+              <div className="mt-5">
+                <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Atribuições atuais</h4>
+                <div className="space-y-2">
+                  {Object.entries(state.userTagAssignments).map(([email, tagIds]) => (
+                    <div key={email} className="bg-muted rounded-xl p-3">
+                      <p className="text-sm font-bold text-foreground mb-2">{email}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {tagIds.map((tid) => {
+                          const tag = state.userTags.find((t) => t.id === tid);
+                          if (!tag) return null;
+                          return (
+                            <span key={tid} className="px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 text-white" style={{ backgroundColor: tag.color }}>
+                              {tag.name}
+                              <button onClick={() => { unassignUserTag(email, tid); toast.success("Tag removida do usuário!"); }} className="hover:opacity-70">×</button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8">
         <div className="bg-card p-5 rounded-3xl border border-border/40">
