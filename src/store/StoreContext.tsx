@@ -125,6 +125,8 @@ interface AppState {
   bannedUsers: string[];
   globalNotices: GlobalNotice[];
   adminChat: AdminChatMessage[];
+  userTags: UserTag[];
+  userTagAssignments: Record<string, number[]>; // email -> tagIds
 }
 
 interface StoreContextType {
