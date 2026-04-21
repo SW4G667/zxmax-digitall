@@ -224,22 +224,30 @@ export default function MyPurchasesView() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,application/pdf,.doc,.docx,.txt,.zip,.rar,.xlsx,.csv"
+                accept="*/*"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
                   if (file.size > 5 * 1024 * 1024) {
                     toast.error("Arquivo muito grande! Máximo 5MB.");
+                    e.target.value = "";
                     return;
                   }
                   const reader = new FileReader();
                   reader.onload = () => setImagePreview(reader.result as string);
+                  reader.onerror = () => toast.error("Erro ao ler arquivo.");
                   reader.readAsDataURL(file);
                   e.target.value = "";
                 }}
               />
-              <button onClick={() => fileInputRef.current?.click()} className="p-2 rounded-xl hover:bg-muted transition shrink-0" title="Enviar imagem">
+              <button
+                type="button"
+                onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); fileInputRef.current?.click(); }}
+                className="p-2 rounded-xl hover:bg-muted transition shrink-0 cursor-pointer"
+                title="Enviar arquivo"
+                aria-label="Anexar arquivo"
+              >
                 <ImageIcon className="w-4 h-4 text-muted-foreground" />
               </button>
               <input
