@@ -93,6 +93,12 @@ export interface SupportTicket {
   status: "open" | "closed";
 }
 
+export interface UserTag {
+  id: number;
+  name: string;
+  color: string; // hex or hsl
+}
+
 export interface AppConfig {
   commission: number;
   instantFee: number;
@@ -101,6 +107,12 @@ export interface AppConfig {
   stripeSecretKey: string;
   categories: string[];
   globalNotice: string;
+  googleClientId: string;
+  googleClientSecret: string;
+  discordClientId: string;
+  discordClientSecret: string;
+  asaasApiKey: string;
+  asaasEnv: "sandbox" | "production";
 }
 
 interface AppState {
@@ -113,6 +125,8 @@ interface AppState {
   bannedUsers: string[];
   globalNotices: GlobalNotice[];
   adminChat: AdminChatMessage[];
+  userTags: UserTag[];
+  userTagAssignments: Record<string, number[]>; // email -> tagIds
 }
 
 interface StoreContextType {
@@ -148,6 +162,11 @@ interface StoreContextType {
   reviewPurchase: (purchaseId: number, stars: number, comment: string) => void;
   addProductQuestion: (productId: number, text: string) => void;
   answerProductQuestion: (productId: number, questionId: number, answer: string) => void;
+  deleteNotice: (id: number) => void;
+  createUserTag: (name: string, color: string) => void;
+  deleteUserTag: (id: number) => void;
+  assignUserTag: (email: string, tagId: number) => void;
+  unassignUserTag: (email: string, tagId: number) => void;
   isDark: boolean;
   toggleDark: () => void;
 }
@@ -160,6 +179,12 @@ const defaultConfig: AppConfig = {
   stripeSecretKey: "",
   categories: ["Bots Discord", "Contas", "Scripts", "Assinaturas", "Designs Digitais", "Serviços Online", "Consultoria Virtual", "Keys de Software", "Arquivos"],
   globalNotice: "",
+  googleClientId: "",
+  googleClientSecret: "",
+  discordClientId: "",
+  discordClientSecret: "",
+  asaasApiKey: "",
+  asaasEnv: "sandbox",
 };
 
 const StoreContext = createContext<StoreContextType | null>(null);
@@ -176,6 +201,8 @@ function loadState(): AppState {
     if (saved) {
       const parsed = JSON.parse(saved);
       return {
+        userTags: [],
+        userTagAssignments: {},
         ...parsed,
         config: { ...defaultConfig, ...parsed.config },
         products: parsed.products?.length ? parsed.products : [],
@@ -192,6 +219,8 @@ function loadState(): AppState {
     bannedUsers: [],
     globalNotices: [],
     adminChat: [],
+    userTags: [],
+    userTagAssignments: {},
   };
 }
 
@@ -461,6 +490,49 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  const deleteNotice = (id: number) =>
+    setState((s) => ({ ...s, globalNotices: (s.globalNotices || []).filter((n) => n.id !== id) }));
+
+  const createUserTag = (name: string, color: string) => {
+    if (!name.trim()) return;
+    const tag: UserTag = { id: Date.now(), name: name.trim(), color };
+    setState((s) => ({ ...s, userTags: [...(s.userTags || []), tag] }));
+  };
+
+  const deleteUserTag = (id: number) =>
+    setState((s) => {
+      const newAssignments: Record<string, number[]> = {};
+      Object.entries(s.userTagAssignments || {}).forEach(([email, ids]) => {
+        const filtered = ids.filter((tid) => tid !== id);
+        if (filtered.length) newAssignments[email] = filtered;
+      });
+      return {
+        ...s,
+        userTags: (s.userTags || []).filter((t) => t.id !== id),
+        userTagAssignments: newAssignments,
+      };
+    });
+
+  const assignUserTag = (email: string, tagId: number) =>
+    setState((s) => {
+      const current = s.userTagAssignments?.[email] || [];
+      if (current.includes(tagId)) return s;
+      return {
+        ...s,
+        userTagAssignments: { ...(s.userTagAssignments || {}), [email]: [...current, tagId] },
+      };
+    });
+
+  const unassignUserTag = (email: string, tagId: number) =>
+    setState((s) => {
+      const current = s.userTagAssignments?.[email] || [];
+      const filtered = current.filter((id) => id !== tagId);
+      const next = { ...(s.userTagAssignments || {}) };
+      if (filtered.length) next[email] = filtered;
+      else delete next[email];
+      return { ...s, userTagAssignments: next };
+    });
+
   const toggleDark = () => setIsDark((d) => !d);
 
   return (
@@ -473,6 +545,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setGlobalNotice, publishNotice, updatePixKey, sendAdminChat,
         sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
         addProductQuestion, answerProductQuestion,
+        deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
         isDark, toggleDark,
       }}
     >

@@ -4,13 +4,14 @@ import { ShieldEmoji, StarEmoji, ChatEmoji } from "@/components/CustomEmojis";
 import { X, Eye, Send } from "lucide-react";
 import { toast } from "sonner";
 
-type AdminTab = "config" | "categories" | "products" | "purchases" | "withdrawals" | "support" | "notices" | "users" | "adminchat";
+type AdminTab = "config" | "categories" | "products" | "purchases" | "withdrawals" | "support" | "notices" | "users" | "adminchat" | "tags";
 
 export default function AdminView() {
   const {
     state, updateConfig, approveProduct, rejectProduct, approvePurchase, revertPurchase,
     approveWithdraw, rejectWithdraw, banUser, unbanUser, replyTicket, setGlobalNotice,
     deleteProduct, closeTicket, resolveTicket, publishNotice, sendAdminChat,
+    deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
   } = useStore();
   const [tab, setTab] = useState<AdminTab>("config");
   const [newCat, setNewCat] = useState("");
@@ -21,6 +22,10 @@ export default function AdminView() {
   const [showRejectModal, setShowRejectModal] = useState<number | null>(null);
   const [ticketFilter, setTicketFilter] = useState<"open" | "closed">("open");
   const [chatMsg, setChatMsg] = useState("");
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState("#8b5cf6");
+  const [tagAssignEmail, setTagAssignEmail] = useState("");
+  const [tagAssignTagId, setTagAssignTagId] = useState<number | "">("");
 
   const tabs: { key: AdminTab; label: string }[] = [
     { key: "config", label: "Config" },
@@ -31,6 +36,7 @@ export default function AdminView() {
     { key: "support", label: "Suporte" },
     { key: "notices", label: "Avisos" },
     { key: "users", label: "Usuários" },
+    { key: "tags", label: "Tags" },
     { key: "adminchat", label: "Chat Equipe" },
   ];
 
@@ -85,6 +91,56 @@ export default function AdminView() {
               </div>
             </div>
             <p className="text-[10px] text-muted-foreground mt-2">Configure ambas as chaves para ativar pagamentos automáticos via Stripe Checkout.</p>
+          </div>
+
+          {/* Asaas */}
+          <div className="border-t border-border/40 pt-4 mt-4">
+            <h4 className="font-bold text-foreground mb-3">Pagamentos (Asaas)</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Chave API Asaas</label>
+                <input value={state.config.asaasApiKey} onChange={(e) => updateConfig({ asaasApiKey: e.target.value })} placeholder="$aact_..." type="password" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Ambiente</label>
+                <select value={state.config.asaasEnv} onChange={(e) => updateConfig({ asaasEnv: e.target.value as "sandbox" | "production" })} className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary">
+                  <option value="sandbox">Sandbox (Testes)</option>
+                  <option value="production">Produção</option>
+                </select>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-2">Chave armazenada localmente. Para a integração funcionar de verdade será necessário criar a edge function que chama a API do Asaas.</p>
+          </div>
+
+          {/* Google OAuth */}
+          <div className="border-t border-border/40 pt-4 mt-4">
+            <h4 className="font-bold text-foreground mb-3">Login com Google</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Google Client ID</label>
+                <input value={state.config.googleClientId} onChange={(e) => updateConfig({ googleClientId: e.target.value })} placeholder="xxxxx.apps.googleusercontent.com" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Google Client Secret</label>
+                <input value={state.config.googleClientSecret} onChange={(e) => updateConfig({ googleClientSecret: e.target.value })} placeholder="GOCSPX-..." type="password" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+            </div>
+          </div>
+
+          {/* Discord OAuth */}
+          <div className="border-t border-border/40 pt-4 mt-4">
+            <h4 className="font-bold text-foreground mb-3">Login com Discord</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Discord Client ID</label>
+                <input value={state.config.discordClientId} onChange={(e) => updateConfig({ discordClientId: e.target.value })} placeholder="ID da aplicação Discord" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Discord Client Secret</label>
+                <input value={state.config.discordClientSecret} onChange={(e) => updateConfig({ discordClientSecret: e.target.value })} placeholder="Secret da aplicação Discord" type="password" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-2">As chaves OAuth ficam salvas para configuração visual. O login social efetivo precisa ser ativado nas configurações de autenticação do backend.</p>
           </div>
 
           <button onClick={() => toast.success("Configurações salvas!")} className="btn-gradient px-5 py-2.5 text-sm mt-2">Salvar</button>
@@ -367,11 +423,18 @@ export default function AdminView() {
               <h4 className="text-xs font-bold text-muted-foreground uppercase mb-3">Avisos Publicados</h4>
               <div className="space-y-2 max-h-60 overflow-y-auto">
                 {(state.globalNotices || []).map((n) => (
-                  <div key={n.id} className="bg-muted rounded-xl p-3 flex justify-between items-center">
-                    <div>
-                      <p className="text-sm text-foreground">{n.text}</p>
+                  <div key={n.id} className="bg-muted rounded-xl p-3 flex justify-between items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground break-words">{n.text}</p>
                       <p className="text-[10px] text-muted-foreground">{new Date(n.date).toLocaleString("pt-BR")}</p>
                     </div>
+                    <button
+                      onClick={() => { deleteNotice(n.id); toast.success("Aviso excluído!"); }}
+                      className="shrink-0 p-2 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition"
+                      title="Excluir aviso"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -439,6 +502,110 @@ export default function AdminView() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Tags */}
+      {tab === "tags" && (
+        <div className="space-y-6">
+          <div className="glass-card p-6">
+            <h3 className="font-bold text-foreground mb-4">Criar Tag</h3>
+            <div className="flex gap-2 items-end flex-wrap">
+              <div className="flex-1 min-w-[180px]">
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Nome</label>
+                <input value={newTagName} onChange={(e) => setNewTagName(e.target.value.slice(0, 20))} placeholder="VIP, Verificado..." className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Cor</label>
+                <input type="color" value={newTagColor} onChange={(e) => setNewTagColor(e.target.value)} className="w-14 h-12 rounded-xl bg-muted border-none cursor-pointer" />
+              </div>
+              <button
+                onClick={() => {
+                  if (!newTagName.trim()) { toast.error("Digite um nome para a tag."); return; }
+                  createUserTag(newTagName, newTagColor);
+                  setNewTagName("");
+                  toast.success("Tag criada!");
+                }}
+                className="btn-gradient px-5 py-3 text-sm"
+              >
+                Criar Tag
+              </button>
+            </div>
+
+            {(state.userTags || []).length > 0 && (
+              <div className="mt-5">
+                <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Tags existentes</h4>
+                <div className="flex flex-wrap gap-2">
+                  {state.userTags.map((t) => (
+                    <span key={t.id} className="px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 text-white" style={{ backgroundColor: t.color }}>
+                      {t.name}
+                      <button onClick={() => { deleteUserTag(t.id); toast.success("Tag removida!"); }} className="font-black hover:opacity-70" title="Excluir tag">×</button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="glass-card p-6">
+            <h3 className="font-bold text-foreground mb-4">Atribuir Tag a Usuário</h3>
+            {(state.userTags || []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">Crie uma tag primeiro.</p>
+            ) : (
+              <div className="flex gap-2 items-end flex-wrap">
+                <div className="flex-1 min-w-[180px]">
+                  <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Email do usuário</label>
+                  <input value={tagAssignEmail} onChange={(e) => setTagAssignEmail(e.target.value)} placeholder="usuario@email.com" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+                </div>
+                <div className="min-w-[140px]">
+                  <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Tag</label>
+                  <select value={tagAssignTagId} onChange={(e) => setTagAssignTagId(e.target.value ? +e.target.value : "")} className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary">
+                    <option value="">Selecione...</option>
+                    {state.userTags.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={() => {
+                    if (!tagAssignEmail.trim() || !tagAssignTagId) { toast.error("Preencha email e selecione tag."); return; }
+                    assignUserTag(tagAssignEmail.trim(), Number(tagAssignTagId));
+                    toast.success("Tag atribuída!");
+                    setTagAssignEmail("");
+                    setTagAssignTagId("");
+                  }}
+                  className="btn-gradient px-5 py-3 text-sm"
+                >
+                  Atribuir
+                </button>
+              </div>
+            )}
+
+            {Object.keys(state.userTagAssignments || {}).length > 0 && (
+              <div className="mt-5">
+                <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Atribuições atuais</h4>
+                <div className="space-y-2">
+                  {Object.entries(state.userTagAssignments).map(([email, tagIds]) => (
+                    <div key={email} className="bg-muted rounded-xl p-3">
+                      <p className="text-sm font-bold text-foreground mb-2">{email}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {tagIds.map((tid) => {
+                          const tag = state.userTags.find((t) => t.id === tid);
+                          if (!tag) return null;
+                          return (
+                            <span key={tid} className="px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 text-white" style={{ backgroundColor: tag.color }}>
+                              {tag.name}
+                              <button onClick={() => { unassignUserTag(email, tid); toast.success("Tag removida do usuário!"); }} className="hover:opacity-70">×</button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
