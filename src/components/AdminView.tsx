@@ -11,6 +11,7 @@ export default function AdminView() {
     state, updateConfig, approveProduct, rejectProduct, approvePurchase, revertPurchase,
     approveWithdraw, rejectWithdraw, banUser, unbanUser, replyTicket, setGlobalNotice,
     deleteProduct, closeTicket, resolveTicket, publishNotice, sendAdminChat,
+    deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
   } = useStore();
   const [tab, setTab] = useState<AdminTab>("config");
   const [newCat, setNewCat] = useState("");
