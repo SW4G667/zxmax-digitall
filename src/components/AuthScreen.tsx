@@ -3,13 +3,27 @@ import { useStore } from "@/store/StoreContext";
 import { RocketEmoji, KeyEmoji } from "@/components/CustomEmojis";
 
 export default function AuthScreen() {
-  const { login } = useStore();
+  const { login, state } = useStore();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
+
+  const handleDiscord = () => {
+    const { discordClientId, discordRedirectUri, discordScopes } = state.config;
+    if (!discordClientId) return setError("Discord não configurado pelo admin.");
+    const url = `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(discordClientId)}&response_type=code&redirect_uri=${encodeURIComponent(discordRedirectUri || window.location.origin + "/")}&scope=${encodeURIComponent(discordScopes || "identify")}`;
+    window.location.href = url;
+  };
+
+  const handleGoogle = () => {
+    const { googleClientId, googleRedirectUri, googleScopes } = state.config;
+    if (!googleClientId) return setError("Google não configurado pelo admin.");
+    const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(googleClientId)}&response_type=code&redirect_uri=${encodeURIComponent(googleRedirectUri || window.location.origin + "/")}&scope=${encodeURIComponent(googleScopes || "openid email profile")}`;
+    window.location.href = url;
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
