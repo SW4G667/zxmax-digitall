@@ -4,7 +4,7 @@ import { ShieldEmoji, StarEmoji, ChatEmoji } from "@/components/CustomEmojis";
 import { X, Eye, Send } from "lucide-react";
 import { toast } from "sonner";
 
-type AdminTab = "config" | "categories" | "products" | "purchases" | "withdrawals" | "support" | "notices" | "users" | "adminchat";
+type AdminTab = "config" | "categories" | "products" | "purchases" | "withdrawals" | "support" | "notices" | "users" | "adminchat" | "tags";
 
 export default function AdminView() {
   const {
