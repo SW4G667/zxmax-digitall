@@ -490,6 +490,49 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  const deleteNotice = (id: number) =>
+    setState((s) => ({ ...s, globalNotices: (s.globalNotices || []).filter((n) => n.id !== id) }));
+
+  const createUserTag = (name: string, color: string) => {
+    if (!name.trim()) return;
+    const tag: UserTag = { id: Date.now(), name: name.trim(), color };
+    setState((s) => ({ ...s, userTags: [...(s.userTags || []), tag] }));
+  };
+
+  const deleteUserTag = (id: number) =>
+    setState((s) => {
+      const newAssignments: Record<string, number[]> = {};
+      Object.entries(s.userTagAssignments || {}).forEach(([email, ids]) => {
+        const filtered = ids.filter((tid) => tid !== id);
+        if (filtered.length) newAssignments[email] = filtered;
+      });
+      return {
+        ...s,
+        userTags: (s.userTags || []).filter((t) => t.id !== id),
+        userTagAssignments: newAssignments,
+      };
+    });
+
+  const assignUserTag = (email: string, tagId: number) =>
+    setState((s) => {
+      const current = s.userTagAssignments?.[email] || [];
+      if (current.includes(tagId)) return s;
+      return {
+        ...s,
+        userTagAssignments: { ...(s.userTagAssignments || {}), [email]: [...current, tagId] },
+      };
+    });
+
+  const unassignUserTag = (email: string, tagId: number) =>
+    setState((s) => {
+      const current = s.userTagAssignments?.[email] || [];
+      const filtered = current.filter((id) => id !== tagId);
+      const next = { ...(s.userTagAssignments || {}) };
+      if (filtered.length) next[email] = filtered;
+      else delete next[email];
+      return { ...s, userTagAssignments: next };
+    });
+
   const toggleDark = () => setIsDark((d) => !d);
 
   return (
