@@ -113,6 +113,10 @@ export interface AppConfig {
   discordClientSecret: string;
   asaasApiKey: string;
   asaasEnv: "sandbox" | "production";
+  discordRedirectUri: string;
+  discordScopes: string;
+  googleRedirectUri: string;
+  googleScopes: string;
 }
 
 interface AppState {
