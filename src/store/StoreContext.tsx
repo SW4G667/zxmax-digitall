@@ -185,7 +185,7 @@ const defaultConfig: AppConfig = {
   globalNotice: "",
   googleClientId: "",
   googleClientSecret: "",
-  discordClientId: "",
+  discordClientId: "1485093454517371070",
   discordClientSecret: "",
   asaasApiKey: "",
   asaasEnv: "sandbox",
