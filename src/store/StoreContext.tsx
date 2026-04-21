@@ -189,6 +189,10 @@ const defaultConfig: AppConfig = {
   discordClientSecret: "",
   asaasApiKey: "",
   asaasEnv: "sandbox",
+  discordRedirectUri: typeof window !== "undefined" ? window.location.origin + "/" : "",
+  discordScopes: "identify",
+  googleRedirectUri: typeof window !== "undefined" ? window.location.origin + "/" : "",
+  googleScopes: "openid email profile",
 };
 
 const StoreContext = createContext<StoreContextType | null>(null);
