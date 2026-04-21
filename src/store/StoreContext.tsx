@@ -196,6 +196,8 @@ function loadState(): AppState {
     if (saved) {
       const parsed = JSON.parse(saved);
       return {
+        userTags: [],
+        userTagAssignments: {},
         ...parsed,
         config: { ...defaultConfig, ...parsed.config },
         products: parsed.products?.length ? parsed.products : [],
@@ -212,6 +214,8 @@ function loadState(): AppState {
     bannedUsers: [],
     globalNotices: [],
     adminChat: [],
+    userTags: [],
+    userTagAssignments: {},
   };
 }
 
