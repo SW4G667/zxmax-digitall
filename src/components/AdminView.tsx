@@ -36,6 +36,7 @@ export default function AdminView() {
     { key: "support", label: "Suporte" },
     { key: "notices", label: "Avisos" },
     { key: "users", label: "Usuários" },
+    { key: "tags", label: "Tags" },
     { key: "adminchat", label: "Chat Equipe" },
   ];
 
