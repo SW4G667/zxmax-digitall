@@ -22,6 +22,10 @@ export default function AdminView() {
   const [showRejectModal, setShowRejectModal] = useState<number | null>(null);
   const [ticketFilter, setTicketFilter] = useState<"open" | "closed">("open");
   const [chatMsg, setChatMsg] = useState("");
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState("#8b5cf6");
+  const [tagAssignEmail, setTagAssignEmail] = useState("");
+  const [tagAssignTagId, setTagAssignTagId] = useState<number | "">("");
 
   const tabs: { key: AdminTab; label: string }[] = [
     { key: "config", label: "Config" },
