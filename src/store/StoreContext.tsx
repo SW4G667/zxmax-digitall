@@ -93,6 +93,12 @@ export interface SupportTicket {
   status: "open" | "closed";
 }
 
+export interface UserTag {
+  id: number;
+  name: string;
+  color: string; // hex or hsl
+}
+
 export interface AppConfig {
   commission: number;
   instantFee: number;
@@ -101,6 +107,12 @@ export interface AppConfig {
   stripeSecretKey: string;
   categories: string[];
   globalNotice: string;
+  googleClientId: string;
+  googleClientSecret: string;
+  discordClientId: string;
+  discordClientSecret: string;
+  asaasApiKey: string;
+  asaasEnv: "sandbox" | "production";
 }
 
 interface AppState {
