@@ -545,6 +545,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setGlobalNotice, publishNotice, updatePixKey, sendAdminChat,
         sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
         addProductQuestion, answerProductQuestion,
+        deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
         isDark, toggleDark,
       }}
     >
