@@ -423,11 +423,18 @@ export default function AdminView() {
               <h4 className="text-xs font-bold text-muted-foreground uppercase mb-3">Avisos Publicados</h4>
               <div className="space-y-2 max-h-60 overflow-y-auto">
                 {(state.globalNotices || []).map((n) => (
-                  <div key={n.id} className="bg-muted rounded-xl p-3 flex justify-between items-center">
-                    <div>
-                      <p className="text-sm text-foreground">{n.text}</p>
+                  <div key={n.id} className="bg-muted rounded-xl p-3 flex justify-between items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground break-words">{n.text}</p>
                       <p className="text-[10px] text-muted-foreground">{new Date(n.date).toLocaleString("pt-BR")}</p>
                     </div>
+                    <button
+                      onClick={() => { deleteNotice(n.id); toast.success("Aviso excluído!"); }}
+                      className="shrink-0 p-2 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition"
+                      title="Excluir aviso"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
               </div>
