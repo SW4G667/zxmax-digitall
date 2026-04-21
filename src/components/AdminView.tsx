@@ -93,6 +93,56 @@ export default function AdminView() {
             <p className="text-[10px] text-muted-foreground mt-2">Configure ambas as chaves para ativar pagamentos automáticos via Stripe Checkout.</p>
           </div>
 
+          {/* Asaas */}
+          <div className="border-t border-border/40 pt-4 mt-4">
+            <h4 className="font-bold text-foreground mb-3">Pagamentos (Asaas)</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Chave API Asaas</label>
+                <input value={state.config.asaasApiKey} onChange={(e) => updateConfig({ asaasApiKey: e.target.value })} placeholder="$aact_..." type="password" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Ambiente</label>
+                <select value={state.config.asaasEnv} onChange={(e) => updateConfig({ asaasEnv: e.target.value as "sandbox" | "production" })} className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary">
+                  <option value="sandbox">Sandbox (Testes)</option>
+                  <option value="production">Produção</option>
+                </select>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-2">Chave armazenada localmente. Para a integração funcionar de verdade será necessário criar a edge function que chama a API do Asaas.</p>
+          </div>
+
+          {/* Google OAuth */}
+          <div className="border-t border-border/40 pt-4 mt-4">
+            <h4 className="font-bold text-foreground mb-3">Login com Google</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Google Client ID</label>
+                <input value={state.config.googleClientId} onChange={(e) => updateConfig({ googleClientId: e.target.value })} placeholder="xxxxx.apps.googleusercontent.com" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Google Client Secret</label>
+                <input value={state.config.googleClientSecret} onChange={(e) => updateConfig({ googleClientSecret: e.target.value })} placeholder="GOCSPX-..." type="password" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+            </div>
+          </div>
+
+          {/* Discord OAuth */}
+          <div className="border-t border-border/40 pt-4 mt-4">
+            <h4 className="font-bold text-foreground mb-3">Login com Discord</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Discord Client ID</label>
+                <input value={state.config.discordClientId} onChange={(e) => updateConfig({ discordClientId: e.target.value })} placeholder="ID da aplicação Discord" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Discord Client Secret</label>
+                <input value={state.config.discordClientSecret} onChange={(e) => updateConfig({ discordClientSecret: e.target.value })} placeholder="Secret da aplicação Discord" type="password" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-2">As chaves OAuth ficam salvas para configuração visual. O login social efetivo precisa ser ativado nas configurações de autenticação do backend.</p>
+          </div>
+
           <button onClick={() => toast.success("Configurações salvas!")} className="btn-gradient px-5 py-2.5 text-sm mt-2">Salvar</button>
         </div>
       )}
