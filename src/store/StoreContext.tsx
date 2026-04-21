@@ -185,7 +185,7 @@ const defaultConfig: AppConfig = {
   globalNotice: "",
   googleClientId: "",
   googleClientSecret: "",
-  discordClientId: "",
+  discordClientId: "1485093454517371070",
   discordClientSecret: "",
   asaasApiKey: "",
   asaasEnv: "sandbox",
@@ -212,7 +212,15 @@ function loadState(): AppState {
         userTags: [],
         userTagAssignments: {},
         ...parsed,
-        config: { ...defaultConfig, ...parsed.config },
+        config: {
+          ...defaultConfig,
+          ...parsed.config,
+          discordClientId: parsed.config?.discordClientId || defaultConfig.discordClientId,
+          discordRedirectUri: parsed.config?.discordRedirectUri || defaultConfig.discordRedirectUri,
+          discordScopes: parsed.config?.discordScopes || defaultConfig.discordScopes,
+          googleRedirectUri: parsed.config?.googleRedirectUri || defaultConfig.googleRedirectUri,
+          googleScopes: parsed.config?.googleScopes || defaultConfig.googleScopes,
+        },
         products: parsed.products?.length ? parsed.products : [],
       };
     }
