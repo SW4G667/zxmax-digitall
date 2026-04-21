@@ -162,6 +162,11 @@ interface StoreContextType {
   reviewPurchase: (purchaseId: number, stars: number, comment: string) => void;
   addProductQuestion: (productId: number, text: string) => void;
   answerProductQuestion: (productId: number, questionId: number, answer: string) => void;
+  deleteNotice: (id: number) => void;
+  createUserTag: (name: string, color: string) => void;
+  deleteUserTag: (id: number) => void;
+  assignUserTag: (email: string, tagId: number) => void;
+  unassignUserTag: (email: string, tagId: number) => void;
   isDark: boolean;
   toggleDark: () => void;
 }
