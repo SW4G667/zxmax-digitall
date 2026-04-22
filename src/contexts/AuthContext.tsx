@@ -50,16 +50,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (error || !data) {
-      console.error('Profile not found or error:', error);
-      // Retorna um perfil básico para evitar tela de carregamento infinita
+      console.warn('Profile not found in DB, using fallback for:', email);
       return {
         id: userId,
         email: email || '',
-        display_name: email?.split('@')[0] || 'Usuario',
+        display_name: email?.split('@')[0] || 'Usuário',
         role: 'user',
         balance: 0,
         earnings: 0,
-        is_banned: false
+        is_banned: false,
+        is_seller: false,
+        created_at: new Date().toISOString()
       } as UserProfile;
     }
 

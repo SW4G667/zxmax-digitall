@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface User {
   email: string;
@@ -247,6 +248,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => setState((s) => ({ ...s, currentUser: null }));
+
+  // Sync with Supabase Auth
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+        if (session?.user) {
+          login(session.user.email || "", session.user.user_metadata?.display_name || session.user.email?.split("@")[0] || "Usuário");
+        }
+      } else if (event === 'SIGNED_OUT') {
+        logout();
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const addProduct = (p: Omit<Product, "id" | "sales" | "rating" | "approved">) => {
     setState((s) => ({
