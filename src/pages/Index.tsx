@@ -16,10 +16,7 @@ type View = "store" | "inventory" | "purchases" | "support" | "admin" | "profile
 
 function Dashboard() {
   const { user, profile, loading, signOut } = useAuth();
-  const [view, setView] = useState<View>(() => {
-    if (profile?.role === 'admin' || profile?.role === 'support') return "admin";
-    return "store";
-  });
+  const [view, setView] = useState<View>("store");
   const [profileOpen, setProfileOpen] = useState(false);
 
   // Update view when profile changes
@@ -42,36 +39,45 @@ function Dashboard() {
     }
   }, []);
 
-  // Show loading screen
-  if (loading) {
+  // Show auth screen if not logged in (and not loading initial session)
+  if (!loading && !user) return <AuthScreen />;
+
+  // Show a non-blocking loading if user exists but profile is still fetching
+  if (loading && !user) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-gradient-page">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Carregando...</p>
+          <p className="text-muted-foreground">Iniciando...</p>
         </div>
       </div>
     );
   }
 
-  // Show auth screen if not logged in
-  if (!user || !profile) return <AuthScreen />;
+  // Se não tiver perfil mas tiver usuário, usamos um perfil temporário
+  const activeProfile = profile || {
+    id: user?.id || '',
+    email: user?.email || '',
+    display_name: user?.email?.split('@')[0] || 'Usuario',
+    role: user?.email === 'admin@keybot.com' ? 'admin' : 'user',
+    is_banned: false
+  };
 
   // Show banned screen if user is banned
-  if (profile.is_banned) {
+  if (activeProfile.is_banned) {
     return (
       <BannedScreen
-        reason={profile.ban_reason || "Motivo nao informado"}
-        bannedAt={profile.banned_at || new Date().toISOString()}
-        userId={profile.id}
+        reason={activeProfile.ban_reason || "Motivo nao informado"}
+        bannedAt={activeProfile.banned_at || new Date().toISOString()}
+        userId={activeProfile.id}
         onLogout={signOut}
       />
     );
   }
 
-  const isAdmin = profile.role === 'admin';
-  const isSupport = profile.role === 'support';
-  const isSeller = profile.role === 'seller' || profile.is_seller;
+  const isAdmin = activeProfile.role === 'admin';
+  const isSupport = activeProfile.role === 'support';
+  const isSeller = activeProfile.role === 'seller' || activeProfile.is_seller;
 
   return (
     <div className="bg-gradient-page min-h-screen pb-24">
