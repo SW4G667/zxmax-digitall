@@ -40,37 +40,33 @@ export default function StoreView() {
   const handleBuy = async () => {
     if (!product || !state.currentUser) return;
 
-    // Stripe minimum for BRL is R$0.50 (50 centavos)
     if (product.price < 0.50) {
-      toast.error("O preço mínimo para pagamento via Stripe é R$ 0,50.");
+      toast.error("O preço mínimo para pagamento é R$ 0,50.");
       return;
     }
 
-    // Create purchase as "pending" immediately so it shows in "Minhas Compras"
     buyProduct(product.id);
 
     setBuyLoading(true);
     try {
       const { supabase } = await import("@/integrations/supabase/client");
-      const { data, error } = await supabase.functions.invoke("create-checkout", {
+      const { data, error } = await supabase.functions.invoke("create-abacatepay-checkout", {
         body: {
-          productId: product.id,
           productName: product.name,
           priceInCents: Math.round(product.price * 100),
-          sellerEmail: product.sellerEmail,
           buyerEmail: state.currentUser.email,
         },
       });
       if (error) throw error;
       if (data?.url) {
-        toast.success("Redirecionando para pagamento... Após pagar, volte em 'Minhas Compras'.");
+        toast.success("Redirecionando para pagamento...");
         window.open(data.url, "_blank");
       } else {
         toast.error("Erro ao criar sessão de pagamento.");
       }
     } catch (err: any) {
       console.error(err);
-      toast.error("Erro ao conectar com Stripe: " + (err.message || "Tente novamente."));
+      toast.error("Erro ao conectar com pagamento: " + (err.message || "Tente novamente."));
     } finally {
       setBuyLoading(false);
     }
