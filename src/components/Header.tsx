@@ -1,5 +1,5 @@
 import React from "react";
-import { useStore } from "@/store/StoreContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { Sun, Moon, Search } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 import DiscordIcon from "@/components/DiscordIcon";
@@ -9,8 +9,20 @@ interface Props {
 }
 
 export default function Header({ onProfileClick }: Props) {
-  const { state, isDark, toggleDark } = useStore();
-  const user = state.currentUser;
+  const { profile } = useAuth();
+  const [isDark, setIsDark] = React.useState(() => localStorage.getItem("zxmax_dark") === "true");
+
+  const toggleDark = () => {
+    setIsDark((d) => {
+      const newValue = !d;
+      localStorage.setItem("zxmax_dark", String(newValue));
+      document.documentElement.classList.toggle("dark", newValue);
+      return newValue;
+    });
+  };
+
+  const displayName = profile?.display_name || profile?.email?.split("@")[0] || "Usuario";
+  const avatarUrl = profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(displayName)}`;
 
   return (
     <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-xl border-b border-border/40">
@@ -30,17 +42,15 @@ export default function Header({ onProfileClick }: Props) {
 
         <div className="flex items-center gap-1.5 sm:gap-2">
           {/* Discord link */}
-          {state.config.discordLink && (
-            <a
-              href={state.config.discordLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-2 rounded-xl hover:bg-muted transition"
-              title="Discord"
-            >
-              <DiscordIcon className="w-5 h-5 text-muted-foreground" />
-            </a>
-          )}
+          <a
+            href="https://discord.gg/zxmax"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 rounded-xl hover:bg-muted transition"
+            title="Discord"
+          >
+            <DiscordIcon className="w-5 h-5 text-muted-foreground" />
+          </a>
 
           {/* Notification bell */}
           <NotificationBell />
@@ -51,13 +61,13 @@ export default function Header({ onProfileClick }: Props) {
           </button>
 
           {/* Profile */}
-          {user && (
+          {profile && (
             <button onClick={onProfileClick} className="flex items-center gap-2.5 hover:bg-muted p-1.5 rounded-2xl transition">
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold text-foreground leading-tight">{user.name}</p>
-                <p className="text-xs font-medium text-success">R$ {user.balance.toFixed(2)}</p>
+                <p className="text-sm font-bold text-foreground leading-tight">{displayName}</p>
+                <p className="text-xs font-medium text-success">R$ {Number(profile.balance || 0).toFixed(2)}</p>
               </div>
-              <img src={user.avatar} alt="Avatar" className="w-9 h-9 rounded-full bg-primary/10 border-2 border-card shadow-sm" />
+              <img src={avatarUrl} alt="Avatar" className="w-9 h-9 rounded-full bg-primary/10 border-2 border-card shadow-sm" />
             </button>
           )}
         </div>
