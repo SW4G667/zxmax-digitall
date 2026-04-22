@@ -32,18 +32,27 @@ export default function BannedScreen({ reason, bannedAt, userId, onLogout }: Ban
           Sua conta foi banida da plataforma.
         </p>
 
-        <div className="bg-muted rounded-2xl p-4 mb-6 text-left space-y-3">
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">ID do Usuario</p>
-            <p className="text-sm font-mono text-foreground break-all">{userId}</p>
+        <div className="bg-muted/50 border border-border/50 rounded-2xl p-5 mb-6 text-left space-y-4">
+          <div className="flex flex-col">
+            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Identificador Único (UUID)</span>
+            <code className="text-xs font-mono text-primary bg-primary/5 p-2 rounded-lg break-all border border-primary/10">{userId}</code>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Data do Banimento</p>
-            <p className="text-sm text-foreground">{formatDate(bannedAt)}</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Data da Restrição</span>
+              <span className="text-sm font-bold text-foreground">{formatDate(bannedAt)}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Status da Conta</span>
+              <span className="text-sm font-bold text-destructive flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-destructive animate-pulse"></span>
+                Banida
+              </span>
+            </div>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Motivo</p>
-            <p className="text-sm text-foreground">{reason}</p>
+          <div className="flex flex-col pt-2 border-t border-border/30">
+            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Motivo da Decisão</span>
+            <p className="text-sm text-foreground leading-relaxed italic">"{reason}"</p>
           </div>
         </div>
 

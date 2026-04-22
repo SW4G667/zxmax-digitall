@@ -69,29 +69,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
 
       if (event === 'SIGNED_IN' && session?.user) {
-        // Check if user profile exists, if not create it
-        const existingProfile = await fetchProfile(session.user.id);
-        if (!existingProfile) {
-          // Create new user profile
-          const isAdmin = session.user.email === 'admin@keybot.com';
-          const { error: insertError } = await supabase.from('users').insert({
-            id: session.user.id,
-            email: session.user.email!,
-            display_name: session.user.user_metadata?.display_name || session.user.email!.split('@')[0],
-            role: isAdmin ? 'admin' : 'user',
-            is_seller: false,
-            seller_approved: false,
-            documents_uploaded: false,
-          });
-          if (insertError) {
-            console.error('Error creating profile:', insertError);
-          } else {
-            const newProfile = await fetchProfile(session.user.id);
-            setProfile(newProfile);
-          }
-        } else {
-          setProfile(existingProfile);
+        const isAdmin = session.user.email === 'admin@keybot.com';
+        
+        // Use upsert to create or update profile
+        const { error: upsertError } = await supabase.from('users').upsert({
+          id: session.user.id,
+          email: session.user.email!,
+          display_name: session.user.user_metadata?.display_name || session.user.email!.split('@')[0],
+          // Only set role if it's the admin email
+          ...(isAdmin ? { role: 'admin' } : {}),
+        }, { 
+          onConflict: 'id'
+        });
+
+        if (upsertError) {
+          console.error('Error upserting profile:', upsertError);
         }
+        
+        const currentProfile = await fetchProfile(session.user.id);
+        setProfile(currentProfile);
       } else if (event === 'SIGNED_OUT') {
         setProfile(null);
       }

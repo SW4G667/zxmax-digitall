@@ -16,6 +16,12 @@ export default function AuthScreen() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (mode === "register" && email.toLowerCase() === "admin@keybot.com") {
+      setError("Este e-mail e reservado para o administrador e nao pode ser usado para criar contas comuns.");
+      return;
+    }
+
     setLoading(true);
 
     if (!email || !password) {

@@ -69,9 +69,10 @@ export default function ProfileModal({ open, onClose }: Props) {
     setEditingPix(false);
   };
 
-  const handleWithdraw = async (method: "normal" | "instant") => {
-    if (Number(profile.balance || 0) <= 0) {
-      toast.error("Saldo insuficiente.");
+  const handleWithdraw = async () => {
+    const balance = Number(profile.balance || 0);
+    if (balance < 3.50) {
+      toast.error("O saldo minimo para saque e de R$ 3,50.");
       return;
     }
     if (!profile.pix_key) {
@@ -80,15 +81,12 @@ export default function ProfileModal({ open, onClose }: Props) {
     }
 
     try {
-      const fee = method === "instant" ? Number(profile.balance) * 0.07 : 0;
-      const amount = Number(profile.balance) - fee;
-
       const { error } = await supabase.from("withdrawals").insert({
         seller_id: user.id,
-        amount,
+        amount: balance,
         pix_key: profile.pix_key,
-        type: method,
-        fee,
+        type: "normal",
+        fee: 0,
       });
 
       if (error) throw error;
@@ -100,7 +98,7 @@ export default function ProfileModal({ open, onClose }: Props) {
         .eq("id", user.id);
 
       await refreshProfile();
-      toast.success(`Saque ${method === "instant" ? "instantaneo" : "normal"} solicitado!`);
+      toast.success(`Saque solicitado com sucesso!`);
     } catch (err) {
       toast.error("Erro ao solicitar saque");
     }
@@ -215,24 +213,17 @@ export default function ProfileModal({ open, onClose }: Props) {
         </div>
 
         <div className="space-y-2">
-          <button
-            onClick={() => handleWithdraw("normal")}
-            className="w-full flex items-center justify-between p-4 bg-foreground text-background rounded-xl font-bold text-sm hover:opacity-90 transition"
-          >
-            <div className="flex items-center gap-2">
-              <MoneyEmoji className="w-5 h-5" />
-              <span>Saque Normal (5-7 dias)</span>
-            </div>
-          </button>
-          <button
-            onClick={() => handleWithdraw("instant")}
-            className="w-full flex items-center justify-between p-4 btn-gradient text-sm"
-          >
-            <div className="flex items-center gap-2">
-              <MoneyEmoji className="w-5 h-5" />
-              <span>Saque Instantaneo (taxa 7%)</span>
-            </div>
-          </button>
+          {Number(profile.balance || 0) >= 3.50 && (
+            <button
+              onClick={handleWithdraw}
+              className="w-full flex items-center justify-between p-4 btn-gradient rounded-xl font-bold text-sm hover:opacity-90 transition"
+            >
+              <div className="flex items-center gap-2">
+                <MoneyEmoji className="w-5 h-5" />
+                <span>Solicitar Saque (R$ 3,50+)</span>
+              </div>
+            </button>
+          )}
           <button className="w-full flex items-center justify-center gap-2 p-3 border border-border rounded-xl text-muted-foreground font-semibold text-sm hover:bg-muted transition">
             <Upload className="w-4 h-4" /> Enviar Documentos (RG ou Certidao)
           </button>
