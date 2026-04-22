@@ -104,20 +104,13 @@ export interface AppConfig {
   commission: number;
   instantFee: number;
   discordLink: string;
-  stripePublishableKey: string;
-  stripeSecretKey: string;
   categories: string[];
   globalNotice: string;
-  googleClientId: string;
-  googleClientSecret: string;
   discordClientId: string;
   discordClientSecret: string;
-  asaasApiKey: string;
-  asaasEnv: "sandbox" | "production";
   discordRedirectUri: string;
   discordScopes: string;
-  googleRedirectUri: string;
-  googleScopes: string;
+  abacatepayApiKey: string;
 }
 
 interface AppState {
@@ -180,20 +173,13 @@ const defaultConfig: AppConfig = {
   commission: 10,
   instantFee: 7,
   discordLink: "https://discord.gg/zxmax",
-  stripePublishableKey: "",
-  stripeSecretKey: "",
   categories: ["Bots Discord", "Contas", "Scripts", "Assinaturas", "Designs Digitais", "Serviços Online", "Consultoria Virtual", "Keys de Software", "Arquivos"],
   globalNotice: "",
-  googleClientId: "",
-  googleClientSecret: "",
   discordClientId: "1485093454517371070",
   discordClientSecret: "",
-  asaasApiKey: "",
-  asaasEnv: "sandbox",
   discordRedirectUri: typeof window !== "undefined" ? window.location.origin + "/" : "",
-  discordScopes: "identify",
-  googleRedirectUri: typeof window !== "undefined" ? window.location.origin + "/" : "",
-  googleScopes: "openid email profile",
+  discordScopes: "identify email",
+  abacatepayApiKey: "",
 };
 
 const StoreContext = createContext<StoreContextType | null>(null);

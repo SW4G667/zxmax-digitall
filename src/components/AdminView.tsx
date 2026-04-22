@@ -77,54 +77,16 @@ export default function AdminView() {
             </div>
           </div>
 
-          {/* Stripe / Pagamentos */}
+          {/* AbacatePay */}
           <div className="border-t border-border/40 pt-4 mt-4">
-            <h4 className="font-bold text-foreground mb-3">Pagamentos (Stripe)</h4>
+            <h4 className="font-bold text-foreground mb-3">Pagamentos (AbacatePay)</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Stripe Publishable Key</label>
-                <input value={state.config.stripePublishableKey} onChange={(e) => updateConfig({ stripePublishableKey: e.target.value })} placeholder="pk_..." className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Stripe Secret Key</label>
-                <input value={state.config.stripeSecretKey} onChange={(e) => updateConfig({ stripeSecretKey: e.target.value })} placeholder="sk_..." type="password" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Chave API AbacatePay</label>
+                <input value={state.config.abacatepayApiKey} onChange={(e) => updateConfig({ abacatepayApiKey: e.target.value })} placeholder="Sua chave API AbacatePay" type="password" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
               </div>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-2">Configure ambas as chaves para ativar pagamentos automáticos via Stripe Checkout.</p>
-          </div>
-
-          {/* Asaas */}
-          <div className="border-t border-border/40 pt-4 mt-4">
-            <h4 className="font-bold text-foreground mb-3">Pagamentos (Asaas)</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Chave API Asaas</label>
-                <input value={state.config.asaasApiKey} onChange={(e) => updateConfig({ asaasApiKey: e.target.value })} placeholder="$aact_..." type="password" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Ambiente</label>
-                <select value={state.config.asaasEnv} onChange={(e) => updateConfig({ asaasEnv: e.target.value as "sandbox" | "production" })} className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary">
-                  <option value="sandbox">Sandbox (Testes)</option>
-                  <option value="production">Produção</option>
-                </select>
-              </div>
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-2">Chave armazenada localmente. Para a integração funcionar de verdade será necessário criar a edge function que chama a API do Asaas.</p>
-          </div>
-
-          {/* Google OAuth */}
-          <div className="border-t border-border/40 pt-4 mt-4">
-            <h4 className="font-bold text-foreground mb-3">Login com Google</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Google Client ID</label>
-                <input value={state.config.googleClientId} onChange={(e) => updateConfig({ googleClientId: e.target.value })} placeholder="xxxxx.apps.googleusercontent.com" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Google Client Secret</label>
-                <input value={state.config.googleClientSecret} onChange={(e) => updateConfig({ googleClientSecret: e.target.value })} placeholder="GOCSPX-..." type="password" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
-              </div>
-            </div>
+            <p className="text-[10px] text-muted-foreground mt-2">Configure a chave API para ativar pagamentos via PIX com AbacatePay. Esta chave será usada na Edge Function para criar checkouts.</p>
           </div>
 
           {/* Discord OAuth */}
@@ -149,21 +111,6 @@ export default function AdminView() {
               </div>
             </div>
             <p className="text-[10px] text-muted-foreground mt-2">URL gerada: <code className="text-foreground/70 break-all">https://discord.com/oauth2/authorize?client_id=...&response_type=code&redirect_uri=...&scope=...</code></p>
-          </div>
-
-          {/* Google Redirect/Scopes extras */}
-          <div className="border-t border-border/40 pt-4 mt-4">
-            <h4 className="font-bold text-foreground mb-3">Google OAuth — Avançado</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Google Redirect URI</label>
-                <input value={state.config.googleRedirectUri} onChange={(e) => updateConfig({ googleRedirectUri: e.target.value })} placeholder="https://seusite.com/" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Google Scopes</label>
-                <input value={state.config.googleScopes} onChange={(e) => updateConfig({ googleScopes: e.target.value })} placeholder="openid email profile" className="w-full p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
-              </div>
-            </div>
           </div>
 
           <button onClick={() => toast.success("Configurações salvas!")} className="btn-gradient px-5 py-2.5 text-sm mt-2">Salvar</button>
