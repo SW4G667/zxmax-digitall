@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { useAuth } from "@/hooks/useAuth";
 
 export interface User {
   email: string;
@@ -241,10 +242,27 @@ function loadState(): AppState {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
+  const { user: authUser, profile, isAdmin, signOut } = useAuth();
   const [state, setState] = useState<AppState>(loadState);
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem("zxmax_dark") === "true";
   });
+
+  // Sync auth user to store state
+  useEffect(() => {
+    if (authUser && profile) {
+      const user: User = {
+        email: profile.email || authUser.email || "",
+        name: profile.display_name || authUser.email?.split("@")[0] || "",
+        balance: state.currentUser?.balance || 0,
+        earnings: state.currentUser?.earnings || 0,
+        avatar: profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(profile.display_name || "")}`,
+        isAdmin,
+        pixKey: profile.pix_key || "",
+      };
+      setState((s) => ({ ...s, currentUser: user }));
+    }
+  }, [authUser, profile, isAdmin]);
 
   useEffect(() => {
     localStorage.setItem("zxmax_state", JSON.stringify(state));
@@ -255,19 +273,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     document.documentElement.classList.toggle("dark", isDark);
   }, [isDark]);
 
-  const login = (email: string, name: string) => {
-    const user: User = {
-      email,
-      name: name || email.split("@")[0],
-      balance: 0,
-      earnings: 0,
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name || email)}`,
-      isAdmin: email === "admin@keybot.com",
-    };
-    setState((s) => ({ ...s, currentUser: user }));
+  const login = (_email: string, _name: string) => {
+    // No-op: auth is handled by AuthProvider now
   };
 
-  const logout = () => setState((s) => ({ ...s, currentUser: null }));
+  const logout = () => {
+    signOut();
+    setState((s) => ({ ...s, currentUser: null }));
+  };
 
   const addProduct = (p: Omit<Product, "id" | "sales" | "rating" | "approved">) => {
     setState((s) => ({
