@@ -8,15 +8,24 @@ interface Props {
   onProfileClick?: () => void;
 }
 
+const isBrowser = typeof window !== 'undefined';
+
 export default function Header({ onProfileClick }: Props) {
   const { profile } = useAuth();
-  const [isDark, setIsDark] = React.useState(() => localStorage.getItem("zxmax_dark") === "true");
+  const [isDark, setIsDark] = React.useState(() => {
+    if (isBrowser) {
+      return localStorage.getItem("zxmax_dark") === "true";
+    }
+    return false;
+  });
 
   const toggleDark = () => {
     setIsDark((d) => {
       const newValue = !d;
-      localStorage.setItem("zxmax_dark", String(newValue));
-      document.documentElement.classList.toggle("dark", newValue);
+      if (isBrowser) {
+        localStorage.setItem("zxmax_dark", String(newValue));
+        document.documentElement.classList.toggle("dark", newValue);
+      }
       return newValue;
     });
   };

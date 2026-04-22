@@ -171,7 +171,23 @@ export function useStore() {
   return ctx;
 }
 
+const isBrowser = typeof window !== 'undefined';
+
 function loadState(): AppState {
+  if (!isBrowser) {
+    return {
+      currentUser: null,
+      products: [],
+      purchases: [],
+      withdrawals: [],
+      tickets: [],
+      config: defaultConfig,
+      bannedUsers: [],
+      globalNotices: [],
+      adminChat: [],
+    };
+  }
+
   try {
     const saved = localStorage.getItem("zxmax_state");
     if (saved) {
@@ -199,16 +215,23 @@ function loadState(): AppState {
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(loadState);
   const [isDark, setIsDark] = useState(() => {
-    return localStorage.getItem("zxmax_dark") === "true";
+    if (isBrowser) {
+      return localStorage.getItem("zxmax_dark") === "true";
+    }
+    return false;
   });
 
   useEffect(() => {
-    localStorage.setItem("zxmax_state", JSON.stringify(state));
+    if (isBrowser) {
+      localStorage.setItem("zxmax_state", JSON.stringify(state));
+    }
   }, [state]);
 
   useEffect(() => {
-    localStorage.setItem("zxmax_dark", String(isDark));
-    document.documentElement.classList.toggle("dark", isDark);
+    if (isBrowser) {
+      localStorage.setItem("zxmax_dark", String(isDark));
+      document.documentElement.classList.toggle("dark", isDark);
+    }
   }, [isDark]);
 
   const login = (email: string, name: string) => {
@@ -247,11 +270,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const buyProduct = (id: number) => {
     const product = state.products.find((p) => p.id === id);
     if (!product || !state.currentUser) return;
-    // Check if already has a pending purchase for this product
     const existingPending = state.purchases.find(
       (p) => p.productId === id && p.buyerEmail === state.currentUser!.email && p.status === "pending"
     );
-    if (existingPending) return; // Don't duplicate
+    if (existingPending) return;
     const purchase: Purchase = {
       id: Date.now(),
       productId: id,
@@ -366,56 +388,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const closeTicket = (id: number) =>
     setState((s) => ({
       ...s,
-      tickets: s.tickets.map((t) => (t.id === id ? { ...t, status: "closed" as const } : t)),
+      tickets: s.tickets.map((t) => (t.id === id ? { ...t, status: "closed" } : t)),
     }));
 
   const resolveTicket = (id: number) =>
     setState((s) => ({
       ...s,
-      tickets: s.tickets.map((t) => (t.id === id ? { ...t, status: "closed" as const } : t)),
+      tickets: s.tickets.map((t) => (t.id === id ? { ...t, status: "closed" } : t)),
     }));
 
-  const sendPurchaseMessage = (purchaseId: number, from: string, text: string) =>
+  const setGlobalNotice = (notice: string) =>
+    setState((s) => ({ ...s, config: { ...s.config, globalNotice: notice } }));
+
+  const publishNotice = (text: string) =>
     setState((s) => ({
       ...s,
-      purchases: s.purchases.map((p) =>
-        p.id === purchaseId
-          ? { ...p, messages: [...(p.messages || []), { from, text, date: new Date().toISOString() }] }
-          : p
-      ),
+      globalNotices: [{ id: Date.now(), text, date: new Date().toISOString() }, ...s.globalNotices],
     }));
-
-  const confirmDelivery = (purchaseId: number) =>
-    setState((s) => ({
-      ...s,
-      purchases: s.purchases.map((p) =>
-        p.id === purchaseId ? { ...p, status: "delivered" as const } : p
-      ),
-    }));
-
-  const openDispute = (purchaseId: number) =>
-    setState((s) => ({
-      ...s,
-      purchases: s.purchases.map((p) =>
-        p.id === purchaseId ? { ...p, status: "dispute" as const } : p
-      ),
-    }));
-
-  const reviewPurchase = (purchaseId: number, stars: number, comment: string) =>
-    setState((s) => ({
-      ...s,
-      purchases: s.purchases.map((p) =>
-        p.id === purchaseId ? { ...p, reviewed: true, reviewStars: stars, reviewComment: comment } : p
-      ),
-    }));
-
-  const setGlobalNotice = (notice: string) => updateConfig({ globalNotice: notice });
-
-  const publishNotice = (text: string) => {
-    if (!text.trim()) return;
-    const n: GlobalNotice = { id: Date.now(), text: text.trim(), date: new Date().toISOString() };
-    setState((s) => ({ ...s, globalNotices: [n, ...(s.globalNotices || [])] }));
-  };
 
   const updatePixKey = (key: string) =>
     setState((s) => ({
@@ -426,22 +415,57 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const sendAdminChat = (from: string, text: string) =>
     setState((s) => ({
       ...s,
-      adminChat: [...(s.adminChat || []), { from, text, date: new Date().toISOString() }],
+      adminChat: [...s.adminChat, { from, text, date: new Date().toISOString() }],
+    }));
+
+  const sendPurchaseMessage = (purchaseId: number, from: string, text: string) =>
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) =>
+        p.id === purchaseId ? { ...p, messages: [...p.messages, { from, text, date: new Date().toISOString() }] } : p
+      ),
+    }));
+
+  const confirmDelivery = (purchaseId: number) =>
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) => (p.id === purchaseId ? { ...p, status: "delivered" as const } : p)),
+    }));
+
+  const openDispute = (purchaseId: number) =>
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) => (p.id === purchaseId ? { ...p, status: "dispute" as const } : p)),
+    }));
+
+  const reviewPurchase = (purchaseId: number, stars: number, comment: string) =>
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) =>
+        p.id === purchaseId ? { ...p, reviewed: true, reviewStars: stars, reviewComment: comment } : p
+      ),
     }));
 
   const addProductQuestion = (productId: number, text: string) => {
     if (!state.currentUser) return;
-    const q: ProductQuestion = {
-      id: Date.now(),
-      userEmail: state.currentUser.email,
-      userName: state.currentUser.name,
-      text,
-      date: new Date().toISOString(),
-    };
     setState((s) => ({
       ...s,
       products: s.products.map((p) =>
-        p.id === productId ? { ...p, questions: [...(p.questions || []), q] } : p
+        p.id === productId
+          ? {
+              ...p,
+              questions: [
+                ...(p.questions || []),
+                {
+                  id: Date.now(),
+                  userEmail: state.currentUser!.email,
+                  userName: state.currentUser!.name,
+                  text,
+                  date: new Date().toISOString(),
+                },
+              ],
+            }
+          : p
       ),
     }));
   };
@@ -453,7 +477,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         p.id === productId
           ? {
               ...p,
-              questions: (p.questions || []).map((q) =>
+              questions: p.questions?.map((q) =>
                 q.id === questionId ? { ...q, answer, answerDate: new Date().toISOString() } : q
               ),
             }
@@ -467,14 +491,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return (
     <StoreContext.Provider
       value={{
-        state, login, logout, addProduct, approveProduct, rejectProduct, deleteProduct,
-        buyProduct, markPurchasePaid, approvePurchase, revertPurchase, requestWithdraw,
-        approveWithdraw, rejectWithdraw, updateConfig, updateProfile,
-        banUser, unbanUser, addTicket, replyTicket, closeTicket, resolveTicket,
-        setGlobalNotice, publishNotice, updatePixKey, sendAdminChat,
-        sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
-        addProductQuestion, answerProductQuestion,
-        isDark, toggleDark,
+        state,
+        login,
+        logout,
+        addProduct,
+        approveProduct,
+        rejectProduct,
+        deleteProduct,
+        buyProduct,
+        markPurchasePaid,
+        approvePurchase,
+        revertPurchase,
+        requestWithdraw,
+        approveWithdraw,
+        rejectWithdraw,
+        updateConfig,
+        updateProfile,
+        banUser,
+        unbanUser,
+        addTicket,
+        replyTicket,
+        closeTicket,
+        resolveTicket,
+        setGlobalNotice,
+        publishNotice,
+        updatePixKey,
+        sendAdminChat,
+        sendPurchaseMessage,
+        confirmDelivery,
+        openDispute,
+        reviewPurchase,
+        addProductQuestion,
+        answerProductQuestion,
+        isDark,
+        toggleDark,
       }}
     >
       {children}

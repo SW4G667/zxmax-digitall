@@ -3,18 +3,24 @@ import { useStore } from "@/store/StoreContext";
 import { Bell } from "lucide-react";
 import { BagCheckEmoji, StarEmoji, ChatEmoji, ShieldEmoji } from "@/components/CustomEmojis";
 
+const isBrowser = typeof window !== 'undefined';
+
 export default function NotificationBell() {
   const { state } = useStore();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"purchases" | "global">("purchases");
   const [lastSeenCount, setLastSeenCount] = useState(() => {
-    try {
-      return parseInt(localStorage.getItem("zxmax_notif_seen") || "0", 10);
-    } catch { return 0; }
+    if (isBrowser) {
+      try {
+        return parseInt(localStorage.getItem("zxmax_notif_seen") || "0", 10);
+      } catch { return 0; }
+    }
+    return 0;
   });
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!isBrowser) return;
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
@@ -59,7 +65,9 @@ export default function NotificationBell() {
     setOpen(!open);
     if (!open) {
       setLastSeenCount(totalCount);
-      localStorage.setItem("zxmax_notif_seen", String(totalCount));
+      if (isBrowser) {
+        localStorage.setItem("zxmax_notif_seen", String(totalCount));
+      }
     }
   };
 
