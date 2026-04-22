@@ -2,3 +2,6 @@ project_id = "dbekdedzgkfgtlytrnyw"
 
 [functions.create-checkout]
 verify_jwt = false
+
+[functions.secure-signup]
+verify_jwt = false

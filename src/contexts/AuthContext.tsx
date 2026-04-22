@@ -17,7 +17,6 @@ interface AuthContextType {
   refreshProfile: () => Promise<void>;
 }
 
-const RESERVED_ADMIN_EMAIL = 'admin@keybot.com';
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function useAuth() {
@@ -43,12 +42,7 @@ const getDisplayName = (authUser: SupabaseUser) => {
 const getAvatarUrl = (authUser: SupabaseUser) => {
   const metadata = authUser.user_metadata ?? {};
 
-  return (
-    metadata.avatar_url ||
-    metadata.picture ||
-    metadata.user_avatar ||
-    null
-  );
+  return metadata.avatar_url || metadata.picture || metadata.user_avatar || null;
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -58,11 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
+    const { data, error } = await supabase.from('users').select('*').eq('id', userId).maybeSingle();
 
     if (error) {
       console.error('Error fetching profile:', error);
@@ -79,8 +69,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return null;
     }
 
-    const isAdmin = email === RESERVED_ADMIN_EMAIL;
-
     const { error: upsertError } = await supabase.from('users').upsert(
       {
         id: authUser.id,
@@ -88,7 +76,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         display_name: getDisplayName(authUser),
         avatar_url: getAvatarUrl(authUser),
         updated_at: new Date().toISOString(),
-        ...(isAdmin ? { role: 'admin' } : {}),
       },
       {
         onConflict: 'id',
@@ -171,21 +158,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, displayName: string): Promise<{ error: string | null }> => {
     try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            display_name: displayName,
-          },
+      const normalizedEmail = email.trim().toLowerCase();
+      const { data, error } = await supabase.functions.invoke('secure-signup', {
+        body: {
+          email: normalizedEmail,
+          password,
+          displayName: displayName.trim(),
         },
       });
 
       if (error) {
-        if (error.message.includes('already registered')) {
-          return { error: 'Este email ja esta cadastrado. Faca login.' };
-        }
         return { error: error.message };
+      }
+
+      if (data?.error) {
+        return { error: data.error };
       }
 
       return { error: null };
