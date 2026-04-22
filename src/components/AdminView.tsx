@@ -598,13 +598,13 @@ export default function AdminView() {
           <h3 className="font-bold text-foreground mb-4">Verificação de Documentos</h3>
           <p className="text-sm text-muted-foreground mb-4">Documentos enviados pelos vendedores para verificação de identidade e aprovação de saques.</p>
           
-          <div className="space-y-3 max-h-96 overflow-y-auto">
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto">
             {state.products.filter(p => p.sellerEmail).length > 0 ? (
               state.products
                 .filter(p => p.sellerEmail)
                 .map((product, idx) => (
-                  <div key={idx} className="p-4 bg-muted rounded-xl">
-                    <div className="flex items-center justify-between mb-2">
+                  <div key={idx} className="p-4 bg-muted rounded-xl border border-border/40">
+                    <div className="flex items-center justify-between mb-3">
                       <div>
                         <p className="font-bold text-foreground">{product.seller}</p>
                         <p className="text-xs text-muted-foreground">{product.sellerEmail}</p>
@@ -614,7 +614,20 @@ export default function AdminView() {
                         <button className="px-3 py-1.5 bg-destructive/10 text-destructive text-xs font-bold rounded-lg hover:bg-destructive/20 transition">Rejeitar</button>
                       </div>
                     </div>
-                    <p className="text-xs text-muted-foreground italic">Clique em "Aprovar" para verificar o vendedor e permitir saques.</p>
+                    
+                    <div className="mb-3">
+                      <p className="text-xs font-bold text-muted-foreground uppercase mb-2">Documentos Enviados</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="aspect-square bg-card rounded-lg flex items-center justify-center border-2 border-dashed border-border hover:border-primary/50 transition cursor-pointer">
+                          <p className="text-xs text-muted-foreground text-center">RG/Certidão<br/>(Clique para visualizar)</p>
+                        </div>
+                        <div className="aspect-square bg-card rounded-lg flex items-center justify-center border-2 border-dashed border-border hover:border-primary/50 transition cursor-pointer">
+                          <p className="text-xs text-muted-foreground text-center">Comprovante<br/>(Opcional)</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <p className="text-xs text-muted-foreground italic">Clique em "Aprovar" após verificar os documentos para liberar saques.</p>
                   </div>
                 ))
             ) : (

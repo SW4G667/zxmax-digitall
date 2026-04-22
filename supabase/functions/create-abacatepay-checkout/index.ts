@@ -12,15 +12,47 @@ serve(async (req) => {
   }
 
   try {
+    console.log("AbacatePay checkout request received");
+    
     const apiKey = Deno.env.get("ABACATEPAY_API_KEY");
-    if (!apiKey) throw new Error("ABACATEPAY_API_KEY não configurada");
+    if (!apiKey) {
+      console.error("ABACATEPAY_API_KEY not configured");
+      throw new Error("ABACATEPAY_API_KEY não configurada");
+    }
+    
+    console.log("API Key found, processing request...");
 
     const { productName, priceInCents, buyerEmail } = await req.json();
+    console.log("Request data:", { productName, priceInCents, buyerEmail });
+    
     if (!productName || !priceInCents || !buyerEmail) {
+      console.error("Incomplete data:", { productName, priceInCents, buyerEmail });
       throw new Error("Dados incompletos para checkout");
     }
 
     const origin = req.headers.get("origin") || "https://zxmax-digital.lovable.app";
+    console.log("Using origin:", origin);
+
+    const payload = {
+      frequency: "ONE_TIME",
+      methods: ["PIX"],
+      products: [
+        {
+          externalId: `product_${Date.now()}`,
+          name: productName,
+          quantity: 1,
+          price: priceInCents,
+        },
+      ],
+      returnUrl: `${origin}/?payment=success`,
+      completionUrl: `${origin}/?payment=success`,
+      customerId: null,
+      customer: {
+        email: buyerEmail,
+      },
+    };
+
+    console.log("Sending payload to AbacatePay:", JSON.stringify(payload, null, 2));
 
     const response = await fetch("https://api.abacatepay.com/v1/billing/create", {
       method: "POST",
@@ -28,41 +60,45 @@ serve(async (req) => {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        frequency: "ONE_TIME",
-        methods: ["PIX"],
-        products: [
-          {
-            externalId: `product_${Date.now()}`,
-            name: productName,
-            quantity: 1,
-            price: priceInCents,
-          },
-        ],
-        returnUrl: `${origin}/?payment=success`,
-        completionUrl: `${origin}/?payment=success`,
-        customerId: null,
-        customer: {
-          email: buyerEmail,
-        },
-      }),
+      body: JSON.stringify(payload),
     });
 
+    console.log("AbacatePay response status:", response.status);
+    
     const data = await response.json();
+    console.log("AbacatePay response data:", JSON.stringify(data, null, 2));
 
     if (!response.ok) {
-      throw new Error(data.error || data.message || "Erro ao criar cobrança AbacatePay");
+      console.error("AbacatePay API error:", data);
+      const errorMessage = data.error?.message || data.error || data.message || "Erro ao criar cobrança AbacatePay";
+      throw new Error(`AbacatePay Error (${response.status}): ${errorMessage}`);
     }
 
-    return new Response(JSON.stringify({ url: data.url || data.data?.url }), {
+    const checkoutUrl = data.url || data.data?.url;
+    if (!checkoutUrl) {
+      console.error("No checkout URL in response:", data);
+      throw new Error("Nenhuma URL de checkout retornada pela AbacatePay");
+    }
+
+    console.log("Checkout URL generated successfully:", checkoutUrl);
+    
+    return new Response(JSON.stringify({ url: checkoutUrl }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
   } catch (error: any) {
-    console.error("AbacatePay checkout error:", error);
+    console.error("AbacatePay checkout error:", error.message || error);
+    console.error("Full error:", error);
+    
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 },
+      JSON.stringify({ 
+        error: error.message || "Erro desconhecido ao criar checkout",
+        details: error.toString()
+      }),
+      { 
+        headers: { ...corsHeaders, "Content-Type": "application/json" }, 
+        status: 400 
+      },
     );
   }
 });

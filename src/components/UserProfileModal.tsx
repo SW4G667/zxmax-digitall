@@ -41,7 +41,6 @@ export default function UserProfileModal({ open, onClose, userEmail }: Props) {
           />
           <div className="flex-1">
             <p className="text-lg font-bold text-foreground">{userEmail.split("@")[0]}</p>
-            <p className="text-muted-foreground text-xs mt-0.5 font-mono break-all">{userEmail}</p>
             <p className="text-success text-sm mt-0.5 font-semibold">✓ Vendedor Ativo</p>
           </div>
         </div>
@@ -58,6 +57,13 @@ export default function UserProfileModal({ open, onClose, userEmail }: Props) {
               <p className="text-2xl font-black text-success">{avgRating || "—"}</p>
             </div>
           </div>
+        </div>
+
+        {/* Seller ID for reporting */}
+        <div className="mb-6 p-4 bg-destructive/5 border border-destructive/20 rounded-2xl">
+          <p className="text-[10px] font-bold text-destructive uppercase mb-2">ID do Vendedor (para denúncias)</p>
+          <p className="text-xs text-foreground font-mono select-all break-all">{userEmail}</p>
+          <p className="text-[10px] text-muted-foreground mt-2">Use este ID para denunciar atividades suspeitas ao suporte.</p>
         </div>
 
         <div className="mb-6">
