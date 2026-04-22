@@ -17,6 +17,7 @@ interface AuthContextType {
   refreshProfile: () => Promise<void>;
 }
 
+const RESERVED_ADMIN_EMAIL = 'admin@keybot.com';
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function useAuth() {
@@ -24,6 +25,31 @@ export function useAuth() {
   if (!ctx) throw new Error('useAuth must be inside AuthProvider');
   return ctx;
 }
+
+const getDisplayName = (authUser: SupabaseUser) => {
+  const metadata = authUser.user_metadata ?? {};
+
+  return (
+    metadata.display_name ||
+    metadata.full_name ||
+    metadata.name ||
+    metadata.user_name ||
+    metadata.preferred_username ||
+    authUser.email?.split('@')[0] ||
+    'Usuario'
+  );
+};
+
+const getAvatarUrl = (authUser: SupabaseUser) => {
+  const metadata = authUser.user_metadata ?? {};
+
+  return (
+    metadata.avatar_url ||
+    metadata.picture ||
+    metadata.user_avatar ||
+    null
+  );
+};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SupabaseUser | null>(null);
@@ -42,58 +68,105 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Error fetching profile:', error);
       return null;
     }
+
     return data;
+  };
+
+  const syncProfileFromAuthUser = async (authUser: SupabaseUser) => {
+    const email = authUser.email?.toLowerCase();
+
+    if (!email) {
+      return null;
+    }
+
+    const isAdmin = email === RESERVED_ADMIN_EMAIL;
+
+    const { error: upsertError } = await supabase.from('users').upsert(
+      {
+        id: authUser.id,
+        email,
+        display_name: getDisplayName(authUser),
+        avatar_url: getAvatarUrl(authUser),
+        updated_at: new Date().toISOString(),
+        ...(isAdmin ? { role: 'admin' } : {}),
+      },
+      {
+        onConflict: 'id',
+      }
+    );
+
+    if (upsertError) {
+      console.error('Error upserting profile:', upsertError);
+      return null;
+    }
+
+    return fetchProfile(authUser.id);
   };
 
   const refreshProfile = async () => {
     if (user) {
-      const profile = await fetchProfile(user.id);
-      setProfile(profile);
+      const currentProfile = await fetchProfile(user.id);
+      setProfile(currentProfile);
     }
   };
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id).then(setProfile);
-      }
-      setLoading(false);
-    });
+    let mounted = true;
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    const bootstrap = async () => {
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession();
 
-      if (event === 'SIGNED_IN' && session?.user) {
-        const isAdmin = session.user.email === 'admin@keybot.com';
-        
-        // Use upsert to create or update profile
-        const { error: upsertError } = await supabase.from('users').upsert({
-          id: session.user.id,
-          email: session.user.email!,
-          display_name: session.user.user_metadata?.display_name || session.user.email!.split('@')[0],
-          // Only set role if it's the admin email
-          ...(isAdmin ? { role: 'admin' } : {}),
-        }, { 
-          onConflict: 'id'
-        });
+      if (!mounted) return;
 
-        if (upsertError) {
-          console.error('Error upserting profile:', upsertError);
+      setSession(currentSession);
+      setUser(currentSession?.user ?? null);
+
+      if (currentSession?.user) {
+        const currentProfile = await syncProfileFromAuthUser(currentSession.user);
+        if (mounted) {
+          setProfile(currentProfile);
         }
-        
-        const currentProfile = await fetchProfile(session.user.id);
-        setProfile(currentProfile);
-      } else if (event === 'SIGNED_OUT') {
-        setProfile(null);
       }
+
+      if (mounted) {
+        setLoading(false);
+      }
+    };
+
+    bootstrap();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, currentSession) => {
+      setSession(currentSession);
+      setUser(currentSession?.user ?? null);
+
+      if (event === 'SIGNED_OUT') {
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      if (!currentSession?.user) {
+        setLoading(false);
+        return;
+      }
+
+      void (async () => {
+        const currentProfile = await syncProfileFromAuthUser(currentSession.user);
+        if (mounted) {
+          setProfile(currentProfile);
+          setLoading(false);
+        }
+      })();
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signUp = async (email: string, password: string, displayName: string): Promise<{ error: string | null }> => {
@@ -147,6 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         provider: 'discord',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
+          scopes: 'identify email',
         },
       });
 
