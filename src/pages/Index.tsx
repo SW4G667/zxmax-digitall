@@ -70,6 +70,7 @@ function AppGate() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
+    
     if (code && !user) {
       setDiscordLoading(true);
       window.history.replaceState({}, "", "/");
@@ -77,39 +78,74 @@ function AppGate() {
       supabase.functions.invoke("discord-callback", {
         body: { code, redirectUri: window.location.origin + "/" },
       }).then(({ data, error }) => {
-        if (error || !data?.success) {
-          toast.error("Erro ao fazer login com Discord: " + (error?.message || data?.error || "Tente novamente."));
+        if (error) {
+          console.error("Discord callback error:", error);
+          toast.error("Erro ao fazer login com Discord: " + error.message);
           setDiscordLoading(false);
           return;
         }
+
+        if (!data?.success) {
+          console.error("Discord callback failed:", data);
+          toast.error("Erro ao fazer login com Discord: " + (data?.error || "Tente novamente."));
+          setDiscordLoading(false);
+          return;
+        }
+
+        // Handle magic link flow for existing users
         if (data.access_token && data.token_type === "magiclink") {
-          // Existing user or magic link flow
+          console.log("Processing magic link for existing user:", data.user.email);
           supabase.auth.verifyOtp({
             email: data.user.email,
             token: data.access_token,
             type: "magiclink",
           }).then(({ error: verifyErr }) => {
-            if (verifyErr) toast.error("Erro ao autenticar: " + verifyErr.message);
-            else toast.success("Login com Discord realizado!");
+            if (verifyErr) {
+              console.error("Magic link verification error:", verifyErr);
+              toast.error("Erro ao autenticar: " + verifyErr.message);
+            } else {
+              console.log("Magic link verified successfully");
+              toast.success("Login com Discord realizado!");
+            }
+            setDiscordLoading(false);
+          }).catch((err) => {
+            console.error("Unexpected error during magic link verification:", err);
+            toast.error("Erro inesperado ao autenticar.");
             setDiscordLoading(false);
           });
-        } else if (data.password && data.user?.email) {
-          // New user created — sign in with generated password
+        }
+        // Handle password flow for new users
+        else if (data.password && data.user?.email) {
+          console.log("Processing new user with password:", data.user.email);
           supabase.auth.signInWithPassword({
             email: data.user.email,
             password: data.password,
           }).then(({ error: signInErr }) => {
-            if (signInErr) toast.error("Erro ao autenticar: " + signInErr.message);
-            else toast.success("Login com Discord realizado!");
+            if (signInErr) {
+              console.error("Sign in error:", signInErr);
+              toast.error("Erro ao autenticar: " + signInErr.message);
+            } else {
+              console.log("New user signed in successfully");
+              toast.success("Conta criada e login realizado com Discord!");
+            }
+            setDiscordLoading(false);
+          }).catch((err) => {
+            console.error("Unexpected error during sign in:", err);
+            toast.error("Erro inesperado ao autenticar.");
             setDiscordLoading(false);
           });
         } else {
-          toast.error("Erro ao processar login do Discord.");
+          console.error("Unexpected response from Discord callback:", data);
+          toast.error("Resposta inesperada do servidor Discord.");
           setDiscordLoading(false);
         }
+      }).catch((err) => {
+        console.error("Discord callback invocation error:", err);
+        toast.error("Erro ao conectar com Discord: " + (err.message || "Tente novamente."));
+        setDiscordLoading(false);
       });
     }
-  }, []);
+  }, [user]);
 
   if (loading || discordLoading) {
     return (

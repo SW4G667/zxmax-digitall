@@ -58,32 +58,41 @@ serve(async (req) => {
       ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
       : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(displayName)}`;
 
-    // Try to find existing user by email
-    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-    const existingUser = existingUsers?.users?.find(
+    // Try to find existing user by email or Discord ID
+    const { data: { users: allUsers }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+    if (listError) throw listError;
+
+    const existingUser = allUsers?.find(
       (u: any) => u.email === email || u.user_metadata?.discord_id === discordUser.id
     );
 
     let userId: string;
+    let sessionToken: string;
+    let sessionExpiresAt: string;
+
     if (existingUser) {
       userId = existingUser.id;
-      // Generate a magic link for login
-      const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+      // Generate a session directly for existing user
+      const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.admin.generateLink({
         type: "magiclink",
         email: existingUser.email!,
       });
-      if (linkError) throw linkError;
+      if (sessionError) throw sessionError;
+
+      sessionToken = sessionData.properties?.hashed_token || "";
+      sessionExpiresAt = sessionData.properties?.expires_at || new Date(Date.now() + 3600000).toISOString();
 
       return new Response(JSON.stringify({
         success: true,
-        access_token: linkData.properties?.hashed_token,
+        access_token: sessionToken,
+        expires_at: sessionExpiresAt,
         token_type: "magiclink",
         user: { id: userId, email: existingUser.email, display_name: displayName, avatar_url: avatarUrl },
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     } else {
-      // Create new user
+      // Create new user with Discord info
       const password = crypto.randomUUID();
       const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
         email,
@@ -104,19 +113,11 @@ serve(async (req) => {
         avatar_url: avatarUrl,
       }).eq("user_id", userId);
 
-      // Generate magic link
-      const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-        type: "magiclink",
-        email,
-      });
-      if (linkError) throw linkError;
-
+      // Return password for new user to sign in directly
       return new Response(JSON.stringify({
         success: true,
-        access_token: linkData.properties?.hashed_token,
-        token_type: "magiclink",
-        user: { id: userId, email, display_name: displayName, avatar_url: avatarUrl },
         password,
+        user: { id: userId, email, display_name: displayName, avatar_url: avatarUrl },
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

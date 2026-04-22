@@ -38,7 +38,10 @@ export default function StoreView() {
   const [buyLoading, setBuyLoading] = useState(false);
 
   const handleBuy = async () => {
-    if (!product || !state.currentUser) return;
+    if (!product || !state.currentUser) {
+      toast.error("Você precisa estar logado para comprar.");
+      return;
+    }
 
     if (product.price < 0.50) {
       toast.error("O preço mínimo para pagamento é R$ 0,50.");
@@ -50,6 +53,12 @@ export default function StoreView() {
     setBuyLoading(true);
     try {
       const { supabase } = await import("@/integrations/supabase/client");
+      console.log("Iniciando checkout AbacatePay para:", {
+        productName: product.name,
+        priceInCents: Math.round(product.price * 100),
+        buyerEmail: state.currentUser.email,
+      });
+
       const { data, error } = await supabase.functions.invoke("create-abacatepay-checkout", {
         body: {
           productName: product.name,
@@ -57,15 +66,26 @@ export default function StoreView() {
           buyerEmail: state.currentUser.email,
         },
       });
-      if (error) throw error;
+
+      if (error) {
+        console.error("Erro na invocação da função:", error);
+        throw error;
+      }
+
+      console.log("Resposta do AbacatePay:", data);
+
       if (data?.url) {
         toast.success("Redirecionando para pagamento...");
         window.open(data.url, "_blank");
+      } else if (data?.error) {
+        console.error("Erro retornado pela API:", data.error);
+        toast.error("Erro ao criar sessão de pagamento: " + data.error);
       } else {
-        toast.error("Erro ao criar sessão de pagamento.");
+        console.error("Resposta inesperada:", data);
+        toast.error("Erro ao criar sessão de pagamento. Tente novamente.");
       }
     } catch (err: any) {
-      console.error(err);
+      console.error("Erro completo no handleBuy:", err);
       toast.error("Erro ao conectar com pagamento: " + (err.message || "Tente novamente."));
     } finally {
       setBuyLoading(false);
@@ -329,8 +349,8 @@ export default function StoreView() {
               {/* Payment info */}
               <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 text-center">
                 <ShieldEmoji className="w-5 h-5 mx-auto mb-2" />
-                <p className="text-sm font-bold text-foreground">Pagamento seguro via Stripe</p>
-                <p className="text-xs text-muted-foreground mt-1">Ao clicar em COMPRAR, você será redirecionado para o checkout seguro.</p>
+                <p className="text-sm font-bold text-foreground">Pagamento seguro via AbacatePay</p>
+                <p className="text-xs text-muted-foreground mt-1">Ao clicar em COMPRAR, você será redirecionado para o checkout seguro com PIX.</p>
               </div>
 
               {/* Price + Buy */}
