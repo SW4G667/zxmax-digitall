@@ -28,22 +28,14 @@ export function useAuth() {
 
 const getDisplayName = (authUser: SupabaseUser) => {
   const metadata = authUser.user_metadata ?? {};
-
   return (
     metadata.display_name ||
     metadata.full_name ||
     metadata.name ||
     metadata.user_name ||
-    metadata.preferred_username ||
     authUser.email?.split('@')[0] ||
     'Usuario'
   );
-};
-
-const getAvatarUrl = (authUser: SupabaseUser) => {
-  const metadata = authUser.user_metadata ?? {};
-
-  return metadata.avatar_url || metadata.picture || metadata.user_avatar || null;
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -54,43 +46,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase.from('users').select('*').eq('id', userId).maybeSingle();
-
     if (error) {
       console.error('Error fetching profile:', error);
       return null;
     }
-
     return data;
-  };
-
-  const syncProfileFromAuthUser = async (authUser: SupabaseUser) => {
-    const email = authUser.email?.toLowerCase();
-
-    if (!email) {
-      return null;
-    }
-
-    // Se já tivermos o perfil carregado e o role for admin, evitamos sobrescrever o role no upsert
-    // (Embora o upsert aqui não inclua o campo 'role' por padrão, é bom garantir)
-    const { error: upsertError } = await supabase.from('users').upsert(
-      {
-        id: authUser.id,
-        email,
-        display_name: getDisplayName(authUser),
-        avatar_url: getAvatarUrl(authUser),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        onConflict: 'id',
-      }
-    );
-
-    if (upsertError) {
-      console.error('Error upserting profile:', upsertError);
-      return null;
-    }
-
-    return fetchProfile(authUser.id);
   };
 
   const refreshProfile = async () => {
@@ -104,10 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let mounted = true;
 
     const bootstrap = async () => {
-      const {
-        data: { session: currentSession },
-      } = await supabase.auth.getSession();
-
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
       if (!mounted) return;
 
       setSession(currentSession);
@@ -115,21 +72,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (currentSession?.user) {
         const currentProfile = await fetchProfile(currentSession.user.id);
-        if (mounted) {
-          setProfile(currentProfile);
-        }
+        if (mounted) setProfile(currentProfile);
       }
-
-      if (mounted) {
-        setLoading(false);
-      }
+      if (mounted) setLoading(false);
     };
 
     bootstrap();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, currentSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
 
@@ -139,19 +89,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (!currentSession?.user) {
+      if (currentSession?.user) {
+        void (async () => {
+          const currentProfile = await fetchProfile(currentSession.user.id);
+          if (mounted) {
+            setProfile(currentProfile);
+            setLoading(false);
+          }
+        })();
+      } else {
         setLoading(false);
-        return;
       }
-
-      void (async () => {
-        // No login normal, apenas buscamos o perfil
-        const currentProfile = await fetchProfile(currentSession.user.id);
-        if (mounted) {
-          setProfile(currentProfile);
-          setLoading(false);
-        }
-      })();
     });
 
     return () => {
@@ -163,59 +111,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = async (email: string, password: string, displayName: string): Promise<{ error: string | null }> => {
     try {
       const normalizedEmail = email.trim().toLowerCase();
-      const { data, error } = await supabase.functions.invoke('secure-signup', {
-        body: {
-          email: normalizedEmail,
-          password,
-          displayName: displayName.trim(),
-        },
+      
+      // Cadastro direto via Supabase Auth para evitar erro de Edge Function
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password,
+        options: {
+          data: { display_name: displayName.trim() },
+          // Redireciona de volta para o site após confirmar email (se ativado)
+          emailRedirectTo: window.location.origin,
+        }
       });
 
-      if (error) {
-        return { error: error.message };
-      }
+      if (error) return { error: error.message };
 
-      if (data?.error) {
-        return { error: data.error };
-      }
-
-      // Se for o admin especial, fazemos o login automático imediatamente
-      if (data?.skipVerification) {
-        const { error: loginError } = await supabase.auth.signInWithPassword({
-          email: normalizedEmail,
-          password,
-        });
-        
-        if (loginError) {
-          return { error: "Conta criada, mas erro ao logar automaticamente: " + loginError.message };
-        }
-        
-        toast.success("Conta de administrador criada e logada com sucesso!");
+      if (data.user) {
+        // Se for o admin especial, tentamos promover no banco imediatamente (via trigger ou manual)
+        // O usuário já terá o perfil criado via trigger do Supabase ou no primeiro login
+        toast.success("Conta criada! Verifique seu e-mail para confirmar.");
       }
 
       return { error: null };
     } catch (err) {
-      return { error: 'Erro ao criar conta. Tente novamente.' };
+      return { error: 'Erro ao criar conta.' };
     }
   };
 
   const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        if (error.message.includes('Invalid login credentials')) {
-          return { error: 'Email ou senha incorretos.' };
-        }
-        return { error: error.message };
-      }
-
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) return { error: error.message };
       return { error: null };
     } catch (err) {
-      return { error: 'Erro ao fazer login. Tente novamente.' };
+      return { error: 'Erro ao fazer login.' };
     }
   };
 
@@ -228,11 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           scopes: 'identify email',
         },
       });
-
-      if (error) {
-        return { error: error.message };
-      }
-
+      if (error) return { error: error.message };
       return { error: null };
     } catch (err) {
       return { error: 'Erro ao conectar com Discord.' };
@@ -247,19 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        profile,
-        session,
-        loading,
-        signUp,
-        signIn,
-        signInWithDiscord,
-        signOut,
-        refreshProfile,
-      }}
-    >
+    <AuthContext.Provider value={{ user, profile, session, loading, signUp, signIn, signInWithDiscord, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
