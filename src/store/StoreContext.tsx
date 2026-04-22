@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { useAuth } from "@/hooks/useAuth";
 
 export interface User {
   email: string;
