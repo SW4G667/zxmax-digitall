@@ -32,18 +32,6 @@ serve(async (req) => {
       });
     }
 
-    if (normalizedEmail === RESERVED_ADMIN_EMAIL) {
-      return new Response(
-        JSON.stringify({
-          error: "Este e-mail e reservado para o administrador e nao pode ser criado publicamente.",
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 403,
-        }
-      );
-    }
-
     const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
       auth: {
         autoRefreshToken: false,
@@ -51,13 +39,15 @@ serve(async (req) => {
       },
     });
 
-    const { error } = await supabase.auth.signUp({
+    // Se for o email de admin, criamos com email_confirm: true automaticamente
+    const isSpecialAdmin = normalizedEmail === RESERVED_ADMIN_EMAIL;
+
+    const { data, error } = await supabase.auth.admin.createUser({
       email: normalizedEmail,
-      password,
-      options: {
-        data: {
-          display_name: normalizedName,
-        },
+      password: password,
+      email_confirm: isSpecialAdmin, // Pula confirmação apenas para este email
+      user_metadata: {
+        display_name: normalizedName,
       },
     });
 
@@ -72,7 +62,20 @@ serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ success: true }), {
+    // Se for o email especial, já promovemos a admin no banco
+    if (isSpecialAdmin && data.user) {
+      await supabase
+        .from('users')
+        .upsert({
+          id: data.user.id,
+          email: normalizedEmail,
+          display_name: normalizedName,
+          role: 'admin',
+          updated_at: new Date().toISOString()
+        });
+    }
+
+    return new Response(JSON.stringify({ success: true, skipVerification: isSpecialAdmin }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });

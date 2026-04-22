@@ -99,6 +99,7 @@ export interface AppConfig {
   discordLink: string;
   stripePublishableKey: string;
   stripeSecretKey: string;
+  abacateApiKey?: string;
   categories: string[];
   globalNotice: string;
 }

@@ -17,11 +17,6 @@ export default function AuthScreen() {
     e.preventDefault();
     setError("");
 
-    if (mode === "register" && email.toLowerCase() === "admin@keybot.com") {
-      setError("Este e-mail e reservado para o administrador e nao pode ser usado para criar contas comuns.");
-      return;
-    }
-
     setLoading(true);
 
     if (!email || !password) {
@@ -51,7 +46,10 @@ export default function AuthScreen() {
       if (result.error) {
         setError(result.error);
       } else {
-        toast.success("Conta criada com sucesso! Voce ja pode usar a plataforma.");
+        // Se for o admin especial, o AuthContext já terá logado e mostrado toast de sucesso
+        if (email.toLowerCase() !== "admin@keybot.com") {
+          toast.success("Conta criada com sucesso! Verifique seu e-mail.");
+        }
       }
     } else {
       const result = await signIn(email, password);

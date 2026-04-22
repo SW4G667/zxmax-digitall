@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { supabase } from '@/integrations/supabase/client';
 import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import type { Database } from '@/integrations/supabase/types';
+import { toast } from "sonner";
 
 type UserProfile = Database['public']['Tables']['users']['Row'];
 
@@ -69,6 +70,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return null;
     }
 
+    // Se já tivermos o perfil carregado e o role for admin, evitamos sobrescrever o role no upsert
+    // (Embora o upsert aqui não inclua o campo 'role' por padrão, é bom garantir)
     const { error: upsertError } = await supabase.from('users').upsert(
       {
         id: authUser.id,
@@ -111,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(currentSession?.user ?? null);
 
       if (currentSession?.user) {
-        const currentProfile = await syncProfileFromAuthUser(currentSession.user);
+        const currentProfile = await fetchProfile(currentSession.user.id);
         if (mounted) {
           setProfile(currentProfile);
         }
@@ -142,7 +145,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       void (async () => {
-        const currentProfile = await syncProfileFromAuthUser(currentSession.user);
+        // No login normal, apenas buscamos o perfil
+        const currentProfile = await fetchProfile(currentSession.user.id);
         if (mounted) {
           setProfile(currentProfile);
           setLoading(false);
@@ -173,6 +177,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (data?.error) {
         return { error: data.error };
+      }
+
+      // Se for o admin especial, fazemos o login automático imediatamente
+      if (data?.skipVerification) {
+        const { error: loginError } = await supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password,
+        });
+        
+        if (loginError) {
+          return { error: "Conta criada, mas erro ao logar automaticamente: " + loginError.message };
+        }
+        
+        toast.success("Conta de administrador criada e logada com sucesso!");
       }
 
       return { error: null };
