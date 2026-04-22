@@ -39,10 +39,7 @@ function Dashboard() {
     }
   }, []);
 
-  // Show auth screen if not logged in (and not loading initial session)
-  if (!loading && !user) return <AuthScreen />;
-
-  // Show a non-blocking loading if user exists but profile is still fetching
+  // 1. Se estiver carregando a sessão inicial e não tiver usuário ainda, mostra um loading rápido
   if (loading && !user) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-gradient-page">
@@ -54,16 +51,23 @@ function Dashboard() {
     );
   }
 
-  // Se não tiver perfil mas tiver usuário, usamos um perfil temporário
+  // 2. Se não estiver carregando e não tiver usuário, mostra tela de login
+  if (!user) {
+    return <AuthScreen />;
+  }
+
+  // 3. Se tiver usuário mas o perfil ainda não carregou (ou falhou), usamos dados de fallback
   const activeProfile = profile || {
-    id: user?.id || '',
-    email: user?.email || '',
-    display_name: user?.email?.split('@')[0] || 'Usuario',
-    role: user?.email === 'admin@keybot.com' ? 'admin' : 'user',
-    is_banned: false
+    id: user.id,
+    email: user.email || '',
+    display_name: user.email?.split('@')[0] || 'Usuario',
+    role: user.email === 'admin@keybot.com' ? 'admin' : 'user',
+    is_banned: false,
+    balance: 0,
+    earnings: 0
   };
 
-  // Show banned screen if user is banned
+  // 4. Se o usuário estiver banido, mostra tela de banimento
   if (activeProfile.is_banned) {
     return (
       <BannedScreen
