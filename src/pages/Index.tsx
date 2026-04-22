@@ -18,8 +18,14 @@ type View = "store" | "inventory" | "purchases" | "support" | "admin" | "profile
 
 function Dashboard() {
   const { state, markPurchasePaid } = useStore();
-  const { isAdmin } = useAuth();
-  const [view, setView] = useState<View>(() => isAdmin ? "admin" : "store");
+  const { isAdmin, user } = useAuth();
+  const [view, setView] = useState<View>("store");
+
+  useEffect(() => {
+    if (isAdmin) {
+      setView("admin");
+    }
+  }, [isAdmin]);
   const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
@@ -76,7 +82,18 @@ function AppGate() {
           setDiscordLoading(false);
           return;
         }
-        if (data.password && data.user?.email) {
+        if (data.access_token && data.token_type === "magiclink") {
+          // Existing user or magic link flow
+          supabase.auth.verifyOtp({
+            email: data.user.email,
+            token: data.access_token,
+            type: "magiclink",
+          }).then(({ error: verifyErr }) => {
+            if (verifyErr) toast.error("Erro ao autenticar: " + verifyErr.message);
+            else toast.success("Login com Discord realizado!");
+            setDiscordLoading(false);
+          });
+        } else if (data.password && data.user?.email) {
           // New user created — sign in with generated password
           supabase.auth.signInWithPassword({
             email: data.user.email,
@@ -87,7 +104,7 @@ function AppGate() {
             setDiscordLoading(false);
           });
         } else {
-          toast.info("Conta Discord encontrada. Use seu e-mail para fazer login.");
+          toast.error("Erro ao processar login do Discord.");
           setDiscordLoading(false);
         }
       });

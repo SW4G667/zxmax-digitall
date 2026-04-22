@@ -16,7 +16,7 @@ export default function AuthScreen() {
   const handleDiscord = () => {
     const clientId = "1485093454517371070";
     const redirectUri = encodeURIComponent(window.location.origin + "/");
-    const scopes = encodeURIComponent("identify");
+    const scopes = encodeURIComponent("identify email");
     window.location.href = `https://discord.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${scopes}`;
   };
 

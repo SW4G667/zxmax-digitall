@@ -74,7 +74,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   };
 
-  const checkAdmin = async (userId: string) => {
+  const checkAdmin = async (userId: string, email?: string) => {
+    // Hardcoded admin check for the specific email
+    if (email === "admin@keybot.com") {
+      setIsAdmin(true);
+      // Also ensure the role exists in the database for RLS
+      const { data: existingRole } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("role", "admin")
+        .single();
+      
+      if (!existingRole) {
+        await supabase.from("user_roles").insert({ user_id: userId, role: "admin" });
+      }
+      return;
+    }
+
     const { data } = await supabase
       .from("user_roles")
       .select("role")
@@ -95,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTimeout(async () => {
           await fetchProfile(sess.user.id);
           await checkBan(sess.user.id);
-          await checkAdmin(sess.user.id);
+          await checkAdmin(sess.user.id, sess.user.email);
           setLoading(false);
         }, 0);
       } else {
@@ -114,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         Promise.all([
           fetchProfile(sess.user.id),
           checkBan(sess.user.id),
-          checkAdmin(sess.user.id),
+          checkAdmin(sess.user.id, sess.user.email),
         ]).then(() => setLoading(false));
       } else {
         setLoading(false);
