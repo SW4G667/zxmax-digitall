@@ -11,6 +11,7 @@ import InventoryView from "@/components/InventoryView";
 import SupportView from "@/components/SupportView";
 import AdminView from "@/components/AdminView";
 import MyPurchasesView from "@/components/MyPurchasesView";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "profile";
@@ -29,7 +30,7 @@ function Dashboard() {
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
       if (pendingPurchase) {
         markPurchasePaid(pendingPurchase.id);
-        toast.success("Pagamento confirmado! Acesse 'Minhas Compras' para ver seu pedido.");
+        toast.success("Pagamento confirmado!");
       }
       window.history.replaceState({}, "", "/");
       setView("purchases");
@@ -57,15 +58,52 @@ function Dashboard() {
 
 function AppGate() {
   const { user, loading, banned } = useAuth();
+  const [discordLoading, setDiscordLoading] = useState(false);
 
-  if (loading) {
+  // Handle Discord OAuth callback
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    if (code && !user) {
+      setDiscordLoading(true);
+      window.history.replaceState({}, "", "/");
+
+      supabase.functions.invoke("discord-callback", {
+        body: { code, redirectUri: window.location.origin + "/" },
+      }).then(({ data, error }) => {
+        if (error || !data?.success) {
+          toast.error("Erro ao fazer login com Discord: " + (error?.message || data?.error || "Tente novamente."));
+          setDiscordLoading(false);
+          return;
+        }
+        if (data.password && data.user?.email) {
+          // New user created — sign in with generated password
+          supabase.auth.signInWithPassword({
+            email: data.user.email,
+            password: data.password,
+          }).then(({ error: signInErr }) => {
+            if (signInErr) toast.error("Erro ao autenticar: " + signInErr.message);
+            else toast.success("Login com Discord realizado!");
+            setDiscordLoading(false);
+          });
+        } else {
+          toast.info("Conta Discord encontrada. Use seu e-mail para fazer login.");
+          setDiscordLoading(false);
+        }
+      });
+    }
+  }, []);
+
+  if (loading || discordLoading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-gradient-page">
         <div className="text-center">
           <h1 className="text-4xl font-black tracking-tighter text-foreground mb-2">
             ZX<span className="text-primary">MAX</span>
           </h1>
-          <p className="text-muted-foreground text-sm">Carregando...</p>
+          <p className="text-muted-foreground text-sm">
+            {discordLoading ? "Autenticando com Discord..." : "Carregando..."}
+          </p>
         </div>
       </div>
     );
