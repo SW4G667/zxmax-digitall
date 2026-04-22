@@ -3,6 +3,7 @@ import { useStore } from "@/store/StoreContext";
 import { StarEmoji, FireEmoji, RocketEmoji, ShieldEmoji, ChatEmoji } from "@/components/CustomEmojis";
 import { Search, X, CheckCircle, AlertTriangle, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
+import UserProfileModal from "@/components/UserProfileModal";
 
 export default function StoreView() {
   const { state, addProductQuestion, buyProduct } = useStore();
@@ -10,6 +11,7 @@ export default function StoreView() {
   const [category, setCategory] = useState("Todos");
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
   const [question, setQuestion] = useState("");
+  const [selectedSellerEmail, setSelectedSellerEmail] = useState<string | null>(null);
 
   const approved = state.products.filter((p) => p.approved);
   const categories = ["Todos", ...state.config.categories];
@@ -199,7 +201,10 @@ export default function StoreView() {
 
             <div className="p-4 sm:p-6 space-y-4">
               {/* Seller section */}
-              <div className="bg-muted rounded-2xl p-4 flex items-center gap-4">
+              <button
+                onClick={() => setSelectedSellerEmail(product.sellerEmail)}
+                className="w-full bg-muted rounded-2xl p-4 flex items-center gap-4 hover:bg-muted/80 transition text-left"
+              >
                 <img
                   src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(product.seller)}`}
                   className="w-12 h-12 rounded-full bg-primary/10 border-2 border-card shadow"
@@ -216,7 +221,7 @@ export default function StoreView() {
                     <span className="text-[10px] text-muted-foreground">· {sellerSales} vendas</span>
                   </div>
                 </div>
-              </div>
+              </button>
 
               {/* Verification badges */}
               <div className="flex flex-wrap gap-2">
@@ -367,6 +372,12 @@ export default function StoreView() {
           </div>
         </div>
       )}
+
+      <UserProfileModal
+        open={!!selectedSellerEmail}
+        onClose={() => setSelectedSellerEmail(null)}
+        userEmail={selectedSellerEmail || ""}
+      />
     </div>
   );
 }

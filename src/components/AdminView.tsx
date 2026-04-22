@@ -4,7 +4,7 @@ import { ShieldEmoji, StarEmoji, ChatEmoji } from "@/components/CustomEmojis";
 import { X, Eye, Send } from "lucide-react";
 import { toast } from "sonner";
 
-type AdminTab = "config" | "categories" | "products" | "purchases" | "withdrawals" | "support" | "notices" | "users" | "adminchat" | "tags";
+type AdminTab = "config" | "categories" | "products" | "purchases" | "withdrawals" | "support" | "notices" | "users" | "adminchat" | "tags" | "documents";
 
 export default function AdminView() {
   const {
@@ -36,6 +36,7 @@ export default function AdminView() {
     { key: "support", label: "Suporte" },
     { key: "notices", label: "Avisos" },
     { key: "users", label: "Usuários" },
+    { key: "documents", label: "Documentos" },
     { key: "tags", label: "Tags" },
     { key: "adminchat", label: "Chat Equipe" },
   ];
@@ -455,12 +456,24 @@ export default function AdminView() {
 
       {/* Users */}
       {tab === "users" && (
-        <div className="glass-card p-6">
+        <div className="glass-card p-6 space-y-4">
           <h3 className="font-bold text-foreground mb-4">Usuários</h3>
           <p className="text-sm text-muted-foreground mb-4">Usuários banidos: {state.bannedUsers.length > 0 ? state.bannedUsers.join(", ") : "Nenhum"}</p>
-          <div className="flex gap-2">
-            <input id="ban-email" placeholder="Email para banir" className="flex-1 p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
-            <button onClick={() => { const el = document.getElementById("ban-email") as HTMLInputElement; if (el.value) { banUser(el.value); el.value = ""; toast.success("Usuário banido!"); } }} className="btn-gradient px-4 py-2 text-xs">Banir</button>
+          
+          <div>
+            <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Banir por Email</h4>
+            <div className="flex gap-2">
+              <input id="ban-email" placeholder="Email para banir" className="flex-1 p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary" />
+              <button onClick={() => { const el = document.getElementById("ban-email") as HTMLInputElement; if (el.value) { banUser(el.value); el.value = ""; toast.success("Usuário banido!"); } }} className="btn-gradient px-4 py-2 text-xs">Banir</button>
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Banir por ID (UUID)</h4>
+            <div className="flex gap-2">
+              <input id="ban-id" placeholder="UUID do usuário" className="flex-1 p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary font-mono text-xs" />
+              <button onClick={() => { const el = document.getElementById("ban-id") as HTMLInputElement; if (el.value) { banUser(el.value); el.value = ""; toast.success("Usuário banido por ID!"); } }} className="btn-gradient px-4 py-2 text-xs">Banir</button>
+            </div>
           </div>
           {state.bannedUsers.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2">
@@ -574,6 +587,38 @@ export default function AdminView() {
                   ))}
                 </div>
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Documents */}
+      {tab === "documents" && (
+        <div className="glass-card p-6">
+          <h3 className="font-bold text-foreground mb-4">Verificação de Documentos</h3>
+          <p className="text-sm text-muted-foreground mb-4">Documentos enviados pelos vendedores para verificação de identidade e aprovação de saques.</p>
+          
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {state.products.filter(p => p.sellerEmail).length > 0 ? (
+              state.products
+                .filter(p => p.sellerEmail)
+                .map((product, idx) => (
+                  <div key={idx} className="p-4 bg-muted rounded-xl">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <p className="font-bold text-foreground">{product.seller}</p>
+                        <p className="text-xs text-muted-foreground">{product.sellerEmail}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button className="px-3 py-1.5 bg-success/10 text-success text-xs font-bold rounded-lg hover:bg-success/20 transition">Aprovar</button>
+                        <button className="px-3 py-1.5 bg-destructive/10 text-destructive text-xs font-bold rounded-lg hover:bg-destructive/20 transition">Rejeitar</button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground italic">Clique em "Aprovar" para verificar o vendedor e permitir saques.</p>
+                  </div>
+                ))
+            ) : (
+              <p className="text-center text-muted-foreground text-sm py-8">Nenhum documento pendente de verificação.</p>
             )}
           </div>
         </div>
