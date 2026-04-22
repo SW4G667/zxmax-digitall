@@ -1,4 +1,7 @@
 project_id = "dbekdedzgkfgtlytrnyw"
 
-[functions.create-checkout]
+[functions.discord-callback]
+verify_jwt = false
+
+[functions.create-abacatepay-checkout]
 verify_jwt = false
