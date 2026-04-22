@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useStore, StoreProvider } from "@/store/StoreContext";
 import AuthScreen from "@/components/AuthScreen";
+import BannedScreen from "@/components/BannedScreen";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import ProfileModal from "@/components/ProfileModal";
@@ -15,14 +17,13 @@ type View = "store" | "inventory" | "purchases" | "support" | "admin" | "profile
 
 function Dashboard() {
   const { state, markPurchasePaid } = useStore();
-  const [view, setView] = useState<View>(() => state.currentUser?.isAdmin ? "admin" : "store");
+  const { isAdmin } = useAuth();
+  const [view, setView] = useState<View>(() => isAdmin ? "admin" : "store");
   const [profileOpen, setProfileOpen] = useState(false);
 
-  // Handle payment success redirect
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("payment") === "success" && state.currentUser) {
-      // Mark the most recent pending purchase as paid
       const pendingPurchase = state.purchases
         .filter((p) => p.buyerEmail === state.currentUser!.email && p.status === "pending")
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
@@ -30,7 +31,6 @@ function Dashboard() {
         markPurchasePaid(pendingPurchase.id);
         toast.success("Pagamento confirmado! Acesse 'Minhas Compras' para ver seu pedido.");
       }
-      // Clean URL
       window.history.replaceState({}, "", "/");
       setView("purchases");
     } else if (params.get("payment") === "canceled") {
@@ -39,31 +39,52 @@ function Dashboard() {
     }
   }, []);
 
-  if (!state.currentUser) return <AuthScreen />;
-
   return (
     <div className="bg-gradient-page min-h-screen pb-24">
-
       <Header onProfileClick={() => setProfileOpen(true)} />
-
       <main className="max-w-7xl mx-auto px-4 py-6">
         {view === "store" && <StoreView />}
         {view === "inventory" && <InventoryView />}
         {view === "purchases" && <MyPurchasesView />}
         {view === "support" && <SupportView />}
-        {view === "admin" && state.currentUser.isAdmin && <AdminView />}
+        {view === "admin" && isAdmin && <AdminView />}
       </main>
-
       <BottomNav current={view} onChange={setView} />
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
     </div>
   );
 }
 
-export default function Index() {
+function AppGate() {
+  const { user, loading, banned } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-gradient-page">
+        <div className="text-center">
+          <h1 className="text-4xl font-black tracking-tighter text-foreground mb-2">
+            ZX<span className="text-primary">MAX</span>
+          </h1>
+          <p className="text-muted-foreground text-sm">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) return <AuthScreen />;
+  if (banned) return <BannedScreen />;
+
   return (
     <StoreProvider>
       <Dashboard />
     </StoreProvider>
+  );
+}
+
+export default function Index() {
+  return (
+    <AuthProvider>
+      <AppGate />
+    </AuthProvider>
   );
 }
