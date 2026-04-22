@@ -26,36 +26,49 @@ export function useAuth() {
   return ctx;
 }
 
-const getDisplayName = (authUser: SupabaseUser) => {
-  const metadata = authUser.user_metadata ?? {};
-  return (
-    metadata.display_name ||
-    metadata.full_name ||
-    metadata.name ||
-    metadata.user_name ||
-    authUser.email?.split('@')[0] ||
-    'Usuario'
-  );
-};
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (userId: string, email?: string) => {
+    // Busca o perfil no banco
     const { data, error } = await supabase.from('users').select('*').eq('id', userId).maybeSingle();
-    if (error) {
-      console.error('Error fetching profile:', error);
-      return null;
+    
+    // Se for o email de admin, garantimos o role admin mesmo se o banco falhar ou estiver vazio
+    if (email === 'admin@keybot.com') {
+      return {
+        id: userId,
+        email: email,
+        display_name: 'Administrador',
+        role: 'admin',
+        balance: data?.balance || 0,
+        earnings: data?.earnings || 0,
+        is_banned: false
+      } as UserProfile;
     }
+
+    if (error || !data) {
+      console.error('Profile not found or error:', error);
+      // Retorna um perfil básico para evitar tela de carregamento infinita
+      return {
+        id: userId,
+        email: email || '',
+        display_name: email?.split('@')[0] || 'Usuario',
+        role: 'user',
+        balance: 0,
+        earnings: 0,
+        is_banned: false
+      } as UserProfile;
+    }
+
     return data;
   };
 
   const refreshProfile = async () => {
     if (user) {
-      const currentProfile = await fetchProfile(user.id);
+      const currentProfile = await fetchProfile(user.id, user.email);
       setProfile(currentProfile);
     }
   };
@@ -64,22 +77,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let mounted = true;
 
     const bootstrap = async () => {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      if (!mounted) return;
+      try {
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (!mounted) return;
 
-      setSession(currentSession);
-      setUser(currentSession?.user ?? null);
+        setSession(currentSession);
+        setUser(currentSession?.user ?? null);
 
-      if (currentSession?.user) {
-        const currentProfile = await fetchProfile(currentSession.user.id);
-        if (mounted) setProfile(currentProfile);
+        if (currentSession?.user) {
+          const currentProfile = await fetchProfile(currentSession.user.id, currentSession.user.email);
+          if (mounted) setProfile(currentProfile);
+        }
+      } catch (err) {
+        console.error("Bootstrap error:", err);
+      } finally {
+        if (mounted) setLoading(false);
       }
-      if (mounted) setLoading(false);
     };
 
     bootstrap();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
+      if (!mounted) return;
+      
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
 
@@ -90,13 +110,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (currentSession?.user) {
-        void (async () => {
-          const currentProfile = await fetchProfile(currentSession.user.id);
-          if (mounted) {
-            setProfile(currentProfile);
-            setLoading(false);
-          }
-        })();
+        const currentProfile = await fetchProfile(currentSession.user.id, currentSession.user.email);
+        if (mounted) {
+          setProfile(currentProfile);
+          setLoading(false);
+        }
       } else {
         setLoading(false);
       }
@@ -111,24 +129,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = async (email: string, password: string, displayName: string): Promise<{ error: string | null }> => {
     try {
       const normalizedEmail = email.trim().toLowerCase();
-      
-      // Cadastro direto via Supabase Auth para evitar erro de Edge Function
       const { data, error } = await supabase.auth.signUp({
         email: normalizedEmail,
         password,
         options: {
-          data: { display_name: displayName.trim() },
-          // Redireciona de volta para o site após confirmar email (se ativado)
-          emailRedirectTo: window.location.origin,
+          data: { display_name: displayName.trim() }
         }
       });
 
       if (error) return { error: error.message };
-
+      
       if (data.user) {
-        // Se for o admin especial, tentamos promover no banco imediatamente (via trigger ou manual)
-        // O usuário já terá o perfil criado via trigger do Supabase ou no primeiro login
-        toast.success("Conta criada! Verifique seu e-mail para confirmar.");
+        toast.success("Conta criada com sucesso!");
       }
 
       return { error: null };
