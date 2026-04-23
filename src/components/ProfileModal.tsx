@@ -2,7 +2,7 @@ import React, { useState, useRef } from "react";
 import { useStore } from "@/store/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { StarEmoji, MoneyEmoji, DoorEmoji, CameraEmoji, KeyEmoji } from "@/components/CustomEmojis";
-import { X, Edit, Upload } from "lucide-react";
+import { X, Edit, Upload, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -20,6 +20,7 @@ export default function ProfileModal({ open, onClose }: Props) {
   const [pixKey, setPixKey] = useState(profile?.pix_key || storeUser?.pixKey || "");
   const [editingPix, setEditingPix] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [showRules, setShowRules] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!open || !storeUser || !authUser) return null;
@@ -42,6 +43,7 @@ export default function ProfileModal({ open, onClose }: Props) {
   };
 
   const handleWithdraw = (method: "normal" | "instant") => {
+    if (!storeUser.isVerified) return toast.error("Você precisa ter seus documentos aprovados pelo admin para sacar.");
     if (storeUser.balance < 3.50) return toast.error("Saldo mínimo para saque é R$ 3,50.");
     if (!profile?.pix_key && !storeUser.pixKey) return toast.error("Cadastre sua chave Pix antes de solicitar saque.");
     requestWithdraw(method);
@@ -75,6 +77,25 @@ export default function ProfileModal({ open, onClose }: Props) {
 
   const displayName = profile?.display_name || storeUser.name;
 
+  if (showRules) {
+    return (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm" onClick={() => setShowRules(false)}>
+        <div className="glass-card w-full max-w-lg p-7 bg-card animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-2xl font-bold text-foreground">Regras da Plataforma</h3>
+            <button onClick={() => setShowRules(false)} className="p-2 hover:bg-muted rounded-xl"><X className="w-5 h-5 text-muted-foreground" /></button>
+          </div>
+          <div className="prose dark:prose-invert max-w-none">
+            <p className="whitespace-pre-wrap text-foreground">
+              {state.config.rules}
+            </p>
+          </div>
+          <button onClick={() => setShowRules(false)} className="w-full btn-gradient p-3 mt-6 rounded-xl font-bold">Entendi</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm" onClick={onClose}>
       <div className="glass-card w-full max-w-lg p-7 bg-card animate-fade-in-up max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -102,9 +123,11 @@ export default function ProfileModal({ open, onClose }: Props) {
                 <button onClick={() => setEditing(true)}><Edit className="w-4 h-4 text-muted-foreground" /></button>
               </div>
             )}
-            <p className="text-muted-foreground text-xs mt-0.5 font-mono break-all">ID: {authUser.id.slice(0, 8)}...</p>
-            {profile?.is_verified_seller && (
-              <p className="text-success text-sm mt-0.5 font-semibold">✓ Vendedor Verificado</p>
+            <p className="text-muted-foreground text-xs mt-0.5 font-mono break-all">ID: {authUser.id}</p>
+            {storeUser.isVerified && (
+              <p className="text-success text-sm mt-0.5 font-semibold flex items-center gap-1">
+                <Shield className="w-3 h-3" /> Vendedor Verificado
+              </p>
             )}
           </div>
         </div>
@@ -118,12 +141,6 @@ export default function ProfileModal({ open, onClose }: Props) {
             <p className="text-[10px] font-bold text-success uppercase">Ganhos Totais</p>
             <p className="text-2xl font-black text-success">R$ {storeUser.earnings.toFixed(2)}</p>
           </div>
-        </div>
-
-        {/* User ID */}
-        <div className="mb-4 p-3 bg-muted rounded-2xl">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Seu ID (UUID)</p>
-          <p className="text-xs text-foreground font-mono break-all select-all">{authUser.id}</p>
         </div>
 
         {/* Pix Key */}
@@ -154,14 +171,12 @@ export default function ProfileModal({ open, onClose }: Props) {
         </div>
 
         <div className="space-y-2">
-          {storeUser.balance >= 3.50 && (
-            <button onClick={() => handleWithdraw("normal")} className="w-full flex items-center justify-between p-4 bg-foreground text-background rounded-xl font-bold text-sm hover:opacity-90 transition">
-              <div className="flex items-center gap-2">
-                <MoneyEmoji className="w-5 h-5" />
-                <span>Sacar Saldo (7-10 dias úteis)</span>
-              </div>
-            </button>
-          )}
+          <button onClick={() => handleWithdraw("normal")} className="w-full flex items-center justify-between p-4 bg-foreground text-background rounded-xl font-bold text-sm hover:opacity-90 transition">
+            <div className="flex items-center gap-2">
+              <MoneyEmoji className="w-5 h-5" />
+              <span>Sacar Saldo (7-10 dias úteis)</span>
+            </div>
+          </button>
 
           <input
             type="file"
@@ -177,6 +192,11 @@ export default function ProfileModal({ open, onClose }: Props) {
           >
             <Upload className="w-4 h-4" /> {uploading ? "Enviando..." : "Enviar Documentos (RG / Certidão)"}
           </button>
+          
+          <button onClick={() => setShowRules(true)} className="w-full flex items-center justify-center gap-2 p-3 border border-border rounded-xl text-muted-foreground font-semibold text-sm hover:bg-muted transition">
+            <Shield className="w-4 h-4" /> Regras da Plataforma
+          </button>
+
           <button onClick={logout} className="w-full flex items-center justify-center gap-2 p-3 text-destructive font-bold text-sm hover:bg-destructive/5 rounded-xl transition">
             <DoorEmoji className="w-5 h-5" /> Sair da Conta
           </button>

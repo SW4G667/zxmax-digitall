@@ -1,8 +1,9 @@
-import React, { useState } from "react";
-import { useStore } from "@/store/StoreContext";
+import React, { useState, useRef } from "react";
+import { useStore, Purchase, Product } from "@/store/StoreContext";
 import { PackageEmoji } from "@/components/CustomEmojis";
-import { Plus, X, Trash2 } from "lucide-react";
+import { Plus, X, Trash2, Upload, Users, Eye, CheckCircle, Clock } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Variation {
   name: string;
@@ -12,6 +13,8 @@ interface Variation {
 export default function InventoryView() {
   const { state, addProduct } = useStore();
   const [showForm, setShowForm] = useState(false);
+  const [showSales, setShowSales] = useState<number | null>(null);
+  const [uploading, setUploading] = useState<"image" | "banner" | null>(null);
   const [form, setForm] = useState({
     name: "", category: state.config.categories[0] || "", description: "", price: "",
     image: "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=400",
@@ -19,14 +22,44 @@ export default function InventoryView() {
     deliveryType: "manual" as "auto" | "manual", deliveryContent: "",
   });
   const [variations, setVariations] = useState<Variation[]>([]);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
 
   const myProducts = state.products.filter((p) => p.sellerEmail === state.currentUser?.email);
-
-  // Sales for the user
   const mySales = state.purchases.filter((p) => p.sellerEmail === state.currentUser?.email);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: "image" | "banner") => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Imagem muito grande. Máximo: 2MB.");
+      return;
+    }
+
+    setUploading(type);
+    try {
+      const filePath = `products/${state.currentUser!.id}/${Date.now()}_${file.name}`;
+      const { error } = await supabase.storage
+        .from("chat-attachments") // Reusing chat-attachments bucket for simplicity as it's public-ish
+        .upload(filePath, file);
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("chat-attachments")
+        .getPublicUrl(filePath);
+
+      setForm(f => ({ ...f, [type]: publicUrl }));
+      toast.success(`${type === "image" ? "Imagem" : "Banner"} enviado!`);
+    } catch (err: any) {
+      toast.error("Erro no upload: " + err.message);
+    }
+    setUploading(null);
+  };
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!state.currentUser?.isVerified) return toast.error("Sua conta precisa ser verificada pelo admin para criar anúncios.");
     if (!form.name || !form.price) return toast.error("Preencha nome e preço.");
     const parsedVariations = variations.filter((v) => v.name && v.price).map((v) => ({ name: v.name, price: parseFloat(v.price) }));
     addProduct({
@@ -41,6 +74,8 @@ export default function InventoryView() {
     setForm({ name: "", category: state.config.categories[0] || "", description: "", price: "", image: "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=400", banner: "", deliveryType: "manual", deliveryContent: "" });
     setVariations([]);
   };
+
+  const salesForProduct = showSales ? mySales.filter(s => s.productId === showSales) : [];
 
   return (
     <div className="animate-fade-in-up">
@@ -70,9 +105,30 @@ export default function InventoryView() {
                 {state.config.categories.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
               <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Descrição detalhada" rows={3} className="w-full p-3 rounded-xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground text-sm resize-none" />
-              <input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} type="number" step="0.01" placeholder="Preço (R$)" className="w-full p-3 rounded-xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground text-sm" />
-              <input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="URL da Imagem Principal" className="w-full p-3 rounded-xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground text-sm" />
-              <input value={form.banner} onChange={(e) => setForm({ ...form, banner: e.target.value })} placeholder="URL do Banner/Imagem de Destaque (opcional)" className="w-full p-3 rounded-xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground text-sm" />
+              <input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} type="number" step="0.01" placeholder="Preço Base (R$)" className="w-full p-3 rounded-xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground text-sm" />
+              
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">Imagem Principal</label>
+                  <div 
+                    onClick={() => imageInputRef.current?.click()}
+                    className="aspect-square bg-muted rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer hover:border-primary transition overflow-hidden"
+                  >
+                    {uploading === "image" ? <Clock className="animate-spin" /> : form.image ? <img src={form.image} className="w-full h-full object-cover" /> : <Upload />}
+                  </div>
+                  <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, "image")} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">Banner (Opcional)</label>
+                  <div 
+                    onClick={() => bannerInputRef.current?.click()}
+                    className="aspect-square bg-muted rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer hover:border-primary transition overflow-hidden"
+                  >
+                    {uploading === "banner" ? <Clock className="animate-spin" /> : form.banner ? <img src={form.banner} className="w-full h-full object-cover" /> : <Upload />}
+                  </div>
+                  <input ref={bannerInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, "banner")} />
+                </div>
+              </div>
 
               {/* Variations */}
               <div className="border border-border/40 rounded-xl p-3">
@@ -106,6 +162,42 @@ export default function InventoryView() {
         </div>
       )}
 
+      {/* Sales Modal */}
+      {showSales !== null && (
+        <div className="fixed inset-0 z-[60] bg-foreground/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowSales(null)}>
+          <div className="glass-card w-full max-w-lg p-6 bg-card max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-foreground">Compradores</h3>
+              <button onClick={() => setShowSales(null)}><X /></button>
+            </div>
+            <div className="space-y-3">
+              {salesForProduct.length === 0 ? (
+                <p className="text-center text-muted-foreground py-10">Nenhuma venda para este produto ainda.</p>
+              ) : (
+                salesForProduct.map(s => (
+                  <div key={s.id} className="p-4 bg-muted rounded-xl border border-border/40">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className="font-bold text-sm text-foreground">{s.buyerEmail}</p>
+                        <p className="text-[10px] text-muted-foreground font-mono">ID: {s.buyerId}</p>
+                        {s.variationName && <p className="text-[10px] text-primary font-bold">Opção: {s.variationName}</p>}
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.status === 'paid' ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
+                        {s.status}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <p className="text-xs font-black text-foreground">R$ {s.amount.toFixed(2)}</p>
+                      <p className="text-[10px] text-muted-foreground">{new Date(s.createdAt).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {myProducts.length === 0 ? (
         <div className="bg-card rounded-3xl p-12 text-center border-2 border-dashed border-border">
           <PackageEmoji className="w-12 h-12 mx-auto mb-4" />
@@ -118,20 +210,34 @@ export default function InventoryView() {
             const productSales = mySales.filter((s) => s.productId === p.id);
             const hasPending = productSales.some((s) => s.status === "paid");
             return (
-              <div key={p.id} className="glass-card p-5 flex items-center gap-4">
-                <img src={p.image} className="w-16 h-16 rounded-xl object-cover" alt={p.name} />
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-bold text-foreground truncate">{p.name}</h4>
-                  <p className="text-xs text-muted-foreground">{p.category} · {p.sales} vendas</p>
-                  {hasPending && (
-                    <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full mt-1 inline-block">Vendas pendentes</span>
-                  )}
+              <div key={p.id} className="glass-card p-5 flex flex-col gap-4">
+                <div className="flex items-center gap-4">
+                  <img src={p.image} className="w-16 h-16 rounded-xl object-cover" alt={p.name} />
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-foreground truncate">{p.name}</h4>
+                    <p className="text-xs text-muted-foreground">{p.category} · {p.sales} vendas</p>
+                    {hasPending && (
+                      <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full mt-1 inline-block">Vendas pendentes</span>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-foreground">R$ {p.price.toFixed(2)}</p>
+                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${p.approved ? "bg-success/10 text-success" : "bg-primary/10 text-primary"}`}>
+                      {p.approved ? "Aprovado" : "Pendente"}
+                    </span>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-bold text-foreground">R$ {p.price.toFixed(2)}</p>
-                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${p.approved ? "bg-success/10 text-success" : "bg-primary/10 text-primary"}`}>
-                    {p.approved ? "Aprovado" : "Pendente"}
-                  </span>
+                
+                <div className="flex gap-2 pt-2 border-t border-border/20">
+                  <button 
+                    onClick={() => setShowSales(p.id)}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-muted rounded-xl text-xs font-bold text-foreground hover:bg-muted/80 transition"
+                  >
+                    <Users className="w-3.5 h-3.5" /> Ver Compradores
+                  </button>
+                  <button className="p-2.5 bg-muted rounded-xl text-muted-foreground hover:text-destructive transition">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             );

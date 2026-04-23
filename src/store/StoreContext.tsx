@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { useAuth } from "@/hooks/useAuth";
 
 export interface User {
+  id: string;
   email: string;
   name: string;
   balance: number;
@@ -9,6 +10,7 @@ export interface User {
   avatar: string;
   isAdmin: boolean;
   pixKey?: string;
+  isVerified?: boolean;
 }
 
 export interface GlobalNotice {
@@ -45,6 +47,7 @@ export interface Product {
   category: string;
   seller: string;
   sellerEmail: string;
+  sellerId: string;
   sales: number;
   rating: number;
   image: string;
@@ -67,7 +70,9 @@ export interface Purchase {
   id: number;
   productId: number;
   buyerEmail: string;
+  buyerId: string;
   sellerEmail: string;
+  sellerId: string;
   status: "pending" | "paid" | "delivered" | "dispute";
   createdAt: string;
   amount: number;
@@ -75,11 +80,13 @@ export interface Purchase {
   reviewed?: boolean;
   reviewStars?: number;
   reviewComment?: string;
+  variationName?: string;
 }
 
 export interface Withdrawal {
   id: number;
   userEmail: string;
+  userId: string;
   amount: number;
   method: "normal" | "instant";
   status: "pending" | "approved" | "rejected";
@@ -89,6 +96,7 @@ export interface Withdrawal {
 export interface SupportTicket {
   id: number;
   userEmail: string;
+  userId: string;
   subject: string;
   messages: { from: string; text: string; date: string }[];
   status: "open" | "closed";
@@ -111,6 +119,7 @@ export interface AppConfig {
   discordRedirectUri: string;
   discordScopes: string;
   abacatepayApiKey: string;
+  rules: string;
 }
 
 interface AppState {
@@ -131,11 +140,11 @@ interface StoreContextType {
   state: AppState;
   login: (email: string, name: string) => void;
   logout: () => void;
-  addProduct: (p: Omit<Product, "id" | "sales" | "rating" | "approved">) => void;
+  addProduct: (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => void;
   approveProduct: (id: number) => void;
   rejectProduct: (id: number) => void;
   deleteProduct: (id: number) => void;
-  buyProduct: (id: number) => void;
+  buyProduct: (id: number, variation?: ProductVariation) => void;
   markPurchasePaid: (purchaseId: number) => void;
   approvePurchase: (id: number) => void;
   revertPurchase: (id: number) => void;
@@ -156,7 +165,7 @@ interface StoreContextType {
   sendAdminChat: (from: string, text: string) => void;
   sendPurchaseMessage: (purchaseId: number, from: string, text: string) => void;
   confirmDelivery: (purchaseId: number) => void;
-  openDispute: (purchaseId: number) => void;
+  openDispute: (purchaseId: number, reason: string) => void;
   reviewPurchase: (purchaseId: number, stars: number, comment: string) => void;
   addProductQuestion: (productId: number, text: string) => void;
   answerProductQuestion: (productId: number, questionId: number, answer: string) => void;
@@ -165,6 +174,7 @@ interface StoreContextType {
   deleteUserTag: (id: number) => void;
   assignUserTag: (email: string, tagId: number) => void;
   unassignUserTag: (email: string, tagId: number) => void;
+  verifyUser: (userId: string) => void;
   isDark: boolean;
   toggleDark: () => void;
 }
@@ -180,6 +190,7 @@ const defaultConfig: AppConfig = {
   discordRedirectUri: typeof window !== "undefined" ? window.location.origin + "/" : "",
   discordScopes: "identify email",
   abacatepayApiKey: "",
+  rules: "1- Proibido estelionato(golpe).\n2-Proibido lavagem de dinheiro no sistema de saque do site.\n3-Proibido venda de conteúdo adulto, cp, gore ou qualquer conteúdo doloso\n\n**(Toda regra quebrada resultará a suspensão do usuário de 1 semana a permanente sem receber dinheiro de vendas durante a suspensão.)**",
 };
 
 const StoreContext = createContext<StoreContextType | null>(null);
@@ -207,6 +218,7 @@ function loadState(): AppState {
           discordScopes: parsed.config?.discordScopes || defaultConfig.discordScopes,
           googleRedirectUri: parsed.config?.googleRedirectUri || defaultConfig.googleRedirectUri,
           googleScopes: parsed.config?.googleScopes || defaultConfig.googleScopes,
+          rules: parsed.config?.rules || defaultConfig.rules,
         },
         products: parsed.products?.length ? parsed.products : [],
       };
@@ -238,6 +250,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (authUser && profile) {
       const user: User = {
+        id: authUser.id,
         email: profile.email || authUser.email || "",
         name: profile.display_name || authUser.email?.split("@")[0] || "",
         balance: state.currentUser?.balance || 0,
@@ -245,6 +258,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         avatar: profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(profile.display_name || "")}`,
         isAdmin,
         pixKey: profile.pix_key || "",
+        isVerified: profile.is_verified_seller,
       };
       setState((s) => ({ ...s, currentUser: user }));
     }
@@ -268,10 +282,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, currentUser: null }));
   };
 
-  const addProduct = (p: Omit<Product, "id" | "sales" | "rating" | "approved">) => {
+  const addProduct = (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => {
+    if (!state.currentUser) return;
     setState((s) => ({
       ...s,
-      products: [...s.products, { ...p, id: Date.now(), sales: 0, rating: 0, approved: false }],
+      products: [...s.products, { ...p, id: Date.now(), sales: 0, rating: 0, approved: false, sellerId: state.currentUser!.id }],
     }));
   };
 
@@ -287,24 +302,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const deleteProduct = (id: number) =>
     setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
 
-  const buyProduct = (id: number) => {
+  const buyProduct = (id: number, variation?: ProductVariation) => {
     const product = state.products.find((p) => p.id === id);
     if (!product || !state.currentUser) return;
-    // Check if already has a pending purchase for this product
-    const existingPending = state.purchases.find(
-      (p) => p.productId === id && p.buyerEmail === state.currentUser!.email && p.status === "pending"
-    );
-    if (existingPending) return; // Don't duplicate
+    
     const purchase: Purchase = {
       id: Date.now(),
       productId: id,
       buyerEmail: state.currentUser.email,
+      buyerId: state.currentUser.id,
       sellerEmail: product.sellerEmail,
+      sellerId: product.sellerId,
       status: "pending",
       createdAt: new Date().toISOString(),
-      amount: product.price,
+      amount: variation ? variation.price : product.price,
       messages: [],
       reviewed: false,
+      variationName: variation?.name,
     };
     setState((s) => ({
       ...s,
@@ -313,15 +327,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const markPurchasePaid = (id: number) =>
-    setState((s) => ({
-      ...s,
-      purchases: s.purchases.map((p) => (p.id === id ? { ...p, status: "paid" as const } : p)),
-      products: s.products.map((pr) => {
-        const purchase = s.purchases.find((p) => p.id === id);
-        if (purchase && pr.id === purchase.productId) return { ...pr, sales: pr.sales + 1 };
+    setState((s) => {
+      const purchase = s.purchases.find((p) => p.id === id);
+      if (!purchase) return s;
+      
+      const product = s.products.find((p) => p.id === purchase.productId);
+      const isAuto = product?.deliveryType === "auto";
+      
+      const newPurchases = s.purchases.map((p) => {
+        if (p.id === id) {
+          const updated: Purchase = { ...p, status: "paid" as const };
+          if (isAuto && product?.deliveryContent) {
+            updated.status = "delivered";
+            updated.messages = [
+              ...(updated.messages || []),
+              { from: "System", text: `📦 ENTREGA_AUTO: ${product.deliveryContent}`, date: new Date().toISOString() }
+            ];
+          }
+          return updated;
+        }
+        return p;
+      });
+
+      const newProducts = s.products.map((pr) => {
+        if (pr.id === purchase.productId) return { ...pr, sales: pr.sales + 1 };
         return pr;
-      }),
-    }));
+      });
+
+      // Update seller earnings
+      // Note: In a real app this would be handled on backend
+      
+      return { ...s, purchases: newPurchases, products: newProducts };
+    });
 
   const approvePurchase = (id: number) =>
     setState((s) => ({
@@ -332,7 +369,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const revertPurchase = (id: number) =>
     setState((s) => ({
       ...s,
-      purchases: s.purchases.map((p) => (p.id === id ? { ...p, status: "dispute" as const } : p)),
+      purchases: s.purchases.map((p) => (p.id === id ? { ...p, status: "pending" as const } : p)),
     }));
 
   const requestWithdraw = (method: "normal" | "instant") => {
@@ -341,6 +378,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const w: Withdrawal = {
       id: Date.now(),
       userEmail: state.currentUser.email,
+      userId: state.currentUser.id,
       amount: state.currentUser.balance - fee,
       method,
       status: "pending",
@@ -387,6 +425,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const ticket: SupportTicket = {
       id: Date.now(),
       userEmail: state.currentUser.email,
+      userId: state.currentUser.id,
       subject,
       messages: [{ from: state.currentUser.email, text: message, date: new Date().toISOString() }],
       status: "open",
@@ -436,11 +475,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ),
     }));
 
-  const openDispute = (purchaseId: number) =>
+  const openDispute = (purchaseId: number, reason: string) =>
     setState((s) => ({
       ...s,
       purchases: s.purchases.map((p) =>
-        p.id === purchaseId ? { ...p, status: "dispute" as const } : p
+        p.id === purchaseId ? { ...p, status: "dispute" as const, messages: [...(p.messages || []), { from: "System", text: `⚠️ DISPUTA ABERTA: ${reason}`, date: new Date().toISOString() }] } : p
       ),
     }));
 
@@ -548,6 +587,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ...s, userTagAssignments: next };
     });
 
+  const verifyUser = (userId: string) => {
+    setState(s => ({
+      ...s,
+      currentUser: s.currentUser?.id === userId ? { ...s.currentUser, isVerified: true } : s.currentUser
+    }));
+  };
+
   const toggleDark = () => setIsDark((d) => !d);
 
   return (
@@ -561,7 +607,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
         addProductQuestion, answerProductQuestion,
         deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
-        isDark, toggleDark,
+        verifyUser, isDark, toggleDark,
       }}
     >
       {children}

@@ -20,31 +20,32 @@ function Dashboard() {
   const { state, markPurchasePaid } = useStore();
   const { isAdmin, user } = useAuth();
   const [view, setView] = useState<View>("store");
-
-  useEffect(() => {
-    if (isAdmin) {
-      setView("admin");
-    }
-  }, [isAdmin]);
   const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
+    if (isAdmin && view === "store") {
+      setView("admin");
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("payment") === "success" && state.currentUser) {
+    if (params.get("payment") === "success" && user) {
       const pendingPurchase = state.purchases
-        .filter((p) => p.buyerEmail === state.currentUser!.email && p.status === "pending")
+        .filter((p) => p.buyerEmail === user.email && p.status === "pending")
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+      
       if (pendingPurchase) {
         markPurchasePaid(pendingPurchase.id);
         toast.success("Pagamento confirmado!");
+        window.history.replaceState({}, "", "/");
+        setView("purchases");
       }
-      window.history.replaceState({}, "", "/");
-      setView("purchases");
     } else if (params.get("payment") === "canceled") {
       toast.info("Pagamento cancelado.");
       window.history.replaceState({}, "", "/");
     }
-  }, []);
+  }, [user, state.purchases, markPurchasePaid]);
 
   return (
     <div className="bg-gradient-page min-h-screen pb-24">
@@ -94,53 +95,43 @@ function AppGate() {
 
         // Handle magic link flow for existing users
         if (data.access_token && data.token_type === "magiclink") {
-          console.log("Processing magic link for existing user:", data.user.email);
           supabase.auth.verifyOtp({
             email: data.user.email,
             token: data.access_token,
             type: "magiclink",
           }).then(({ error: verifyErr }) => {
             if (verifyErr) {
-              console.error("Magic link verification error:", verifyErr);
               toast.error("Erro ao autenticar: " + verifyErr.message);
             } else {
-              console.log("Magic link verified successfully");
               toast.success("Login com Discord realizado!");
             }
             setDiscordLoading(false);
           }).catch((err) => {
-            console.error("Unexpected error during magic link verification:", err);
             toast.error("Erro inesperado ao autenticar.");
             setDiscordLoading(false);
           });
         }
         // Handle password flow for new users
         else if (data.password && data.user?.email) {
-          console.log("Processing new user with password:", data.user.email);
           supabase.auth.signInWithPassword({
             email: data.user.email,
             password: data.password,
           }).then(({ error: signInErr }) => {
             if (signInErr) {
-              console.error("Sign in error:", signInErr);
               toast.error("Erro ao autenticar: " + signInErr.message);
             } else {
-              console.log("New user signed in successfully");
               toast.success("Conta criada e login realizado com Discord!");
             }
             setDiscordLoading(false);
           }).catch((err) => {
-            console.error("Unexpected error during sign in:", err);
             toast.error("Erro inesperado ao autenticar.");
             setDiscordLoading(false);
           });
         } else {
-          console.error("Unexpected response from Discord callback:", data);
           toast.error("Resposta inesperada do servidor Discord.");
           setDiscordLoading(false);
         }
       }).catch((err) => {
-        console.error("Discord callback invocation error:", err);
         toast.error("Erro ao conectar com Discord: " + (err.message || "Tente novamente."));
         setDiscordLoading(false);
       });

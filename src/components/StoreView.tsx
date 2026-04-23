@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
-import { useStore } from "@/store/StoreContext";
+import { useStore, ProductVariation } from "@/store/StoreContext";
 import { StarEmoji, FireEmoji, RocketEmoji, ShieldEmoji, ChatEmoji } from "@/components/CustomEmojis";
-import { Search, X, CheckCircle, AlertTriangle, Image as ImageIcon } from "lucide-react";
+import { Search, X, CheckCircle, AlertTriangle, Image as ImageIcon, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import UserProfileModal from "@/components/UserProfileModal";
 
@@ -12,6 +12,7 @@ export default function StoreView() {
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
   const [question, setQuestion] = useState("");
   const [selectedSellerEmail, setSelectedSellerEmail] = useState<string | null>(null);
+  const [selectedVariation, setSelectedVariation] = useState<ProductVariation | null>(null);
 
   const approved = state.products.filter((p) => p.approved);
   const categories = ["Todos", ...state.config.categories];
@@ -35,8 +36,6 @@ export default function StoreView() {
     ? state.purchases.filter((p) => sellerProducts.some((sp) => sp.id === p.productId)).length
     : 0;
 
-  
-
   const [buyLoading, setBuyLoading] = useState(false);
 
   const handleBuy = async () => {
@@ -45,26 +44,28 @@ export default function StoreView() {
       return;
     }
 
-    if (product.price < 0.50) {
+    const price = selectedVariation ? selectedVariation.price : product.price;
+
+    if (price < 0.50) {
       toast.error("O preço mínimo para pagamento é R$ 0,50.");
       return;
     }
 
-    buyProduct(product.id);
+    buyProduct(product.id, selectedVariation || undefined);
 
     setBuyLoading(true);
     try {
       const { supabase } = await import("@/integrations/supabase/client");
       console.log("Iniciando checkout AbacatePay para:", {
-        productName: product.name,
-        priceInCents: Math.round(product.price * 100),
+        productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name,
+        priceInCents: Math.round(price * 100),
         buyerEmail: state.currentUser.email,
       });
 
       const { data, error } = await supabase.functions.invoke("create-abacatepay-checkout", {
         body: {
-          productName: product.name,
-          priceInCents: Math.round(product.price * 100),
+          productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name,
+          priceInCents: Math.round(price * 100),
           buyerEmail: state.currentUser.email,
         },
       });
@@ -130,7 +131,7 @@ export default function StoreView() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {filtered.map((p, i) => (
-          <div key={p.id} onClick={() => setSelectedProduct(p.id)} className="glass-card overflow-hidden group animate-fade-in-up cursor-pointer" style={{ animationDelay: `${i * 0.08}s` }}>
+          <div key={p.id} onClick={() => { setSelectedProduct(p.id); setSelectedVariation(null); }} className="glass-card overflow-hidden group animate-fade-in-up cursor-pointer" style={{ animationDelay: `${i * 0.08}s` }}>
             <div className="relative h-48 overflow-hidden">
               <img src={p.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={p.name} />
               <div className="absolute top-3 right-3 bg-card/90 backdrop-blur px-3 py-1 rounded-full text-[11px] font-bold text-foreground shadow-sm">{p.category}</div>
@@ -153,7 +154,7 @@ export default function StoreView() {
               <p className="text-xs text-muted-foreground mb-4 line-clamp-2">{p.description}</p>
               <div className="flex items-end justify-between">
                 <div>
-                  <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Preço</p>
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Preço a partir de</p>
                   <p className="text-xl font-black text-foreground">R$ {p.price.toFixed(2)}</p>
                 </div>
                 <span className="btn-gradient px-5 py-2.5 text-sm">Ver Produto</span>
@@ -171,7 +172,7 @@ export default function StoreView() {
         </div>
       )}
 
-      {/* ── GGMAX-style Product Detail Modal ── */}
+      {/* ── Product Detail Modal ── */}
       {product && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-foreground/50 backdrop-blur-sm"
@@ -238,146 +239,77 @@ export default function StoreView() {
                 )}
               </div>
 
-              {/* Description */}
-              <div>
-                <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Descrição</h4>
-                <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{product.description}</p>
-              </div>
-
-              {/* Variations */}
+              {/* Variations Selection */}
               {product.variations && product.variations.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Variações</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {product.variations.map((v, i) => (
-                      <span key={i} className="px-3 py-1.5 bg-muted rounded-full text-xs font-semibold text-foreground">
-                        {v.name} — R$ {v.price.toFixed(2)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-muted p-3 rounded-xl text-center">
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase">Vendas</p>
-                  <p className="text-lg font-black text-foreground">{product.sales}</p>
-                </div>
-                <div className="bg-muted p-3 rounded-xl text-center">
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase">Entrega</p>
-                  <p className="text-lg font-black text-foreground">{product.deliveryType === "auto" ? "Auto" : "Manual"}</p>
-                </div>
-                <div className="bg-muted p-3 rounded-xl text-center">
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase">Nota</p>
-                  <p className="text-lg font-black text-foreground flex items-center justify-center gap-1">
-                    <StarEmoji className="w-4 h-4" /> {avgRating || "—"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Reviews */}
-              {productReviews.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">Avaliações recentes</h4>
-                  <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {productReviews.slice(0, 5).map((r) => (
-                      <div key={r.id} className="bg-muted p-3 rounded-xl">
-                        <div className="flex gap-0.5 mb-1">
-                          {[1, 2, 3, 4, 5].map((s) => (
-                            <StarEmoji key={s} className="w-3 h-3" filled={s <= (r.reviewStars || 0)} />
-                          ))}
-                        </div>
-                        <p className="text-xs text-foreground">{r.reviewComment}</p>
-                        <p className="text-[9px] text-muted-foreground mt-1">{r.buyerEmail}</p>
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-muted-foreground uppercase">Escolha uma opção:</p>
+                  <div className="grid grid-cols-1 gap-2">
+                    <button
+                      onClick={() => setSelectedVariation(null)}
+                      className={`p-3 rounded-xl border text-left transition ${!selectedVariation ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:bg-muted"}`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-bold text-foreground">Padrão</span>
+                        <span className="text-sm font-black text-primary">R$ {product.price.toFixed(2)}</span>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Questions / Perguntas section */}
-              <div>
-                <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2 flex items-center gap-1.5">
-                  <ChatEmoji className="w-4 h-4" /> Perguntas ({productQuestions.length})
-                </h4>
-
-                {/* Existing questions */}
-                {productQuestions.length > 0 && (
-                  <div className="space-y-2 mb-3 max-h-48 overflow-y-auto">
-                    {productQuestions.map((q) => (
-                      <div key={q.id} className="bg-muted rounded-xl p-3">
-                        <div className="flex items-center gap-2 mb-1">
-                          <img
-                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(q.userName)}`}
-                            className="w-5 h-5 rounded-full"
-                            alt=""
-                          />
-                          <span className="text-xs font-bold text-foreground">{q.userName}</span>
-                          <span className="text-[9px] text-muted-foreground">{new Date(q.date).toLocaleDateString("pt-BR")}</span>
-                        </div>
-                        <p className="text-xs text-foreground">{q.text}</p>
-                        {q.answer && (
-                          <div className="mt-2 pl-3 border-l-2 border-primary/40">
-                            <p className="text-[10px] font-bold text-primary mb-0.5">Resposta do vendedor:</p>
-                            <p className="text-xs text-foreground">{q.answer}</p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {state.currentUser ? (
-                  <div className="flex gap-2">
-                    <input
-                      value={question}
-                      onChange={(e) => setQuestion(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") handleSendQuestion(); }}
-                      placeholder="Faça uma pergunta ao vendedor..."
-                      className="flex-1 p-3 rounded-xl bg-muted text-foreground text-sm border-none outline-none focus:ring-2 ring-primary"
-                    />
-                    <button onClick={handleSendQuestion} className="btn-gradient px-4 py-2 text-sm">
-                      Enviar
                     </button>
+                    {product.variations.map((v, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setSelectedVariation(v)}
+                        className={`p-3 rounded-xl border text-left transition ${selectedVariation?.name === v.name ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:bg-muted"}`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-bold text-foreground">{v.name}</span>
+                          <span className="text-sm font-black text-primary">R$ {v.price.toFixed(2)}</span>
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                ) : (
-                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 text-center">
-                    <p className="text-xs text-yellow-600 dark:text-yellow-400 font-medium">
-                      <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
-                      Faça login para enviar perguntas ao vendedor.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Payment info */}
-              <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 text-center">
-                <ShieldEmoji className="w-5 h-5 mx-auto mb-2" />
-                <p className="text-sm font-bold text-foreground">Pagamento seguro via AbacatePay</p>
-                <p className="text-xs text-muted-foreground mt-1">Ao clicar em COMPRAR, você será redirecionado para o checkout seguro com PIX.</p>
-              </div>
-
-              {/* Price + Buy */}
-              <div className="flex items-center justify-between bg-muted rounded-2xl p-4">
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Preço</p>
-                  <p className="text-2xl sm:text-3xl font-black text-foreground">R$ {product.price.toFixed(2)}</p>
                 </div>
-                <button onClick={handleBuy} disabled={buyLoading} className="btn-gradient px-6 sm:px-8 py-3 text-sm sm:text-base font-black rounded-2xl shadow-lg hover:scale-105 transition-transform disabled:opacity-50">
-                  {buyLoading ? "Processando..." : "COMPRAR"}
-                </button>
+              )}
+
+              {/* Description */}
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-muted-foreground uppercase">Descrição</p>
+                <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{product.description}</p>
+              </div>
+
+              {/* Purchase Action */}
+              <div className="sticky bottom-0 bg-card pt-4 pb-2 border-t border-border/40">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase font-bold">Total</p>
+                    <p className="text-2xl font-black text-foreground">R$ {(selectedVariation ? selectedVariation.price : product.price).toFixed(2)}</p>
+                  </div>
+                  <button
+                    onClick={handleBuy}
+                    disabled={buyLoading}
+                    className="flex-1 btn-gradient py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-primary/20 disabled:opacity-50"
+                  >
+                    {buyLoading ? (
+                      "Processando..."
+                    ) : (
+                      <>
+                        <ShoppingCart className="w-5 h-5" />
+                        Comprar Agora
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      <UserProfileModal
-        open={!!selectedSellerEmail}
-        onClose={() => setSelectedSellerEmail(null)}
-        userEmail={selectedSellerEmail || ""}
-      />
+      {selectedSellerEmail && (
+        <UserProfileModal
+          open={!!selectedSellerEmail}
+          onClose={() => setSelectedSellerEmail(null)}
+          userEmail={selectedSellerEmail}
+        />
+      )}
     </div>
   );
 }

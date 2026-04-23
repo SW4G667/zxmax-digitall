@@ -171,6 +171,33 @@ export const BagCheckEmoji = ({ className = "w-6 h-6" }: { className?: string })
   </svg>
 );
 
+export const ShoppingBagEmoji = ({ className = "w-6 h-6" }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={`${className} animate-emoji-float`} fill="none">
+    <defs>
+      <linearGradient id="shop-grad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="#f59e0b" />
+        <stop offset="100%" stopColor="#ef4444" />
+      </linearGradient>
+    </defs>
+    <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4H6z" fill="url(#shop-grad)" opacity="0.15" stroke="url(#shop-grad)" strokeWidth="1.5" />
+    <path d="M3 6h18" stroke="url(#shop-grad)" strokeWidth="1.5" />
+    <path d="M16 10a4 4 0 01-8 0" stroke="url(#shop-grad)" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+export const StoreEmoji = ({ className = "w-6 h-6" }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={`${className} animate-emoji-pulse`} fill="none">
+    <defs>
+      <linearGradient id="store-grad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="#3b82f6" />
+        <stop offset="100%" stopColor="#06b6d4" />
+      </linearGradient>
+    </defs>
+    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" fill="url(#store-grad)" opacity="0.15" stroke="url(#store-grad)" strokeWidth="1.5" />
+    <path d="M9 22V12h6v10" stroke="url(#store-grad)" strokeWidth="1.5" />
+  </svg>
+);
+
 export const ChatEmoji = ({ className = "w-6 h-6" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={`${className} animate-emoji-float`} fill="none">
     <defs>
