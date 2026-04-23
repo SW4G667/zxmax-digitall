@@ -27,7 +27,7 @@ serve(async (req) => {
       throw new Error("DISCORD_CLIENT_SECRET not configured");
     }
 
-    const finalRedirectUri = redirectUri || "https://zxmax-digital.lovable.app/";
+    const finalRedirectUri = redirectUri || "https://zxmax-digital-uqwt.onrender.com/";
     console.log("Using redirect URI:", finalRedirectUri);
 
     // Exchange code for access token
