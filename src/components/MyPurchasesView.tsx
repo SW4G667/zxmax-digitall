@@ -13,10 +13,16 @@ const statusMap: Record<Purchase["status"], { label: string; cls: string }> = {
   dispute: { label: "Disputa", cls: "bg-destructive/20 text-destructive border-destructive/30" },
 };
 
-export default function MyPurchasesView() {
+export default function MyPurchasesView({ initialSelectedId }: { initialSelectedId?: number | null }) {
   const { state, sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase } = useStore();
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(initialSelectedId || null);
+
+  useEffect(() => {
+    if (initialSelectedId) {
+      setSelectedId(initialSelectedId);
+    }
+  }, [initialSelectedId]);
   const [msg, setMsg] = useState("");
   const [disputeReason, setDisputeReason] = useState("");
   const [showDisputeForm, setShowDisputeForm] = useState(false);

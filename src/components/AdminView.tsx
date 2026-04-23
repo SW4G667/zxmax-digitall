@@ -18,6 +18,7 @@ export default function AdminView() {
   const pendingProducts = state.products.filter((p) => !p.approved);
   const pendingWithdrawals = state.withdrawals.filter((w) => w.status === "pending");
   const adminMessages = state.adminChat || [];
+  const globalNotices = state.globalNotices || [];
   const disputes = state.purchases.filter(p => p.status === "dispute");
 
   const handleSaveConfig = () => {
@@ -178,6 +179,91 @@ export default function AdminView() {
               </div>
             </div>
             <p className="text-center text-xs text-muted-foreground py-10">Fim da lista de documentos.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Notices Tab */}
+      {tab === "notices" && (
+        <div className="space-y-6">
+          <div className="glass-card p-6">
+            <h3 className="font-bold text-foreground mb-4">Publicar Novo Aviso</h3>
+            <textarea
+              value={notice}
+              onChange={(e) => setNotice(e.target.value)}
+              placeholder="Digite o texto do aviso global..."
+              className="w-full p-4 rounded-2xl bg-muted border-none focus:ring-2 ring-primary outline-none text-sm text-foreground mb-4"
+              rows={3}
+            />
+            <button 
+              onClick={() => { publishNotice(notice); setNotice(""); toast.success("Aviso publicado!"); }} 
+              className="btn-gradient px-6 py-3 rounded-xl font-bold text-sm w-full sm:w-auto"
+            >
+              Publicar Aviso
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="font-bold text-foreground px-1">Avisos Ativos ({globalNotices.length})</h3>
+            {globalNotices.length === 0 ? (
+              <div className="bg-card rounded-3xl p-10 text-center border-2 border-dashed border-border">
+                <p className="text-muted-foreground">Nenhum aviso publicado.</p>
+              </div>
+            ) : (
+              globalNotices.map((n) => (
+                <div key={n.id} className="glass-card p-4 flex justify-between items-center">
+                  <div className="flex-1 min-w-0 pr-4">
+                    <p className="text-sm text-foreground">{n.text}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">{new Date(n.date).toLocaleString()}</p>
+                  </div>
+                  <button onClick={() => { deleteNotice(n.id); toast.error("Aviso removido."); }} className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Admin Chat Tab */}
+      {tab === "adminchat" && (
+        <div className="glass-card flex flex-col h-[60vh]">
+          <div className="p-4 border-b border-border/40 bg-muted/30">
+            <h3 className="font-bold text-foreground">Chat da Equipe</h3>
+            <p className="text-[10px] text-muted-foreground uppercase">Apenas administradores podem ver</p>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {adminMessages.length === 0 ? (
+              <p className="text-center text-muted-foreground py-10 text-sm italic">Nenhuma mensagem ainda.</p>
+            ) : (
+              adminMessages.map((m, i) => (
+                <div key={i} className={`flex ${m.from === state.currentUser?.email ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${m.from === state.currentUser?.email ? "bg-primary text-primary-foreground rounded-br-md" : "bg-muted text-foreground rounded-bl-md"}`}>
+                    <p className="text-[9px] font-bold mb-1 opacity-70 uppercase">{m.from}</p>
+                    <p>{m.text}</p>
+                    <p className="text-[8px] mt-1 opacity-50 text-right">{new Date(m.date).toLocaleTimeString()}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="p-4 border-t border-border/40 bg-card">
+            <div className="flex gap-2">
+              <input 
+                value={chatMsg} 
+                onChange={(e) => setChatMsg(e.target.value)} 
+                onKeyDown={(e) => e.key === "Enter" && (sendAdminChat(state.currentUser!.email, chatMsg), setChatMsg(""))}
+                placeholder="Sua mensagem para a equipe..." 
+                className="flex-1 p-3 rounded-xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground text-sm" 
+              />
+              <button 
+                onClick={() => { sendAdminChat(state.currentUser!.email, chatMsg); setChatMsg(""); }} 
+                className="btn-gradient p-3 rounded-xl"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}

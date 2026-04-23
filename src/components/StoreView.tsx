@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { useStore, ProductVariation } from "@/store/StoreContext";
 import { StarEmoji, FireEmoji, RocketEmoji, ShieldEmoji, ChatEmoji } from "@/components/CustomEmojis";
-import { Search, X, CheckCircle, AlertTriangle, Image as ImageIcon, ShoppingCart } from "lucide-react";
+import { Search, X, CheckCircle, AlertTriangle, Image as ImageIcon, ShoppingCart, MessageSquare, Star, Info } from "lucide-react";
 import { toast } from "sonner";
 import UserProfileModal from "@/components/UserProfileModal";
 
@@ -13,6 +13,7 @@ export default function StoreView() {
   const [question, setQuestion] = useState("");
   const [selectedSellerEmail, setSelectedSellerEmail] = useState<string | null>(null);
   const [selectedVariation, setSelectedVariation] = useState<ProductVariation | null>(null);
+  const [detailTab, setDetailTab] = useState<"info" | "reviews" | "questions">("info");
 
   const approved = state.products.filter((p) => p.approved);
   const categories = ["Todos", ...state.config.categories];
@@ -56,12 +57,6 @@ export default function StoreView() {
     setBuyLoading(true);
     try {
       const { supabase } = await import("@/integrations/supabase/client");
-      console.log("Iniciando checkout AbacatePay para:", {
-        productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name,
-        priceInCents: Math.round(price * 100),
-        buyerEmail: state.currentUser.email,
-      });
-
       const { data, error } = await supabase.functions.invoke("create-abacatepay-checkout", {
         body: {
           productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name,
@@ -70,25 +65,17 @@ export default function StoreView() {
         },
       });
 
-      if (error) {
-        console.error("Erro na invocação da função:", error);
-        throw error;
-      }
-
-      console.log("Resposta do AbacatePay:", data);
+      if (error) throw error;
 
       if (data?.url) {
         toast.success("Redirecionando para pagamento...");
         window.open(data.url, "_blank");
       } else if (data?.error) {
-        console.error("Erro retornado pela API:", data.error);
         toast.error("Erro ao criar sessão de pagamento: " + data.error);
       } else {
-        console.error("Resposta inesperada:", data);
         toast.error("Erro ao criar sessão de pagamento. Tente novamente.");
       }
     } catch (err: any) {
-      console.error("Erro completo no handleBuy:", err);
       toast.error("Erro ao conectar com pagamento: " + (err.message || "Tente novamente."));
     } finally {
       setBuyLoading(false);
@@ -131,7 +118,7 @@ export default function StoreView() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {filtered.map((p, i) => (
-          <div key={p.id} onClick={() => { setSelectedProduct(p.id); setSelectedVariation(null); }} className="glass-card overflow-hidden group animate-fade-in-up cursor-pointer" style={{ animationDelay: `${i * 0.08}s` }}>
+          <div key={p.id} onClick={() => { setSelectedProduct(p.id); setSelectedVariation(null); setDetailTab("info"); }} className="glass-card overflow-hidden group animate-fade-in-up cursor-pointer" style={{ animationDelay: `${i * 0.08}s` }}>
             <div className="relative h-48 overflow-hidden">
               <img src={p.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={p.name} />
               <div className="absolute top-3 right-3 bg-card/90 backdrop-blur px-3 py-1 rounded-full text-[11px] font-bold text-foreground shadow-sm">{p.category}</div>
@@ -165,138 +152,177 @@ export default function StoreView() {
         ))}
       </div>
 
-      {filtered.length === 0 && (
-        <div className="text-center py-20">
-          <p className="text-2xl mb-2">🏜️</p>
-          <p className="text-muted-foreground font-medium">Nenhum produto encontrado.</p>
-        </div>
-      )}
-
-      {/* ── Product Detail Modal ── */}
+      {/* Product Detail Modal */}
       {product && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-foreground/50 backdrop-blur-sm"
-          onClick={() => setSelectedProduct(null)}
-        >
-          <div
-            className="glass-card w-full max-w-2xl bg-card animate-fade-in-up overflow-hidden max-h-[90vh] overflow-y-auto relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Fixed close button - always visible */}
-            <button
-              onClick={() => setSelectedProduct(null)}
-              className="absolute top-3 right-3 z-[10] bg-card/90 backdrop-blur p-2 rounded-full shadow-lg hover:bg-muted transition"
-              title="Fechar"
-            >
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-foreground/50 backdrop-blur-sm" onClick={() => setSelectedProduct(null)}>
+          <div className="glass-card w-full max-w-2xl bg-card animate-fade-in-up overflow-hidden max-h-[90vh] flex flex-col relative" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setSelectedProduct(null)} className="absolute top-3 right-3 z-[10] bg-card/90 backdrop-blur p-2 rounded-full shadow-lg hover:bg-muted transition">
               <X className="w-5 h-5 text-foreground" />
             </button>
 
-            {/* Banner */}
-            <div className="relative h-44 sm:h-64">
-              <img src={product.banner || product.image} className="w-full h-full object-cover" alt={product.name} />
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-card/95 to-transparent p-5 pt-14">
-                <h2 className="text-lg sm:text-2xl font-black text-foreground leading-tight">{product.name}</h2>
-                <p className="text-xs text-muted-foreground mt-1">{product.category}</p>
+            <div className="overflow-y-auto flex-1">
+              {/* Banner */}
+              <div className="relative h-44 sm:h-64 shrink-0">
+                <img src={product.banner || product.image} className="w-full h-full object-cover" alt={product.name} />
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-card/95 to-transparent p-5 pt-14">
+                  <h2 className="text-lg sm:text-2xl font-black text-foreground leading-tight">{product.name}</h2>
+                  <p className="text-xs text-muted-foreground mt-1">{product.category}</p>
+                </div>
+              </div>
+
+              <div className="p-4 sm:p-6 space-y-6">
+                {/* Seller section */}
+                <button onClick={() => setSelectedSellerEmail(product.sellerEmail)} className="w-full bg-muted rounded-2xl p-4 flex items-center gap-4 hover:bg-muted/80 transition text-left">
+                  <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(product.seller)}`} className="w-12 h-12 rounded-full bg-primary/10 border-2 border-card shadow" alt={product.seller} />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-foreground text-sm">{product.seller}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono truncate">ID: {product.sellerId}</p>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      <div className="flex items-center gap-0.5">
+                        <StarEmoji className="w-3.5 h-3.5" />
+                        <span className="text-xs font-bold text-foreground">{avgRating || "Novo"}</span>
+                        <span className="text-[10px] text-muted-foreground">({productReviews.length})</span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">· {sellerSales} vendas</span>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Tabs Header */}
+                <div className="flex gap-1 border-b border-border/40 overflow-x-auto scrollbar-hide">
+                  {[
+                    { id: "info", label: "Informações", icon: Info },
+                    { id: "reviews", label: `Avaliações (${productReviews.length})`, icon: Star },
+                    { id: "questions", label: `Dúvidas (${productQuestions.length})`, icon: MessageSquare },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setDetailTab(t.id as any)}
+                      className={`px-4 py-2 text-xs font-bold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${detailTab === t.id ? "border-primary text-primary bg-primary/5" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+                    >
+                      <t.icon className="w-3.5 h-3.5" />
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Tab Content */}
+                <div className="animate-fade-in-up">
+                  {detailTab === "info" && (
+                    <div className="space-y-6">
+                      <div className="flex flex-wrap gap-2">
+                        <div className="flex items-center gap-1.5 bg-success/10 text-success px-3 py-1.5 rounded-full text-xs font-bold">
+                          <CheckCircle className="w-3.5 h-3.5" /> Vendedor Verificado
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-primary/10 text-primary px-3 py-1.5 rounded-full text-xs font-bold">
+                          <ShieldEmoji className="w-3.5 h-3.5" /> Entrega Garantida
+                        </div>
+                        {product.deliveryType === "auto" && (
+                          <div className="flex items-center gap-1.5 bg-accent/10 text-accent-foreground px-3 py-1.5 rounded-full text-xs font-bold">
+                            <RocketEmoji className="w-3.5 h-3.5" /> Entrega Automática
+                          </div>
+                        )}
+                      </div>
+
+                      {product.variations && product.variations.length > 0 && (
+                        <div className="space-y-3">
+                          <p className="text-xs font-bold text-muted-foreground uppercase">Escolha uma opção</p>
+                          <div className="grid grid-cols-1 gap-2">
+                            <button onClick={() => setSelectedVariation(null)} className={`p-3 rounded-xl border text-left transition ${!selectedVariation ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:bg-muted"}`}>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm font-bold text-foreground">Padrão</span>
+                                <span className="text-sm font-black text-primary">R$ {product.price.toFixed(2)}</span>
+                              </div>
+                            </button>
+                            {product.variations.map((v, i) => (
+                              <button key={i} onClick={() => setSelectedVariation(v)} className={`p-3 rounded-xl border text-left transition ${selectedVariation?.name === v.name ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:bg-muted"}`}>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm font-bold text-foreground">{v.name}</span>
+                                  <span className="text-sm font-black text-primary">R$ {v.price.toFixed(2)}</span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold text-muted-foreground uppercase">Descrição</p>
+                        <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{product.description}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {detailTab === "reviews" && (
+                    <div className="space-y-4">
+                      {productReviews.length === 0 ? (
+                        <p className="text-center py-10 text-muted-foreground text-sm italic">Nenhuma avaliação ainda.</p>
+                      ) : (
+                        productReviews.map((r, i) => (
+                          <div key={i} className="bg-muted/50 p-4 rounded-2xl border border-border/20">
+                            <div className="flex justify-between items-start mb-2">
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
+                                  {r.buyerEmail.substring(0, 2).toUpperCase()}
+                                </div>
+                                <div>
+                                  <p className="text-xs font-bold text-foreground">{r.buyerEmail.split('@')[0]}</p>
+                                  <div className="flex gap-0.5">
+                                    {[...Array(5)].map((_, j) => <StarEmoji key={j} className="w-2.5 h-2.5" filled={j < (r.reviewStars || 0)} />)}
+                                  </div>
+                                </div>
+                              </div>
+                              <span className="text-[10px] text-muted-foreground">{new Date(r.createdAt).toLocaleDateString()}</span>
+                            </div>
+                            <p className="text-xs text-foreground leading-relaxed">{r.reviewComment}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {detailTab === "questions" && (
+                    <div className="space-y-6">
+                      <div className="flex gap-2">
+                        <input value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Tire sua dúvida com o vendedor..." className="flex-1 p-3 rounded-xl bg-muted border-none focus:ring-2 ring-primary outline-none text-sm text-foreground" />
+                        <button onClick={handleSendQuestion} className="btn-gradient p-3 rounded-xl"><Send className="w-4 h-4" /></button>
+                      </div>
+                      <div className="space-y-4">
+                        {productQuestions.length === 0 ? (
+                          <p className="text-center py-10 text-muted-foreground text-sm italic">Nenhuma pergunta ainda.</p>
+                        ) : (
+                          productQuestions.map((q) => (
+                            <div key={q.id} className="space-y-2">
+                              <div className="bg-muted/50 p-4 rounded-2xl border border-border/20">
+                                <p className="text-[10px] font-bold text-primary uppercase mb-1">{q.userName}</p>
+                                <p className="text-xs text-foreground">{q.text}</p>
+                              </div>
+                              {q.answer && (
+                                <div className="ml-6 bg-primary/5 p-4 rounded-2xl border border-primary/10">
+                                  <p className="text-[10px] font-bold text-success uppercase mb-1">Resposta do Vendedor</p>
+                                  <p className="text-xs text-foreground">{q.answer}</p>
+                                </div>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="p-4 sm:p-6 space-y-4">
-              {/* Seller section */}
-              <button
-                onClick={() => setSelectedSellerEmail(product.sellerEmail)}
-                className="w-full bg-muted rounded-2xl p-4 flex items-center gap-4 hover:bg-muted/80 transition text-left"
-              >
-                <img
-                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(product.seller)}`}
-                  className="w-12 h-12 rounded-full bg-primary/10 border-2 border-card shadow"
-                  alt={product.seller}
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-foreground text-sm">{product.seller}</p>
-                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                    <div className="flex items-center gap-0.5">
-                      <StarEmoji className="w-3.5 h-3.5" />
-                      <span className="text-xs font-bold text-foreground">{avgRating || "Novo"}</span>
-                      <span className="text-[10px] text-muted-foreground">({productReviews.length})</span>
-                    </div>
-                    <span className="text-[10px] text-muted-foreground">· {sellerSales} vendas</span>
-                  </div>
+            {/* Sticky Purchase Action */}
+            <div className="p-4 sm:p-6 bg-card border-t border-border/40 shrink-0">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold">Total</p>
+                  <p className="text-2xl font-black text-foreground">R$ {(selectedVariation ? selectedVariation.price : product.price).toFixed(2)}</p>
                 </div>
-              </button>
-
-              {/* Verification badges */}
-              <div className="flex flex-wrap gap-2">
-                <div className="flex items-center gap-1.5 bg-success/10 text-success px-3 py-1.5 rounded-full text-xs font-bold">
-                  <CheckCircle className="w-3.5 h-3.5" /> Vendedor Verificado
-                </div>
-                <div className="flex items-center gap-1.5 bg-primary/10 text-primary px-3 py-1.5 rounded-full text-xs font-bold">
-                  <ShieldEmoji className="w-3.5 h-3.5" /> Entrega Garantida
-                </div>
-                {product.deliveryType === "auto" && (
-                  <div className="flex items-center gap-1.5 bg-accent/10 text-accent-foreground px-3 py-1.5 rounded-full text-xs font-bold">
-                    <RocketEmoji className="w-3.5 h-3.5" /> Entrega Automática
-                  </div>
-                )}
-              </div>
-
-              {/* Variations Selection */}
-              {product.variations && product.variations.length > 0 && (
-                <div className="space-y-3">
-                  <p className="text-xs font-bold text-muted-foreground uppercase">Escolha uma opção:</p>
-                  <div className="grid grid-cols-1 gap-2">
-                    <button
-                      onClick={() => setSelectedVariation(null)}
-                      className={`p-3 rounded-xl border text-left transition ${!selectedVariation ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:bg-muted"}`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-bold text-foreground">Padrão</span>
-                        <span className="text-sm font-black text-primary">R$ {product.price.toFixed(2)}</span>
-                      </div>
-                    </button>
-                    {product.variations.map((v, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setSelectedVariation(v)}
-                        className={`p-3 rounded-xl border text-left transition ${selectedVariation?.name === v.name ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:bg-muted"}`}
-                      >
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm font-bold text-foreground">{v.name}</span>
-                          <span className="text-sm font-black text-primary">R$ {v.price.toFixed(2)}</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Description */}
-              <div className="space-y-2">
-                <p className="text-xs font-bold text-muted-foreground uppercase">Descrição</p>
-                <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{product.description}</p>
-              </div>
-
-              {/* Purchase Action */}
-              <div className="sticky bottom-0 bg-card pt-4 pb-2 border-t border-border/40">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase font-bold">Total</p>
-                    <p className="text-2xl font-black text-foreground">R$ {(selectedVariation ? selectedVariation.price : product.price).toFixed(2)}</p>
-                  </div>
-                  <button
-                    onClick={handleBuy}
-                    disabled={buyLoading}
-                    className="flex-1 btn-gradient py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-primary/20 disabled:opacity-50"
-                  >
-                    {buyLoading ? (
-                      "Processando..."
-                    ) : (
-                      <>
-                        <ShoppingCart className="w-5 h-5" />
-                        Comprar Agora
-                      </>
-                    )}
-                  </button>
-                </div>
+                <button onClick={handleBuy} disabled={buyLoading} className="flex-1 btn-gradient py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-primary/20 disabled:opacity-50">
+                  {buyLoading ? "Processando..." : <><ShoppingCart className="w-5 h-5" /> Comprar Agora</>}
+                </button>
               </div>
             </div>
           </div>
@@ -304,12 +330,14 @@ export default function StoreView() {
       )}
 
       {selectedSellerEmail && (
-        <UserProfileModal
-          open={!!selectedSellerEmail}
-          onClose={() => setSelectedSellerEmail(null)}
-          userEmail={selectedSellerEmail}
-        />
+        <UserProfileModal open={!!selectedSellerEmail} onClose={() => setSelectedSellerEmail(null)} userEmail={selectedSellerEmail} />
       )}
     </div>
   );
 }
+
+const Send = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+  </svg>
+);

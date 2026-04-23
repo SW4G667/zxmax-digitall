@@ -21,6 +21,12 @@ function Dashboard() {
   const { isAdmin, user } = useAuth();
   const [view, setView] = useState<View>("store");
   const [profileOpen, setProfileOpen] = useState(false);
+  const [selectedPurchaseId, setSelectedPurchaseId] = useState<number | null>(null);
+
+  const handleOpenChat = (purchaseId: number) => {
+    setSelectedPurchaseId(purchaseId);
+    setView("purchases");
+  };
 
   useEffect(() => {
     if (isAdmin && view === "store") {
@@ -52,8 +58,8 @@ function Dashboard() {
       <Header onProfileClick={() => setProfileOpen(true)} />
       <main className="max-w-7xl mx-auto px-4 py-6">
         {view === "store" && <StoreView />}
-        {view === "inventory" && <InventoryView />}
-        {view === "purchases" && <MyPurchasesView />}
+        {view === "inventory" && <InventoryView onOpenChat={handleOpenChat} />}
+        {view === "purchases" && <MyPurchasesView initialSelectedId={selectedPurchaseId} />}
         {view === "support" && <SupportView />}
         {view === "admin" && isAdmin && <AdminView />}
       </main>

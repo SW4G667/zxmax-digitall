@@ -588,9 +588,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
 
   const verifyUser = (userId: string) => {
+    // In a real app, this would update the Supabase 'profiles' table
+    // For now, we update the local state for immediate feedback
     setState(s => ({
       ...s,
-      currentUser: s.currentUser?.id === userId ? { ...s.currentUser, isVerified: true } : s.currentUser
+      currentUser: s.currentUser?.id === userId ? { ...s.currentUser, isVerified: true } : s.currentUser,
+      // We also need to mark the user as verified in a way that persists or reflects for other users if needed
+      // But since we are using local state + Supabase, this is a bit mixed.
     }));
   };
 

@@ -10,7 +10,7 @@ interface Variation {
   price: string;
 }
 
-export default function InventoryView() {
+export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId: number) => void }) {
   const { state, addProduct } = useStore();
   const [showForm, setShowForm] = useState(false);
   const [showSales, setShowSales] = useState<number | null>(null);
@@ -175,16 +175,23 @@ export default function InventoryView() {
                 <p className="text-center text-muted-foreground py-10">Nenhuma venda para este produto ainda.</p>
               ) : (
                 salesForProduct.map(s => (
-                  <div key={s.id} className="p-4 bg-muted rounded-xl border border-border/40">
+                  <div 
+                    key={s.id} 
+                    onClick={() => { if(onOpenChat) { onOpenChat(s.id); setShowSales(null); } }}
+                    className="p-4 bg-muted rounded-xl border border-border/40 hover:border-primary/50 cursor-pointer transition group"
+                  >
                     <div className="flex justify-between items-start mb-2">
                       <div>
-                        <p className="font-bold text-sm text-foreground">{s.buyerEmail}</p>
+                        <p className="font-bold text-sm text-foreground group-hover:text-primary transition">{s.buyerEmail}</p>
                         <p className="text-[10px] text-muted-foreground font-mono">ID: {s.buyerId}</p>
                         {s.variationName && <p className="text-[10px] text-primary font-bold">Opção: {s.variationName}</p>}
                       </div>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.status === 'paid' ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
-                        {s.status}
-                      </span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.status === 'paid' ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
+                          {s.status}
+                        </span>
+                        {onOpenChat && <span className="text-[9px] text-primary font-bold flex items-center gap-1"><MessageSquare className="w-2.5 h-2.5" /> Abrir Chat</span>}
+                      </div>
                     </div>
                     <div className="flex justify-between items-center">
                       <p className="text-xs font-black text-foreground">R$ {s.amount.toFixed(2)}</p>
