@@ -160,8 +160,8 @@ interface StoreContextType {
   rejectWithdraw: (id: number) => void;
   updateConfig: (c: Partial<AppConfig>) => void;
   updateProfile: (name: string) => void;
-  banUser: (email: string) => void;
-  unbanUser: (email: string) => void;
+  banUser: (identifier: string, reason?: string) => void;
+  unbanUser: (identifier: string) => void;
   addTicket: (subject: string, message: string) => void;
   replyTicket: (id: number, text: string) => void;
   closeTicket: (id: number) => void;
@@ -373,10 +373,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return pr;
       });
 
-      // Update seller earnings
-      // Note: In a real app this would be handled on backend
-      
-      return { ...s, purchases: newPurchases, products: newProducts };
+      const sellerNet = Math.max(0, purchase.amount - (purchase.amount * s.config.commission) / 100);
+      const nextBalances = {
+        ...(s.userBalances || {}),
+        [purchase.sellerId]: (s.userBalances?.[purchase.sellerId] || 0) + sellerNet,
+      };
+      const nextEarnings = {
+        ...(s.userEarnings || {}),
+        [purchase.sellerId]: (s.userEarnings?.[purchase.sellerId] || 0) + sellerNet,
+      };
+
+      return {
+        ...s,
+        purchases: newPurchases,
+        products: newProducts,
+        userBalances: nextBalances,
+        userEarnings: nextEarnings,
+        currentUser: s.currentUser
+          ? {
+              ...s.currentUser,
+              balance: nextBalances[s.currentUser.id] || 0,
+              earnings: nextEarnings[s.currentUser.id] || 0,
+            }
+          : null,
+      };
     });
 
   const approvePurchase = (id: number) =>
@@ -406,6 +426,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState((s) => ({
       ...s,
       withdrawals: [...s.withdrawals, w],
+      userBalances: s.currentUser ? { ...(s.userBalances || {}), [s.currentUser.id]: 0 } : s.userBalances,
       currentUser: s.currentUser ? { ...s.currentUser, balance: 0 } : null,
     }));
   };
@@ -417,10 +438,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
 
   const rejectWithdraw = (id: number) =>
-    setState((s) => ({
-      ...s,
-      withdrawals: s.withdrawals.map((w) => (w.id === id ? { ...w, status: "rejected" } : w)),
-    }));
+    setState((s) => {
+      const withdrawal = s.withdrawals.find((w) => w.id === id);
+      if (!withdrawal) return s;
+
+      const refundedBalance = (s.userBalances?.[withdrawal.userId] || 0) + withdrawal.amount;
+      return {
+        ...s,
+        withdrawals: s.withdrawals.map((w) => (w.id === id ? { ...w, status: "rejected" } : w)),
+        userBalances: { ...(s.userBalances || {}), [withdrawal.userId]: refundedBalance },
+        currentUser: s.currentUser?.id === withdrawal.userId
+          ? { ...s.currentUser, balance: refundedBalance }
+          : s.currentUser,
+      };
+    });
 
   const updateConfig = (c: Partial<AppConfig>) =>
     setState((s) => ({ ...s, config: { ...s.config, ...c } }));
