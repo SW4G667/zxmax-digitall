@@ -14,6 +14,20 @@ export default function AdminView() {
   const [tagAssignEmail, setTagAssignEmail] = useState("");
   const [tagAssignTagId, setTagAssignTagId] = useState<number | "">("");
   const [rules, setRules] = useState(state.config.rules);
+  const [commission, setCommission] = useState(state.config.commission);
+  const [instantFee, setInstantFee] = useState(state.config.instantFee);
+  // Discord config
+  const [discordMode, setDiscordMode] = useState(state.config.discordMode);
+  const [discordClientId, setDiscordClientId] = useState(state.config.discordClientId);
+  const [discordClientSecret, setDiscordClientSecret] = useState(state.config.discordClientSecret);
+  const [discordRedirectUri, setDiscordRedirectUri] = useState(state.config.discordRedirectUri);
+  const [discordScopes, setDiscordScopes] = useState(state.config.discordScopes);
+  const [discordServerLink, setDiscordServerLink] = useState(state.config.discordServerLink);
+  // AbacatePay config
+  const [abacatepayMode, setAbacatepayMode] = useState(state.config.abacatepayMode);
+  const [abacatepayApiKey, setAbacatepayApiKey] = useState(state.config.abacatepayApiKey);
+  // Auth mode
+  const [authMode, setAuthMode] = useState(state.config.authMode);
 
   const pendingProducts = state.products.filter((p) => !p.approved);
   const pendingWithdrawals = state.withdrawals.filter((w) => w.status === "pending");
@@ -22,9 +36,16 @@ export default function AdminView() {
   const disputes = state.purchases.filter(p => p.status === "dispute");
 
   const handleSaveConfig = () => {
-    updateConfig({ rules });
+    updateConfig({
+      rules, commission, instantFee,
+      authMode,
+      discordMode, discordClientId, discordClientSecret, discordRedirectUri, discordScopes, discordServerLink,
+      discordLink: discordServerLink,
+      abacatepayMode, abacatepayApiKey,
+    });
     toast.success("Configurações salvas!");
   };
+
 
   return (
     <div className="animate-fade-in-up pb-20">
@@ -270,9 +291,93 @@ export default function AdminView() {
 
       {/* Config Tab */}
       {tab === "config" && (
-        <div className="glass-card p-6 space-y-6">
-          <div>
-            <h3 className="font-bold text-foreground mb-4">Regras da Plataforma</h3>
+        <div className="space-y-6">
+          {/* Taxas */}
+          <div className="glass-card p-6 space-y-4">
+            <h3 className="font-bold text-foreground">Taxas da Plataforma</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Comissão (%)</label>
+                <input type="number" value={commission} onChange={(e) => setCommission(Number(e.target.value))} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Taxa Saque Instantâneo (%)</label>
+                <input type="number" value={instantFee} onChange={(e) => setInstantFee(Number(e.target.value))} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground" />
+              </div>
+            </div>
+          </div>
+
+          {/* Auth */}
+          <div className="glass-card p-6 space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="font-bold text-foreground">Autenticação</h3>
+              <div className="flex gap-1 bg-muted rounded-xl p-1">
+                <button onClick={() => setAuthMode("automatic")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${authMode === "automatic" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Automático</button>
+                <button onClick={() => setAuthMode("manual")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${authMode === "manual" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Manual</button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">No modo automático, o sistema usa as credenciais padrão. No manual, usa as configurações abaixo (Discord/AbacatePay).</p>
+          </div>
+
+          {/* Discord */}
+          <div className="glass-card p-6 space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="font-bold text-foreground">Credenciais Discord</h3>
+              <div className="flex gap-1 bg-muted rounded-xl p-1">
+                <button onClick={() => setDiscordMode("automatic")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${discordMode === "automatic" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Automático</button>
+                <button onClick={() => setDiscordMode("manual")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${discordMode === "manual" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Manual</button>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Link do Servidor Discord</label>
+              <input value={discordServerLink} onChange={(e) => setDiscordServerLink(e.target.value)} placeholder="https://discord.gg/..." className="w-full p-3 rounded-xl bg-muted text-sm text-foreground" />
+            </div>
+            {discordMode === "manual" && (
+              <>
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Client ID</label>
+                  <input value={discordClientId} onChange={(e) => setDiscordClientId(e.target.value)} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Client Secret</label>
+                  <input type="password" value={discordClientSecret} onChange={(e) => setDiscordClientSecret(e.target.value)} placeholder="••••••••" className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
+                  <p className="text-[10px] text-muted-foreground mt-1">⚠️ Para uso real, configure também o secret DISCORD_CLIENT_SECRET no backend.</p>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Redirect URI</label>
+                  <input value={discordRedirectUri} onChange={(e) => setDiscordRedirectUri(e.target.value)} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Scopes</label>
+                  <input value={discordScopes} onChange={(e) => setDiscordScopes(e.target.value)} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* AbacatePay */}
+          <div className="glass-card p-6 space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="font-bold text-foreground">Credenciais AbacatePay</h3>
+              <div className="flex gap-1 bg-muted rounded-xl p-1">
+                <button onClick={() => setAbacatepayMode("automatic")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${abacatepayMode === "automatic" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Automático</button>
+                <button onClick={() => setAbacatepayMode("manual")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${abacatepayMode === "manual" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Manual</button>
+              </div>
+            </div>
+            {abacatepayMode === "manual" ? (
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">API Key</label>
+                <input type="password" value={abacatepayApiKey} onChange={(e) => setAbacatepayApiKey(e.target.value)} placeholder="••••••••" className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
+                <p className="text-[10px] text-muted-foreground mt-1">⚠️ Para uso real, configure também o secret ABACATEPAY_API_KEY no backend.</p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Usando a API Key configurada nos secrets do backend.</p>
+            )}
+          </div>
+
+          {/* Regras */}
+          <div className="glass-card p-6 space-y-4">
+            <h3 className="font-bold text-foreground">Regras da Plataforma</h3>
             <textarea
               value={rules}
               onChange={(e) => setRules(e.target.value)}
@@ -280,7 +385,8 @@ export default function AdminView() {
               rows={10}
             />
           </div>
-          <button onClick={handleSaveConfig} className="btn-gradient w-full py-3 rounded-xl font-bold">Salvar Configurações</button>
+
+          <button onClick={handleSaveConfig} className="btn-gradient w-full py-3 rounded-xl font-bold sticky bottom-4">Salvar Todas as Configurações</button>
         </div>
       )}
 
