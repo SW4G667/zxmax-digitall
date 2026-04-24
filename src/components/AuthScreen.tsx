@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useStore } from "@/store/StoreContext";
 import { RocketEmoji, KeyEmoji } from "@/components/CustomEmojis";
 import { toast } from "sonner";
 
 export default function AuthScreen() {
   const { signUp, signIn } = useAuth();
+  const { state } = useStore();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -14,9 +16,17 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleDiscord = () => {
-    const clientId = "1485093454517371070";
-    const redirectUri = encodeURIComponent(window.location.origin + "/");
-    const scopes = encodeURIComponent("identify email");
+    const clientId = state.config.discordClientId || "1485093454517371070";
+    const redirectBase = state.config.discordRedirectUri || window.location.origin + "/";
+    const scopesValue = state.config.discordScopes || "identify email";
+
+    if (!clientId) {
+      toast.error("Client ID do Discord não configurado.");
+      return;
+    }
+
+    const redirectUri = encodeURIComponent(redirectBase);
+    const scopes = encodeURIComponent(scopesValue);
     window.location.href = `https://discord.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${scopes}`;
   };
 
