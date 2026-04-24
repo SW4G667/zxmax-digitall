@@ -69,7 +69,7 @@ export default function StoreView() {
 
       if (data?.url) {
         toast.success("Redirecionando para pagamento...");
-        window.open(data.url, "_blank");
+        window.location.href = data.url;
       } else if (data?.error) {
         toast.error("Erro ao criar sessão de pagamento: " + data.error);
       } else {

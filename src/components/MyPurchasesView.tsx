@@ -30,8 +30,10 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
   const [comment, setComment] = useState("");
   const [showReview, setShowReview] = useState(false);
 
-  const myPurchases = state.purchases.filter((p) => p.buyerEmail === state.currentUser?.email);
-  const filtered = myPurchases.filter((p) => {
+  const visiblePurchases = state.currentUser?.isAdmin
+    ? state.purchases
+    : state.purchases.filter((p) => p.buyerEmail === state.currentUser?.email);
+  const filtered = visiblePurchases.filter((p) => {
     const product = state.products.find((pr) => pr.id === p.productId);
     return product?.name.toLowerCase().includes(search.toLowerCase());
   }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -100,7 +102,11 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
           <img src={selectedProduct.image} className="w-16 h-16 rounded-2xl object-cover" alt={selectedProduct.name} />
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-foreground truncate">{selectedProduct.name}</h3>
-            <p className="text-xs text-muted-foreground">Vendedor: <span className="text-primary font-semibold">{selectedProduct.seller}</span></p>
+            <p className="text-xs text-muted-foreground">
+              {state.currentUser?.isAdmin
+                ? `Comprador: ${selected.buyerEmail} · Vendedor: ${selected.sellerEmail}`
+                : <>Vendedor: <span className="text-primary font-semibold">{selectedProduct.seller}</span></>}
+            </p>
             <p className="text-sm font-black text-foreground mt-0.5">R$ {selected.amount.toFixed(2)}</p>
           </div>
           <Badge className={statusMap[selected.status].cls}>{statusMap[selected.status].label}</Badge>
@@ -158,9 +164,11 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
         {/* Chat */}
         <div className="flex items-center justify-between mb-2 px-1">
           <h4 className="text-xs font-bold text-muted-foreground uppercase">Chat</h4>
-          <button onClick={() => setShowDisputeForm(true)} className="text-[10px] font-bold text-destructive uppercase hover:underline">
-            Abrir Disputa
-          </button>
+          {!state.currentUser?.isAdmin && (
+            <button onClick={() => setShowDisputeForm(true)} className="text-[10px] font-bold text-destructive uppercase hover:underline">
+              Abrir Disputa
+            </button>
+          )}
         </div>
         <div id="purchase-chat" className="glass-card p-4 mb-4 min-h-[300px] max-h-[400px] overflow-y-auto flex flex-col gap-2">
           {isChatLocked ? (
