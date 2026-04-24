@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface User {
   id: string;
@@ -138,6 +139,8 @@ interface AppState {
   adminChat: AdminChatMessage[];
   userTags: UserTag[];
   userTagAssignments: Record<string, number[]>; // email -> tagIds
+  userBalances: Record<string, number>;
+  userEarnings: Record<string, number>;
 }
 
 interface StoreContextType {
@@ -157,8 +160,8 @@ interface StoreContextType {
   rejectWithdraw: (id: number) => void;
   updateConfig: (c: Partial<AppConfig>) => void;
   updateProfile: (name: string) => void;
-  banUser: (email: string) => void;
-  unbanUser: (email: string) => void;
+  banUser: (identifier: string, reason?: string) => void;
+  unbanUser: (identifier: string) => void;
   addTicket: (subject: string, message: string) => void;
   replyTicket: (id: number, text: string) => void;
   closeTicket: (id: number) => void;
@@ -217,6 +220,8 @@ function loadState(): AppState {
       return {
         userTags: [],
         userTagAssignments: {},
+        userBalances: parsed.userBalances || {},
+        userEarnings: parsed.userEarnings || {},
         ...parsed,
         config: {
           ...defaultConfig,
@@ -248,6 +253,8 @@ function loadState(): AppState {
     adminChat: [],
     userTags: [],
     userTagAssignments: {},
+    userBalances: {},
+    userEarnings: {},
   };
 }
 
@@ -265,8 +272,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         id: authUser.id,
         email: profile.email || authUser.email || "",
         name: profile.display_name || authUser.email?.split("@")[0] || "",
-        balance: state.currentUser?.balance || 0,
-        earnings: state.currentUser?.earnings || 0,
+        balance: state.userBalances[authUser.id] || 0,
+        earnings: state.userEarnings[authUser.id] || 0,
         avatar: profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(profile.display_name || "")}`,
         isAdmin,
         pixKey: profile.pix_key || "",
@@ -274,7 +281,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       };
       setState((s) => ({ ...s, currentUser: user }));
     }
-  }, [authUser, profile, isAdmin]);
+  }, [authUser, profile, isAdmin, state.userBalances, state.userEarnings]);
 
   useEffect(() => {
     localStorage.setItem("zxmax_state", JSON.stringify(state));
@@ -366,10 +373,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return pr;
       });
 
-      // Update seller earnings
-      // Note: In a real app this would be handled on backend
-      
-      return { ...s, purchases: newPurchases, products: newProducts };
+      const sellerNet = Math.max(0, purchase.amount - (purchase.amount * s.config.commission) / 100);
+      const nextBalances = {
+        ...(s.userBalances || {}),
+        [purchase.sellerId]: (s.userBalances?.[purchase.sellerId] || 0) + sellerNet,
+      };
+      const nextEarnings = {
+        ...(s.userEarnings || {}),
+        [purchase.sellerId]: (s.userEarnings?.[purchase.sellerId] || 0) + sellerNet,
+      };
+
+      return {
+        ...s,
+        purchases: newPurchases,
+        products: newProducts,
+        userBalances: nextBalances,
+        userEarnings: nextEarnings,
+        currentUser: s.currentUser
+          ? {
+              ...s.currentUser,
+              balance: nextBalances[s.currentUser.id] || 0,
+              earnings: nextEarnings[s.currentUser.id] || 0,
+            }
+          : null,
+      };
     });
 
   const approvePurchase = (id: number) =>
@@ -399,6 +426,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState((s) => ({
       ...s,
       withdrawals: [...s.withdrawals, w],
+      userBalances: s.currentUser ? { ...(s.userBalances || {}), [s.currentUser.id]: 0 } : s.userBalances,
       currentUser: s.currentUser ? { ...s.currentUser, balance: 0 } : null,
     }));
   };
@@ -410,10 +438,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
 
   const rejectWithdraw = (id: number) =>
-    setState((s) => ({
-      ...s,
-      withdrawals: s.withdrawals.map((w) => (w.id === id ? { ...w, status: "rejected" } : w)),
-    }));
+    setState((s) => {
+      const withdrawal = s.withdrawals.find((w) => w.id === id);
+      if (!withdrawal) return s;
+
+      const refundedBalance = (s.userBalances?.[withdrawal.userId] || 0) + withdrawal.amount;
+      return {
+        ...s,
+        withdrawals: s.withdrawals.map((w) => (w.id === id ? { ...w, status: "rejected" } : w)),
+        userBalances: { ...(s.userBalances || {}), [withdrawal.userId]: refundedBalance },
+        currentUser: s.currentUser?.id === withdrawal.userId
+          ? { ...s.currentUser, balance: refundedBalance }
+          : s.currentUser,
+      };
+    });
 
   const updateConfig = (c: Partial<AppConfig>) =>
     setState((s) => ({ ...s, config: { ...s.config, ...c } }));
@@ -426,11 +464,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         : null,
     }));
 
-  const banUser = (email: string) =>
-    setState((s) => ({ ...s, bannedUsers: [...s.bannedUsers, email] }));
+  const banUser = (identifier: string, reason = "Violação das regras da plataforma") => {
+    const normalized = identifier.trim();
+    if (!normalized) return;
 
-  const unbanUser = (email: string) =>
-    setState((s) => ({ ...s, bannedUsers: s.bannedUsers.filter((e) => e !== email) }));
+    void supabase.from("bans").insert({
+      user_id: normalized,
+      banned_by: authUser?.id || normalized,
+      reason,
+      active: true,
+    });
+
+    setState((s) => ({
+      ...s,
+      bannedUsers: s.bannedUsers.includes(normalized) ? s.bannedUsers : [...s.bannedUsers, normalized],
+    }));
+  };
+
+  const unbanUser = (identifier: string) => {
+    const normalized = identifier.trim();
+    if (!normalized) return;
+
+    void supabase.from("bans").update({ active: false }).eq("user_id", normalized).eq("active", true);
+
+    setState((s) => ({ ...s, bannedUsers: s.bannedUsers.filter((e) => e !== normalized) }));
+  };
 
   const addTicket = (subject: string, message: string) => {
     if (!state.currentUser) return;
@@ -600,13 +658,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
 
   const verifyUser = (userId: string) => {
-    // In a real app, this would update the Supabase 'profiles' table
-    // For now, we update the local state for immediate feedback
+    void supabase.from("profiles").update({ is_verified_seller: true }).eq("user_id", userId);
+
     setState(s => ({
       ...s,
       currentUser: s.currentUser?.id === userId ? { ...s.currentUser, isVerified: true } : s.currentUser,
-      // We also need to mark the user as verified in a way that persists or reflects for other users if needed
-      // But since we are using local state + Supabase, this is a bit mixed.
     }));
   };
 
