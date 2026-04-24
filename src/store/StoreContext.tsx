@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface User {
   id: string;
@@ -138,6 +139,8 @@ interface AppState {
   adminChat: AdminChatMessage[];
   userTags: UserTag[];
   userTagAssignments: Record<string, number[]>; // email -> tagIds
+  userBalances: Record<string, number>;
+  userEarnings: Record<string, number>;
 }
 
 interface StoreContextType {
@@ -217,6 +220,8 @@ function loadState(): AppState {
       return {
         userTags: [],
         userTagAssignments: {},
+        userBalances: parsed.userBalances || {},
+        userEarnings: parsed.userEarnings || {},
         ...parsed,
         config: {
           ...defaultConfig,
@@ -248,6 +253,8 @@ function loadState(): AppState {
     adminChat: [],
     userTags: [],
     userTagAssignments: {},
+    userBalances: {},
+    userEarnings: {},
   };
 }
 
@@ -265,8 +272,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         id: authUser.id,
         email: profile.email || authUser.email || "",
         name: profile.display_name || authUser.email?.split("@")[0] || "",
-        balance: state.currentUser?.balance || 0,
-        earnings: state.currentUser?.earnings || 0,
+        balance: state.userBalances[authUser.id] || 0,
+        earnings: state.userEarnings[authUser.id] || 0,
         avatar: profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(profile.display_name || "")}`,
         isAdmin,
         pixKey: profile.pix_key || "",
@@ -274,7 +281,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       };
       setState((s) => ({ ...s, currentUser: user }));
     }
-  }, [authUser, profile, isAdmin]);
+  }, [authUser, profile, isAdmin, state.userBalances, state.userEarnings]);
 
   useEffect(() => {
     localStorage.setItem("zxmax_state", JSON.stringify(state));
