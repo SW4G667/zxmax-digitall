@@ -130,7 +130,7 @@ serve(async (req) => {
       }
 
       const sessionToken = sessionData.properties?.hashed_token || "";
-      const sessionExpiresAt = sessionData.properties?.expires_at || new Date(Date.now() + 3600000).toISOString();
+      const sessionExpiresAt = new Date(Date.now() + 3600000).toISOString();
 
       console.log("Magic link generated successfully");
       return new Response(JSON.stringify({
