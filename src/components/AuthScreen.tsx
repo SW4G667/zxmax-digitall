@@ -1,12 +1,10 @@
 import React, { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { useStore } from "@/store/StoreContext";
 import { RocketEmoji, KeyEmoji } from "@/components/CustomEmojis";
 import { toast } from "sonner";
 
 export default function AuthScreen() {
   const { signUp, signIn } = useAuth();
-  const { state } = useStore();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -16,9 +14,15 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleDiscord = () => {
-    const clientId = state.config.discordClientId || "1485093454517371070";
-    const redirectBase = state.config.discordRedirectUri || window.location.origin + "/";
-    const scopesValue = state.config.discordScopes || "identify email";
+    let cfg: any = {};
+    try {
+      const saved = localStorage.getItem("zxmax_state");
+      if (saved) cfg = JSON.parse(saved)?.config || {};
+    } catch {}
+
+    const clientId = cfg.discordClientId || "1485093454517371070";
+    const redirectBase = cfg.discordRedirectUri || window.location.origin + "/";
+    const scopesValue = cfg.discordScopes || "identify email";
 
     if (!clientId) {
       toast.error("Client ID do Discord não configurado.");
