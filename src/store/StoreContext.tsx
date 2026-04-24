@@ -464,11 +464,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         : null,
     }));
 
-  const banUser = (email: string) =>
-    setState((s) => ({ ...s, bannedUsers: [...s.bannedUsers, email] }));
+  const banUser = (identifier: string, reason = "Violação das regras da plataforma") => {
+    const normalized = identifier.trim();
+    if (!normalized) return;
 
-  const unbanUser = (email: string) =>
-    setState((s) => ({ ...s, bannedUsers: s.bannedUsers.filter((e) => e !== email) }));
+    void supabase.from("bans").insert({
+      user_id: normalized,
+      banned_by: authUser?.id || normalized,
+      reason,
+      active: true,
+    });
+
+    setState((s) => ({
+      ...s,
+      bannedUsers: s.bannedUsers.includes(normalized) ? s.bannedUsers : [...s.bannedUsers, normalized],
+    }));
+  };
+
+  const unbanUser = (identifier: string) => {
+    const normalized = identifier.trim();
+    if (!normalized) return;
+
+    void supabase.from("bans").update({ active: false }).eq("user_id", normalized).eq("active", true);
+
+    setState((s) => ({ ...s, bannedUsers: s.bannedUsers.filter((e) => e !== normalized) }));
+  };
 
   const addTicket = (subject: string, message: string) => {
     if (!state.currentUser) return;
@@ -638,13 +658,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
 
   const verifyUser = (userId: string) => {
-    // In a real app, this would update the Supabase 'profiles' table
-    // For now, we update the local state for immediate feedback
+    void supabase.from("profiles").update({ is_verified_seller: true }).eq("user_id", userId);
+
     setState(s => ({
       ...s,
       currentUser: s.currentUser?.id === userId ? { ...s.currentUser, isVerified: true } : s.currentUser,
-      // We also need to mark the user as verified in a way that persists or reflects for other users if needed
-      // But since we are using local state + Supabase, this is a bit mixed.
     }));
   };
 
