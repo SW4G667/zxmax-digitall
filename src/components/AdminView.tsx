@@ -152,34 +152,57 @@ export default function AdminView() {
 
       {/* Documents Tab */}
       {tab === "documents" && (
-        <div className="glass-card p-6">
-          <h3 className="font-bold text-foreground mb-4">Verificação de Documentos</h3>
-          <p className="text-sm text-muted-foreground mb-6">Aprove documentos para liberar a função de saque para os usuários.</p>
+        <div className="space-y-4">
+          <h3 className="font-bold text-foreground">Verificação de Documentos</h3>
+          <p className="text-sm text-muted-foreground mb-6">Aprove documentos para liberar criação de produtos e saques para os usuários.</p>
           
-          {/* Mock list of users who uploaded docs but aren't verified */}
-          <div className="space-y-4">
-            <div className="p-4 bg-muted rounded-xl border border-border/40">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="font-bold text-foreground">Usuário de Teste</p>
-                  <p className="text-xs text-muted-foreground">usuario@exemplo.com</p>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => { verifyUser("test-id"); toast.success("Usuário verificado!"); }} className="px-3 py-1.5 bg-success text-white text-xs font-bold rounded-lg">Aprovar</button>
-                  <button className="px-3 py-1.5 bg-destructive/10 text-destructive text-xs font-bold rounded-lg">Rejeitar</button>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="aspect-video bg-card rounded-lg flex items-center justify-center border border-border">
-                  <p className="text-[10px] text-muted-foreground">Frente RG</p>
-                </div>
-                <div className="aspect-video bg-card rounded-lg flex items-center justify-center border border-border">
-                  <p className="text-[10px] text-muted-foreground">Verso RG</p>
-                </div>
-              </div>
+          {state.purchases.length === 0 ? (
+            <div className="bg-card rounded-3xl p-10 text-center border-2 border-dashed border-border">
+              <p className="text-muted-foreground">Nenhum usuário com documentos enviados.</p>
             </div>
-            <p className="text-center text-xs text-muted-foreground py-10">Fim da lista de documentos.</p>
-          </div>
+          ) : (
+            <div className="space-y-4">
+              {Array.from(new Set(state.purchases.map(p => p.buyerId))).map(userId => {
+                const userPurchases = state.purchases.filter(p => p.buyerId === userId);
+                const buyerEmail = userPurchases[0]?.buyerEmail || "Desconhecido";
+                const isVerified = state.purchases.some(p => p.buyerId === userId && state.currentUser?.id === userId) ? state.currentUser?.isVerified : false;
+                
+                return (
+                  <div key={userId} className="glass-card p-5 border border-border/40">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <p className="font-bold text-foreground">{buyerEmail.split('@')[0]}</p>
+                        <p className="text-xs text-muted-foreground">{buyerEmail}</p>
+                        <p className="text-[10px] text-muted-foreground font-mono mt-1">ID: {userId}</p>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        {isVerified ? (
+                          <span className="px-3 py-1.5 bg-success/10 text-success text-xs font-bold rounded-lg">✓ Verificado</span>
+                        ) : (
+                          <>
+                            <button 
+                              onClick={() => { 
+                                verifyUser(userId); 
+                                toast.success("Usuário verificado! Agora pode criar produtos e sacar."); 
+                              }} 
+                              className="px-3 py-1.5 bg-success text-white text-xs font-bold rounded-lg hover:bg-success/90 transition"
+                            >
+                              Aprovar
+                            </button>
+                            <button className="px-3 py-1.5 bg-destructive/10 text-destructive text-xs font-bold rounded-lg hover:bg-destructive/20 transition">Rejeitar</button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">
+                      <p className="font-semibold mb-1">Status: Documentos Enviados</p>
+                      <p>Aguardando verificação do administrador</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -284,7 +307,7 @@ export default function AdminView() {
         </div>
       )}
 
-      {/* Other tabs remain largely the same but with UI tweaks... */}
+      {/* Users Tab */}
       {tab === "users" && (
         <div className="glass-card p-6 space-y-4">
           <h3 className="font-bold text-foreground mb-4">Gerenciar Usuários</h3>

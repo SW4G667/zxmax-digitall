@@ -17,7 +17,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const [uploading, setUploading] = useState<"image" | "banner" | null>(null);
   const [form, setForm] = useState({
     name: "", category: state.config.categories[0] || "", description: "", price: "",
-    image: "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=400",
+    image: "",
     banner: "",
     deliveryType: "manual" as "auto" | "manual", deliveryContent: "",
   });
@@ -38,9 +38,14 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
 
     setUploading(type);
     try {
+      // Create a local URL for immediate preview
+      const localUrl = URL.createObjectURL(file);
+      setForm(f => ({ ...f, [type]: localUrl }));
+      
+      // Upload to Supabase in background
       const filePath = `products/${state.currentUser!.id}/${Date.now()}_${file.name}`;
       const { error } = await supabase.storage
-        .from("chat-attachments") // Reusing chat-attachments bucket for simplicity as it's public-ish
+        .from("chat-attachments")
         .upload(filePath, file);
 
       if (error) throw error;
@@ -49,8 +54,9 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
         .from("chat-attachments")
         .getPublicUrl(filePath);
 
+      // Update with the permanent URL
       setForm(f => ({ ...f, [type]: publicUrl }));
-      toast.success(`${type === "image" ? "Imagem" : "Banner"} enviado!`);
+      toast.success(`${type === "image" ? "Imagem" : "Banner"} enviado com sucesso!`);
     } catch (err: any) {
       toast.error("Erro no upload: " + err.message);
     }
@@ -71,7 +77,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     });
     toast.success("Produto criado! Aguardando aprovação do admin.");
     setShowForm(false);
-    setForm({ name: "", category: state.config.categories[0] || "", description: "", price: "", image: "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=400", banner: "", deliveryType: "manual", deliveryContent: "" });
+    setForm({ name: "", category: state.config.categories[0] || "", description: "", price: "", image: "", banner: "", deliveryType: "manual", deliveryContent: "" });
     setVariations([]);
   };
 
@@ -114,7 +120,16 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                     onClick={() => imageInputRef.current?.click()}
                     className="aspect-square bg-muted rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer hover:border-primary transition overflow-hidden"
                   >
-                    {uploading === "image" ? <Clock className="animate-spin" /> : form.image ? <img src={form.image} className="w-full h-full object-cover" /> : <Upload />}
+                    {uploading === "image" ? (
+                      <Clock className="animate-spin" />
+                    ) : form.image ? (
+                      <img src={form.image} className="w-full h-full object-cover" alt="Preview" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                        <Upload className="w-6 h-6" />
+                        <span className="text-xs">Clique para enviar</span>
+                      </div>
+                    )}
                   </div>
                   <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, "image")} />
                 </div>
@@ -124,7 +139,16 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                     onClick={() => bannerInputRef.current?.click()}
                     className="aspect-square bg-muted rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer hover:border-primary transition overflow-hidden"
                   >
-                    {uploading === "banner" ? <Clock className="animate-spin" /> : form.banner ? <img src={form.banner} className="w-full h-full object-cover" /> : <Upload />}
+                    {uploading === "banner" ? (
+                      <Clock className="animate-spin" />
+                    ) : form.banner ? (
+                      <img src={form.banner} className="w-full h-full object-cover" alt="Preview" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                        <Upload className="w-6 h-6" />
+                        <span className="text-xs">Clique para enviar</span>
+                      </div>
+                    )}
                   </div>
                   <input ref={bannerInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, "banner")} />
                 </div>
