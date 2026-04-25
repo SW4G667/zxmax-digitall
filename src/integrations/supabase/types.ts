@@ -62,6 +62,75 @@ export type Database = {
         }
         Relationships: []
       }
+      products: {
+        Row: {
+          approved: boolean
+          banner: string | null
+          category: string
+          created_at: string
+          delivery_content: string | null
+          delivery_type: string
+          description: string
+          id: number
+          image: string
+          name: string
+          price: number
+          questions: Json
+          rating: number
+          sales: number
+          seller_email: string
+          seller_id: string
+          seller_name: string
+          seller_public_id: string
+          updated_at: string
+          variations: Json
+        }
+        Insert: {
+          approved?: boolean
+          banner?: string | null
+          category?: string
+          created_at?: string
+          delivery_content?: string | null
+          delivery_type?: string
+          description?: string
+          id?: number
+          image?: string
+          name: string
+          price?: number
+          questions?: Json
+          rating?: number
+          sales?: number
+          seller_email?: string
+          seller_id: string
+          seller_name?: string
+          seller_public_id?: string
+          updated_at?: string
+          variations?: Json
+        }
+        Update: {
+          approved?: boolean
+          banner?: string | null
+          category?: string
+          created_at?: string
+          delivery_content?: string | null
+          delivery_type?: string
+          description?: string
+          id?: number
+          image?: string
+          name?: string
+          price?: number
+          questions?: Json
+          rating?: number
+          sales?: number
+          seller_email?: string
+          seller_id?: string
+          seller_name?: string
+          seller_public_id?: string
+          updated_at?: string
+          variations?: Json
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -101,6 +170,66 @@ export type Database = {
           public_id?: number
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      purchases: {
+        Row: {
+          amount: number
+          buyer_email: string
+          buyer_id: string
+          buyer_public_id: string
+          created_at: string
+          id: number
+          messages: Json
+          product_id: number
+          review_comment: string | null
+          review_stars: number | null
+          reviewed: boolean
+          seller_email: string
+          seller_id: string
+          seller_public_id: string
+          status: string
+          updated_at: string
+          variation_name: string | null
+        }
+        Insert: {
+          amount?: number
+          buyer_email?: string
+          buyer_id: string
+          buyer_public_id?: string
+          created_at?: string
+          id?: number
+          messages?: Json
+          product_id: number
+          review_comment?: string | null
+          review_stars?: number | null
+          reviewed?: boolean
+          seller_email?: string
+          seller_id: string
+          seller_public_id?: string
+          status?: string
+          updated_at?: string
+          variation_name?: string | null
+        }
+        Update: {
+          amount?: number
+          buyer_email?: string
+          buyer_id?: string
+          buyer_public_id?: string
+          created_at?: string
+          id?: number
+          messages?: Json
+          product_id?: number
+          review_comment?: string | null
+          review_stars?: number | null
+          reviewed?: boolean
+          seller_email?: string
+          seller_id?: string
+          seller_public_id?: string
+          status?: string
+          updated_at?: string
+          variation_name?: string | null
         }
         Relationships: []
       }
@@ -223,6 +352,45 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+        }
+        Relationships: []
+      }
+      withdrawals: {
+        Row: {
+          amount: number
+          created_at: string
+          id: number
+          method: string
+          pix_key: string
+          status: string
+          updated_at: string
+          user_email: string
+          user_id: string
+          user_public_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          id?: number
+          method?: string
+          pix_key?: string
+          status?: string
+          updated_at?: string
+          user_email?: string
+          user_id: string
+          user_public_id?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: number
+          method?: string
+          pix_key?: string
+          status?: string
+          updated_at?: string
+          user_email?: string
+          user_id?: string
+          user_public_id?: string
         }
         Relationships: []
       }
