@@ -248,6 +248,8 @@ function loadState(): AppState {
         userTagAssignments: {},
         userBalances: parsed.userBalances || {},
         userEarnings: parsed.userEarnings || {},
+        sellerDocuments: parsed.sellerDocuments || [],
+        userDirectory: parsed.userDirectory || {},
         ...parsed,
         config: {
           ...defaultConfig,
@@ -281,8 +283,12 @@ function loadState(): AppState {
     userTagAssignments: {},
     userBalances: {},
     userEarnings: {},
+    sellerDocuments: [],
+    userDirectory: {},
   };
 }
+
+const publicIdFromProfile = (profile: any, fallback: string) => String(profile?.public_id || fallback.replace(/\D/g, "").slice(0, 8) || "100000");
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { user: authUser, profile, isAdmin, signOut } = useAuth();
