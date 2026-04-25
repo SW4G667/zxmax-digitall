@@ -346,7 +346,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!state.currentUser) return;
     setState((s) => ({
       ...s,
-      products: [...s.products, { ...p, id: Date.now(), sales: 0, rating: 0, approved: false, sellerId: state.currentUser!.id }],
+      products: [...s.products, { ...p, id: Date.now(), sales: 0, rating: 0, approved: false, sellerId: state.currentUser!.id, sellerPublicId: state.currentUser!.publicId }],
     }));
   };
 
@@ -371,8 +371,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       productId: id,
       buyerEmail: state.currentUser.email,
       buyerId: state.currentUser.id,
+      buyerPublicId: state.currentUser.publicId,
       sellerEmail: product.sellerEmail,
       sellerId: product.sellerId,
+      sellerPublicId: product.sellerPublicId || state.userDirectory?.[product.sellerId]?.publicId,
       status: "pending",
       createdAt: new Date().toISOString(),
       amount: variation ? variation.price : product.price,
