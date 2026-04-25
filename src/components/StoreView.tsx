@@ -52,10 +52,10 @@ export default function StoreView() {
       return;
     }
 
-    buyProduct(product.id, selectedVariation || undefined);
-
     setBuyLoading(true);
     try {
+      const purchaseId = await buyProduct(product.id, selectedVariation || undefined);
+      if (!purchaseId) throw new Error("Não foi possível registrar a compra.");
       const { supabase } = await import("@/integrations/supabase/client");
       const { data, error } = await supabase.functions.invoke("create-abacatepay-checkout", {
         body: {
