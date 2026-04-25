@@ -397,17 +397,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const approveProduct = (id: number) =>
+  const approveProduct = (id: number) => {
+    void (supabase as any).from("products").update({ approved: true }).eq("id", id);
     setState((s) => ({
       ...s,
       products: s.products.map((p) => (p.id === id ? { ...p, approved: true } : p)),
     }));
+  };
 
-  const rejectProduct = (id: number) =>
+  const rejectProduct = (id: number) => {
+    void (supabase as any).from("products").delete().eq("id", id);
     setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
+  };
 
-  const deleteProduct = (id: number) =>
+  const deleteProduct = (id: number) => {
+    void (supabase as any).from("products").delete().eq("id", id);
     setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
+  };
 
   const buyProduct = async (id: number, variation?: ProductVariation) => {
     const product = state.products.find((p) => p.id === id);
@@ -489,17 +495,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       };
     });
 
-  const approvePurchase = (id: number) =>
+  const approvePurchase = (id: number) => {
+    void (supabase as any).from("purchases").update({ status: "delivered" }).eq("id", id);
     setState((s) => ({
       ...s,
       purchases: s.purchases.map((p) => (p.id === id ? { ...p, status: "delivered" as const } : p)),
     }));
+  };
 
-  const revertPurchase = (id: number) =>
+  const revertPurchase = (id: number) => {
+    void (supabase as any).from("purchases").update({ status: "pending" }).eq("id", id);
     setState((s) => ({
       ...s,
       purchases: s.purchases.map((p) => (p.id === id ? { ...p, status: "pending" as const } : p)),
     }));
+  };
 
   const requestWithdraw = (method: "normal" | "instant") => {
     if (!state.currentUser || state.currentUser.balance <= 0) return;
