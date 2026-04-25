@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 export interface User {
   id: string;
+  publicId: string;
   email: string;
   name: string;
   balance: number;
@@ -49,6 +50,7 @@ export interface Product {
   seller: string;
   sellerEmail: string;
   sellerId: string;
+  sellerPublicId?: string;
   sales: number;
   rating: number;
   image: string;
@@ -72,8 +74,10 @@ export interface Purchase {
   productId: number;
   buyerEmail: string;
   buyerId: string;
+  buyerPublicId?: string;
   sellerEmail: string;
   sellerId: string;
+  sellerPublicId?: string;
   status: "pending" | "paid" | "delivered" | "dispute";
   createdAt: string;
   amount: number;
@@ -109,6 +113,24 @@ export interface UserTag {
   color: string; // hex or hsl
 }
 
+export interface SellerDocument {
+  id: string;
+  userId: string;
+  userPublicId: string;
+  userEmail: string;
+  filePath: string;
+  fileName: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+}
+
+export interface UserDirectoryEntry {
+  userId: string;
+  publicId: string;
+  email: string;
+  name: string;
+}
+
 export interface AppConfig {
   commission: number;
   instantFee: number;
@@ -141,6 +163,8 @@ interface AppState {
   userTagAssignments: Record<string, number[]>; // email -> tagIds
   userBalances: Record<string, number>;
   userEarnings: Record<string, number>;
+  sellerDocuments: SellerDocument[];
+  userDirectory: Record<string, UserDirectoryEntry>;
 }
 
 interface StoreContextType {
@@ -160,8 +184,8 @@ interface StoreContextType {
   rejectWithdraw: (id: number) => void;
   updateConfig: (c: Partial<AppConfig>) => void;
   updateProfile: (name: string) => void;
-  banUser: (identifier: string, reason?: string) => void;
-  unbanUser: (identifier: string) => void;
+  banUser: (identifier: string, reason?: string) => Promise<boolean>;
+  unbanUser: (identifier: string) => Promise<boolean>;
   addTicket: (subject: string, message: string) => void;
   replyTicket: (id: number, text: string) => void;
   closeTicket: (id: number) => void;
@@ -182,6 +206,8 @@ interface StoreContextType {
   assignUserTag: (email: string, tagId: number) => void;
   unassignUserTag: (email: string, tagId: number) => void;
   verifyUser: (userId: string) => void;
+  submitSellerDocument: (filePath: string, fileName: string) => void;
+  reviewSellerDocument: (documentId: string, status: "approved" | "rejected") => void;
   isDark: boolean;
   toggleDark: () => void;
 }
