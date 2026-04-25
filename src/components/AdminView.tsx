@@ -422,16 +422,31 @@ export default function AdminView() {
       {tab === "users" && (
         <div className="glass-card p-6 space-y-4">
           <h3 className="font-bold text-foreground mb-4">Gerenciar Usuários</h3>
-          <div className="flex gap-2">
-            <input id="ban-input" placeholder="Email ou ID para banir" className="flex-1 p-3 rounded-xl bg-muted border-none text-sm" />
-            <button onClick={() => { const val = (document.getElementById("ban-input") as HTMLInputElement).value; if(val) { banUser(val); toast.success("Banido!"); } }} className="bg-destructive text-white px-4 py-2 rounded-xl text-xs font-bold">Banir</button>
+          <div className="grid gap-2">
+            <input value={banIdentifier} onChange={(e) => setBanIdentifier(e.target.value)} placeholder="ID numérico do usuário" className="w-full p-3 rounded-xl bg-muted border-none text-sm text-foreground" />
+            <textarea value={banReason} onChange={(e) => setBanReason(e.target.value)} placeholder="Motivo do banimento" rows={3} className="w-full p-3 rounded-xl bg-muted border-none text-sm text-foreground resize-none" />
+            <button onClick={handleBan} className="bg-destructive text-white px-4 py-3 rounded-xl text-xs font-bold">Banir Usuário</button>
+          </div>
+          <div className="pt-4 border-t border-border/30">
+            <p className="text-xs font-bold text-muted-foreground uppercase mb-2">Usuários conhecidos:</p>
+            <div className="grid gap-2 max-h-64 overflow-y-auto">
+              {Object.values(state.userDirectory || {}).map((u) => (
+                <div key={u.userId} className="bg-muted/60 rounded-xl p-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-foreground truncate">{u.name}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono">ID: {u.publicId}</p>
+                  </div>
+                  <button onClick={() => { setBanIdentifier(u.publicId); setBanReason("Violação das regras da plataforma"); }} className="text-[10px] font-bold text-destructive bg-destructive/10 px-2 py-1 rounded-lg">Preparar Ban</button>
+                </div>
+              ))}
+            </div>
           </div>
           <div className="pt-4">
             <p className="text-xs font-bold text-muted-foreground uppercase mb-2">Banidos:</p>
             <div className="flex flex-wrap gap-2">
               {state.bannedUsers.map(u => (
                 <span key={u} className="bg-destructive/10 text-destructive px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-2">
-                  {u} <button onClick={() => unbanUser(u)}><X className="w-3 h-3"/></button>
+                  {u} <button onClick={async () => { const ok = await unbanUser(u); ok ? toast.success("Desbanido.") : toast.error("Não foi possível desbanir."); }}><X className="w-3 h-3"/></button>
                 </span>
               ))}
             </div>
