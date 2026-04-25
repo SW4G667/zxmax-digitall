@@ -727,6 +727,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  const submitSellerDocument = (filePath: string, fileName: string) => {
+    if (!state.currentUser) return;
+    const doc: SellerDocument = { id: String(Date.now()), userId: state.currentUser.id, userPublicId: state.currentUser.publicId, userEmail: state.currentUser.email, filePath, fileName, status: "pending", createdAt: new Date().toISOString() };
+    void (supabase as any).from("seller_documents").insert({ user_id: doc.userId, file_path: filePath, file_name: fileName, document_type: "rg_ou_certidao", status: "pending" });
+    setState(s => ({ ...s, sellerDocuments: [doc, ...(s.sellerDocuments || [])] }));
+  };
+
+  const reviewSellerDocument = (documentId: string, status: "approved" | "rejected") => {
+    void (supabase as any).from("seller_documents").update({ status, reviewed_by: authUser?.id, reviewed_at: new Date().toISOString() }).eq("id", documentId);
+    setState(s => ({ ...s, sellerDocuments: (s.sellerDocuments || []).map(d => d.id === documentId ? { ...d, status } : d) }));
+  };
+
   const toggleDark = () => setIsDark((d) => !d);
 
   return (
@@ -740,7 +752,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
         addProductQuestion, answerProductQuestion,
         deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
-        verifyUser, isDark, toggleDark,
+        verifyUser, submitSellerDocument, reviewSellerDocument, isDark, toggleDark,
       }}
     >
       {children}
