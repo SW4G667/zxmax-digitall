@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { useStore, Product, Withdrawal, Purchase } from "@/store/StoreContext";
 import { MoneyEmoji, PackageEmoji, ChatEmoji, StarEmoji, ShieldEmoji } from "@/components/CustomEmojis";
-import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag } from "lucide-react";
+import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag, ArrowLeft, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import MyPurchasesView from "@/components/MyPurchasesView";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function AdminView() {
-  const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser } = useStore();
+  const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument } = useStore();
   const [tab, setTab] = useState<"products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "disputes" | "config">("products");
   const [notice, setNotice] = useState("");
   const [chatMsg, setChatMsg] = useState("");
@@ -28,12 +30,16 @@ export default function AdminView() {
   const [abacatepayApiKey, setAbacatepayApiKey] = useState(state.config.abacatepayApiKey);
   // Auth mode
   const [authMode, setAuthMode] = useState(state.config.authMode);
+  const [banIdentifier, setBanIdentifier] = useState("");
+  const [banReason, setBanReason] = useState("");
+  const [selectedDisputeId, setSelectedDisputeId] = useState<number | null>(null);
 
   const pendingProducts = state.products.filter((p) => !p.approved);
   const pendingWithdrawals = state.withdrawals.filter((w) => w.status === "pending");
   const adminMessages = state.adminChat || [];
   const globalNotices = state.globalNotices || [];
   const disputes = state.purchases.filter(p => p.status === "dispute");
+  const pendingDocuments = (state.sellerDocuments || []).filter(d => d.status === "pending");
 
   const handleSaveConfig = () => {
     updateConfig({
@@ -45,6 +51,32 @@ export default function AdminView() {
     });
     toast.success("Configurações salvas!");
   };
+
+  const handleBan = async () => {
+    if (!banIdentifier.trim()) return toast.error("Digite o ID numérico do usuário.");
+    const ok = await banUser(banIdentifier.trim(), banReason.trim() || "Violação das regras da plataforma");
+    if (!ok) return toast.error("Não foi possível banir. Confira o ID numérico.");
+    toast.success("Usuário banido.");
+    setBanIdentifier("");
+    setBanReason("");
+  };
+
+  const openDocument = async (path: string) => {
+    const { data, error } = await supabase.storage.from("documents").createSignedUrl(path, 60 * 5);
+    if (error || !data?.signedUrl) return toast.error("Não foi possível abrir o documento.");
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  };
+
+  if (selectedDisputeId) {
+    return (
+      <div className="animate-fade-in-up pb-20">
+        <button onClick={() => setSelectedDisputeId(null)} className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Voltar para disputas
+        </button>
+        <MyPurchasesView initialSelectedId={selectedDisputeId} />
+      </div>
+    );
+  }
 
 
   return (
@@ -60,7 +92,7 @@ export default function AdminView() {
           { id: "products", label: "Produtos", icon: PackageEmoji, count: pendingProducts.length },
           { id: "withdrawals", label: "Saques", icon: MoneyEmoji, count: pendingWithdrawals.length },
           { id: "disputes", label: "Disputas", icon: ShieldAlert, count: disputes.length },
-          { id: "documents", label: "Documentos", icon: FileText, count: 0 },
+          { id: "documents", label: "Documentos", icon: FileText, count: pendingDocuments.length },
           { id: "users", label: "Usuários", icon: Users },
           { id: "notices", label: "Avisos", icon: StarEmoji },
           { id: "adminchat", label: "Chat Equipe", icon: ChatEmoji },
@@ -159,10 +191,10 @@ export default function AdminView() {
                     <p className="text-xs font-bold text-muted-foreground uppercase mb-1">Última Mensagem:</p>
                     <p className="text-sm text-foreground italic">"{d.messages[d.messages.length - 1]?.text || "Sem mensagens"}"</p>
                   </div>
-                  <div className="flex gap-2">
-                    <button className="flex-1 py-2 bg-primary/10 text-primary text-xs font-bold rounded-xl">Entrar no Chat</button>
-                    <button className="flex-1 py-2 bg-success/10 text-success text-xs font-bold rounded-xl">Resolver p/ Vendedor</button>
-                    <button className="flex-1 py-2 bg-destructive/10 text-destructive text-xs font-bold rounded-xl">Reembolsar Comprador</button>
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => setSelectedDisputeId(d.id)} className="flex-1 min-w-[120px] py-2 bg-primary/10 text-primary text-xs font-bold rounded-xl">Entrar no Chat</button>
+                    <button onClick={() => { approvePurchase(d.id); toast.success("Disputa resolvida para o vendedor."); }} className="flex-1 min-w-[120px] py-2 bg-success/10 text-success text-xs font-bold rounded-xl">Resolver p/ Vendedor</button>
+                    <button onClick={() => { revertPurchase(d.id); toast.success("Compra voltou para pendente/reembolso manual."); }} className="flex-1 min-w-[120px] py-2 bg-destructive/10 text-destructive text-xs font-bold rounded-xl">Reembolsar Comprador</button>
                   </div>
                 </div>
               );
@@ -176,30 +208,26 @@ export default function AdminView() {
         <div className="glass-card p-6">
           <h3 className="font-bold text-foreground mb-4">Verificação de Documentos</h3>
           <p className="text-sm text-muted-foreground mb-6">Aprove documentos para liberar a função de saque para os usuários.</p>
-          
-          {/* Mock list of users who uploaded docs but aren't verified */}
           <div className="space-y-4">
-            <div className="p-4 bg-muted rounded-xl border border-border/40">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="font-bold text-foreground">Usuário de Teste</p>
-                  <p className="text-xs text-muted-foreground">usuario@exemplo.com</p>
+            {(state.sellerDocuments || []).length === 0 ? (
+              <p className="text-center text-xs text-muted-foreground py-10">Nenhum documento enviado ainda.</p>
+            ) : (state.sellerDocuments || []).map((doc) => (
+              <div key={doc.id} className="p-4 bg-muted rounded-xl border border-border/40">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="min-w-0">
+                    <p className="font-bold text-foreground truncate">{doc.userEmail || "Usuário"}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono">ID: {doc.userPublicId}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{doc.fileName}</p>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${doc.status === "approved" ? "bg-success/10 text-success" : doc.status === "rejected" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>{doc.status}</span>
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={() => { verifyUser("test-id"); toast.success("Usuário verificado!"); }} className="px-3 py-1.5 bg-success text-white text-xs font-bold rounded-lg">Aprovar</button>
-                  <button className="px-3 py-1.5 bg-destructive/10 text-destructive text-xs font-bold rounded-lg">Rejeitar</button>
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={() => openDocument(doc.filePath)} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1"><ExternalLink className="w-3 h-3" /> Abrir</button>
+                  <button onClick={() => { reviewSellerDocument(doc.id, "approved"); verifyUser(doc.userId); toast.success("Documento aprovado!"); }} className="px-3 py-2 bg-success text-white text-xs font-bold rounded-lg">Aprovar</button>
+                  <button onClick={() => { reviewSellerDocument(doc.id, "rejected"); toast.error("Documento rejeitado."); }} className="px-3 py-2 bg-destructive/10 text-destructive text-xs font-bold rounded-lg">Rejeitar</button>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="aspect-video bg-card rounded-lg flex items-center justify-center border border-border">
-                  <p className="text-[10px] text-muted-foreground">Frente RG</p>
-                </div>
-                <div className="aspect-video bg-card rounded-lg flex items-center justify-center border border-border">
-                  <p className="text-[10px] text-muted-foreground">Verso RG</p>
-                </div>
-              </div>
-            </div>
-            <p className="text-center text-xs text-muted-foreground py-10">Fim da lista de documentos.</p>
+            ))}
           </div>
         </div>
       )}
@@ -394,16 +422,31 @@ export default function AdminView() {
       {tab === "users" && (
         <div className="glass-card p-6 space-y-4">
           <h3 className="font-bold text-foreground mb-4">Gerenciar Usuários</h3>
-          <div className="flex gap-2">
-            <input id="ban-input" placeholder="Email ou ID para banir" className="flex-1 p-3 rounded-xl bg-muted border-none text-sm" />
-            <button onClick={() => { const val = (document.getElementById("ban-input") as HTMLInputElement).value; if(val) { banUser(val); toast.success("Banido!"); } }} className="bg-destructive text-white px-4 py-2 rounded-xl text-xs font-bold">Banir</button>
+          <div className="grid gap-2">
+            <input value={banIdentifier} onChange={(e) => setBanIdentifier(e.target.value)} placeholder="ID numérico do usuário" className="w-full p-3 rounded-xl bg-muted border-none text-sm text-foreground" />
+            <textarea value={banReason} onChange={(e) => setBanReason(e.target.value)} placeholder="Motivo do banimento" rows={3} className="w-full p-3 rounded-xl bg-muted border-none text-sm text-foreground resize-none" />
+            <button onClick={handleBan} className="bg-destructive text-white px-4 py-3 rounded-xl text-xs font-bold">Banir Usuário</button>
+          </div>
+          <div className="pt-4 border-t border-border/30">
+            <p className="text-xs font-bold text-muted-foreground uppercase mb-2">Usuários conhecidos:</p>
+            <div className="grid gap-2 max-h-64 overflow-y-auto">
+              {Object.values(state.userDirectory || {}).map((u) => (
+                <div key={u.userId} className="bg-muted/60 rounded-xl p-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-foreground truncate">{u.name}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono">ID: {u.publicId}</p>
+                  </div>
+                  <button onClick={() => { setBanIdentifier(u.publicId); setBanReason("Violação das regras da plataforma"); }} className="text-[10px] font-bold text-destructive bg-destructive/10 px-2 py-1 rounded-lg">Preparar Ban</button>
+                </div>
+              ))}
+            </div>
           </div>
           <div className="pt-4">
             <p className="text-xs font-bold text-muted-foreground uppercase mb-2">Banidos:</p>
             <div className="flex flex-wrap gap-2">
               {state.bannedUsers.map(u => (
                 <span key={u} className="bg-destructive/10 text-destructive px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-2">
-                  {u} <button onClick={() => unbanUser(u)}><X className="w-3 h-3"/></button>
+                  {u} <button onClick={async () => { const ok = await unbanUser(u); ok ? toast.success("Desbanido.") : toast.error("Não foi possível desbanir."); }}><X className="w-3 h-3"/></button>
                 </span>
               ))}
             </div>

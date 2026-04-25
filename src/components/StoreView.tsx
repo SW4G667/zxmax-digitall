@@ -52,10 +52,10 @@ export default function StoreView() {
       return;
     }
 
-    buyProduct(product.id, selectedVariation || undefined);
-
     setBuyLoading(true);
     try {
+      const purchaseId = await buyProduct(product.id, selectedVariation || undefined);
+      if (!purchaseId) throw new Error("Não foi possível registrar a compra.");
       const { supabase } = await import("@/integrations/supabase/client");
       const { data, error } = await supabase.functions.invoke("create-abacatepay-checkout", {
         body: {
@@ -176,7 +176,7 @@ export default function StoreView() {
                   <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(product.seller)}`} className="w-12 h-12 rounded-full bg-primary/10 border-2 border-card shadow" alt={product.seller} />
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-foreground text-sm">{product.seller}</p>
-                    <p className="text-[10px] text-muted-foreground font-mono truncate">ID: {product.sellerId}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono truncate">ID: {product.sellerPublicId || state.userDirectory?.[product.sellerId]?.publicId || "indisponível"}</p>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <div className="flex items-center gap-0.5">
                         <StarEmoji className="w-3.5 h-3.5" />
