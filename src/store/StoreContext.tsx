@@ -646,14 +646,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
 
   const sendPurchaseMessage = (purchaseId: number, from: string, text: string) =>
-    setState((s) => ({
-      ...s,
-      purchases: s.purchases.map((p) =>
+    setState((s) => {
+      const nextPurchases = s.purchases.map((p) =>
         p.id === purchaseId
           ? { ...p, messages: [...(p.messages || []), { from, text, date: new Date().toISOString() }] }
           : p
-      ),
-    }));
+      );
+      const updated = nextPurchases.find((p) => p.id === purchaseId);
+      if (updated) void (supabase as any).from("purchases").update({ messages: updated.messages }).eq("id", purchaseId);
+      return {
+      ...s,
+      purchases: nextPurchases,
+      };
+    });
 
   const confirmDelivery = (purchaseId: number) =>
     setState((s) => ({
@@ -664,12 +669,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
 
   const openDispute = (purchaseId: number, reason: string) =>
-    setState((s) => ({
-      ...s,
-      purchases: s.purchases.map((p) =>
+    setState((s) => {
+      const nextPurchases = s.purchases.map((p) =>
         p.id === purchaseId ? { ...p, status: "dispute" as const, messages: [...(p.messages || []), { from: "System", text: `⚠️ DISPUTA ABERTA: ${reason}`, date: new Date().toISOString() }] } : p
-      ),
-    }));
+      );
+      const updated = nextPurchases.find((p) => p.id === purchaseId);
+      if (updated) void (supabase as any).from("purchases").update({ status: "dispute", messages: updated.messages }).eq("id", purchaseId);
+      return {
+      ...s,
+      purchases: nextPurchases,
+      };
+    });
 
   const reviewPurchase = (purchaseId: number, stars: number, comment: string) =>
     setState((s) => ({
