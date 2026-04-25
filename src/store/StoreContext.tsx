@@ -389,9 +389,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const addProduct = (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => {
     if (!state.currentUser) return;
+    const newProduct = { ...p, id: Date.now(), sales: 0, rating: 0, approved: false, sellerId: state.currentUser.id, sellerPublicId: state.currentUser.publicId };
+    void (supabase as any).from("products").insert({ seller_id: newProduct.sellerId, seller_public_id: newProduct.sellerPublicId, seller_email: newProduct.sellerEmail, seller_name: newProduct.seller, name: newProduct.name, price: newProduct.price, category: newProduct.category, image: newProduct.image, banner: newProduct.banner || null, description: newProduct.description, approved: false, delivery_type: newProduct.deliveryType, delivery_content: newProduct.deliveryContent || null, variations: newProduct.variations || [], questions: newProduct.questions || [] });
     setState((s) => ({
       ...s,
-      products: [...s.products, { ...p, id: Date.now(), sales: 0, rating: 0, approved: false, sellerId: state.currentUser!.id, sellerPublicId: state.currentUser!.publicId }],
+      products: [...s.products, newProduct],
     }));
   };
 
@@ -407,9 +409,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const deleteProduct = (id: number) =>
     setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
 
-  const buyProduct = (id: number, variation?: ProductVariation) => {
+  const buyProduct = async (id: number, variation?: ProductVariation) => {
     const product = state.products.find((p) => p.id === id);
-    if (!product || !state.currentUser) return;
+    if (!product || !state.currentUser) return null;
     
     const purchase: Purchase = {
       id: Date.now(),
@@ -427,10 +429,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       reviewed: false,
       variationName: variation?.name,
     };
-    setState((s) => ({
-      ...s,
-      purchases: [...s.purchases, purchase],
-    }));
+    const { data } = await (supabase as any).from("purchases").insert({ product_id: id, buyer_id: purchase.buyerId, buyer_public_id: purchase.buyerPublicId || "", buyer_email: purchase.buyerEmail, seller_id: purchase.sellerId, seller_public_id: purchase.sellerPublicId || "", seller_email: purchase.sellerEmail, status: "pending", amount: purchase.amount, messages: [], variation_name: purchase.variationName || null }).select("id, created_at").maybeSingle();
+    const finalPurchase = data ? { ...purchase, id: Number(data.id), createdAt: data.created_at } : purchase;
+    setState((s) => ({ ...s, purchases: [...s.purchases, finalPurchase] }));
+    return finalPurchase.id;
   };
 
   const markPurchasePaid = (id: number) =>
