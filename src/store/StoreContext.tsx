@@ -300,8 +300,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Sync auth user to store state
   useEffect(() => {
     if (authUser && profile) {
+      const userPublicId = publicIdFromProfile(profile, authUser.id);
       const user: User = {
         id: authUser.id,
+        publicId: userPublicId,
         email: profile.email || authUser.email || "",
         name: profile.display_name || authUser.email?.split("@")[0] || "",
         balance: state.userBalances[authUser.id] || 0,
@@ -311,7 +313,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         pixKey: profile.pix_key || "",
         isVerified: profile.is_verified_seller,
       };
-      setState((s) => ({ ...s, currentUser: user }));
+      setState((s) => ({
+        ...s,
+        currentUser: user,
+        userDirectory: {
+          ...(s.userDirectory || {}),
+          [authUser.id]: { userId: authUser.id, publicId: userPublicId, email: user.email, name: user.name },
+        },
+      }));
     }
   }, [authUser, profile, isAdmin, state.userBalances, state.userEarnings]);
 
