@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { useStore, Product, Withdrawal, Purchase } from "@/store/StoreContext";
 import { MoneyEmoji, PackageEmoji, ChatEmoji, StarEmoji, ShieldEmoji } from "@/components/CustomEmojis";
-import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag } from "lucide-react";
+import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag, ArrowLeft, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import MyPurchasesView from "@/components/MyPurchasesView";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function AdminView() {
-  const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser } = useStore();
+  const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument } = useStore();
   const [tab, setTab] = useState<"products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "disputes" | "config">("products");
   const [notice, setNotice] = useState("");
   const [chatMsg, setChatMsg] = useState("");
@@ -28,12 +30,16 @@ export default function AdminView() {
   const [abacatepayApiKey, setAbacatepayApiKey] = useState(state.config.abacatepayApiKey);
   // Auth mode
   const [authMode, setAuthMode] = useState(state.config.authMode);
+  const [banIdentifier, setBanIdentifier] = useState("");
+  const [banReason, setBanReason] = useState("");
+  const [selectedDisputeId, setSelectedDisputeId] = useState<number | null>(null);
 
   const pendingProducts = state.products.filter((p) => !p.approved);
   const pendingWithdrawals = state.withdrawals.filter((w) => w.status === "pending");
   const adminMessages = state.adminChat || [];
   const globalNotices = state.globalNotices || [];
   const disputes = state.purchases.filter(p => p.status === "dispute");
+  const pendingDocuments = (state.sellerDocuments || []).filter(d => d.status === "pending");
 
   const handleSaveConfig = () => {
     updateConfig({
@@ -45,6 +51,32 @@ export default function AdminView() {
     });
     toast.success("Configurações salvas!");
   };
+
+  const handleBan = async () => {
+    if (!banIdentifier.trim()) return toast.error("Digite o ID numérico do usuário.");
+    const ok = await banUser(banIdentifier.trim(), banReason.trim() || "Violação das regras da plataforma");
+    if (!ok) return toast.error("Não foi possível banir. Confira o ID numérico.");
+    toast.success("Usuário banido.");
+    setBanIdentifier("");
+    setBanReason("");
+  };
+
+  const openDocument = async (path: string) => {
+    const { data, error } = await supabase.storage.from("documents").createSignedUrl(path, 60 * 5);
+    if (error || !data?.signedUrl) return toast.error("Não foi possível abrir o documento.");
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  };
+
+  if (selectedDisputeId) {
+    return (
+      <div className="animate-fade-in-up pb-20">
+        <button onClick={() => setSelectedDisputeId(null)} className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Voltar para disputas
+        </button>
+        <MyPurchasesView initialSelectedId={selectedDisputeId} />
+      </div>
+    );
+  }
 
 
   return (
