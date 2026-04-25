@@ -116,28 +116,26 @@ serve(async (req) => {
     if (existingUser) {
       console.log("Existing user found:", existingUser.id);
       const userId = existingUser.id;
-      
-      // Generate a session directly for existing user
-      console.log("Generating magic link for existing user...");
-      const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.admin.generateLink({
-        type: "magiclink",
-        email: existingUser.email!,
+
+      const password = crypto.randomUUID();
+      const { error: updateUserError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+        password,
+        email_confirm: true,
+        user_metadata: {
+          ...(existingUser.user_metadata || {}),
+          display_name: displayName,
+          avatar_url: avatarUrl,
+          discord_id: discordUser.id,
+        },
       });
-      
-      if (sessionError) {
-        console.error("Error generating magic link:", sessionError);
-        throw sessionError;
+      if (updateUserError) {
+        console.error("Error updating Discord user:", updateUserError);
+        throw updateUserError;
       }
 
-      const sessionToken = sessionData.properties?.hashed_token || "";
-      const sessionExpiresAt = new Date(Date.now() + 3600000).toISOString();
-
-      console.log("Magic link generated successfully");
       return new Response(JSON.stringify({
         success: true,
-        access_token: sessionToken,
-        expires_at: sessionExpiresAt,
-        token_type: "magiclink",
+        password,
         user: { id: userId, email: existingUser.email, display_name: displayName, avatar_url: avatarUrl },
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
