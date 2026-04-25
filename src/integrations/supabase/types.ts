@@ -72,6 +72,7 @@ export type Database = {
           id: string
           is_verified_seller: boolean
           pix_key: string | null
+          public_id: number
           updated_at: string
           user_id: string
         }
@@ -84,6 +85,7 @@ export type Database = {
           id?: string
           is_verified_seller?: boolean
           pix_key?: string | null
+          public_id?: number
           updated_at?: string
           user_id: string
         }
@@ -96,7 +98,44 @@ export type Database = {
           id?: string
           is_verified_seller?: boolean
           pix_key?: string | null
+          public_id?: number
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      seller_documents: {
+        Row: {
+          created_at: string
+          document_type: string
+          file_name: string
+          file_path: string
+          id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_type?: string
+          file_name?: string
+          file_path: string
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          document_type?: string
+          file_name?: string
+          file_path?: string
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
           user_id?: string
         }
         Relationships: []
