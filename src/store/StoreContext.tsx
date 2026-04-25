@@ -507,30 +507,48 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         : null,
     }));
 
-  const banUser = (identifier: string, reason = "Violação das regras da plataforma") => {
+  const resolveUserId = async (identifier: string) => {
     const normalized = identifier.trim();
-    if (!normalized) return;
+    if (!normalized) return null;
+    if (/^[0-9]+$/.test(normalized)) {
+      const { data } = await supabase.from("profiles").select("user_id").eq("public_id" as any, Number(normalized)).maybeSingle();
+      return (data as any)?.user_id || null;
+    }
+    return normalized;
+  };
 
-    void supabase.from("bans").insert({
-      user_id: normalized,
-      banned_by: authUser?.id || normalized,
+  const banUser = async (identifier: string, reason = "Violação das regras da plataforma") => {
+    const normalized = identifier.trim();
+    if (!normalized) return false;
+    const userId = await resolveUserId(normalized);
+    if (!userId) return false;
+
+    const { error } = await supabase.from("bans").insert({
+      user_id: userId,
+      banned_by: authUser?.id || userId,
       reason,
       active: true,
     });
+    if (error) return false;
 
     setState((s) => ({
       ...s,
       bannedUsers: s.bannedUsers.includes(normalized) ? s.bannedUsers : [...s.bannedUsers, normalized],
     }));
+    return true;
   };
 
-  const unbanUser = (identifier: string) => {
+  const unbanUser = async (identifier: string) => {
     const normalized = identifier.trim();
-    if (!normalized) return;
+    if (!normalized) return false;
+    const userId = await resolveUserId(normalized);
+    if (!userId) return false;
 
-    void supabase.from("bans").update({ active: false }).eq("user_id", normalized).eq("active", true);
+    const { error } = await supabase.from("bans").update({ active: false }).eq("user_id", userId).eq("active", true);
+    if (error) return false;
 
     setState((s) => ({ ...s, bannedUsers: s.bannedUsers.filter((e) => e !== normalized) }));
+    return true;
   };
 
   const addTicket = (subject: string, message: string) => {
