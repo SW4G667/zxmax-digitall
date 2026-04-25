@@ -511,7 +511,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const normalized = identifier.trim();
     if (!normalized) return null;
     if (/^[0-9]+$/.test(normalized)) {
-      const { data } = await supabase.from("profiles").select("user_id").eq("public_id" as any, Number(normalized)).maybeSingle();
+      const { data } = await (supabase as any).from("profiles").select("user_id").eq("public_id", Number(normalized)).maybeSingle();
       return (data as any)?.user_id || null;
     }
     return normalized;
