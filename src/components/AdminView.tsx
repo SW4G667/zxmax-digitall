@@ -92,7 +92,7 @@ export default function AdminView() {
           { id: "products", label: "Produtos", icon: PackageEmoji, count: pendingProducts.length },
           { id: "withdrawals", label: "Saques", icon: MoneyEmoji, count: pendingWithdrawals.length },
           { id: "disputes", label: "Disputas", icon: ShieldAlert, count: disputes.length },
-          { id: "documents", label: "Documentos", icon: FileText, count: 0 },
+          { id: "documents", label: "Documentos", icon: FileText, count: pendingDocuments.length },
           { id: "users", label: "Usuários", icon: Users },
           { id: "notices", label: "Avisos", icon: StarEmoji },
           { id: "adminchat", label: "Chat Equipe", icon: ChatEmoji },
@@ -191,10 +191,10 @@ export default function AdminView() {
                     <p className="text-xs font-bold text-muted-foreground uppercase mb-1">Última Mensagem:</p>
                     <p className="text-sm text-foreground italic">"{d.messages[d.messages.length - 1]?.text || "Sem mensagens"}"</p>
                   </div>
-                  <div className="flex gap-2">
-                    <button className="flex-1 py-2 bg-primary/10 text-primary text-xs font-bold rounded-xl">Entrar no Chat</button>
-                    <button className="flex-1 py-2 bg-success/10 text-success text-xs font-bold rounded-xl">Resolver p/ Vendedor</button>
-                    <button className="flex-1 py-2 bg-destructive/10 text-destructive text-xs font-bold rounded-xl">Reembolsar Comprador</button>
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => setSelectedDisputeId(d.id)} className="flex-1 min-w-[120px] py-2 bg-primary/10 text-primary text-xs font-bold rounded-xl">Entrar no Chat</button>
+                    <button onClick={() => { approvePurchase(d.id); toast.success("Disputa resolvida para o vendedor."); }} className="flex-1 min-w-[120px] py-2 bg-success/10 text-success text-xs font-bold rounded-xl">Resolver p/ Vendedor</button>
+                    <button onClick={() => { revertPurchase(d.id); toast.success("Compra voltou para pendente/reembolso manual."); }} className="flex-1 min-w-[120px] py-2 bg-destructive/10 text-destructive text-xs font-bold rounded-xl">Reembolsar Comprador</button>
                   </div>
                 </div>
               );
