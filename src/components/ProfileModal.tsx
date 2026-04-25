@@ -12,7 +12,7 @@ interface Props {
 }
 
 export default function ProfileModal({ open, onClose }: Props) {
-  const { state, requestWithdraw, logout, updatePixKey } = useStore();
+  const { state, requestWithdraw, logout, updatePixKey, submitSellerDocument } = useStore();
   const { user: authUser, profile, updateProfile: updateAuthProfile, refreshProfile } = useAuth();
   const storeUser = state.currentUser;
   const [editName, setEditName] = useState(profile?.display_name || storeUser?.name || "");
@@ -66,6 +66,7 @@ export default function ProfileModal({ open, onClose }: Props) {
         .upload(filePath, file);
 
       if (error) throw error;
+      submitSellerDocument(filePath, file.name);
       await updateAuthProfile({ document_type: "rg_ou_certidao" });
       toast.success("Documento enviado com sucesso! Aguarde verificação.");
     } catch (err: any) {
@@ -123,7 +124,7 @@ export default function ProfileModal({ open, onClose }: Props) {
                 <button onClick={() => setEditing(true)}><Edit className="w-4 h-4 text-muted-foreground" /></button>
               </div>
             )}
-            <p className="text-muted-foreground text-xs mt-0.5 font-mono break-all">ID: {authUser.id}</p>
+            <p className="text-muted-foreground text-xs mt-0.5 font-mono break-all">ID: {storeUser.publicId}</p>
             {storeUser.isVerified && (
               <p className="text-success text-sm mt-0.5 font-semibold flex items-center gap-1">
                 <Shield className="w-3 h-3" /> Vendedor Verificado
