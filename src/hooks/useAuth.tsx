@@ -5,6 +5,7 @@ import type { User, Session } from "@supabase/supabase-js";
 interface Profile {
   id: string;
   user_id: string;
+  public_id?: number;
   email: string;
   display_name: string;
   avatar_url: string;
@@ -53,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .from("profiles")
       .select("*")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
     if (data) setProfile(data as Profile);
     return data as Profile | null;
   };
@@ -65,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq("user_id", userId)
       .eq("active", true)
       .limit(1)
-      .single();
+      .maybeSingle();
     if (data) {
       setBanned(data as BanInfo);
       return true;
@@ -84,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .select("role")
         .eq("user_id", userId)
         .eq("role", "admin")
-        .single();
+        .maybeSingle();
       
       if (!existingRole) {
         await supabase.from("user_roles").insert({ user_id: userId, role: "admin" });
@@ -97,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .select("role")
       .eq("user_id", userId)
       .eq("role", "admin")
-      .single();
+      .maybeSingle();
     setIsAdmin(!!data);
   };
 
