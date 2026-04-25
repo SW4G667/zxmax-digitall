@@ -325,6 +325,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [authUser, profile, isAdmin, state.userBalances, state.userEarnings]);
 
   useEffect(() => {
+    if (!authUser) return;
+    void (async () => {
+      const { data: profiles } = await (supabase as any).from("profiles").select("user_id, public_id, email, display_name");
+      const directory = ((profiles || []) as any[]).reduce((acc, p) => {
+        acc[p.user_id] = { userId: p.user_id, publicId: String(p.public_id || ""), email: p.email, name: p.display_name || p.email?.split("@")[0] || "Usuário" };
+        return acc;
+      }, {} as Record<string, UserDirectoryEntry>);
+
+      const { data: docs } = await (supabase as any).from("seller_documents").select("id, user_id, file_path, file_name, status, created_at").order("created_at", { ascending: false });
+      const sellerDocuments = ((docs || []) as any[]).map((d) => ({
+        id: d.id,
+        userId: d.user_id,
+        userPublicId: directory[d.user_id]?.publicId || d.user_id,
+        userEmail: directory[d.user_id]?.email || "",
+        filePath: d.file_path,
+        fileName: d.file_name || "Documento",
+        status: d.status || "pending",
+        createdAt: d.created_at,
+      }));
+
+      setState((s) => ({ ...s, userDirectory: { ...(s.userDirectory || {}), ...directory }, sellerDocuments }));
+    })();
+  }, [authUser]);
+
+  useEffect(() => {
     localStorage.setItem("zxmax_state", JSON.stringify(state));
   }, [state]);
 
