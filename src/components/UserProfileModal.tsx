@@ -15,7 +15,8 @@ export default function UserProfileModal({ open, onClose, userEmail }: Props) {
   // Find seller info from products or purchases
   const sellerProduct = state.products.find((p) => p.sellerEmail === userEmail);
   const sellerName = sellerProduct?.seller || userEmail.split("@")[0];
-  const sellerId = sellerProduct?.sellerId || "---";
+  const sellerUuid = sellerProduct?.sellerId || state.purchases.find((p) => p.sellerEmail === userEmail)?.sellerId || "";
+  const sellerId = sellerProduct?.sellerPublicId || state.purchases.find((p) => p.sellerEmail === userEmail)?.sellerPublicId || state.userDirectory?.[sellerUuid]?.publicId || "ID indisponível";
   
   const sellerProducts = state.products.filter((p) => p.sellerEmail === userEmail && p.approved);
   const sellerPurchases = state.purchases.filter((p) => p.sellerEmail === userEmail);

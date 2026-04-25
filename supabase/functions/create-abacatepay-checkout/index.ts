@@ -33,7 +33,7 @@ serve(async (req) => {
     const origin = req.headers.get("origin") || "https://zxmax-digital.lovable.app";
     console.log("Using origin:", origin);
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       frequency: "ONE_TIME",
       methods: ["PIX"],
       products: [
@@ -46,9 +46,11 @@ serve(async (req) => {
       ],
       returnUrl: `${origin}/?payment=success`,
       completionUrl: `${origin}/?payment=success`,
-      customerId: null,
       customer: {
         email: buyerEmail,
+        name: buyerEmail.split("@")[0],
+        cellphone: "11999999999",
+        taxId: "11144477735",
       },
     };
 

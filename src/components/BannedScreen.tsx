@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 
 export default function BannedScreen() {
-  const { user, banned, signOut } = useAuth();
+  const { user, profile, banned, signOut } = useAuth();
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gradient-page">
@@ -17,7 +17,7 @@ export default function BannedScreen() {
         <div className="bg-muted rounded-2xl p-4 mb-6 text-left space-y-2">
           <div>
             <p className="text-[10px] font-bold text-muted-foreground uppercase">Seu ID</p>
-            <p className="text-xs text-foreground font-mono break-all">{user?.id}</p>
+            <p className="text-xs text-foreground font-mono break-all">{profile?.public_id || user?.id}</p>
           </div>
           {banned?.reason && (
             <div>

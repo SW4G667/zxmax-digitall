@@ -14,9 +14,23 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleDiscord = () => {
-    const clientId = "1485093454517371070";
-    const redirectUri = encodeURIComponent(window.location.origin + "/");
-    const scopes = encodeURIComponent("identify email");
+    let cfg: any = {};
+    try {
+      const saved = localStorage.getItem("zxmax_state");
+      if (saved) cfg = JSON.parse(saved)?.config || {};
+    } catch {}
+
+    const clientId = cfg.discordClientId || "1485093454517371070";
+    const redirectBase = cfg.discordRedirectUri || window.location.origin + "/";
+    const scopesValue = cfg.discordScopes || "identify email";
+
+    if (!clientId) {
+      toast.error("Client ID do Discord não configurado.");
+      return;
+    }
+
+    const redirectUri = encodeURIComponent(redirectBase);
+    const scopes = encodeURIComponent(scopesValue);
     window.location.href = `https://discord.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${scopes}`;
   };
 
