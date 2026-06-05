@@ -47,7 +47,7 @@ export default function ProfileModal({ open, onClose }: Props) {
     if (storeUser.balance < 3.50) return toast.error("Saldo mínimo para saque é R$ 3,50.");
     if (!profile?.pix_key && !storeUser.pixKey) return toast.error("Cadastre sua chave Pix antes de solicitar saque.");
     requestWithdraw(method);
-    toast.success("Saque solicitado! Processamento em 7-10 dias úteis.");
+    toast.success("Saque solicitado! Após aprovação do admin, o valor cai em 5 a 7 dias úteis.");
   };
 
   const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -175,7 +175,7 @@ export default function ProfileModal({ open, onClose }: Props) {
           <button onClick={() => handleWithdraw("normal")} className="w-full flex items-center justify-between p-4 bg-foreground text-background rounded-xl font-bold text-sm hover:opacity-90 transition">
             <div className="flex items-center gap-2">
               <MoneyEmoji className="w-5 h-5" />
-              <span>Sacar Saldo (7-10 dias úteis)</span>
+              <span>Solicitar Saque (5 a 7 dias úteis)</span>
             </div>
           </button>
 
