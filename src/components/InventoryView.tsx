@@ -31,36 +31,44 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: "image" | "banner") => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Imagem muito grande. Máximo: 2MB.");
+    if (!file.type.startsWith("image/")) {
+      toast.error("Selecione um arquivo de imagem válido (JPG, PNG, WEBP).");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Imagem muito grande. Máximo: 5MB.");
+      e.target.value = "";
       return;
     }
 
     setUploading(type);
+    // Immediate local preview
+    const localUrl = URL.createObjectURL(file);
+    setForm(f => ({ ...f, [type]: localUrl }));
     try {
-      // Create a local URL for immediate preview
-      const localUrl = URL.createObjectURL(file);
-      setForm(f => ({ ...f, [type]: localUrl }));
-      
-      // Upload to Supabase in background
-      const filePath = `products/${state.currentUser!.id}/${Date.now()}_${file.name}`;
+      const ext = file.name.split(".").pop() || "jpg";
+      const filePath = `${state.currentUser!.id}/${Date.now()}_${type}.${ext}`;
       const { error } = await supabase.storage
-        .from("chat-attachments")
-        .upload(filePath, file);
+        .from("product-images")
+        .upload(filePath, file, { upsert: true, contentType: file.type });
 
       if (error) throw error;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from("chat-attachments")
-        .getPublicUrl(filePath);
+      // Private bucket: generate a long-lived signed URL (1 year) for display
+      const { data, error: signErr } = await supabase.storage
+        .from("product-images")
+        .createSignedUrl(filePath, 60 * 60 * 24 * 365);
+      if (signErr || !data?.signedUrl) throw signErr || new Error("Falha ao gerar URL");
 
-      // Update with the permanent URL
-      setForm(f => ({ ...f, [type]: publicUrl }));
+      setForm(f => ({ ...f, [type]: data.signedUrl }));
       toast.success(`${type === "image" ? "Imagem" : "Banner"} enviado com sucesso!`);
     } catch (err: any) {
-      toast.error("Erro no upload: " + err.message);
+      setForm(f => ({ ...f, [type]: "" }));
+      toast.error("Erro no upload: " + (err?.message || "tente novamente"));
     }
     setUploading(null);
+    e.target.value = "";
   };
 
   const handleCreate = (e: React.FormEvent) => {
