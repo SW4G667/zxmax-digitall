@@ -96,6 +96,7 @@ export interface Withdrawal {
   method: "normal" | "instant";
   status: "pending" | "approved" | "rejected";
   createdAt: string;
+  pixKey?: string;
 }
 
 export interface SupportTicket {
