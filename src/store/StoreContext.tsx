@@ -441,7 +441,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return finalPurchase.id;
   };
 
-  const markPurchasePaid = (id: number) =>
+  const markPurchasePaid = (id: number) => {
+    const existing = state.purchases.find((p) => p.id === id);
+    const prod = existing ? state.products.find((p) => p.id === existing.productId) : null;
+    const isAutoDelivery = prod?.deliveryType === "auto" && !!prod?.deliveryContent;
+    const dbStatus = isAutoDelivery ? "delivered" : "paid";
+    void (async () => {
+      const { data: current } = await (supabase as any).from("purchases").select("messages").eq("id", id).maybeSingle();
+      const baseMessages = Array.isArray(current?.messages) ? current.messages : [];
+      const messages = isAutoDelivery
+        ? [...baseMessages, { from: "System", text: `📦 ENTREGA_AUTO: ${prod?.deliveryContent}`, date: new Date().toISOString() }]
+        : baseMessages;
+      await (supabase as any).from("purchases").update({ status: dbStatus, messages }).eq("id", id);
+    })();
     setState((s) => {
       const purchase = s.purchases.find((p) => p.id === id);
       if (!purchase) return s;
