@@ -50,8 +50,8 @@ export default function StoreView() {
 
     const price = selectedVariation ? selectedVariation.price : product.price;
 
-    if (price < 1) {
-      toast.error("O valor mínimo para pagamento via PIX é R$ 1,00.");
+    if (price < 5) {
+      toast.error("O valor mínimo para pagamento via PIX é R$ 5,00.");
       return;
     }
 
