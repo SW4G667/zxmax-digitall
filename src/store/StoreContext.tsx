@@ -525,17 +525,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const requestWithdraw = (method: "normal" | "instant") => {
+  const requestWithdraw = async (method: "normal" | "instant") => {
     if (!state.currentUser || state.currentUser.balance <= 0) return;
     const fee = method === "instant" ? (state.currentUser.balance * state.config.instantFee) / 100 : 0;
+    const pixKey = profileRef.current?.pix_key || state.currentUser.pixKey || "";
+    const amount = state.currentUser.balance - fee;
+    const userId = state.currentUser.id;
+    const { data } = await (supabase as any)
+      .from("withdrawals")
+      .insert({
+        user_id: userId,
+        user_public_id: String(state.currentUser.publicId || ""),
+        user_email: state.currentUser.email,
+        amount,
+        method,
+        status: "pending",
+        pix_key: pixKey,
+      })
+      .select("id, created_at")
+      .maybeSingle();
     const w: Withdrawal = {
-      id: Date.now(),
+      id: data ? Number(data.id) : Date.now(),
       userEmail: state.currentUser.email,
-      userId: state.currentUser.id,
-      amount: state.currentUser.balance - fee,
+      userId,
+      amount,
       method,
       status: "pending",
-      createdAt: new Date().toISOString(),
+      createdAt: data?.created_at || new Date().toISOString(),
+      pixKey,
     };
     setState((s) => ({
       ...s,
@@ -545,11 +562,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const approveWithdraw = (id: number) =>
+  const approveWithdraw = async (id: number) => {
+    const withdrawal = state.withdrawals.find((w) => w.id === id);
+    if (withdrawal?.pixKey) {
+      const pixType = inferPixType(withdrawal.pixKey);
+      const { data, error } = await supabase.functions.invoke("evopay-withdraw", {
+        body: {
+          amount: withdrawal.amount,
+          pixKey: withdrawal.pixKey,
+          pixType,
+          description: "Saque ZXMAX",
+          clientReference: String(id),
+        },
+      });
+      if (error || data?.error) {
+        throw new Error(data?.error || error?.message || "Erro ao processar saque na EvoPay");
+      }
+    }
+    void (supabase as any).from("withdrawals").update({ status: "approved" }).eq("id", id);
     setState((s) => ({
       ...s,
       withdrawals: s.withdrawals.map((w) => (w.id === id ? { ...w, status: "approved" } : w)),
     }));
+  };
 
   const rejectWithdraw = (id: number) =>
     setState((s) => {
