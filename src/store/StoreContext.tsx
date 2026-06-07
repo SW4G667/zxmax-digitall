@@ -291,6 +291,16 @@ function loadState(): AppState {
 
 const publicIdFromProfile = (profile: any, fallback: string) => String(profile?.public_id || fallback.replace(/\D/g, "").slice(0, 8) || "100000");
 
+const inferPixType = (key: string): string => {
+  const k = (key || "").trim();
+  if (k.includes("@")) return "email";
+  const digits = k.replace(/\D/g, "");
+  if (/^\+?\d{12,13}$/.test(k.replace(/[\s()-]/g, "")) || (digits.length >= 12 && digits.length <= 13)) return "phone";
+  if (digits.length === 11) return "cpf";
+  if (digits.length === 14) return "cnpj";
+  return "random";
+};
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { user: authUser, profile, isAdmin, signOut } = useAuth();
   const [state, setState] = useState<AppState>(loadState);
