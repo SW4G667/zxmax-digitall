@@ -506,6 +506,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           : null,
       };
     });
+  };
 
   const approvePurchase = (id: number) => {
     void (supabase as any).from("purchases").update({ status: "delivered" }).eq("id", id);
