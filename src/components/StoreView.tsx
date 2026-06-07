@@ -4,9 +4,10 @@ import { StarEmoji, FireEmoji, RocketEmoji, ShieldEmoji, ChatEmoji } from "@/com
 import { Search, X, CheckCircle, AlertTriangle, Image as ImageIcon, ShoppingCart, MessageSquare, Star, Info } from "lucide-react";
 import { toast } from "sonner";
 import UserProfileModal from "@/components/UserProfileModal";
+import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
 
 export default function StoreView() {
-  const { state, addProductQuestion, buyProduct } = useStore();
+  const { state, addProductQuestion, buyProduct, markPurchasePaid } = useStore();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Todos");
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
