@@ -528,7 +528,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const requestWithdraw = async (method: "normal" | "instant") => {
     if (!state.currentUser || state.currentUser.balance <= 0) return;
     const fee = method === "instant" ? (state.currentUser.balance * state.config.instantFee) / 100 : 0;
-    const pixKey = profileRef.current?.pix_key || state.currentUser.pixKey || "";
+    const pixKey = (profile as any)?.pix_key || state.currentUser.pixKey || "";
     const amount = state.currentUser.balance - fee;
     const userId = state.currentUser.id;
     const { data } = await (supabase as any)
