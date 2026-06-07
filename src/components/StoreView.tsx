@@ -39,6 +39,8 @@ export default function StoreView() {
     : 0;
 
   const [buyLoading, setBuyLoading] = useState(false);
+  const [pixCharge, setPixCharge] = useState<PixCharge | null>(null);
+  const [paidPurchaseId, setPaidPurchaseId] = useState<number | null>(null);
 
   const handleBuy = async () => {
     if (!product || !state.currentUser) {
@@ -48,8 +50,8 @@ export default function StoreView() {
 
     const price = selectedVariation ? selectedVariation.price : product.price;
 
-    if (price < 0.50) {
-      toast.error("O preço mínimo para pagamento é R$ 0,50.");
+    if (price < 1) {
+      toast.error("O valor mínimo para pagamento via PIX é R$ 1,00.");
       return;
     }
 
@@ -58,23 +60,25 @@ export default function StoreView() {
       const purchaseId = await buyProduct(product.id, selectedVariation || undefined);
       if (!purchaseId) throw new Error("Não foi possível registrar a compra.");
       const { supabase } = await import("@/integrations/supabase/client");
-      const { data, error } = await supabase.functions.invoke("create-abacatepay-checkout", {
+      const { data, error } = await supabase.functions.invoke("create-evopay-pix", {
         body: {
+          purchaseId,
           productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name,
-          priceInCents: Math.round(price * 100),
+          amount: price,
           buyerEmail: state.currentUser.email,
+          buyerName: state.currentUser.name,
         },
       });
 
       if (error) throw error;
 
-      if (data?.url) {
-        toast.success("Redirecionando para pagamento...");
-        window.location.href = data.url;
+      if (data?.qrCodeText) {
+        setPaidPurchaseId(purchaseId);
+        setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? price });
       } else if (data?.error) {
-        toast.error("Erro ao criar sessão de pagamento: " + data.error);
+        toast.error("Erro ao gerar PIX: " + data.error);
       } else {
-        toast.error("Erro ao criar sessão de pagamento. Tente novamente.");
+        toast.error("Erro ao gerar cobrança PIX. Tente novamente.");
       }
     } catch (err: any) {
       toast.error("Erro ao conectar com pagamento: " + (err.message || "Tente novamente."));
@@ -82,6 +86,14 @@ export default function StoreView() {
       setBuyLoading(false);
     }
   };
+
+  const handlePixPaid = () => {
+    if (paidPurchaseId != null) {
+      markPurchasePaid(paidPurchaseId);
+    }
+    toast.success("Pagamento confirmado! Acesse 'Minhas Compras' para ver a entrega.");
+  };
+
 
   const handleSendQuestion = () => {
     if (!question.trim() || !product) return;
