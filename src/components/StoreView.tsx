@@ -345,6 +345,8 @@ export default function StoreView() {
       {selectedSellerEmail && (
         <UserProfileModal open={!!selectedSellerEmail} onClose={() => setSelectedSellerEmail(null)} userEmail={selectedSellerEmail} />
       )}
+
+      <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
     </div>
   );
 }
