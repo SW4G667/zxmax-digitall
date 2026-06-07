@@ -155,9 +155,21 @@ export default function AdminView() {
                   <p className="text-xl font-black text-foreground">R$ {w.amount.toFixed(2)}</p>
                   <p className="text-xs text-muted-foreground mt-1">Usuário: {w.userEmail}</p>
                   <p className="text-[10px] text-muted-foreground font-mono">ID: {w.userId}</p>
+                  <p className="text-[11px] text-foreground mt-1">Chave Pix: <span className="font-mono">{w.pixKey || "—"}</span></p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => { approveWithdraw(w.id); toast.success("Saque aprovado!"); }} className="p-3 bg-success/10 text-success rounded-xl hover:bg-success/20 transition"><Check className="w-5 h-5" /></button>
+                  <button
+                    onClick={async () => {
+                      const tid = toast.loading("Processando saque via PIX...");
+                      try {
+                        await approveWithdraw(w.id);
+                        toast.success("Saque aprovado e enviado via PIX!", { id: tid });
+                      } catch (err: any) {
+                        toast.error("Erro ao processar saque: " + (err?.message || "Tente novamente."), { id: tid });
+                      }
+                    }}
+                    className="p-3 bg-success/10 text-success rounded-xl hover:bg-success/20 transition"
+                  ><Check className="w-5 h-5" /></button>
                   <button onClick={() => { rejectWithdraw(w.id); toast.error("Saque rejeitado."); }} className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition"><X className="w-5 h-5" /></button>
                 </div>
               </div>

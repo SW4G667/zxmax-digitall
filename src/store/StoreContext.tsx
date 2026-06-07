@@ -96,6 +96,7 @@ export interface Withdrawal {
   method: "normal" | "instant";
   status: "pending" | "approved" | "rejected";
   createdAt: string;
+  pixKey?: string;
 }
 
 export interface SupportTicket {
@@ -290,6 +291,16 @@ function loadState(): AppState {
 
 const publicIdFromProfile = (profile: any, fallback: string) => String(profile?.public_id || fallback.replace(/\D/g, "").slice(0, 8) || "100000");
 
+const inferPixType = (key: string): string => {
+  const k = (key || "").trim();
+  if (k.includes("@")) return "email";
+  const digits = k.replace(/\D/g, "");
+  if (/^\+?\d{12,13}$/.test(k.replace(/[\s()-]/g, "")) || (digits.length >= 12 && digits.length <= 13)) return "phone";
+  if (digits.length === 11) return "cpf";
+  if (digits.length === 14) return "cnpj";
+  return "random";
+};
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { user: authUser, profile, isAdmin, signOut } = useAuth();
   const [state, setState] = useState<AppState>(loadState);
@@ -359,7 +370,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ]);
       const products = ((dbProducts || []) as any[]).map((p) => ({ id: Number(p.id), name: p.name, price: Number(p.price), category: p.category, seller: p.seller_name, sellerEmail: p.seller_email, sellerId: p.seller_id, sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0), image: p.image, banner: p.banner || undefined, description: p.description, approved: p.approved, deliveryType: p.delivery_type, deliveryContent: p.delivery_content || undefined, variations: p.variations || [], questions: p.questions || [] })) as Product[];
       const purchases = ((dbPurchases || []) as any[]).map((p) => ({ id: Number(p.id), productId: Number(p.product_id), buyerEmail: p.buyer_email, buyerId: p.buyer_id, buyerPublicId: p.buyer_public_id, sellerEmail: p.seller_email, sellerId: p.seller_id, sellerPublicId: p.seller_public_id, status: p.status, createdAt: p.created_at, amount: Number(p.amount), messages: p.messages || [], reviewed: p.reviewed, reviewStars: p.review_stars || undefined, reviewComment: p.review_comment || undefined, variationName: p.variation_name || undefined })) as Purchase[];
-      const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at })) as Withdrawal[];
+      const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "" })) as Withdrawal[];
       setState((s) => ({
         ...s,
         products: products.length ? products : s.products,
@@ -441,7 +452,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return finalPurchase.id;
   };
 
-  const markPurchasePaid = (id: number) =>
+  const markPurchasePaid = (id: number) => {
+    const existing = state.purchases.find((p) => p.id === id);
+    const prod = existing ? state.products.find((p) => p.id === existing.productId) : null;
+    const isAutoDelivery = prod?.deliveryType === "auto" && !!prod?.deliveryContent;
+    const dbStatus = isAutoDelivery ? "delivered" : "paid";
+    void (async () => {
+      const { data: current } = await (supabase as any).from("purchases").select("messages").eq("id", id).maybeSingle();
+      const baseMessages = Array.isArray(current?.messages) ? current.messages : [];
+      const messages = isAutoDelivery
+        ? [...baseMessages, { from: "System", text: `📦 ENTREGA_AUTO: ${prod?.deliveryContent}`, date: new Date().toISOString() }]
+        : baseMessages;
+      await (supabase as any).from("purchases").update({ status: dbStatus, messages }).eq("id", id);
+    })();
     setState((s) => {
       const purchase = s.purchases.find((p) => p.id === id);
       if (!purchase) return s;
@@ -494,6 +517,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           : null,
       };
     });
+  };
 
   const approvePurchase = (id: number) => {
     void (supabase as any).from("purchases").update({ status: "delivered" }).eq("id", id);
@@ -511,17 +535,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const requestWithdraw = (method: "normal" | "instant") => {
+  const requestWithdraw = async (method: "normal" | "instant") => {
     if (!state.currentUser || state.currentUser.balance <= 0) return;
     const fee = method === "instant" ? (state.currentUser.balance * state.config.instantFee) / 100 : 0;
+    const pixKey = (profile as any)?.pix_key || state.currentUser.pixKey || "";
+    const amount = state.currentUser.balance - fee;
+    const userId = state.currentUser.id;
+    const { data } = await (supabase as any)
+      .from("withdrawals")
+      .insert({
+        user_id: userId,
+        user_public_id: String(state.currentUser.publicId || ""),
+        user_email: state.currentUser.email,
+        amount,
+        method,
+        status: "pending",
+        pix_key: pixKey,
+      })
+      .select("id, created_at")
+      .maybeSingle();
     const w: Withdrawal = {
-      id: Date.now(),
+      id: data ? Number(data.id) : Date.now(),
       userEmail: state.currentUser.email,
-      userId: state.currentUser.id,
-      amount: state.currentUser.balance - fee,
+      userId,
+      amount,
       method,
       status: "pending",
-      createdAt: new Date().toISOString(),
+      createdAt: data?.created_at || new Date().toISOString(),
+      pixKey,
     };
     setState((s) => ({
       ...s,
@@ -531,11 +572,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const approveWithdraw = (id: number) =>
+  const approveWithdraw = async (id: number) => {
+    const withdrawal = state.withdrawals.find((w) => w.id === id);
+    if (withdrawal?.pixKey) {
+      const pixType = inferPixType(withdrawal.pixKey);
+      const { data, error } = await supabase.functions.invoke("evopay-withdraw", {
+        body: {
+          amount: withdrawal.amount,
+          pixKey: withdrawal.pixKey,
+          pixType,
+          description: "Saque ZXMAX",
+          clientReference: String(id),
+        },
+      });
+      if (error || data?.error) {
+        throw new Error(data?.error || error?.message || "Erro ao processar saque na EvoPay");
+      }
+    }
+    void (supabase as any).from("withdrawals").update({ status: "approved" }).eq("id", id);
     setState((s) => ({
       ...s,
       withdrawals: s.withdrawals.map((w) => (w.id === id ? { ...w, status: "approved" } : w)),
     }));
+  };
 
   const rejectWithdraw = (id: number) =>
     setState((s) => {
