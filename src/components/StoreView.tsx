@@ -7,7 +7,7 @@ import UserProfileModal from "@/components/UserProfileModal";
 import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
 
 export default function StoreView() {
-  const { state, addProductQuestion, buyProduct, markPurchasePaid } = useStore();
+  const { state, addProductQuestion, buyProduct, markPurchasePaid, savePixCharge } = useStore();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Todos");
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
