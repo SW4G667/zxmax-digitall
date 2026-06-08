@@ -18,7 +18,7 @@ const statusMap: Record<Purchase["status"], { label: string; cls: string }> = {
 };
 
 export default function MyPurchasesView({ initialSelectedId }: { initialSelectedId?: number | null }) {
-  const { state, sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase } = useStore();
+  const { state, confirmDelivery, openDispute, reviewPurchase, savePixCharge, markPurchasePaid } = useStore();
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(initialSelectedId || null);
 
@@ -27,12 +27,14 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
       setSelectedId(initialSelectedId);
     }
   }, [initialSelectedId]);
-  const [msg, setMsg] = useState("");
   const [disputeReason, setDisputeReason] = useState("");
   const [showDisputeForm, setShowDisputeForm] = useState(false);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
   const [showReview, setShowReview] = useState(false);
+  const [pixCharge, setPixCharge] = useState<PixCharge | null>(null);
+  const [resumeId, setResumeId] = useState<number | null>(null);
+  const [loadingPix, setLoadingPix] = useState<number | null>(null);
 
   const visiblePurchases = state.currentUser?.isAdmin
     ? state.purchases
@@ -45,11 +47,51 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
   const selected = selectedId ? state.purchases.find((p) => p.id === selectedId) : null;
   const selectedProduct = selected ? state.products.find((p) => p.id === selected.productId) : null;
 
-  const handleSend = () => {
-    if (!msg.trim() || !selectedId || !state.currentUser) return;
-    if (selected?.status === "pending") {
-      toast.error("Finalize o pagamento para conversar.");
+  const handlePayPix = async (purchase: Purchase, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!state.currentUser) return;
+    const product = state.products.find((p) => p.id === purchase.productId);
+    const expired = purchase.pixExpiresAt ? new Date(purchase.pixExpiresAt).getTime() < Date.now() : true;
+    setResumeId(purchase.id);
+    // Reuse existing valid QR
+    if (purchase.pixQrCode && purchase.evopayChargeId && !expired) {
+      setPixCharge({ evopayId: purchase.evopayChargeId, qrCodeText: purchase.pixQrCode, amount: purchase.amount });
       return;
+    }
+    // Generate a new Pix
+    setLoadingPix(purchase.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-evopay-pix", {
+        body: {
+          purchaseId: purchase.id,
+          productName: purchase.variationName ? `${product?.name} - ${purchase.variationName}` : product?.name,
+          amount: purchase.amount,
+          buyerEmail: state.currentUser.email,
+          buyerName: state.currentUser.name,
+        },
+      });
+      if (error) throw error;
+      if (data?.qrCodeText) {
+        savePixCharge(purchase.id, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: new Date(Date.now() + 3600 * 1000).toISOString() });
+        setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? purchase.amount });
+      } else {
+        toast.error("Erro ao gerar PIX. Tente novamente.");
+      }
+    } catch (err: any) {
+      toast.error("Erro ao gerar PIX: " + (err.message || "tente novamente"));
+    } finally {
+      setLoadingPix(null);
+    }
+  };
+
+  const handlePixPaid = () => {
+    if (resumeId != null) markPurchasePaid(resumeId);
+    toast.success("Pagamento confirmado!");
+  };
+
+  const handleSendUnused = () => {
+    if (!selectedId) return;
+
     }
     sendPurchaseMessage(selectedId, state.currentUser.email, msg.trim());
     setMsg("");
