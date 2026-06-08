@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useStore, Purchase } from "@/store/StoreContext";
-import { ShoppingBagEmoji, StarEmoji, ChatEmoji } from "@/components/CustomEmojis";
-import { Search, X, MessageSquare, Star, Send, ShieldAlert, CheckCircle2, Clock, ExternalLink, Copy, ArrowLeft } from "lucide-react";
+import { ShoppingBagEmoji, StarEmoji } from "@/components/CustomEmojis";
+import { Search, ShieldAlert, Copy, ArrowLeft, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import OrderChat from "@/components/OrderChat";
+import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
+import { supabase } from "@/integrations/supabase/client";
 
 const statusMap: Record<Purchase["status"], { label: string; cls: string }> = {
   pending: { label: "Pendente", cls: "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30" },
