@@ -78,7 +78,7 @@ export interface Purchase {
   sellerEmail: string;
   sellerId: string;
   sellerPublicId?: string;
-  status: "pending" | "paid" | "delivered" | "dispute";
+  status: "pending" | "paid" | "delivered" | "dispute" | "cancelled";
   createdAt: string;
   amount: number;
   messages: PurchaseMessage[];
@@ -86,6 +86,9 @@ export interface Purchase {
   reviewStars?: number;
   reviewComment?: string;
   variationName?: string;
+  evopayChargeId?: string;
+  pixQrCode?: string;
+  pixExpiresAt?: string;
 }
 
 export interface Withdrawal {
