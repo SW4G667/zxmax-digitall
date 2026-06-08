@@ -552,6 +552,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
     return true;
   };
+
+  const markPurchasePaid = (id: number) => {
     const existing = state.purchases.find((p) => p.id === id);
     const prod = existing ? state.products.find((p) => p.id === existing.productId) : null;
     const isAutoDelivery = prod?.deliveryType === "auto" && !!prod?.deliveryContent;
