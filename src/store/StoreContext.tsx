@@ -176,10 +176,14 @@ interface StoreContextType {
   login: (email: string, name: string) => void;
   logout: () => void;
   addProduct: (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => void;
+  updateProduct: (id: number, p: Partial<Omit<Product, "id" | "sellerId">>) => Promise<boolean>;
   approveProduct: (id: number) => void;
   rejectProduct: (id: number) => void;
-  deleteProduct: (id: number) => void;
+  deleteProduct: (id: number) => Promise<{ paused: boolean }>;
   buyProduct: (id: number, variation?: ProductVariation) => Promise<number | null>;
+  savePixCharge: (purchaseId: number, charge: { evopayId: string; qrCodeText: string; expiresAt: string }) => void;
+  refreshPurchases: () => Promise<void>;
+  markOrderDelivered: (orderId: number) => Promise<boolean>;
   markPurchasePaid: (purchaseId: number) => void;
   approvePurchase: (id: number) => void;
   revertPurchase: (id: number) => void;
