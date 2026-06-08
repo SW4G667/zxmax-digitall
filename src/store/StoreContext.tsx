@@ -430,11 +430,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const addProduct = (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => {
     if (!state.currentUser) return;
     const newProduct = { ...p, id: Date.now(), sales: 0, rating: 0, approved: false, sellerId: state.currentUser.id, sellerPublicId: state.currentUser.publicId };
-    void (supabase as any).from("products").insert({ seller_id: newProduct.sellerId, seller_public_id: newProduct.sellerPublicId, seller_email: newProduct.sellerEmail, seller_name: newProduct.seller, name: newProduct.name, price: newProduct.price, category: newProduct.category, image: newProduct.image, banner: newProduct.banner || null, description: newProduct.description, approved: false, delivery_type: newProduct.deliveryType, delivery_content: newProduct.deliveryContent || null, variations: newProduct.variations || [], questions: newProduct.questions || [] });
+    void (async () => {
+      const { data } = await (supabase as any).from("products").insert({ seller_id: newProduct.sellerId, seller_public_id: newProduct.sellerPublicId, seller_email: newProduct.sellerEmail, seller_name: newProduct.seller, name: newProduct.name, price: newProduct.price, category: newProduct.category, image: newProduct.image, banner: newProduct.banner || null, description: newProduct.description, approved: false, delivery_type: newProduct.deliveryType, delivery_content: newProduct.deliveryContent || null, variations: newProduct.variations || [], questions: newProduct.questions || [] }).select("id").maybeSingle();
+      if (data?.id) {
+        setState((s) => ({ ...s, products: s.products.map((pr) => (pr.id === newProduct.id ? { ...pr, id: Number(data.id) } : pr)) }));
+      }
+    })();
     setState((s) => ({
       ...s,
       products: [...s.products, newProduct],
     }));
+  };
+
+  const updateProduct = async (id: number, p: Partial<Omit<Product, "id" | "sellerId">>) => {
+    const existing = state.products.find((pr) => pr.id === id);
+    if (!existing) return false;
+    // If price or delivery content changed, send back to review
+    const essentialChanged =
+      (p.price !== undefined && p.price !== existing.price) ||
+      (p.deliveryContent !== undefined && p.deliveryContent !== existing.deliveryContent) ||
+      (p.deliveryType !== undefined && p.deliveryType !== existing.deliveryType);
+    const dbPayload: any = {};
+    if (p.name !== undefined) dbPayload.name = p.name;
+    if (p.category !== undefined) dbPayload.category = p.category;
+    if (p.description !== undefined) dbPayload.description = p.description;
+    if (p.price !== undefined) dbPayload.price = p.price;
+    if (p.image !== undefined && p.image) dbPayload.image = p.image;
+    if (p.banner !== undefined) dbPayload.banner = p.banner || null;
+    if (p.deliveryType !== undefined) dbPayload.delivery_type = p.deliveryType;
+    if (p.deliveryContent !== undefined) dbPayload.delivery_content = p.deliveryContent || null;
+    if (p.variations !== undefined) dbPayload.variations = p.variations || [];
+    if (essentialChanged) dbPayload.approved = false;
+    const { error } = await (supabase as any).from("products").update(dbPayload).eq("id", id);
+    if (error) return false;
+    setState((s) => ({
+      ...s,
+      products: s.products.map((pr) => (pr.id === id ? { ...pr, ...p, approved: essentialChanged ? false : pr.approved } : pr)),
+    }));
+    return true;
   };
 
   const approveProduct = (id: number) => {
@@ -450,9 +483,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
   };
 
-  const deleteProduct = (id: number) => {
-    void (supabase as any).from("products").delete().eq("id", id);
+  const deleteProduct = async (id: number): Promise<{ paused: boolean }> => {
+    // If product has orders, pause (unapprove) instead of deleting to preserve history
+    const hasOrders = state.purchases.some((pu) => pu.productId === id);
+    if (hasOrders) {
+      await (supabase as any).from("products").update({ approved: false }).eq("id", id);
+      setState((s) => ({ ...s, products: s.products.map((p) => (p.id === id ? { ...p, approved: false } : p)) }));
+      return { paused: true };
+    }
+    await (supabase as any).from("products").delete().eq("id", id);
     setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
+    return { paused: false };
   };
 
   const buyProduct = async (id: number, variation?: ProductVariation) => {
