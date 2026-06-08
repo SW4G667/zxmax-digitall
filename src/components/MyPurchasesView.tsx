@@ -89,14 +89,6 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
     toast.success("Pagamento confirmado!");
   };
 
-  const handleSendUnused = () => {
-    if (!selectedId) return;
-
-    }
-    sendPurchaseMessage(selectedId, state.currentUser.email, msg.trim());
-    setMsg("");
-  };
-
   const handleDispute = () => {
     if (!disputeReason.trim() || !selectedId) {
       toast.error("Por favor, descreva o motivo da disputa.");
