@@ -7,7 +7,7 @@ import UserProfileModal from "@/components/UserProfileModal";
 import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
 
 export default function StoreView() {
-  const { state, addProductQuestion, buyProduct, markPurchasePaid } = useStore();
+  const { state, addProductQuestion, buyProduct, markPurchasePaid, savePixCharge } = useStore();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Todos");
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
@@ -74,6 +74,7 @@ export default function StoreView() {
 
       if (data?.qrCodeText) {
         setPaidPurchaseId(purchaseId);
+        savePixCharge(purchaseId, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: new Date(Date.now() + 3600 * 1000).toISOString() });
         setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? price });
       } else if (data?.error) {
         toast.error("Erro ao gerar PIX: " + data.error);

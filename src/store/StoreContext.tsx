@@ -78,7 +78,7 @@ export interface Purchase {
   sellerEmail: string;
   sellerId: string;
   sellerPublicId?: string;
-  status: "pending" | "paid" | "delivered" | "dispute";
+  status: "pending" | "paid" | "delivered" | "dispute" | "cancelled";
   createdAt: string;
   amount: number;
   messages: PurchaseMessage[];
@@ -86,6 +86,9 @@ export interface Purchase {
   reviewStars?: number;
   reviewComment?: string;
   variationName?: string;
+  evopayChargeId?: string;
+  pixQrCode?: string;
+  pixExpiresAt?: string;
 }
 
 export interface Withdrawal {
@@ -173,10 +176,14 @@ interface StoreContextType {
   login: (email: string, name: string) => void;
   logout: () => void;
   addProduct: (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => void;
+  updateProduct: (id: number, p: Partial<Omit<Product, "id" | "sellerId">>) => Promise<boolean>;
   approveProduct: (id: number) => void;
   rejectProduct: (id: number) => void;
-  deleteProduct: (id: number) => void;
+  deleteProduct: (id: number) => Promise<{ paused: boolean }>;
   buyProduct: (id: number, variation?: ProductVariation) => Promise<number | null>;
+  savePixCharge: (purchaseId: number, charge: { evopayId: string; qrCodeText: string; expiresAt: string }) => void;
+  refreshPurchases: () => Promise<void>;
+  markOrderDelivered: (orderId: number) => Promise<boolean>;
   markPurchasePaid: (purchaseId: number) => void;
   approvePurchase: (id: number) => void;
   revertPurchase: (id: number) => void;
@@ -291,6 +298,28 @@ function loadState(): AppState {
 
 const publicIdFromProfile = (profile: any, fallback: string) => String(profile?.public_id || fallback.replace(/\D/g, "").slice(0, 8) || "100000");
 
+const mapPurchaseRow = (p: any): Purchase => ({
+  id: Number(p.id),
+  productId: Number(p.product_id),
+  buyerEmail: p.buyer_email,
+  buyerId: p.buyer_id,
+  buyerPublicId: p.buyer_public_id,
+  sellerEmail: p.seller_email,
+  sellerId: p.seller_id,
+  sellerPublicId: p.seller_public_id,
+  status: p.status,
+  createdAt: p.created_at,
+  amount: Number(p.amount),
+  messages: p.messages || [],
+  reviewed: p.reviewed,
+  reviewStars: p.review_stars || undefined,
+  reviewComment: p.review_comment || undefined,
+  variationName: p.variation_name || undefined,
+  evopayChargeId: p.evopay_charge_id || undefined,
+  pixQrCode: p.pix_qr_code || undefined,
+  pixExpiresAt: p.pix_expires_at || undefined,
+});
+
 const inferPixType = (key: string): string => {
   const k = (key || "").trim();
   if (k.includes("@")) return "email";
@@ -369,7 +398,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         (supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }),
       ]);
       const products = ((dbProducts || []) as any[]).map((p) => ({ id: Number(p.id), name: p.name, price: Number(p.price), category: p.category, seller: p.seller_name, sellerEmail: p.seller_email, sellerId: p.seller_id, sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0), image: p.image, banner: p.banner || undefined, description: p.description, approved: p.approved, deliveryType: p.delivery_type, deliveryContent: p.delivery_content || undefined, variations: p.variations || [], questions: p.questions || [] })) as Product[];
-      const purchases = ((dbPurchases || []) as any[]).map((p) => ({ id: Number(p.id), productId: Number(p.product_id), buyerEmail: p.buyer_email, buyerId: p.buyer_id, buyerPublicId: p.buyer_public_id, sellerEmail: p.seller_email, sellerId: p.seller_id, sellerPublicId: p.seller_public_id, status: p.status, createdAt: p.created_at, amount: Number(p.amount), messages: p.messages || [], reviewed: p.reviewed, reviewStars: p.review_stars || undefined, reviewComment: p.review_comment || undefined, variationName: p.variation_name || undefined })) as Purchase[];
+      const purchases = ((dbPurchases || []) as any[]).map(mapPurchaseRow) as Purchase[];
       const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "" })) as Withdrawal[];
       setState((s) => ({
         ...s,
@@ -401,11 +430,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const addProduct = (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => {
     if (!state.currentUser) return;
     const newProduct = { ...p, id: Date.now(), sales: 0, rating: 0, approved: false, sellerId: state.currentUser.id, sellerPublicId: state.currentUser.publicId };
-    void (supabase as any).from("products").insert({ seller_id: newProduct.sellerId, seller_public_id: newProduct.sellerPublicId, seller_email: newProduct.sellerEmail, seller_name: newProduct.seller, name: newProduct.name, price: newProduct.price, category: newProduct.category, image: newProduct.image, banner: newProduct.banner || null, description: newProduct.description, approved: false, delivery_type: newProduct.deliveryType, delivery_content: newProduct.deliveryContent || null, variations: newProduct.variations || [], questions: newProduct.questions || [] });
+    void (async () => {
+      const { data } = await (supabase as any).from("products").insert({ seller_id: newProduct.sellerId, seller_public_id: newProduct.sellerPublicId, seller_email: newProduct.sellerEmail, seller_name: newProduct.seller, name: newProduct.name, price: newProduct.price, category: newProduct.category, image: newProduct.image, banner: newProduct.banner || null, description: newProduct.description, approved: false, delivery_type: newProduct.deliveryType, delivery_content: newProduct.deliveryContent || null, variations: newProduct.variations || [], questions: newProduct.questions || [] }).select("id").maybeSingle();
+      if (data?.id) {
+        setState((s) => ({ ...s, products: s.products.map((pr) => (pr.id === newProduct.id ? { ...pr, id: Number(data.id) } : pr)) }));
+      }
+    })();
     setState((s) => ({
       ...s,
       products: [...s.products, newProduct],
     }));
+  };
+
+  const updateProduct = async (id: number, p: Partial<Omit<Product, "id" | "sellerId">>) => {
+    const existing = state.products.find((pr) => pr.id === id);
+    if (!existing) return false;
+    // If price or delivery content changed, send back to review
+    const essentialChanged =
+      (p.price !== undefined && p.price !== existing.price) ||
+      (p.deliveryContent !== undefined && p.deliveryContent !== existing.deliveryContent) ||
+      (p.deliveryType !== undefined && p.deliveryType !== existing.deliveryType);
+    const dbPayload: any = {};
+    if (p.name !== undefined) dbPayload.name = p.name;
+    if (p.category !== undefined) dbPayload.category = p.category;
+    if (p.description !== undefined) dbPayload.description = p.description;
+    if (p.price !== undefined) dbPayload.price = p.price;
+    if (p.image !== undefined && p.image) dbPayload.image = p.image;
+    if (p.banner !== undefined) dbPayload.banner = p.banner || null;
+    if (p.deliveryType !== undefined) dbPayload.delivery_type = p.deliveryType;
+    if (p.deliveryContent !== undefined) dbPayload.delivery_content = p.deliveryContent || null;
+    if (p.variations !== undefined) dbPayload.variations = p.variations || [];
+    if (essentialChanged) dbPayload.approved = false;
+    const { error } = await (supabase as any).from("products").update(dbPayload).eq("id", id);
+    if (error) return false;
+    setState((s) => ({
+      ...s,
+      products: s.products.map((pr) => (pr.id === id ? { ...pr, ...p, approved: essentialChanged ? false : pr.approved } : pr)),
+    }));
+    return true;
   };
 
   const approveProduct = (id: number) => {
@@ -421,9 +483,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
   };
 
-  const deleteProduct = (id: number) => {
-    void (supabase as any).from("products").delete().eq("id", id);
+  const deleteProduct = async (id: number): Promise<{ paused: boolean }> => {
+    // If product has orders, pause (unapprove) instead of deleting to preserve history
+    const hasOrders = state.purchases.some((pu) => pu.productId === id);
+    if (hasOrders) {
+      await (supabase as any).from("products").update({ approved: false }).eq("id", id);
+      setState((s) => ({ ...s, products: s.products.map((p) => (p.id === id ? { ...p, approved: false } : p)) }));
+      return { paused: true };
+    }
+    await (supabase as any).from("products").delete().eq("id", id);
     setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
+    return { paused: false };
   };
 
   const buyProduct = async (id: number, variation?: ProductVariation) => {
@@ -450,6 +520,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const finalPurchase = data ? { ...purchase, id: Number(data.id), createdAt: data.created_at } : purchase;
     setState((s) => ({ ...s, purchases: [...s.purchases, finalPurchase] }));
     return finalPurchase.id;
+  };
+
+  const savePixCharge = (purchaseId: number, charge: { evopayId: string; qrCodeText: string; expiresAt: string }) => {
+    void (supabase as any).from("purchases").update({
+      evopay_charge_id: charge.evopayId,
+      pix_qr_code: charge.qrCodeText,
+      pix_expires_at: charge.expiresAt,
+    }).eq("id", purchaseId);
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) =>
+        p.id === purchaseId ? { ...p, evopayChargeId: charge.evopayId, pixQrCode: charge.qrCodeText, pixExpiresAt: charge.expiresAt } : p
+      ),
+    }));
+  };
+
+  const refreshPurchases = async () => {
+    const { data } = await (supabase as any).from("purchases").select("*").order("created_at", { ascending: false });
+    if (!data) return;
+    const purchases = (data as any[]).map(mapPurchaseRow) as Purchase[];
+    setState((s) => ({ ...s, purchases }));
+  };
+
+  const markOrderDelivered = async (orderId: number) => {
+    const { data, error } = await supabase.functions.invoke("mark-order-delivered", { body: { orderId } });
+    if (error || data?.error) return false;
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) => (p.id === orderId ? { ...p, status: "delivered" as const } : p)),
+    }));
+    return true;
   };
 
   const markPurchasePaid = (id: number) => {
@@ -870,8 +971,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return (
     <StoreContext.Provider
       value={{
-        state, login, logout, addProduct, approveProduct, rejectProduct, deleteProduct,
-        buyProduct, markPurchasePaid, approvePurchase, revertPurchase, requestWithdraw,
+        state, login, logout, addProduct, updateProduct, approveProduct, rejectProduct, deleteProduct,
+        buyProduct, savePixCharge, refreshPurchases, markOrderDelivered, markPurchasePaid, approvePurchase, revertPurchase, requestWithdraw,
         approveWithdraw, rejectWithdraw, updateConfig, updateProfile,
         banUser, unbanUser, addTicket, replyTicket, closeTicket, resolveTicket,
         setGlobalNotice, publishNotice, updatePixKey, sendAdminChat,

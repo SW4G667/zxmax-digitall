@@ -1,20 +1,24 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useStore, Purchase } from "@/store/StoreContext";
-import { ShoppingBagEmoji, StarEmoji, ChatEmoji } from "@/components/CustomEmojis";
-import { Search, X, MessageSquare, Star, Send, ShieldAlert, CheckCircle2, Clock, ExternalLink, Copy, ArrowLeft } from "lucide-react";
+import { ShoppingBagEmoji, StarEmoji } from "@/components/CustomEmojis";
+import { Search, ShieldAlert, Copy, ArrowLeft, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import OrderChat from "@/components/OrderChat";
+import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
+import { supabase } from "@/integrations/supabase/client";
 
 const statusMap: Record<Purchase["status"], { label: string; cls: string }> = {
   pending: { label: "Pendente", cls: "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30" },
   paid: { label: "Pago", cls: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" },
   delivered: { label: "Entregue", cls: "bg-primary/20 text-primary border-primary/30" },
   dispute: { label: "Disputa", cls: "bg-destructive/20 text-destructive border-destructive/30" },
+  cancelled: { label: "Cancelado", cls: "bg-muted text-muted-foreground border-border" },
 };
 
 export default function MyPurchasesView({ initialSelectedId }: { initialSelectedId?: number | null }) {
-  const { state, sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase } = useStore();
+  const { state, confirmDelivery, openDispute, reviewPurchase, savePixCharge, markPurchasePaid } = useStore();
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(initialSelectedId || null);
 
@@ -23,12 +27,14 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
       setSelectedId(initialSelectedId);
     }
   }, [initialSelectedId]);
-  const [msg, setMsg] = useState("");
   const [disputeReason, setDisputeReason] = useState("");
   const [showDisputeForm, setShowDisputeForm] = useState(false);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
   const [showReview, setShowReview] = useState(false);
+  const [pixCharge, setPixCharge] = useState<PixCharge | null>(null);
+  const [resumeId, setResumeId] = useState<number | null>(null);
+  const [loadingPix, setLoadingPix] = useState<number | null>(null);
 
   const visiblePurchases = state.currentUser?.isAdmin
     ? state.purchases
@@ -41,14 +47,46 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
   const selected = selectedId ? state.purchases.find((p) => p.id === selectedId) : null;
   const selectedProduct = selected ? state.products.find((p) => p.id === selected.productId) : null;
 
-  const handleSend = () => {
-    if (!msg.trim() || !selectedId || !state.currentUser) return;
-    if (selected?.status === "pending") {
-      toast.error("Finalize o pagamento para conversar.");
+  const handlePayPix = async (purchase: Purchase, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!state.currentUser) return;
+    const product = state.products.find((p) => p.id === purchase.productId);
+    const expired = purchase.pixExpiresAt ? new Date(purchase.pixExpiresAt).getTime() < Date.now() : true;
+    setResumeId(purchase.id);
+    // Reuse existing valid QR
+    if (purchase.pixQrCode && purchase.evopayChargeId && !expired) {
+      setPixCharge({ evopayId: purchase.evopayChargeId, qrCodeText: purchase.pixQrCode, amount: purchase.amount });
       return;
     }
-    sendPurchaseMessage(selectedId, state.currentUser.email, msg.trim());
-    setMsg("");
+    // Generate a new Pix
+    setLoadingPix(purchase.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-evopay-pix", {
+        body: {
+          purchaseId: purchase.id,
+          productName: purchase.variationName ? `${product?.name} - ${purchase.variationName}` : product?.name,
+          amount: purchase.amount,
+          buyerEmail: state.currentUser.email,
+          buyerName: state.currentUser.name,
+        },
+      });
+      if (error) throw error;
+      if (data?.qrCodeText) {
+        savePixCharge(purchase.id, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: new Date(Date.now() + 3600 * 1000).toISOString() });
+        setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? purchase.amount });
+      } else {
+        toast.error("Erro ao gerar PIX. Tente novamente.");
+      }
+    } catch (err: any) {
+      toast.error("Erro ao gerar PIX: " + (err.message || "tente novamente"));
+    } finally {
+      setLoadingPix(null);
+    }
+  };
+
+  const handlePixPaid = () => {
+    if (resumeId != null) markPurchasePaid(resumeId);
+    toast.success("Pagamento confirmado!");
   };
 
   const handleDispute = () => {
@@ -79,18 +117,8 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
     setShowReview(true);
   };
 
-  // Auto-scroll chat
-  useEffect(() => {
-    if (selectedId) {
-      const chat = document.getElementById("purchase-chat");
-      if (chat) chat.scrollTop = chat.scrollHeight;
-    }
-  }, [selectedId, selected?.messages]);
-
   if (selected && selectedProduct) {
-    const chat = selected.messages || [];
-    const isChatLocked = selected.status === "pending";
-    const deliveryMsg = chat.find((m) => m.text.startsWith("📦 ENTREGA_AUTO:"));
+    const isChatLocked = selected.status === "pending" || selected.status === "cancelled";
 
     return (
       <div className="animate-fade-in-up max-w-2xl mx-auto">
@@ -112,23 +140,32 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
           <Badge className={statusMap[selected.status].cls}>{statusMap[selected.status].label}</Badge>
         </div>
 
+        {/* Pending: pay with Pix */}
+        {selected.status === "pending" && (
+          <div className="glass-card p-4 mb-4 border-2 border-yellow-500/30 bg-yellow-500/5">
+            <p className="text-sm text-foreground mb-3">Seu pedido está aguardando pagamento.</p>
+            <Button onClick={(e) => handlePayPix(selected, e)} disabled={loadingPix === selected.id} className="w-full btn-gradient font-bold">
+              <QrCode className="w-4 h-4 mr-2" />
+              {loadingPix === selected.id ? "Gerando..." : (selected.pixQrCode && selected.pixExpiresAt && new Date(selected.pixExpiresAt).getTime() > Date.now() ? "Pagar com Pix" : "Gerar novo Pix")}
+            </Button>
+          </div>
+        )}
+
         {/* Delivery Info */}
         {(selected.status === "delivered" || selected.status === "paid") && (
           <div className="glass-card p-4 mb-4 border-2 border-success/30 bg-success/5">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs font-bold text-success uppercase bg-success/10 px-2 py-0.5 rounded-full">📦 Informações de Entrega</span>
             </div>
-            {selectedProduct.deliveryType === "auto" ? (
+            {selectedProduct.deliveryType === "auto" && selectedProduct.deliveryContent ? (
               <div className="flex items-center gap-2 bg-muted rounded-xl p-3">
-                <p className="flex-1 text-sm text-foreground font-mono break-all">
-                  {deliveryMsg?.text.replace("📦 ENTREGA_AUTO: ", "") || selectedProduct.deliveryContent}
-                </p>
-                <button onClick={() => { navigator.clipboard.writeText(deliveryMsg?.text.replace("📦 ENTREGA_AUTO: ", "") || selectedProduct.deliveryContent || ""); toast.success("Copiado!"); }} className="shrink-0 p-1.5 hover:bg-card rounded-lg">
+                <p className="flex-1 text-sm text-foreground font-mono break-all">{selectedProduct.deliveryContent}</p>
+                <button onClick={() => { navigator.clipboard.writeText(selectedProduct.deliveryContent || ""); toast.success("Copiado!"); }} className="shrink-0 p-1.5 hover:bg-card rounded-lg">
                   <Copy className="w-4 h-4 text-muted-foreground" />
                 </button>
               </div>
             ) : (
-              <p className="text-sm text-foreground">O vendedor entregará seu produto via chat abaixo.</p>
+              <p className="text-sm text-foreground">Aguardando o vendedor entregar. Combine pelo chat abaixo.</p>
             )}
             {selected.status === "paid" && (
               <Button onClick={handleConfirm} className="w-full mt-3 bg-success hover:bg-success/90 text-white font-bold">
@@ -164,51 +201,16 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
         {/* Chat */}
         <div className="flex items-center justify-between mb-2 px-1">
           <h4 className="text-xs font-bold text-muted-foreground uppercase">Chat</h4>
-          {!state.currentUser?.isAdmin && (
+          {!state.currentUser?.isAdmin && !isChatLocked && (
             <button onClick={() => setShowDisputeForm(true)} className="text-[10px] font-bold text-destructive uppercase hover:underline">
               Abrir Disputa
             </button>
           )}
         </div>
-        <div id="purchase-chat" className="glass-card p-4 mb-4 min-h-[300px] max-h-[400px] overflow-y-auto flex flex-col gap-2">
-          {isChatLocked ? (
-            <div className="flex flex-col items-center justify-center py-10 text-center">
-              <Clock className="w-8 h-8 text-muted-foreground mb-2" />
-              <p className="text-sm text-muted-foreground font-medium">Finalize o pagamento para conversar.</p>
-            </div>
-          ) : chat.length === 0 ? (
-            <p className="text-center text-muted-foreground text-sm py-10">Nenhuma mensagem ainda.</p>
-          ) : (
-            chat.map((m, i) => {
-              const isMe = m.from === state.currentUser?.email;
-              const isSystem = m.from === "System";
-              if (isSystem) return (
-                <div key={i} className="flex justify-center my-1">
-                  <span className="bg-muted text-muted-foreground text-[9px] px-2 py-0.5 rounded-full font-bold uppercase">
-                    {m.text}
-                  </span>
-                </div>
-              );
-              return (
-                <div key={i} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[80%] px-4 py-2 rounded-2xl text-sm ${isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-secondary text-foreground rounded-bl-md"}`}>
-                    <p>{m.text}</p>
-                    <p className={`text-[9px] mt-1 opacity-60 ${isMe ? "text-right" : "text-left"}`}>
-                      {new Date(m.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+        <OrderChat orderId={selected.id} locked={isChatLocked} />
 
-        {!isChatLocked && (
-          <div className="flex gap-2">
-            <input value={msg} onChange={(e) => setMsg(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} placeholder="Digite sua mensagem..." className="flex-1 p-3 rounded-xl bg-card border border-border/40 focus:ring-2 ring-primary outline-none text-sm text-foreground" />
-            <button onClick={handleSend} className="btn-gradient p-3 rounded-xl"><Send className="w-4 h-4" /></button>
-          </div>
-        )}
+        <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
+
 
         {/* Dispute Modal */}
         {showDisputeForm && (
