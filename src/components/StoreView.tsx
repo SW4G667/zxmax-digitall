@@ -74,6 +74,7 @@ export default function StoreView() {
 
       if (data?.qrCodeText) {
         setPaidPurchaseId(purchaseId);
+        savePixCharge(purchaseId, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: new Date(Date.now() + 3600 * 1000).toISOString() });
         setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? price });
       } else if (data?.error) {
         toast.error("Erro ao gerar PIX: " + data.error);
