@@ -1,151 +1,71 @@
+# Fechar o ciclo completo de venda (Lovable Cloud)
 
+Mapeamento da spec para o schema real do projeto:
+- "orders" = tabela `purchases` (já existe)
+- "payments" = não existe; os dados do Pix ficam salvos na própria `purchases`
+- "order_messages" = nova tabela (hoje as mensagens vivem num campo JSONB)
+- bucket "order-attachments" = novo bucket privado
+- "report-evidence" = não existe; usaremos `order-attachments`
 
-# Plano de Implementacao — ZXMAX Digital
+Itens que **já existem** e não vou refazer: preço mínimo R$5 no Pix, upload com URL assinada de 1 ano, webhook EvoPay marcando como pago/entregue, tela de banido, ID público numérico no perfil.
 
-Este projeto atualmente funciona 100% no localStorage (sem banco de dados, sem auth real, sem storage). A migração para backend real é extensa. Divido em 4 partes.
+## 1. Banco de dados (migração única)
+- **`purchases`**: adicionar colunas `evopay_charge_id` (text), `pix_qr_code` (text), `pix_expires_at` (timestamptz) para permitir reabrir o Pix depois de trocar de aba. Adicionar status `cancelled` aos valores aceitos (validação por trigger, não CHECK).
+- **Nova tabela `order_messages`**: `id`, `order_id` (bigint, referencia purchases), `sender_id` (uuid), `body` (text null), `image_path` (text null), `created_at`. 
+  - GRANT para `authenticated` e `service_role`.
+  - RLS leitura: comprador, vendedor ou admin do pedido (via subconsulta em purchases).
+  - RLS inserção: comprador ou vendedor do pedido, **somente se** o pedido está `paid` ou `delivered`, e forçando `sender_id = auth.uid()`.
+  - Realtime habilitado (`ALTER PUBLICATION supabase_realtime ADD TABLE order_messages` + `REPLICA IDENTITY FULL`).
+- **Bucket privado `order-attachments`** (via tool): caminho `<order_id>/<auth.uid()>/<arquivo>`. Políticas em `storage.objects`: leitura/escrita restritas às partes do pedido.
+- **Trigger** para impedir produto com preço < 5 (e a UI também valida).
 
----
+## 2. Anúncios — editar/excluir + Vendas Recebidas
+`InventoryView.tsx` ganha duas abas no topo: **Meus Produtos** e **Vendas Recebidas**.
+- **Editar**: botão em cada card abre o formulário pré-preenchido (nome, categoria, descrição, preço, imagem/banner, variações, tipo e conteúdo de entrega). Trocar imagem é opcional. Ao salvar, se preço ou conteúdo essencial mudou → volta para "Em análise" (`approved=false`); senão mantém. Usa `update` direto (RLS já permite dono/admin).
+- **Excluir**: pede confirmação. Se o produto já tem pedidos, oferece **Pausar** (novo campo/`approved=false` + flag) em vez de apagar, evitando quebrar histórico.
+- **Vendas Recebidas**: lista pedidos onde sou vendedor, filtro por status (pendente/pago/entregue/disputa). Cada pedido abre o chat compartilhado + dados (produto, variação, valor, comprador via ID público). Entrega manual: botão **Marcar como entregue**.
+- Preço mínimo R$5 validado na criação/edição.
 
-## Parte 1 — Correcao dos 5 bugs + Auth real (email + Discord)
+## 3. Minhas Compras lendo do banco + retomar Pix
+`MyPurchasesView.tsx`:
+- Lista a partir de `purchases` (filtrando `buyer_id = eu`), status reais: Pendente, Pago, Entregue, Disputa, Cancelado.
+- Pedido **pendente**: botão **Pagar com Pix** que reabre o `PixPaymentModal` reaproveitando o QR salvo em `purchases` (evopay_charge_id/pix_qr_code). Se `pix_expires_at` passou → botão **Gerar novo Pix** (chama `create-evopay-pix` de novo e atualiza a linha).
+- Pedido **pago**: entrega automática mostra caixa com conteúdo + copiar; entrega manual mostra "Aguardando o vendedor entregar" + chat liberado.
+- Modal do Pix pode ser fechado sem perder o pedido (continua Pendente e retomável).
 
-### Database: criar tabelas fundamentais
+## 4. Chat real de pedido (componente compartilhado)
+Novo componente `OrderChat.tsx` usado por comprador (Minhas Compras) e vendedor (Vendas Recebidas):
+- Lê/escreve em `order_messages`, liberado só quando `paid`/`delivered`.
+- Suporta texto e **imagem** (upload para `order-attachments`, exibida via URL assinada).
+- **Realtime**: assina mudanças da tabela para os dois lados verem mensagens novas sem recarregar.
+- Vendedor pode **Marcar como entregue** (pedidos manuais) chamando a edge function.
 
-Migration com:
-- `profiles` (id uuid FK auth.users, email, display_name, avatar_url, pix_key, created_at)
-- `user_roles` (user_id, role enum: admin/support/user)
-- RLS em todas as tabelas
+## 5. Fluxo de pagamento
+- `StoreView.handleBuy` salva `evopay_charge_id`, `pix_qr_code` e `pix_expires_at` na purchase logo após gerar o Pix.
+- Webhook já promove o pedido para pago/entregue no banco (sem reabrir modal).
+- Após pago, `StoreContext` recarrega purchases para refletir o status.
 
-### Auth real com Supabase
+## 6. Edge function nova `mark-order-delivered`
+Valida que o chamador é o vendedor do pedido e que o status é `paid`; muda para `delivered`. Deploy automático.
 
-- Refatorar `AuthScreen.tsx`: usar `supabase.auth.signUp` (registro) e `supabase.auth.signInWithPassword` (login) separados
-- Listener `onAuthStateChange` para session
-- Buscar/criar profile automaticamente via trigger `on_auth_user_created`
-- Mostrar display_name em vez de email em todos os chats
+## 7. Perfil do vendedor com foto + ID
+- `UserProfileModal.tsx` busca o `profiles` real (avatar_url + public_id) por `user_id` do vendedor, mostrando a foto real e o ID público numérico (não o email).
+- No card/detalhe do produto (`StoreView`), o avatar do vendedor usa `avatar_url` real quando disponível; clicar abre o perfil com a foto e o ID.
 
-### Discord Auth
+## 8. Galeria em uploads
+Garantir que todos os inputs de imagem/documento (produtos, chat de pedido, documentos do vendedor) usem `accept="image/*"` sem `capture`, para abrir a galeria do dispositivo.
 
-- Lovable Cloud nao suporta Discord OAuth nativamente. Solucao: criar edge function `discord-callback` que recebe o `code`, troca pelo `access_token` usando client_secret (secret a configurar), busca perfil do usuario via Discord API, e faz `supabase.auth.admin.createUser` ou login via custom token
-- Preciso que voce adicione o secret `DISCORD_CLIENT_SECRET` quando eu pedir
+## Ordem de execução
+1. Migração (`purchases` colunas + `order_messages` + RLS + realtime + trigger preço) e bucket `order-attachments`.
+2. Edge function `mark-order-delivered`.
+3. Anúncios: editar/excluir + aba Vendas Recebidas.
+4. Minhas Compras lendo `purchases` + retomar Pix.
+5. `OrderChat` compartilhado (texto + imagem + realtime) e entrega manual.
+6. Perfil do vendedor com foto/ID e ajustes de upload (galeria).
+7. Smoke test do fluxo completo.
 
-### Upload de arquivos
-
-- Criar storage bucket `documents` (privado) e `chat-attachments` (privado)
-- RLS policies para uploads
-- Refatorar componente de upload para usar `supabase.storage.from('documents').upload()`
-
-### Chat da equipe em tempo real
-
-- Criar tabela `team_chat` (id, user_id, message, created_at)
-- Habilitar realtime: `ALTER PUBLICATION supabase_realtime ADD TABLE team_chat`
-- Subscription no frontend para mensagens em tempo real
-
----
-
-## Parte 2 — Sistema de banimento + Tela "Conta Banida" + ID unico
-
-### Tabelas
-
-- `bans` (id, user_id, reason, banned_by, created_at, active boolean)
-
-### Logica
-
-- No login, checar se usuario tem ban ativo. Se sim, redirecionar para tela `BannedScreen`
-- `BannedScreen`: mostra motivo, data, UUID do usuario, botao "Sair"
-- Admin panel: campo para colar UUID + botoes Banir/Desbanir + motivo
-- Mostrar UUID do usuario no perfil e no admin
-
----
-
-## Parte 3 — Integracao AbacatePay (pagamentos + saques PIX)
-
-### Preparacao
-
-- Pedir secret `ABACATEPAY_API_KEY` via tool
-- Remover edge function `create-checkout` (Stripe)
-- Remover secret Stripe (ou deixar, nao interfere)
-
-### Edge function `create-abacatepay-checkout`
-
-- Recebe: productName, priceInCents, buyerEmail
-- Chama API AbacatePay para criar cobranca PIX
-- Retorna URL de checkout
-
-### Edge function `abacatepay-withdraw`
-
-- Recebe: pixKey, amount, userId
-- Chama `/pix/create` da AbacatePay
-- Registra saque na tabela `withdrawals`
-
-### Tabelas
-
-- `products` (id, name, price, category, seller_id, description, image_url, delivery_type, delivery_content, approved, allow_affiliates, affiliate_commission, created_at)
-- `purchases` (id, product_id, buyer_id, seller_id, status, amount, created_at)
-- `purchase_messages` (id, purchase_id, sender_id, message, created_at)
-- `withdrawals` (id, user_id, amount, pix_key, status, created_at)
-
-### Frontend
-
-- Botao "Comprar" chama edge function e redireciona para URL da AbacatePay
-- Saque: so aparece se saldo >= R$3.50, status "Em processamento (7-10 dias uteis)"
-- Remover mencoes a Stripe e saque instantaneo
-
----
-
-## Parte 4 — Avaliacoes, duvidas, afiliados, seguranca, painel suporte
-
-### Avaliacoes e duvidas
-
-- Tabela `reviews` (id, purchase_id, product_id, user_id, stars, comment, created_at)
-- Tabela `product_questions` (id, product_id, user_id, question, answer, answered_by, created_at)
-- Avaliacoes so apos compra confirmada
-- Duvidas: qualquer usuario pergunta, vendedor responde
-
-### Sistema de afiliados
-
-- Campos em `products`: allow_affiliates, affiliate_commission_pct
-- Tabela `affiliates` (id, product_id, user_id, referral_code unique, created_at)
-- Tabela `affiliate_clicks` (id, affiliate_id, clicked_at)
-- Tabela `affiliate_commissions` (id, affiliate_id, purchase_id, amount, paid boolean)
-- Last-click attribution via cookie/query param
-- Vendedor paga afiliado manualmente (botao no painel)
-
-### Documentos para vendedor
-
-- Aceitar RG ou Certidao de Nascimento (remover CPF)
-- Upload para bucket `documents`
-
-### Painel de Suporte (separado do Admin)
-
-- Tabela `support_permissions` (user_id) — admin adiciona UUID para dar acesso
-- Painel limitado: tickets, banir/desbanir, chat interno da equipe suporte
-- Apenas `admin@keybot.com` pode contratar suporte (colar UUID)
-
-### Seguranca
-
-- RLS em TODAS as tabelas
-- Security definer functions para checagem de roles
-- Validacao de input em todas as edge functions
-- Scan de seguranca completo ao final
-
-### Outros
-
-- Botao fechar modal de produto
-- Remover produto (botao)
-- Clique na foto do vendedor abre perfil
-- Notificacao de compra leva ao produto
-- Admin: taxa configuravel, historico de saques, lista de usuarios com ID
-
----
-
-## Pre-requisitos que precisarei de voce
-
-1. Secret `ABACATEPAY_API_KEY` — pedirei via tool antes de implementar Parte 3
-2. Secret `DISCORD_CLIENT_SECRET` — pedirei via tool para a edge function de callback
-3. Aprovar as migrations de banco de dados quando solicitado
-
----
-
-## Ordem de implementacao
-
-Implementarei na ordem Parte 1 → 2 → 3 → 4, cada uma em mensagens separadas para nao sobrecarregar. Ao final, listo o que voce precisa configurar manualmente.
-
+## Detalhes técnicos
+- Sem CHECK constraints com tempo; usar triggers de validação.
+- `order_messages` força `sender_id = auth.uid()` na política de inserção.
+- Storage `order-attachments` privado, com URLs assinadas para exibição.
+- Nada de localStorage para compras/vendas: leitura direta do banco com fallback ao estado atual.

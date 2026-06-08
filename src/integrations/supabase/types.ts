@@ -62,6 +62,33 @@ export type Database = {
         }
         Relationships: []
       }
+      order_messages: {
+        Row: {
+          body: string | null
+          created_at: string
+          id: string
+          image_path: string | null
+          order_id: number
+          sender_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          image_path?: string | null
+          order_id: number
+          sender_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          image_path?: string | null
+          order_id?: number
+          sender_id?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           approved: boolean
@@ -180,8 +207,11 @@ export type Database = {
           buyer_id: string
           buyer_public_id: string
           created_at: string
+          evopay_charge_id: string | null
           id: number
           messages: Json
+          pix_expires_at: string | null
+          pix_qr_code: string | null
           product_id: number
           review_comment: string | null
           review_stars: number | null
@@ -199,8 +229,11 @@ export type Database = {
           buyer_id: string
           buyer_public_id?: string
           created_at?: string
+          evopay_charge_id?: string | null
           id?: number
           messages?: Json
+          pix_expires_at?: string | null
+          pix_qr_code?: string | null
           product_id: number
           review_comment?: string | null
           review_stars?: number | null
@@ -218,8 +251,11 @@ export type Database = {
           buyer_id?: string
           buyer_public_id?: string
           created_at?: string
+          evopay_charge_id?: string | null
           id?: number
           messages?: Json
+          pix_expires_at?: string | null
+          pix_qr_code?: string | null
           product_id?: number
           review_comment?: string | null
           review_stars?: number | null
@@ -407,6 +443,11 @@ export type Database = {
         Returns: boolean
       }
       is_banned: { Args: { _user_id: string }; Returns: boolean }
+      is_order_party: {
+        Args: { _order_id: number; _user_id: string }
+        Returns: boolean
+      }
+      order_chat_open: { Args: { _order_id: number }; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "support" | "user"
