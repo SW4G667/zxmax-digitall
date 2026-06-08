@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.evopay-withdraw]
 verify_jwt = false
+
+[functions.mark-order-delivered]
+verify_jwt = false
