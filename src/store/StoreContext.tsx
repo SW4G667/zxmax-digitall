@@ -298,6 +298,28 @@ function loadState(): AppState {
 
 const publicIdFromProfile = (profile: any, fallback: string) => String(profile?.public_id || fallback.replace(/\D/g, "").slice(0, 8) || "100000");
 
+const mapPurchaseRow = (p: any): Purchase => ({
+  id: Number(p.id),
+  productId: Number(p.product_id),
+  buyerEmail: p.buyer_email,
+  buyerId: p.buyer_id,
+  buyerPublicId: p.buyer_public_id,
+  sellerEmail: p.seller_email,
+  sellerId: p.seller_id,
+  sellerPublicId: p.seller_public_id,
+  status: p.status,
+  createdAt: p.created_at,
+  amount: Number(p.amount),
+  messages: p.messages || [],
+  reviewed: p.reviewed,
+  reviewStars: p.review_stars || undefined,
+  reviewComment: p.review_comment || undefined,
+  variationName: p.variation_name || undefined,
+  evopayChargeId: p.evopay_charge_id || undefined,
+  pixQrCode: p.pix_qr_code || undefined,
+  pixExpiresAt: p.pix_expires_at || undefined,
+});
+
 const inferPixType = (key: string): string => {
   const k = (key || "").trim();
   if (k.includes("@")) return "email";
