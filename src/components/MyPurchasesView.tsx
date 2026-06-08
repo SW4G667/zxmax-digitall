@@ -11,6 +11,7 @@ const statusMap: Record<Purchase["status"], { label: string; cls: string }> = {
   paid: { label: "Pago", cls: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" },
   delivered: { label: "Entregue", cls: "bg-primary/20 text-primary border-primary/30" },
   dispute: { label: "Disputa", cls: "bg-destructive/20 text-destructive border-destructive/30" },
+  cancelled: { label: "Cancelado", cls: "bg-muted text-muted-foreground border-border" },
 };
 
 export default function MyPurchasesView({ initialSelectedId }: { initialSelectedId?: number | null }) {
