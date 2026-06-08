@@ -376,7 +376,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         (supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }),
       ]);
       const products = ((dbProducts || []) as any[]).map((p) => ({ id: Number(p.id), name: p.name, price: Number(p.price), category: p.category, seller: p.seller_name, sellerEmail: p.seller_email, sellerId: p.seller_id, sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0), image: p.image, banner: p.banner || undefined, description: p.description, approved: p.approved, deliveryType: p.delivery_type, deliveryContent: p.delivery_content || undefined, variations: p.variations || [], questions: p.questions || [] })) as Product[];
-      const purchases = ((dbPurchases || []) as any[]).map((p) => ({ id: Number(p.id), productId: Number(p.product_id), buyerEmail: p.buyer_email, buyerId: p.buyer_id, buyerPublicId: p.buyer_public_id, sellerEmail: p.seller_email, sellerId: p.seller_id, sellerPublicId: p.seller_public_id, status: p.status, createdAt: p.created_at, amount: Number(p.amount), messages: p.messages || [], reviewed: p.reviewed, reviewStars: p.review_stars || undefined, reviewComment: p.review_comment || undefined, variationName: p.variation_name || undefined })) as Purchase[];
+      const purchases = ((dbPurchases || []) as any[]).map(mapPurchaseRow) as Purchase[];
       const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "" })) as Withdrawal[];
       setState((s) => ({
         ...s,
