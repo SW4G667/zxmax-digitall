@@ -522,7 +522,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return finalPurchase.id;
   };
 
-  const markPurchasePaid = (id: number) => {
+  const savePixCharge = (purchaseId: number, charge: { evopayId: string; qrCodeText: string; expiresAt: string }) => {
+    void (supabase as any).from("purchases").update({
+      evopay_charge_id: charge.evopayId,
+      pix_qr_code: charge.qrCodeText,
+      pix_expires_at: charge.expiresAt,
+    }).eq("id", purchaseId);
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) =>
+        p.id === purchaseId ? { ...p, evopayChargeId: charge.evopayId, pixQrCode: charge.qrCodeText, pixExpiresAt: charge.expiresAt } : p
+      ),
+    }));
+  };
+
+  const refreshPurchases = async () => {
+    const { data } = await (supabase as any).from("purchases").select("*").order("created_at", { ascending: false });
+    if (!data) return;
+    const purchases = (data as any[]).map(mapPurchaseRow) as Purchase[];
+    setState((s) => ({ ...s, purchases }));
+  };
+
+  const markOrderDelivered = async (orderId: number) => {
+    const { data, error } = await supabase.functions.invoke("mark-order-delivered", { body: { orderId } });
+    if (error || data?.error) return false;
+    setState((s) => ({
+      ...s,
+      purchases: s.purchases.map((p) => (p.id === orderId ? { ...p, status: "delivered" as const } : p)),
+    }));
+    return true;
+  };
     const existing = state.purchases.find((p) => p.id === id);
     const prod = existing ? state.products.find((p) => p.id === existing.productId) : null;
     const isAutoDelivery = prod?.deliveryType === "auto" && !!prod?.deliveryContent;
