@@ -218,7 +218,8 @@ interface StoreContextType {
   deleteUserTag: (id: number) => void;
   assignUserTag: (email: string, tagId: number) => void;
   unassignUserTag: (email: string, tagId: number) => void;
-  verifyUser: (userId: string) => void;
+  verifyUser: (userId: string) => Promise<boolean>;
+  saveGatewaySettings: (settings: { evopayApiKey?: string; evopayMode?: string }) => Promise<boolean>;
   submitSellerDocument: (filePath: string, fileName: string) => void;
   reviewSellerDocument: (documentId: string, status: "approved" | "rejected") => void;
   isDark: boolean;
