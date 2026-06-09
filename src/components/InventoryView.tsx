@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { useStore, Purchase, Product } from "@/store/StoreContext";
 import { PackageEmoji } from "@/components/CustomEmojis";
-import { Plus, X, Trash2, Upload, Users, Eye, CheckCircle, Clock, MessageSquare } from "lucide-react";
+import { Plus, X, Trash2, Upload, Users, Eye, CheckCircle, Clock, MessageSquare, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
