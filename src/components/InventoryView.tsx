@@ -230,7 +230,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
               {form.deliveryType === "auto" && (
                 <input value={form.deliveryContent} onChange={(e) => setForm({ ...form, deliveryContent: e.target.value })} placeholder="Código/Key/Link de entrega" className="w-full p-3 rounded-xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground text-sm" />
               )}
-              <button type="submit" className="w-full btn-gradient p-3 text-sm">Criar Produto</button>
+              <button type="submit" className="w-full btn-gradient p-3 text-sm">{editingId !== null ? "Salvar Alterações" : "Criar Produto"}</button>
             </form>
           </div>
         </div>
