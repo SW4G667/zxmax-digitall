@@ -984,6 +984,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState(s => ({ ...s, sellerDocuments: (s.sellerDocuments || []).map(d => d.id === documentId ? { ...d, status } : d) }));
   };
 
+  const saveGatewaySettings = async (settings: { evopayApiKey?: string; evopayMode?: string }): Promise<boolean> => {
+    const value: Record<string, any> = {};
+    if (settings.evopayMode !== undefined) value.mode = settings.evopayMode;
+    if (settings.evopayApiKey !== undefined && settings.evopayApiKey !== "") value.apiKey = settings.evopayApiKey;
+    const { error } = await (supabase as any).from("app_settings").upsert({ key: "evopay", value }, { onConflict: "key" });
+    if (error) return false;
+    setState((s) => ({
+      ...s,
+      config: {
+        ...s.config,
+        evopayMode: (settings.evopayMode as any) ?? s.config.evopayMode,
+        evopayApiKey: settings.evopayApiKey ?? s.config.evopayApiKey,
+      },
+    }));
+    return true;
+  };
+
   const toggleDark = () => setIsDark((d) => !d);
 
   return (
