@@ -246,7 +246,7 @@ export default function AdminView() {
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   <button onClick={() => openDocument(doc.filePath)} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1"><ExternalLink className="w-3 h-3" /> Abrir</button>
-                  <button onClick={() => { reviewSellerDocument(doc.id, "approved"); verifyUser(doc.userId); toast.success("Documento aprovado!"); }} className="px-3 py-2 bg-success text-white text-xs font-bold rounded-lg">Aprovar</button>
+                  <button onClick={async () => { const tid = toast.loading("Aprovando..."); reviewSellerDocument(doc.id, "approved"); const ok = await verifyUser(doc.userId); ok ? toast.success("Documento aprovado e vendedor verificado!", { id: tid }) : toast.error("Documento marcado, mas não foi possível verificar o vendedor.", { id: tid }); }} className="px-3 py-2 bg-success text-white text-xs font-bold rounded-lg">Aprovar</button>
                   <button onClick={() => { reviewSellerDocument(doc.id, "rejected"); toast.error("Documento rejeitado."); }} className="px-3 py-2 bg-destructive/10 text-destructive text-xs font-bold rounded-lg">Rejeitar</button>
                 </div>
               </div>
