@@ -16,8 +16,11 @@ export default function UserProfileModal({ open, onClose, userEmail }: Props) {
   const sellerProduct = state.products.find((p) => p.sellerEmail === userEmail);
   const sellerName = sellerProduct?.seller || userEmail.split("@")[0];
   const sellerUuid = sellerProduct?.sellerId || state.purchases.find((p) => p.sellerEmail === userEmail)?.sellerId || "";
-  const sellerId = sellerProduct?.sellerPublicId || state.purchases.find((p) => p.sellerEmail === userEmail)?.sellerPublicId || state.userDirectory?.[sellerUuid]?.publicId || "ID indisponível";
-  
+  const dirEntry = sellerUuid ? state.userDirectory?.[sellerUuid] : undefined;
+  const sellerId = sellerProduct?.sellerPublicId || state.purchases.find((p) => p.sellerEmail === userEmail)?.sellerPublicId || dirEntry?.publicId || "ID indisponível";
+  const sellerAvatar = dirEntry?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(sellerName)}`;
+  const isVerified = !!dirEntry?.isVerified;
+
   const sellerProducts = state.products.filter((p) => p.sellerEmail === userEmail && p.approved);
   const sellerPurchases = state.purchases.filter((p) => p.sellerEmail === userEmail);
   const sellerReviews = sellerPurchases.filter((p) => p.reviewed);
