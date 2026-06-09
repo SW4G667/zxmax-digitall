@@ -426,6 +426,32 @@ export default function AdminView() {
             )}
           </div>
 
+          {/* EvoPay (gateway de pagamento ativo) */}
+          <div className="glass-card p-6 space-y-4 border-2 border-primary/20">
+            <div className="flex justify-between items-center">
+              <h3 className="font-bold text-foreground">Credenciais EvoPay (PIX) <span className="text-[10px] text-primary">• Gateway ativo</span></h3>
+              <div className="flex gap-1 bg-muted rounded-xl p-1">
+                <button onClick={() => setEvopayMode("automatic")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${evopayMode === "automatic" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Automático</button>
+                <button onClick={() => setEvopayMode("manual")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${evopayMode === "manual" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Manual</button>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Webhook URL (cole no painel EvoPay)</label>
+              <input readOnly value={state.config.evopayWebhookUrl} onClick={(e) => { (e.target as HTMLInputElement).select(); }} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono select-all" />
+            </div>
+            {evopayMode === "manual" ? (
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">API Key</label>
+                <input type="password" value={evopayApiKey} onChange={(e) => setEvopayApiKey(e.target.value)} placeholder={state.config.evopayApiKey ? "•••••••• (já configurada — preencha para alterar)" : "Cole sua API Key da EvoPay"} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
+                <p className="text-[10px] text-muted-foreground mt-1">A chave é guardada com segurança no servidor e usada para gerar cobranças e saques. Deixe em branco para manter a atual.</p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Usando a API Key padrão configurada nos secrets do backend (EVOPAY_API_KEY).</p>
+            )}
+          </div>
+
+
+
           {/* Regras */}
           <div className="glass-card p-6 space-y-4">
             <h3 className="font-bold text-foreground">Regras da Plataforma</h3>
