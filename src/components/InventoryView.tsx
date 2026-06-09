@@ -143,7 +143,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
           </div>
           <p className="text-muted-foreground">Gerencie seus produtos e vendas.</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="btn-gradient px-5 py-3 text-sm flex items-center gap-2">
+        <button onClick={() => { resetForm(); setShowForm(true); }} className="btn-gradient px-5 py-3 text-sm flex items-center gap-2">
           <Plus className="w-4 h-4" /> Novo Produto
         </button>
       </div>
@@ -152,8 +152,8 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
         <div className="fixed inset-0 z-[60] bg-card md:bg-foreground/40 md:backdrop-blur-sm md:flex md:items-center md:justify-center md:p-4">
           <div className="h-full w-full overflow-y-auto p-6 pb-24 md:glass-card md:w-full md:max-w-lg md:max-h-[90vh] md:h-auto md:pb-6 md:rounded-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-foreground">Criar Produto</h3>
-              <button onClick={() => setShowForm(false)} className="rounded-xl p-2 hover:bg-muted"><X className="w-5 h-5 text-muted-foreground" /></button>
+              <h3 className="text-xl font-bold text-foreground">{editingId !== null ? "Editar Produto" : "Criar Produto"}</h3>
+              <button onClick={() => { setShowForm(false); resetForm(); }} className="rounded-xl p-2 hover:bg-muted"><X className="w-5 h-5 text-muted-foreground" /></button>
             </div>
             <form onSubmit={handleCreate} className="space-y-3">
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nome do Produto" className="w-full p-3 rounded-xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground text-sm" />
