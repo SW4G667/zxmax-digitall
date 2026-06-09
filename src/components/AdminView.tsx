@@ -28,6 +28,9 @@ export default function AdminView() {
   // AbacatePay config
   const [abacatepayMode, setAbacatepayMode] = useState(state.config.abacatepayMode);
   const [abacatepayApiKey, setAbacatepayApiKey] = useState(state.config.abacatepayApiKey);
+  // EvoPay config (active payment gateway)
+  const [evopayMode, setEvopayMode] = useState(state.config.evopayMode);
+  const [evopayApiKey, setEvopayApiKey] = useState("");
   // Auth mode
   const [authMode, setAuthMode] = useState(state.config.authMode);
   const [banIdentifier, setBanIdentifier] = useState("");
