@@ -401,6 +401,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     })();
   }, [authUser]);
 
+  // Load admin-configurable gateway settings (only readable by admins via RLS)
+  useEffect(() => {
+    if (!authUser || !isAdmin) return;
+    void (async () => {
+      const { data } = await (supabase as any).from("app_settings").select("key, value").eq("key", "evopay").maybeSingle();
+      if (data?.value) {
+        setState((s) => ({
+          ...s,
+          config: {
+            ...s.config,
+            evopayMode: data.value.mode || s.config.evopayMode,
+            evopayApiKey: data.value.apiKey || s.config.evopayApiKey,
+          },
+        }));
+      }
+    })();
+  }, [authUser, isAdmin]);
+
+
+
   useEffect(() => {
     if (!authUser) return;
     void (async () => {
