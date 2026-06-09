@@ -7,7 +7,7 @@ import MyPurchasesView from "@/components/MyPurchasesView";
 import { supabase } from "@/integrations/supabase/client";
 
 export default function AdminView() {
-  const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument } = useStore();
+  const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument, saveGatewaySettings } = useStore();
   const [tab, setTab] = useState<"products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "disputes" | "config">("products");
   const [notice, setNotice] = useState("");
   const [chatMsg, setChatMsg] = useState("");
