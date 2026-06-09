@@ -378,9 +378,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!authUser) return;
     void (async () => {
-      const { data: profiles } = await (supabase as any).from("profiles").select("user_id, public_id, email, display_name");
+      const { data: profiles } = await (supabase as any).from("profiles").select("user_id, public_id, email, display_name, avatar_url, is_verified_seller");
       const directory = ((profiles || []) as any[]).reduce((acc, p) => {
-        acc[p.user_id] = { userId: p.user_id, publicId: String(p.public_id || ""), email: p.email, name: p.display_name || p.email?.split("@")[0] || "Usuário" };
+        acc[p.user_id] = { userId: p.user_id, publicId: String(p.public_id || ""), email: p.email, name: p.display_name || p.email?.split("@")[0] || "Usuário", avatar: p.avatar_url || undefined, isVerified: !!p.is_verified_seller };
         return acc;
       }, {} as Record<string, UserDirectoryEntry>);
 
