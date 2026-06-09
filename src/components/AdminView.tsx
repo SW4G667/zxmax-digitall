@@ -44,15 +44,23 @@ export default function AdminView() {
   const disputes = state.purchases.filter(p => p.status === "dispute");
   const pendingDocuments = (state.sellerDocuments || []).filter(d => d.status === "pending");
 
-  const handleSaveConfig = () => {
+  const handleSaveConfig = async () => {
     updateConfig({
       rules, commission, instantFee,
       authMode,
       discordMode, discordClientId, discordClientSecret, discordRedirectUri, discordScopes, discordServerLink,
       discordLink: discordServerLink,
       abacatepayMode, abacatepayApiKey,
+      evopayMode,
     });
-    toast.success("Configurações salvas!");
+    const tid = toast.loading("Salvando configurações...");
+    const ok = await saveGatewaySettings({ evopayMode, evopayApiKey: evopayApiKey.trim() || undefined });
+    if (ok) {
+      setEvopayApiKey("");
+      toast.success("Configurações salvas!", { id: tid });
+    } else {
+      toast.error("Configurações locais salvas, mas falha ao salvar as credenciais do gateway.", { id: tid });
+    }
   };
 
   const handleBan = async () => {
