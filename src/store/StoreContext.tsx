@@ -152,6 +152,9 @@ export interface AppConfig {
   discordServerLink: string;
   abacatepayApiKey: string;
   abacatepayMode: "automatic" | "manual";
+  evopayApiKey: string;
+  evopayMode: "automatic" | "manual";
+  evopayWebhookUrl: string;
   rules: string;
 }
 
