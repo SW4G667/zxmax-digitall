@@ -240,6 +240,9 @@ const defaultConfig: AppConfig = {
   discordServerLink: "https://discord.gg/zxmax",
   abacatepayApiKey: "",
   abacatepayMode: "automatic",
+  evopayApiKey: "",
+  evopayMode: "automatic",
+  evopayWebhookUrl: typeof window !== "undefined" ? `https://dbekdedzgkfgtlytrnyw.supabase.co/functions/v1/evopay-webhook` : "",
   rules: "1- Proibido estelionato(golpe).\n2-Proibido lavagem de dinheiro no sistema de saque do site.\n3-Proibido venda de conteúdo adulto, cp, gore ou qualquer conteúdo doloso\n\n**(Toda regra quebrada resultará a suspensão do usuário de 1 semana a permanente sem receber dinheiro de vendas durante a suspensão.)**",
 };
 
