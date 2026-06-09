@@ -316,7 +316,10 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                   >
                     <Users className="w-3.5 h-3.5" /> Ver Compradores
                   </button>
-                  <button className="p-2.5 bg-muted rounded-xl text-muted-foreground hover:text-destructive transition">
+                  <button onClick={() => openEdit(p)} className="px-3 py-2.5 bg-muted rounded-xl text-xs font-bold text-foreground hover:text-primary transition flex items-center gap-1">
+                    <Pencil className="w-4 h-4" /> Editar
+                  </button>
+                  <button onClick={() => handleDelete(p.id)} className="p-2.5 bg-muted rounded-xl text-muted-foreground hover:text-destructive transition">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
