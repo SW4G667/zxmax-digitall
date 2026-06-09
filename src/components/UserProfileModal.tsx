@@ -42,19 +42,28 @@ export default function UserProfileModal({ open, onClose, userEmail }: Props) {
         <div className="flex flex-col items-center text-center mb-8">
           <div className="relative mb-4">
             <img 
-              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(sellerName)}`} 
-              className="w-24 h-24 rounded-3xl bg-primary/10 border-4 border-card shadow-xl" 
+              src={sellerAvatar} 
+              className="w-24 h-24 rounded-3xl bg-primary/10 border-4 border-card shadow-xl object-cover" 
               alt={sellerName} 
             />
-            <div className="absolute -bottom-2 -right-2 bg-success text-white p-1.5 rounded-xl shadow-lg">
-              <CheckCircle className="w-4 h-4" />
-            </div>
+            {isVerified && (
+              <div className="absolute -bottom-2 -right-2 bg-success text-white p-1.5 rounded-xl shadow-lg">
+                <CheckCircle className="w-4 h-4" />
+              </div>
+            )}
           </div>
           <h4 className="text-2xl font-black text-foreground">{sellerName}</h4>
-          <div className="flex items-center gap-1.5 mt-1 bg-muted px-3 py-1 rounded-full">
-            <Shield className="w-3 h-3 text-primary" />
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Vendedor Verificado</p>
-          </div>
+          {isVerified ? (
+            <div className="flex items-center gap-1.5 mt-1 bg-success/10 px-3 py-1 rounded-full">
+              <Shield className="w-3 h-3 text-success" />
+              <p className="text-[10px] font-bold text-success uppercase tracking-wider">Vendedor Verificado</p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 mt-1 bg-muted px-3 py-1 rounded-full">
+              <Shield className="w-3 h-3 text-muted-foreground" />
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Vendedor Não Verificado</p>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-3 gap-3 mb-8">
