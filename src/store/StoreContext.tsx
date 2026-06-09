@@ -133,6 +133,8 @@ export interface UserDirectoryEntry {
   publicId: string;
   email: string;
   name: string;
+  avatar?: string;
+  isVerified?: boolean;
 }
 
 export interface AppConfig {
