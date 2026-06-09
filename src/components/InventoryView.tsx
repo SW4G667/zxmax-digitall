@@ -11,8 +11,9 @@ interface Variation {
 }
 
 export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId: number) => void }) {
-  const { state, addProduct } = useStore();
+  const { state, addProduct, updateProduct, deleteProduct } = useStore();
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [showSales, setShowSales] = useState<number | null>(null);
   const [uploading, setUploading] = useState<"image" | "banner" | null>(null);
   const [form, setForm] = useState({
@@ -24,6 +25,35 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const [variations, setVariations] = useState<Variation[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
+
+  const resetForm = () => {
+    setForm({ name: "", category: state.config.categories[0] || "", description: "", price: "", image: "", banner: "", deliveryType: "manual", deliveryContent: "" });
+    setVariations([]);
+    setEditingId(null);
+  };
+
+  const openEdit = (p: Product) => {
+    setEditingId(p.id);
+    setForm({
+      name: p.name,
+      category: p.category,
+      description: p.description || "",
+      price: String(p.price),
+      image: p.image || "",
+      banner: p.banner || "",
+      deliveryType: p.deliveryType,
+      deliveryContent: p.deliveryContent || "",
+    });
+    setVariations((p.variations || []).map((v) => ({ name: v.name, price: String(v.price) })));
+    setShowForm(true);
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm("Tem certeza que deseja excluir este anúncio?")) return;
+    const { paused } = await deleteProduct(id);
+    if (paused) toast.success("Produto tem pedidos, então foi pausado (não excluído) para preservar o histórico.");
+    else toast.success("Produto excluído.");
+  };
 
   const myProducts = state.products.filter((p) => p.sellerEmail === state.currentUser?.email);
   const mySales = state.purchases.filter((p) => p.sellerEmail === state.currentUser?.email);
