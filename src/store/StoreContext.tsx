@@ -133,6 +133,8 @@ export interface UserDirectoryEntry {
   publicId: string;
   email: string;
   name: string;
+  avatar?: string;
+  isVerified?: boolean;
 }
 
 export interface AppConfig {
@@ -150,6 +152,9 @@ export interface AppConfig {
   discordServerLink: string;
   abacatepayApiKey: string;
   abacatepayMode: "automatic" | "manual";
+  evopayApiKey: string;
+  evopayMode: "automatic" | "manual";
+  evopayWebhookUrl: string;
   rules: string;
 }
 
@@ -213,7 +218,8 @@ interface StoreContextType {
   deleteUserTag: (id: number) => void;
   assignUserTag: (email: string, tagId: number) => void;
   unassignUserTag: (email: string, tagId: number) => void;
-  verifyUser: (userId: string) => void;
+  verifyUser: (userId: string) => Promise<boolean>;
+  saveGatewaySettings: (settings: { evopayApiKey?: string; evopayMode?: string }) => Promise<boolean>;
   submitSellerDocument: (filePath: string, fileName: string) => void;
   reviewSellerDocument: (documentId: string, status: "approved" | "rejected") => void;
   isDark: boolean;
@@ -235,6 +241,9 @@ const defaultConfig: AppConfig = {
   discordServerLink: "https://discord.gg/zxmax",
   abacatepayApiKey: "",
   abacatepayMode: "automatic",
+  evopayApiKey: "",
+  evopayMode: "automatic",
+  evopayWebhookUrl: typeof window !== "undefined" ? `https://dbekdedzgkfgtlytrnyw.supabase.co/functions/v1/evopay-webhook` : "",
   rules: "1- Proibido estelionato(golpe).\n2-Proibido lavagem de dinheiro no sistema de saque do site.\n3-Proibido venda de conteúdo adulto, cp, gore ou qualquer conteúdo doloso\n\n**(Toda regra quebrada resultará a suspensão do usuário de 1 semana a permanente sem receber dinheiro de vendas durante a suspensão.)**",
 };
 
@@ -271,6 +280,9 @@ function loadState(): AppState {
           discordServerLink: parsed.config?.discordServerLink || defaultConfig.discordServerLink,
           abacatepayApiKey: parsed.config?.abacatepayApiKey || defaultConfig.abacatepayApiKey,
           abacatepayMode: parsed.config?.abacatepayMode || defaultConfig.abacatepayMode,
+          evopayApiKey: parsed.config?.evopayApiKey || defaultConfig.evopayApiKey,
+          evopayMode: parsed.config?.evopayMode || defaultConfig.evopayMode,
+          evopayWebhookUrl: parsed.config?.evopayWebhookUrl || defaultConfig.evopayWebhookUrl,
           rules: parsed.config?.rules || defaultConfig.rules,
         },
         products: parsed.products?.length ? parsed.products : [],
@@ -367,9 +379,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!authUser) return;
     void (async () => {
-      const { data: profiles } = await (supabase as any).from("profiles").select("user_id, public_id, email, display_name");
+      const { data: profiles } = await (supabase as any).from("profiles").select("user_id, public_id, email, display_name, avatar_url, is_verified_seller");
       const directory = ((profiles || []) as any[]).reduce((acc, p) => {
-        acc[p.user_id] = { userId: p.user_id, publicId: String(p.public_id || ""), email: p.email, name: p.display_name || p.email?.split("@")[0] || "Usuário" };
+        acc[p.user_id] = { userId: p.user_id, publicId: String(p.public_id || ""), email: p.email, name: p.display_name || p.email?.split("@")[0] || "Usuário", avatar: p.avatar_url || undefined, isVerified: !!p.is_verified_seller };
         return acc;
       }, {} as Record<string, UserDirectoryEntry>);
 
@@ -388,6 +400,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setState((s) => ({ ...s, userDirectory: { ...(s.userDirectory || {}), ...directory }, sellerDocuments }));
     })();
   }, [authUser]);
+
+  // Load admin-configurable gateway settings (only readable by admins via RLS)
+  useEffect(() => {
+    if (!authUser || !isAdmin) return;
+    void (async () => {
+      const { data } = await (supabase as any).from("app_settings").select("key, value").eq("key", "evopay").maybeSingle();
+      if (data?.value) {
+        setState((s) => ({
+          ...s,
+          config: {
+            ...s.config,
+            evopayMode: data.value.mode || s.config.evopayMode,
+            evopayApiKey: data.value.apiKey || s.config.evopayApiKey,
+          },
+        }));
+      }
+    })();
+  }, [authUser, isAdmin]);
+
+
 
   useEffect(() => {
     if (!authUser) return;
@@ -945,13 +977,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ...s, userTagAssignments: next };
     });
 
-  const verifyUser = (userId: string) => {
-    void supabase.from("profiles").update({ is_verified_seller: true }).eq("user_id", userId);
+  const verifyUser = async (userId: string): Promise<boolean> => {
+    const { error } = await supabase.from("profiles").update({ is_verified_seller: true }).eq("user_id", userId);
+    if (error) return false;
 
     setState(s => ({
       ...s,
       currentUser: s.currentUser?.id === userId ? { ...s.currentUser, isVerified: true } : s.currentUser,
+      userDirectory: {
+        ...(s.userDirectory || {}),
+        ...(s.userDirectory?.[userId] ? { [userId]: { ...s.userDirectory[userId], isVerified: true } } : {}),
+      },
     }));
+    return true;
   };
 
   const submitSellerDocument = (filePath: string, fileName: string) => {
@@ -964,6 +1002,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const reviewSellerDocument = (documentId: string, status: "approved" | "rejected") => {
     void (supabase as any).from("seller_documents").update({ status, reviewed_by: authUser?.id, reviewed_at: new Date().toISOString() }).eq("id", documentId);
     setState(s => ({ ...s, sellerDocuments: (s.sellerDocuments || []).map(d => d.id === documentId ? { ...d, status } : d) }));
+  };
+
+  const saveGatewaySettings = async (settings: { evopayApiKey?: string; evopayMode?: string }): Promise<boolean> => {
+    const value: Record<string, any> = {};
+    if (settings.evopayMode !== undefined) value.mode = settings.evopayMode;
+    if (settings.evopayApiKey !== undefined && settings.evopayApiKey !== "") value.apiKey = settings.evopayApiKey;
+    const { error } = await (supabase as any).from("app_settings").upsert({ key: "evopay", value }, { onConflict: "key" });
+    if (error) return false;
+    setState((s) => ({
+      ...s,
+      config: {
+        ...s.config,
+        evopayMode: (settings.evopayMode as any) ?? s.config.evopayMode,
+        evopayApiKey: settings.evopayApiKey ?? s.config.evopayApiKey,
+      },
+    }));
+    return true;
   };
 
   const toggleDark = () => setIsDark((d) => !d);
@@ -979,7 +1034,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
         addProductQuestion, answerProductQuestion,
         deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
-        verifyUser, submitSellerDocument, reviewSellerDocument, isDark, toggleDark,
+        verifyUser, saveGatewaySettings, submitSellerDocument, reviewSellerDocument, isDark, toggleDark,
       }}
     >
       {children}

@@ -13,8 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const apiKey = Deno.env.get("EVOPAY_API_KEY");
-    if (!apiKey) throw new Error("EVOPAY_API_KEY não configurada");
+    let apiKey = Deno.env.get("EVOPAY_API_KEY");
 
     // Only admins can trigger payouts
     const authHeader = req.headers.get("Authorization");
@@ -52,6 +51,15 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Resolve API key: prefer admin-configured key (manual mode) over the secret
+    try {
+      const { data: setting } = await admin.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
+      if (setting?.value?.mode === "manual" && setting?.value?.apiKey) {
+        apiKey = setting.value.apiKey;
+      }
+    } catch (_e) { /* fallback to secret */ }
+    if (!apiKey) throw new Error("EVOPAY_API_KEY não configurada");
 
     const body = await req.json();
     const { amount, pixKey, pixType, description, clientReference } = body;

@@ -13,7 +13,18 @@ serve(async (req) => {
   }
 
   try {
-    const apiKey = Deno.env.get("EVOPAY_API_KEY");
+    // Resolve API key: prefer admin-configured key (app_settings) when in manual mode, else secret
+    const serviceClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    let apiKey = Deno.env.get("EVOPAY_API_KEY");
+    try {
+      const { data: setting } = await serviceClient.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
+      if (setting?.value?.mode === "manual" && setting?.value?.apiKey) {
+        apiKey = setting.value.apiKey;
+      }
+    } catch (_e) { /* fallback to secret */ }
     if (!apiKey) throw new Error("EVOPAY_API_KEY não configurada");
 
     // Validate the caller is authenticated

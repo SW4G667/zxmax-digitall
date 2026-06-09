@@ -7,7 +7,7 @@ import MyPurchasesView from "@/components/MyPurchasesView";
 import { supabase } from "@/integrations/supabase/client";
 
 export default function AdminView() {
-  const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument } = useStore();
+  const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument, saveGatewaySettings } = useStore();
   const [tab, setTab] = useState<"products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "disputes" | "config">("products");
   const [notice, setNotice] = useState("");
   const [chatMsg, setChatMsg] = useState("");
@@ -28,6 +28,9 @@ export default function AdminView() {
   // AbacatePay config
   const [abacatepayMode, setAbacatepayMode] = useState(state.config.abacatepayMode);
   const [abacatepayApiKey, setAbacatepayApiKey] = useState(state.config.abacatepayApiKey);
+  // EvoPay config (active payment gateway)
+  const [evopayMode, setEvopayMode] = useState(state.config.evopayMode);
+  const [evopayApiKey, setEvopayApiKey] = useState("");
   // Auth mode
   const [authMode, setAuthMode] = useState(state.config.authMode);
   const [banIdentifier, setBanIdentifier] = useState("");
@@ -41,15 +44,23 @@ export default function AdminView() {
   const disputes = state.purchases.filter(p => p.status === "dispute");
   const pendingDocuments = (state.sellerDocuments || []).filter(d => d.status === "pending");
 
-  const handleSaveConfig = () => {
+  const handleSaveConfig = async () => {
     updateConfig({
       rules, commission, instantFee,
       authMode,
       discordMode, discordClientId, discordClientSecret, discordRedirectUri, discordScopes, discordServerLink,
       discordLink: discordServerLink,
       abacatepayMode, abacatepayApiKey,
+      evopayMode,
     });
-    toast.success("Configurações salvas!");
+    const tid = toast.loading("Salvando configurações...");
+    const ok = await saveGatewaySettings({ evopayMode, evopayApiKey: evopayApiKey.trim() || undefined });
+    if (ok) {
+      setEvopayApiKey("");
+      toast.success("Configurações salvas!", { id: tid });
+    } else {
+      toast.error("Configurações locais salvas, mas falha ao salvar as credenciais do gateway.", { id: tid });
+    }
   };
 
   const handleBan = async () => {
@@ -235,7 +246,7 @@ export default function AdminView() {
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   <button onClick={() => openDocument(doc.filePath)} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1"><ExternalLink className="w-3 h-3" /> Abrir</button>
-                  <button onClick={() => { reviewSellerDocument(doc.id, "approved"); verifyUser(doc.userId); toast.success("Documento aprovado!"); }} className="px-3 py-2 bg-success text-white text-xs font-bold rounded-lg">Aprovar</button>
+                  <button onClick={async () => { const tid = toast.loading("Aprovando..."); reviewSellerDocument(doc.id, "approved"); const ok = await verifyUser(doc.userId); ok ? toast.success("Documento aprovado e vendedor verificado!", { id: tid }) : toast.error("Documento marcado, mas não foi possível verificar o vendedor.", { id: tid }); }} className="px-3 py-2 bg-success text-white text-xs font-bold rounded-lg">Aprovar</button>
                   <button onClick={() => { reviewSellerDocument(doc.id, "rejected"); toast.error("Documento rejeitado."); }} className="px-3 py-2 bg-destructive/10 text-destructive text-xs font-bold rounded-lg">Rejeitar</button>
                 </div>
               </div>
@@ -414,6 +425,32 @@ export default function AdminView() {
               <p className="text-xs text-muted-foreground">Usando a API Key configurada nos secrets do backend.</p>
             )}
           </div>
+
+          {/* EvoPay (gateway de pagamento ativo) */}
+          <div className="glass-card p-6 space-y-4 border-2 border-primary/20">
+            <div className="flex justify-between items-center">
+              <h3 className="font-bold text-foreground">Credenciais EvoPay (PIX) <span className="text-[10px] text-primary">• Gateway ativo</span></h3>
+              <div className="flex gap-1 bg-muted rounded-xl p-1">
+                <button onClick={() => setEvopayMode("automatic")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${evopayMode === "automatic" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Automático</button>
+                <button onClick={() => setEvopayMode("manual")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${evopayMode === "manual" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Manual</button>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Webhook URL (cole no painel EvoPay)</label>
+              <input readOnly value={state.config.evopayWebhookUrl} onClick={(e) => { (e.target as HTMLInputElement).select(); }} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono select-all" />
+            </div>
+            {evopayMode === "manual" ? (
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">API Key</label>
+                <input type="password" value={evopayApiKey} onChange={(e) => setEvopayApiKey(e.target.value)} placeholder={state.config.evopayApiKey ? "•••••••• (já configurada — preencha para alterar)" : "Cole sua API Key da EvoPay"} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
+                <p className="text-[10px] text-muted-foreground mt-1">A chave é guardada com segurança no servidor e usada para gerar cobranças e saques. Deixe em branco para manter a atual.</p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Usando a API Key padrão configurada nos secrets do backend (EVOPAY_API_KEY).</p>
+            )}
+          </div>
+
+
 
           {/* Regras */}
           <div className="glass-card p-6 space-y-4">

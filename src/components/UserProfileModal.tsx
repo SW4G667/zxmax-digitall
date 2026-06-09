@@ -16,8 +16,11 @@ export default function UserProfileModal({ open, onClose, userEmail }: Props) {
   const sellerProduct = state.products.find((p) => p.sellerEmail === userEmail);
   const sellerName = sellerProduct?.seller || userEmail.split("@")[0];
   const sellerUuid = sellerProduct?.sellerId || state.purchases.find((p) => p.sellerEmail === userEmail)?.sellerId || "";
-  const sellerId = sellerProduct?.sellerPublicId || state.purchases.find((p) => p.sellerEmail === userEmail)?.sellerPublicId || state.userDirectory?.[sellerUuid]?.publicId || "ID indisponível";
-  
+  const dirEntry = sellerUuid ? state.userDirectory?.[sellerUuid] : undefined;
+  const sellerId = sellerProduct?.sellerPublicId || state.purchases.find((p) => p.sellerEmail === userEmail)?.sellerPublicId || dirEntry?.publicId || "ID indisponível";
+  const sellerAvatar = dirEntry?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(sellerName)}`;
+  const isVerified = !!dirEntry?.isVerified;
+
   const sellerProducts = state.products.filter((p) => p.sellerEmail === userEmail && p.approved);
   const sellerPurchases = state.purchases.filter((p) => p.sellerEmail === userEmail);
   const sellerReviews = sellerPurchases.filter((p) => p.reviewed);
@@ -39,19 +42,28 @@ export default function UserProfileModal({ open, onClose, userEmail }: Props) {
         <div className="flex flex-col items-center text-center mb-8">
           <div className="relative mb-4">
             <img 
-              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(sellerName)}`} 
-              className="w-24 h-24 rounded-3xl bg-primary/10 border-4 border-card shadow-xl" 
+              src={sellerAvatar} 
+              className="w-24 h-24 rounded-3xl bg-primary/10 border-4 border-card shadow-xl object-cover" 
               alt={sellerName} 
             />
-            <div className="absolute -bottom-2 -right-2 bg-success text-white p-1.5 rounded-xl shadow-lg">
-              <CheckCircle className="w-4 h-4" />
-            </div>
+            {isVerified && (
+              <div className="absolute -bottom-2 -right-2 bg-success text-white p-1.5 rounded-xl shadow-lg">
+                <CheckCircle className="w-4 h-4" />
+              </div>
+            )}
           </div>
           <h4 className="text-2xl font-black text-foreground">{sellerName}</h4>
-          <div className="flex items-center gap-1.5 mt-1 bg-muted px-3 py-1 rounded-full">
-            <Shield className="w-3 h-3 text-primary" />
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Vendedor Verificado</p>
-          </div>
+          {isVerified ? (
+            <div className="flex items-center gap-1.5 mt-1 bg-success/10 px-3 py-1 rounded-full">
+              <Shield className="w-3 h-3 text-success" />
+              <p className="text-[10px] font-bold text-success uppercase tracking-wider">Vendedor Verificado</p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 mt-1 bg-muted px-3 py-1 rounded-full">
+              <Shield className="w-3 h-3 text-muted-foreground" />
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Vendedor Não Verificado</p>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-3 gap-3 mb-8">

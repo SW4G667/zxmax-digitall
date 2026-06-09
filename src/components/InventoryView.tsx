@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { useStore, Purchase, Product } from "@/store/StoreContext";
 import { PackageEmoji } from "@/components/CustomEmojis";
-import { Plus, X, Trash2, Upload, Users, Eye, CheckCircle, Clock, MessageSquare } from "lucide-react";
+import { Plus, X, Trash2, Upload, Users, Eye, CheckCircle, Clock, MessageSquare, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -11,8 +11,9 @@ interface Variation {
 }
 
 export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId: number) => void }) {
-  const { state, addProduct } = useStore();
+  const { state, addProduct, updateProduct, deleteProduct } = useStore();
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [showSales, setShowSales] = useState<number | null>(null);
   const [uploading, setUploading] = useState<"image" | "banner" | null>(null);
   const [form, setForm] = useState({
@@ -24,6 +25,35 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const [variations, setVariations] = useState<Variation[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
+
+  const resetForm = () => {
+    setForm({ name: "", category: state.config.categories[0] || "", description: "", price: "", image: "", banner: "", deliveryType: "manual", deliveryContent: "" });
+    setVariations([]);
+    setEditingId(null);
+  };
+
+  const openEdit = (p: Product) => {
+    setEditingId(p.id);
+    setForm({
+      name: p.name,
+      category: p.category,
+      description: p.description || "",
+      price: String(p.price),
+      image: p.image || "",
+      banner: p.banner || "",
+      deliveryType: p.deliveryType,
+      deliveryContent: p.deliveryContent || "",
+    });
+    setVariations((p.variations || []).map((v) => ({ name: v.name, price: String(v.price) })));
+    setShowForm(true);
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm("Tem certeza que deseja excluir este anúncio?")) return;
+    const { paused } = await deleteProduct(id);
+    if (paused) toast.success("Produto tem pedidos, então foi pausado (não excluído) para preservar o histórico.");
+    else toast.success("Produto excluído.");
+  };
 
   const myProducts = state.products.filter((p) => p.sellerEmail === state.currentUser?.email);
   const mySales = state.purchases.filter((p) => p.sellerEmail === state.currentUser?.email);
@@ -71,22 +101,34 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     e.target.value = "";
   };
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!state.currentUser?.isVerified) return toast.error("Sua conta precisa ser verificada pelo admin para criar anúncios.");
     if (!form.name || !form.price) return toast.error("Preencha nome e preço.");
+    if (parseFloat(form.price) < 5) return toast.error("O preço mínimo de um produto é R$ 5,00.");
     const parsedVariations = variations.filter((v) => v.name && v.price).map((v) => ({ name: v.name, price: parseFloat(v.price) }));
-    addProduct({
-      name: form.name, category: form.category, description: form.description,
-      price: parseFloat(form.price), image: form.image, banner: form.banner || undefined,
-      seller: state.currentUser!.name, sellerEmail: state.currentUser!.email,
-      deliveryType: form.deliveryType, deliveryContent: form.deliveryContent,
-      variations: parsedVariations.length > 0 ? parsedVariations : undefined,
-    });
-    toast.success("Produto criado! Aguardando aprovação do admin.");
+
+    if (editingId !== null) {
+      const ok = await updateProduct(editingId, {
+        name: form.name, category: form.category, description: form.description,
+        price: parseFloat(form.price), image: form.image, banner: form.banner || undefined,
+        deliveryType: form.deliveryType, deliveryContent: form.deliveryContent,
+        variations: parsedVariations.length > 0 ? parsedVariations : [],
+      });
+      if (ok) toast.success("Produto atualizado! Se você alterou preço ou entrega, ele volta para análise.");
+      else toast.error("Não foi possível atualizar o produto.");
+    } else {
+      addProduct({
+        name: form.name, category: form.category, description: form.description,
+        price: parseFloat(form.price), image: form.image, banner: form.banner || undefined,
+        seller: state.currentUser!.name, sellerEmail: state.currentUser!.email,
+        deliveryType: form.deliveryType, deliveryContent: form.deliveryContent,
+        variations: parsedVariations.length > 0 ? parsedVariations : undefined,
+      });
+      toast.success("Produto criado! Aguardando aprovação do admin.");
+    }
     setShowForm(false);
-    setForm({ name: "", category: state.config.categories[0] || "", description: "", price: "", image: "", banner: "", deliveryType: "manual", deliveryContent: "" });
-    setVariations([]);
+    resetForm();
   };
 
   const salesForProduct = showSales ? mySales.filter(s => s.productId === showSales) : [];
@@ -101,7 +143,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
           </div>
           <p className="text-muted-foreground">Gerencie seus produtos e vendas.</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="btn-gradient px-5 py-3 text-sm flex items-center gap-2">
+        <button onClick={() => { resetForm(); setShowForm(true); }} className="btn-gradient px-5 py-3 text-sm flex items-center gap-2">
           <Plus className="w-4 h-4" /> Novo Produto
         </button>
       </div>
@@ -110,8 +152,8 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
         <div className="fixed inset-0 z-[60] bg-card md:bg-foreground/40 md:backdrop-blur-sm md:flex md:items-center md:justify-center md:p-4">
           <div className="h-full w-full overflow-y-auto p-6 pb-24 md:glass-card md:w-full md:max-w-lg md:max-h-[90vh] md:h-auto md:pb-6 md:rounded-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-foreground">Criar Produto</h3>
-              <button onClick={() => setShowForm(false)} className="rounded-xl p-2 hover:bg-muted"><X className="w-5 h-5 text-muted-foreground" /></button>
+              <h3 className="text-xl font-bold text-foreground">{editingId !== null ? "Editar Produto" : "Criar Produto"}</h3>
+              <button onClick={() => { setShowForm(false); resetForm(); }} className="rounded-xl p-2 hover:bg-muted"><X className="w-5 h-5 text-muted-foreground" /></button>
             </div>
             <form onSubmit={handleCreate} className="space-y-3">
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nome do Produto" className="w-full p-3 rounded-xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground text-sm" />
@@ -188,7 +230,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
               {form.deliveryType === "auto" && (
                 <input value={form.deliveryContent} onChange={(e) => setForm({ ...form, deliveryContent: e.target.value })} placeholder="Código/Key/Link de entrega" className="w-full p-3 rounded-xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground text-sm" />
               )}
-              <button type="submit" className="w-full btn-gradient p-3 text-sm">Criar Produto</button>
+              <button type="submit" className="w-full btn-gradient p-3 text-sm">{editingId !== null ? "Salvar Alterações" : "Criar Produto"}</button>
             </form>
           </div>
         </div>
@@ -274,7 +316,10 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                   >
                     <Users className="w-3.5 h-3.5" /> Ver Compradores
                   </button>
-                  <button className="p-2.5 bg-muted rounded-xl text-muted-foreground hover:text-destructive transition">
+                  <button onClick={() => openEdit(p)} className="px-3 py-2.5 bg-muted rounded-xl text-xs font-bold text-foreground hover:text-primary transition flex items-center gap-1">
+                    <Pencil className="w-4 h-4" /> Editar
+                  </button>
+                  <button onClick={() => handleDelete(p.id)} className="p-2.5 bg-muted rounded-xl text-muted-foreground hover:text-destructive transition">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
