@@ -101,22 +101,34 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     e.target.value = "";
   };
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!state.currentUser?.isVerified) return toast.error("Sua conta precisa ser verificada pelo admin para criar anúncios.");
     if (!form.name || !form.price) return toast.error("Preencha nome e preço.");
+    if (parseFloat(form.price) < 5) return toast.error("O preço mínimo de um produto é R$ 5,00.");
     const parsedVariations = variations.filter((v) => v.name && v.price).map((v) => ({ name: v.name, price: parseFloat(v.price) }));
-    addProduct({
-      name: form.name, category: form.category, description: form.description,
-      price: parseFloat(form.price), image: form.image, banner: form.banner || undefined,
-      seller: state.currentUser!.name, sellerEmail: state.currentUser!.email,
-      deliveryType: form.deliveryType, deliveryContent: form.deliveryContent,
-      variations: parsedVariations.length > 0 ? parsedVariations : undefined,
-    });
-    toast.success("Produto criado! Aguardando aprovação do admin.");
+
+    if (editingId !== null) {
+      const ok = await updateProduct(editingId, {
+        name: form.name, category: form.category, description: form.description,
+        price: parseFloat(form.price), image: form.image, banner: form.banner || undefined,
+        deliveryType: form.deliveryType, deliveryContent: form.deliveryContent,
+        variations: parsedVariations.length > 0 ? parsedVariations : [],
+      });
+      if (ok) toast.success("Produto atualizado! Se você alterou preço ou entrega, ele volta para análise.");
+      else toast.error("Não foi possível atualizar o produto.");
+    } else {
+      addProduct({
+        name: form.name, category: form.category, description: form.description,
+        price: parseFloat(form.price), image: form.image, banner: form.banner || undefined,
+        seller: state.currentUser!.name, sellerEmail: state.currentUser!.email,
+        deliveryType: form.deliveryType, deliveryContent: form.deliveryContent,
+        variations: parsedVariations.length > 0 ? parsedVariations : undefined,
+      });
+      toast.success("Produto criado! Aguardando aprovação do admin.");
+    }
     setShowForm(false);
-    setForm({ name: "", category: state.config.categories[0] || "", description: "", price: "", image: "", banner: "", deliveryType: "manual", deliveryContent: "" });
-    setVariations([]);
+    resetForm();
   };
 
   const salesForProduct = showSales ? mySales.filter(s => s.productId === showSales) : [];
