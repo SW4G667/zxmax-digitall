@@ -13,8 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const apiKey = Deno.env.get("EVOPAY_API_KEY");
-    if (!apiKey) throw new Error("EVOPAY_API_KEY não configurada");
+    let apiKey = Deno.env.get("EVOPAY_API_KEY");
 
     // Only admins can trigger payouts
     const authHeader = req.headers.get("Authorization");
