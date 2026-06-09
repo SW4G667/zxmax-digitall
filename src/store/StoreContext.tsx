@@ -956,13 +956,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ...s, userTagAssignments: next };
     });
 
-  const verifyUser = (userId: string) => {
-    void supabase.from("profiles").update({ is_verified_seller: true }).eq("user_id", userId);
+  const verifyUser = async (userId: string): Promise<boolean> => {
+    const { error } = await supabase.from("profiles").update({ is_verified_seller: true }).eq("user_id", userId);
+    if (error) return false;
 
     setState(s => ({
       ...s,
       currentUser: s.currentUser?.id === userId ? { ...s.currentUser, isVerified: true } : s.currentUser,
+      userDirectory: {
+        ...(s.userDirectory || {}),
+        ...(s.userDirectory?.[userId] ? { [userId]: { ...s.userDirectory[userId], isVerified: true } } : {}),
+      },
     }));
+    return true;
   };
 
   const submitSellerDocument = (filePath: string, fileName: string) => {
