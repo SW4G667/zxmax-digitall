@@ -154,7 +154,8 @@ export default function ProfileModal({ open, onClose }: Props) {
         <div className="flex items-center gap-5 mb-6 p-5 bg-muted rounded-2xl">
           <div className="relative">
             <img src={profile?.avatar_url || storeUser.avatar} className="w-20 h-20 rounded-2xl object-cover shadow-lg" alt="Avatar" />
-            <button className="absolute -bottom-2 -right-2 bg-card p-1.5 rounded-lg shadow-md border border-border">
+            <input type="file" ref={avatarInputRef} accept="image/*" onChange={handleAvatarUpload} className="hidden" />
+            <button onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading} className="absolute -bottom-2 -right-2 bg-card p-1.5 rounded-lg shadow-md border border-border hover:bg-muted transition disabled:opacity-50">
               <CameraEmoji className="w-4 h-4" />
             </button>
           </div>
