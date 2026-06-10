@@ -375,6 +375,64 @@ export default function AdminView() {
         </div>
       )}
 
+      {/* Webhooks Tab */}
+      {tab === "webhooks" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-foreground">Eventos do Webhook EvoPay</h3>
+              <p className="text-xs text-muted-foreground">Últimos 100 eventos recebidos e cobranças geradas. Use para depurar pagamentos.</p>
+            </div>
+            <button onClick={() => loadWebhookLogs()} className="shrink-0 p-2.5 rounded-xl bg-card border border-border/40 text-muted-foreground hover:text-foreground transition">
+              <RefreshCw className={`w-4 h-4 ${logsLoading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+
+          <div className="glass-card p-4">
+            <p className="text-xs font-bold text-muted-foreground uppercase mb-1">URL do Webhook (cole no painel EvoPay)</p>
+            <input readOnly value={state.config.evopayWebhookUrl} onClick={(e) => (e.target as HTMLInputElement).select()} className="w-full p-3 rounded-xl bg-muted text-xs text-foreground font-mono select-all" />
+          </div>
+
+          {logsLoading ? (
+            <div className="bg-card rounded-3xl p-10 text-center border-2 border-dashed border-border">
+              <p className="text-muted-foreground">Carregando eventos...</p>
+            </div>
+          ) : webhookLogs.length === 0 ? (
+            <div className="bg-card rounded-3xl p-10 text-center border-2 border-dashed border-border">
+              <p className="text-muted-foreground">Nenhum evento recebido ainda.</p>
+              <p className="text-xs text-muted-foreground mt-2">Os eventos aparecem aqui automaticamente quando alguém gera um PIX ou paga uma compra.</p>
+            </div>
+          ) : (
+            webhookLogs.map((log) => {
+              const isError = log.status === "error" || (log.status || "").startsWith("error") || !!log.error;
+              return (
+                <div key={log.id} className="glass-card p-4">
+                  <button onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)} className="w-full flex items-center gap-3 text-left">
+                    <span className={`shrink-0 w-2.5 h-2.5 rounded-full ${isError ? "bg-destructive" : log.status === "created" ? "bg-primary" : "bg-success"}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-foreground text-sm truncate">
+                        {log.event_type || "EVENTO"} <span className="text-muted-foreground font-normal">— {log.status}</span>
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {new Date(log.created_at).toLocaleString()} {log.order_id ? `• Pedido #${log.order_id}` : ""} {log.charge_id ? `• Cobrança ${log.charge_id}` : ""}
+                      </p>
+                    </div>
+                  </button>
+                  {log.error && (
+                    <p className="text-xs text-destructive mt-2 bg-destructive/10 p-2 rounded-lg break-words">{log.error}</p>
+                  )}
+                  {expandedLog === log.id && (
+                    <pre className="mt-3 text-[10px] text-foreground bg-muted p-3 rounded-xl overflow-x-auto max-h-72">{JSON.stringify(log.payload, null, 2)}</pre>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
+
+
       {/* Config Tab */}
       {tab === "config" && (
         <div className="space-y-6">
