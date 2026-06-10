@@ -93,6 +93,25 @@ export default function AdminView() {
     window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   };
 
+  const loadWebhookLogs = async () => {
+    setLogsLoading(true);
+    const { data, error } = await (supabase as any)
+      .from("webhook_logs")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    setLogsLoading(false);
+    if (error) {
+      toast.error("Não foi possível carregar os logs do webhook.");
+      return;
+    }
+    setWebhookLogs((data || []) as WebhookLog[]);
+  };
+
+  useEffect(() => {
+    if (tab === "webhooks") void loadWebhookLogs();
+  }, [tab]);
+
   if (selectedDisputeId) {
     return (
       <div className="animate-fade-in-up pb-20">
