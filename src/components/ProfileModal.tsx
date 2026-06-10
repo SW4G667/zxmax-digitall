@@ -78,6 +78,50 @@ export default function ProfileModal({ open, onClose }: Props) {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const compressImage = (file: File, max = 256): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, max / Math.max(img.width, img.height));
+          const w = Math.round(img.width * scale);
+          const h = Math.round(img.height * scale);
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return reject(new Error("Canvas não suportado"));
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL("image/jpeg", 0.82));
+        };
+        img.onerror = reject;
+        img.src = reader.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Selecione uma imagem.");
+      return;
+    }
+    setAvatarUploading(true);
+    try {
+      const dataUrl = await compressImage(file, 256);
+      await updateAuthProfile({ avatar_url: dataUrl });
+      await refreshProfile();
+      toast.success("Foto de perfil atualizada!");
+    } catch (err: any) {
+      toast.error("Erro ao atualizar foto: " + (err?.message || "Tente novamente."));
+    }
+    setAvatarUploading(false);
+    if (avatarInputRef.current) avatarInputRef.current.value = "";
+  };
+
   const displayName = profile?.display_name || storeUser.name;
 
   if (showRules) {
