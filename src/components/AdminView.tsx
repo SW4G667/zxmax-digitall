@@ -141,6 +141,7 @@ export default function AdminView() {
           { id: "users", label: "Usuários", icon: Users },
           { id: "notices", label: "Avisos", icon: StarEmoji },
           { id: "adminchat", label: "Chat Equipe", icon: ChatEmoji },
+          { id: "webhooks", label: "Webhooks EvoPay", icon: Webhook },
           { id: "config", label: "Config", icon: Settings },
         ].map((t) => (
           <button
