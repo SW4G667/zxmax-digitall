@@ -1,14 +1,29 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useStore, Product, Withdrawal, Purchase } from "@/store/StoreContext";
 import { MoneyEmoji, PackageEmoji, ChatEmoji, StarEmoji, ShieldEmoji } from "@/components/CustomEmojis";
-import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag, ArrowLeft, ExternalLink } from "lucide-react";
+import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag, ArrowLeft, ExternalLink, Webhook, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import MyPurchasesView from "@/components/MyPurchasesView";
 import { supabase } from "@/integrations/supabase/client";
 
+interface WebhookLog {
+  id: number;
+  source: string;
+  event_type: string | null;
+  status: string | null;
+  order_id: number | null;
+  charge_id: string | null;
+  payload: any;
+  error: string | null;
+  created_at: string;
+}
+
 export default function AdminView() {
   const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument, saveGatewaySettings } = useStore();
-  const [tab, setTab] = useState<"products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "disputes" | "config">("products");
+  const [tab, setTab] = useState<"products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "disputes" | "config" | "webhooks">("products");
+  const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [expandedLog, setExpandedLog] = useState<number | null>(null);
   const [notice, setNotice] = useState("");
   const [chatMsg, setChatMsg] = useState("");
   const [newTagName, setNewTagName] = useState("");
