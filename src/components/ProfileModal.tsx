@@ -20,8 +20,10 @@ export default function ProfileModal({ open, onClose }: Props) {
   const [pixKey, setPixKey] = useState(profile?.pix_key || storeUser?.pixKey || "");
   const [editingPix, setEditingPix] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [showRules, setShowRules] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   if (!open || !storeUser || !authUser) return null;
 
