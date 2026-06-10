@@ -412,6 +412,42 @@ export type Database = {
         }
         Relationships: []
       }
+      webhook_logs: {
+        Row: {
+          charge_id: string | null
+          created_at: string
+          error: string | null
+          event_type: string | null
+          id: number
+          order_id: number | null
+          payload: Json | null
+          source: string
+          status: string | null
+        }
+        Insert: {
+          charge_id?: string | null
+          created_at?: string
+          error?: string | null
+          event_type?: string | null
+          id?: never
+          order_id?: number | null
+          payload?: Json | null
+          source?: string
+          status?: string | null
+        }
+        Update: {
+          charge_id?: string | null
+          created_at?: string
+          error?: string | null
+          event_type?: string | null
+          id?: never
+          order_id?: number | null
+          payload?: Json | null
+          source?: string
+          status?: string | null
+        }
+        Relationships: []
+      }
       withdrawals: {
         Row: {
           amount: number

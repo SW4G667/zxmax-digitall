@@ -83,6 +83,19 @@ serve(async (req) => {
     const data = await response.json();
     console.log("EvoPay response", response.status, JSON.stringify(data));
 
+    // Log the charge creation attempt for admin debugging
+    try {
+      await serviceClient.from("webhook_logs").insert({
+        source: "evopay",
+        event_type: "CREATE_PIX",
+        status: response.ok ? "created" : `error_${response.status}`,
+        order_id: purchaseId ? Number(purchaseId) : null,
+        charge_id: data?.id || null,
+        payload: data,
+        error: response.ok ? null : (typeof (data?.message || data?.error) === "string" ? (data.message || data.error) : JSON.stringify(data)),
+      });
+    } catch (_e) { /* ignore logging failure */ }
+
     if (!response.ok) {
       const msg = data?.message || data?.error || "Erro ao criar cobrança PIX";
       throw new Error(`EvoPay (${response.status}): ${typeof msg === "string" ? msg : JSON.stringify(msg)}`);
