@@ -256,39 +256,6 @@ export function useStore() {
 }
 
 function loadState(): AppState {
-  try {
-    const saved = localStorage.getItem("zxmax_state");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return {
-        userTags: [],
-        userTagAssignments: {},
-        userBalances: parsed.userBalances || {},
-        userEarnings: parsed.userEarnings || {},
-        sellerDocuments: parsed.sellerDocuments || [],
-        userDirectory: parsed.userDirectory || {},
-        ...parsed,
-        config: {
-          ...defaultConfig,
-          ...parsed.config,
-          authMode: parsed.config?.authMode || defaultConfig.authMode,
-          discordClientId: parsed.config?.discordClientId || defaultConfig.discordClientId,
-          discordClientSecret: parsed.config?.discordClientSecret || defaultConfig.discordClientSecret,
-          discordRedirectUri: parsed.config?.discordRedirectUri || defaultConfig.discordRedirectUri,
-          discordScopes: parsed.config?.discordScopes || defaultConfig.discordScopes,
-          discordMode: parsed.config?.discordMode || defaultConfig.discordMode,
-          discordServerLink: parsed.config?.discordServerLink || defaultConfig.discordServerLink,
-          abacatepayApiKey: parsed.config?.abacatepayApiKey || defaultConfig.abacatepayApiKey,
-          abacatepayMode: parsed.config?.abacatepayMode || defaultConfig.abacatepayMode,
-          evopayApiKey: parsed.config?.evopayApiKey || defaultConfig.evopayApiKey,
-          evopayMode: parsed.config?.evopayMode || defaultConfig.evopayMode,
-          evopayWebhookUrl: parsed.config?.evopayWebhookUrl || defaultConfig.evopayWebhookUrl,
-          rules: parsed.config?.rules || defaultConfig.rules,
-        },
-        products: parsed.products?.length ? parsed.products : [],
-      };
-    }
-  } catch {}
   return {
     currentUser: null,
     products: [],
@@ -440,10 +407,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }));
     })();
   }, [authUser]);
-
-  useEffect(() => {
-    localStorage.setItem("zxmax_state", JSON.stringify(state));
-  }, [state]);
 
   useEffect(() => {
     localStorage.setItem("zxmax_dark", String(isDark));
