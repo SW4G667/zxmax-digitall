@@ -1,13 +1,13 @@
 import React, { useState, useRef } from "react";
 import { useStore, ProductVariation } from "@/store/StoreContext";
 import { StarEmoji, FireEmoji, RocketEmoji, ShieldEmoji, ChatEmoji } from "@/components/CustomEmojis";
-import { Search, X, CheckCircle, AlertTriangle, Image as ImageIcon, ShoppingCart, MessageSquare, Star, Info } from "lucide-react";
+import { Search, X, CheckCircle, AlertTriangle, Image as ImageIcon, ShoppingCart, MessageSquare, Star, Info, Send } from "lucide-react";
 import { toast } from "sonner";
 import UserProfileModal from "@/components/UserProfileModal";
 import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
 
 export default function StoreView() {
-  const { state, addProductQuestion, buyProduct, markPurchasePaid, savePixCharge } = useStore();
+  const { state, addProductQuestion, buyProduct, refreshPurchases, savePixCharge } = useStore();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Todos");
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
@@ -89,9 +89,7 @@ export default function StoreView() {
   };
 
   const handlePixPaid = () => {
-    if (paidPurchaseId != null) {
-      markPurchasePaid(paidPurchaseId);
-    }
+    void refreshPurchases();
     toast.success("Pagamento confirmado! Acesse 'Minhas Compras' para ver a entrega.");
   };
 

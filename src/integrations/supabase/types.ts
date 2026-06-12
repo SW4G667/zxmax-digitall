@@ -110,6 +110,38 @@ export type Database = {
         }
         Relationships: []
       }
+      product_delivery: {
+        Row: {
+          created_at: string
+          delivery_content: string | null
+          delivery_type: string
+          product_id: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          delivery_content?: string | null
+          delivery_type?: string
+          product_id: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          delivery_content?: string | null
+          delivery_type?: string
+          product_id?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_delivery_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: true
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           approved: boolean
@@ -489,7 +521,33 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      profiles_public: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          display_name: string | null
+          is_verified_seller: boolean | null
+          public_id: number | null
+          user_id: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          display_name?: string | null
+          is_verified_seller?: boolean | null
+          public_id?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          display_name?: string | null
+          is_verified_seller?: boolean | null
+          public_id?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       has_role: {

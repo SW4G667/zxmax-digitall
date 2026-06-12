@@ -256,39 +256,6 @@ export function useStore() {
 }
 
 function loadState(): AppState {
-  try {
-    const saved = localStorage.getItem("zxmax_state");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return {
-        userTags: [],
-        userTagAssignments: {},
-        userBalances: parsed.userBalances || {},
-        userEarnings: parsed.userEarnings || {},
-        sellerDocuments: parsed.sellerDocuments || [],
-        userDirectory: parsed.userDirectory || {},
-        ...parsed,
-        config: {
-          ...defaultConfig,
-          ...parsed.config,
-          authMode: parsed.config?.authMode || defaultConfig.authMode,
-          discordClientId: parsed.config?.discordClientId || defaultConfig.discordClientId,
-          discordClientSecret: parsed.config?.discordClientSecret || defaultConfig.discordClientSecret,
-          discordRedirectUri: parsed.config?.discordRedirectUri || defaultConfig.discordRedirectUri,
-          discordScopes: parsed.config?.discordScopes || defaultConfig.discordScopes,
-          discordMode: parsed.config?.discordMode || defaultConfig.discordMode,
-          discordServerLink: parsed.config?.discordServerLink || defaultConfig.discordServerLink,
-          abacatepayApiKey: parsed.config?.abacatepayApiKey || defaultConfig.abacatepayApiKey,
-          abacatepayMode: parsed.config?.abacatepayMode || defaultConfig.abacatepayMode,
-          evopayApiKey: parsed.config?.evopayApiKey || defaultConfig.evopayApiKey,
-          evopayMode: parsed.config?.evopayMode || defaultConfig.evopayMode,
-          evopayWebhookUrl: parsed.config?.evopayWebhookUrl || defaultConfig.evopayWebhookUrl,
-          rules: parsed.config?.rules || defaultConfig.rules,
-        },
-        products: parsed.products?.length ? parsed.products : [],
-      };
-    }
-  } catch {}
   return {
     currentUser: null,
     products: [],
@@ -424,12 +391,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!authUser) return;
     void (async () => {
-      const [{ data: dbProducts }, { data: dbPurchases }, { data: dbWithdrawals }] = await Promise.all([
-        (supabase as any).from("products").select("*").order("created_at", { ascending: false }),
-        (supabase as any).from("purchases").select("*").order("created_at", { ascending: false }),
+      const [{ data: dbProducts }, { data: dbPurchases }, { data: dbWithdrawals }, { data: deliveryRows }] = await Promise.all([
+        (supabase as any).from("products").select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at").order("created_at", { ascending: false }),
+        (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_public_id,seller_id,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false }),
         (supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }),
+        (supabase as any).from("product_delivery").select("product_id,delivery_content"),
       ]);
-      const products = ((dbProducts || []) as any[]).map((p) => ({ id: Number(p.id), name: p.name, price: Number(p.price), category: p.category, seller: p.seller_name, sellerEmail: p.seller_email, sellerId: p.seller_id, sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0), image: p.image, banner: p.banner || undefined, description: p.description, approved: p.approved, deliveryType: p.delivery_type, deliveryContent: p.delivery_content || undefined, variations: p.variations || [], questions: p.questions || [] })) as Product[];
+      const deliveryByProduct = new Map(((deliveryRows || []) as any[]).map((d) => [Number(d.product_id), d.delivery_content || undefined]));
+      const products = ((dbProducts || []) as any[]).map((p) => ({ id: Number(p.id), name: p.name, price: Number(p.price), category: p.category, seller: p.seller_name, sellerEmail: "", sellerId: p.seller_id, sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0), image: p.image, banner: p.banner || undefined, description: p.description, approved: p.approved, deliveryType: p.delivery_type, deliveryContent: deliveryByProduct.get(Number(p.id)), variations: p.variations || [], questions: p.questions || [] })) as Product[];
       const purchases = ((dbPurchases || []) as any[]).map(mapPurchaseRow) as Purchase[];
       const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "" })) as Withdrawal[];
       setState((s) => ({
@@ -440,10 +409,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }));
     })();
   }, [authUser]);
-
-  useEffect(() => {
-    localStorage.setItem("zxmax_state", JSON.stringify(state));
-  }, [state]);
 
   useEffect(() => {
     localStorage.setItem("zxmax_dark", String(isDark));
@@ -463,8 +428,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!state.currentUser) return;
     const newProduct = { ...p, id: Date.now(), sales: 0, rating: 0, approved: false, sellerId: state.currentUser.id, sellerPublicId: state.currentUser.publicId };
     void (async () => {
-      const { data } = await (supabase as any).from("products").insert({ seller_id: newProduct.sellerId, seller_public_id: newProduct.sellerPublicId, seller_email: newProduct.sellerEmail, seller_name: newProduct.seller, name: newProduct.name, price: newProduct.price, category: newProduct.category, image: newProduct.image, banner: newProduct.banner || null, description: newProduct.description, approved: false, delivery_type: newProduct.deliveryType, delivery_content: newProduct.deliveryContent || null, variations: newProduct.variations || [], questions: newProduct.questions || [] }).select("id").maybeSingle();
+      const { data } = await (supabase as any).from("products").insert({ seller_id: newProduct.sellerId, seller_public_id: newProduct.sellerPublicId, seller_email: newProduct.sellerEmail, seller_name: newProduct.seller, name: newProduct.name, price: newProduct.price, category: newProduct.category, image: newProduct.image, banner: newProduct.banner || null, description: newProduct.description, approved: false, delivery_type: newProduct.deliveryType, variations: newProduct.variations || [], questions: newProduct.questions || [] }).select("id").maybeSingle();
       if (data?.id) {
+        await (supabase as any).from("product_delivery").upsert({ product_id: Number(data.id), delivery_type: newProduct.deliveryType, delivery_content: newProduct.deliveryContent || null });
         setState((s) => ({ ...s, products: s.products.map((pr) => (pr.id === newProduct.id ? { ...pr, id: Number(data.id) } : pr)) }));
       }
     })();
@@ -490,11 +456,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (p.image !== undefined && p.image) dbPayload.image = p.image;
     if (p.banner !== undefined) dbPayload.banner = p.banner || null;
     if (p.deliveryType !== undefined) dbPayload.delivery_type = p.deliveryType;
-    if (p.deliveryContent !== undefined) dbPayload.delivery_content = p.deliveryContent || null;
     if (p.variations !== undefined) dbPayload.variations = p.variations || [];
     if (essentialChanged) dbPayload.approved = false;
     const { error } = await (supabase as any).from("products").update(dbPayload).eq("id", id);
     if (error) return false;
+    if (p.deliveryContent !== undefined || p.deliveryType !== undefined) {
+      await (supabase as any).from("product_delivery").upsert({ product_id: id, delivery_type: p.deliveryType || existing.deliveryType, delivery_content: p.deliveryContent ?? existing.deliveryContent ?? null });
+    }
     setState((s) => ({
       ...s,
       products: s.products.map((pr) => (pr.id === id ? { ...pr, ...p, approved: essentialChanged ? false : pr.approved } : pr)),
@@ -548,7 +516,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       reviewed: false,
       variationName: variation?.name,
     };
-    const { data } = await (supabase as any).from("purchases").insert({ product_id: id, buyer_id: purchase.buyerId, buyer_public_id: purchase.buyerPublicId || "", buyer_email: purchase.buyerEmail, seller_id: purchase.sellerId, seller_public_id: purchase.sellerPublicId || "", seller_email: purchase.sellerEmail, status: "pending", amount: purchase.amount, messages: [], variation_name: purchase.variationName || null }).select("id, created_at").maybeSingle();
+    const { data, error } = await (supabase as any).from("purchases").insert({ product_id: id, buyer_id: purchase.buyerId, buyer_public_id: purchase.buyerPublicId || "", seller_id: purchase.sellerId, seller_public_id: purchase.sellerPublicId || "", status: "pending", amount: purchase.amount, messages: [], variation_name: purchase.variationName || null }).select("id, created_at").maybeSingle();
+    if (error) return null;
     const finalPurchase = data ? { ...purchase, id: Number(data.id), createdAt: data.created_at } : purchase;
     setState((s) => ({ ...s, purchases: [...s.purchases, finalPurchase] }));
     return finalPurchase.id;
@@ -569,7 +538,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshPurchases = async () => {
-    const { data } = await (supabase as any).from("purchases").select("*").order("created_at", { ascending: false });
+    const { data } = await (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_public_id,seller_id,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false });
     if (!data) return;
     const purchases = (data as any[]).map(mapPurchaseRow) as Purchase[];
     setState((s) => ({ ...s, purchases }));

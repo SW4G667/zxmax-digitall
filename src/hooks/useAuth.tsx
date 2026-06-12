@@ -75,24 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   };
 
-  const checkAdmin = async (userId: string, email?: string) => {
-    // Hardcoded admin check for the specific email
-    if (email === "admin@keybot.com") {
-      setIsAdmin(true);
-      // Also ensure the role exists in the database for RLS
-      const { data: existingRole } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId)
-        .eq("role", "admin")
-        .maybeSingle();
-      
-      if (!existingRole) {
-        await supabase.from("user_roles").insert({ user_id: userId, role: "admin" });
-      }
-      return;
-    }
-
+  const checkAdmin = async (userId: string, _email?: string) => {
     const { data } = await supabase
       .from("user_roles")
       .select("role")
