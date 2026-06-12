@@ -456,11 +456,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (p.image !== undefined && p.image) dbPayload.image = p.image;
     if (p.banner !== undefined) dbPayload.banner = p.banner || null;
     if (p.deliveryType !== undefined) dbPayload.delivery_type = p.deliveryType;
-    if (p.deliveryContent !== undefined) dbPayload.delivery_content = p.deliveryContent || null;
     if (p.variations !== undefined) dbPayload.variations = p.variations || [];
     if (essentialChanged) dbPayload.approved = false;
     const { error } = await (supabase as any).from("products").update(dbPayload).eq("id", id);
     if (error) return false;
+    if (p.deliveryContent !== undefined || p.deliveryType !== undefined) {
+      await (supabase as any).from("product_delivery").upsert({ product_id: id, delivery_type: p.deliveryType || existing.deliveryType, delivery_content: p.deliveryContent ?? existing.deliveryContent ?? null });
+    }
     setState((s) => ({
       ...s,
       products: s.products.map((pr) => (pr.id === id ? { ...pr, ...p, approved: essentialChanged ? false : pr.approved } : pr)),
@@ -514,7 +516,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       reviewed: false,
       variationName: variation?.name,
     };
-    const { data } = await (supabase as any).from("purchases").insert({ product_id: id, buyer_id: purchase.buyerId, buyer_public_id: purchase.buyerPublicId || "", buyer_email: purchase.buyerEmail, seller_id: purchase.sellerId, seller_public_id: purchase.sellerPublicId || "", seller_email: purchase.sellerEmail, status: "pending", amount: purchase.amount, messages: [], variation_name: purchase.variationName || null }).select("id, created_at").maybeSingle();
+    const { data, error } = await (supabase as any).from("purchases").insert({ product_id: id, buyer_id: purchase.buyerId, buyer_public_id: purchase.buyerPublicId || "", seller_id: purchase.sellerId, seller_public_id: purchase.sellerPublicId || "", status: "pending", amount: purchase.amount, messages: [], variation_name: purchase.variationName || null }).select("id, created_at").maybeSingle();
+    if (error) return null;
     const finalPurchase = data ? { ...purchase, id: Number(data.id), createdAt: data.created_at } : purchase;
     setState((s) => ({ ...s, purchases: [...s.purchases, finalPurchase] }));
     return finalPurchase.id;
@@ -535,7 +538,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshPurchases = async () => {
-    const { data } = await (supabase as any).from("purchases").select("*").order("created_at", { ascending: false });
+    const { data } = await (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_public_id,seller_id,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false });
     if (!data) return;
     const purchases = (data as any[]).map(mapPurchaseRow) as Purchase[];
     setState((s) => ({ ...s, purchases }));
