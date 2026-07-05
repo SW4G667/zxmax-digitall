@@ -1,10 +1,11 @@
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import { useStore, ProductVariation } from "@/store/StoreContext";
 import { StarEmoji, FireEmoji, RocketEmoji, ShieldEmoji, ChatEmoji } from "@/components/CustomEmojis";
-import { Search, X, CheckCircle, AlertTriangle, Image as ImageIcon, ShoppingCart, MessageSquare, Star, Info, Send } from "lucide-react";
+import { Search, X, CheckCircle, ShoppingCart, MessageSquare, Star, Info, Send } from "lucide-react";
 import { toast } from "sonner";
 import UserProfileModal from "@/components/UserProfileModal";
 import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
+import AuthScreen from "@/components/AuthScreen";
 
 export default function StoreView() {
   const { state, addProductQuestion, buyProduct, refreshPurchases, savePixCharge } = useStore();
@@ -12,9 +13,10 @@ export default function StoreView() {
   const [category, setCategory] = useState("Todos");
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
   const [question, setQuestion] = useState("");
-  const [selectedSellerEmail, setSelectedSellerEmail] = useState<string | null>(null);
+  const [selectedSellerId, setSelectedSellerId] = useState<string | null>(null);
   const [selectedVariation, setSelectedVariation] = useState<ProductVariation | null>(null);
   const [detailTab, setDetailTab] = useState<"info" | "reviews" | "questions">("info");
+  const [authOpen, setAuthOpen] = useState(false);
 
   const approved = state.products.filter((p) => p.approved);
   const categories = ["Todos", ...state.config.categories];
@@ -32,7 +34,7 @@ export default function StoreView() {
     ? (productReviews.reduce((a, r) => a + (r.reviewStars || 0), 0) / productReviews.length).toFixed(1)
     : null;
   const sellerProducts = product
-    ? state.products.filter((p) => p.sellerEmail === product.sellerEmail && p.approved)
+    ? state.products.filter((p) => p.sellerId === product.sellerId && p.approved)
     : [];
   const sellerSales = product
     ? state.purchases.filter((p) => sellerProducts.some((sp) => sp.id === p.productId)).length
@@ -44,7 +46,7 @@ export default function StoreView() {
 
   const handleBuy = async () => {
     if (!product || !state.currentUser) {
-      toast.error("Você precisa estar logado para comprar.");
+      setAuthOpen(true);
       return;
     }
 
@@ -65,7 +67,6 @@ export default function StoreView() {
           purchaseId,
           productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name,
           amount: price,
-          buyerEmail: state.currentUser.email,
           buyerName: state.currentUser.name,
         },
       });
@@ -184,8 +185,8 @@ export default function StoreView() {
 
               <div className="p-4 sm:p-6 space-y-6">
                 {/* Seller section */}
-                <button onClick={() => setSelectedSellerEmail(product.sellerEmail)} className="w-full bg-muted rounded-2xl p-4 flex items-center gap-4 hover:bg-muted/80 transition text-left">
-                  <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(product.seller)}`} className="w-12 h-12 rounded-full bg-primary/10 border-2 border-card shadow" alt={product.seller} />
+                <button onClick={() => setSelectedSellerId(product.sellerId)} className="w-full bg-muted rounded-2xl p-4 flex items-center gap-4 hover:bg-muted/80 transition text-left">
+                  <img src={state.userDirectory?.[product.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(product.seller)}`} className="w-12 h-12 rounded-full bg-primary/10 border-2 border-card shadow object-cover" alt={product.seller} />
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-foreground text-sm">{product.seller}</p>
                     <p className="text-[10px] text-muted-foreground font-mono truncate">ID: {product.sellerPublicId || state.userDirectory?.[product.sellerId]?.publicId || "indisponível"}</p>
@@ -275,10 +276,10 @@ export default function StoreView() {
                             <div className="flex justify-between items-start mb-2">
                               <div className="flex items-center gap-2">
                                 <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
-                                  {r.buyerEmail.substring(0, 2).toUpperCase()}
+                                  {(r.buyerPublicId || "ZX").substring(0, 2).toUpperCase()}
                                 </div>
                                 <div>
-                                  <p className="text-xs font-bold text-foreground">{r.buyerEmail.split('@')[0]}</p>
+                                  <p className="text-xs font-bold text-foreground">Comprador #{r.buyerPublicId || r.buyerId.slice(0, 6)}</p>
                                   <div className="flex gap-0.5">
                                     {[...Array(5)].map((_, j) => <StarEmoji key={j} className="w-2.5 h-2.5" filled={j < (r.reviewStars || 0)} />)}
                                   </div>
@@ -341,17 +342,12 @@ export default function StoreView() {
         </div>
       )}
 
-      {selectedSellerEmail && (
-        <UserProfileModal open={!!selectedSellerEmail} onClose={() => setSelectedSellerEmail(null)} userEmail={selectedSellerEmail} />
+      {selectedSellerId && (
+        <UserProfileModal open={!!selectedSellerId} onClose={() => setSelectedSellerId(null)} userId={selectedSellerId} />
       )}
 
       <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
+      {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
     </div>
   );
 }
-
-const Send = ({ className }: { className?: string }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-  </svg>
-);
