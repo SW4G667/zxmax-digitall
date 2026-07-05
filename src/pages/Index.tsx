@@ -17,10 +17,11 @@ import { toast } from "sonner";
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "profile";
 
 function Dashboard() {
-  const { state, markPurchasePaid } = useStore();
+  const { refreshPurchases } = useStore();
   const { isAdmin, user } = useAuth();
   const [view, setView] = useState<View>("store");
   const [profileOpen, setProfileOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<number | null>(null);
 
   const handleOpenChat = (purchaseId: number) => {
@@ -37,25 +38,19 @@ function Dashboard() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("payment") === "success" && user) {
-      const pendingPurchase = state.purchases
-        .filter((p) => p.buyerEmail === user.email && p.status === "pending")
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-      
-      if (pendingPurchase) {
-        markPurchasePaid(pendingPurchase.id);
-        toast.success("Pagamento confirmado!");
-        window.history.replaceState({}, "", "/");
-        setView("purchases");
-      }
+      void refreshPurchases();
+      toast.info("Voltamos do pagamento. A confirmação será validada automaticamente.");
+      window.history.replaceState({}, "", "/");
+      setView("purchases");
     } else if (params.get("payment") === "canceled") {
       toast.info("Pagamento cancelado.");
       window.history.replaceState({}, "", "/");
     }
-  }, [user, state.purchases, markPurchasePaid]);
+  }, [user, refreshPurchases]);
 
   return (
     <div className="bg-gradient-page min-h-screen pb-24">
-      <Header onProfileClick={() => setProfileOpen(true)} />
+      <Header onProfileClick={() => setProfileOpen(true)} onAuthClick={() => setAuthOpen(true)} />
       <main className="max-w-7xl mx-auto px-4 py-6">
         {view === "store" && <StoreView />}
         {view === "inventory" && <InventoryView onOpenChat={handleOpenChat} />}
@@ -63,8 +58,12 @@ function Dashboard() {
         {view === "support" && <SupportView />}
         {view === "admin" && isAdmin && <AdminView />}
       </main>
-      <BottomNav current={view} onChange={setView} />
+      <BottomNav current={view} onChange={(next) => {
+        if (!user && next !== "store") return setAuthOpen(true);
+        setView(next);
+      }} />
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
+      {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
     </div>
   );
 }
@@ -159,8 +158,7 @@ function AppGate() {
     );
   }
 
-  if (!user) return <AuthScreen />;
-  if (banned) return <BannedScreen />;
+  if (user && banned) return <BannedScreen />;
 
   return (
     <StoreProvider>
