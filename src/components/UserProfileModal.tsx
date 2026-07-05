@@ -6,23 +6,24 @@ import { X, Shield, CheckCircle } from "lucide-react";
 interface Props {
   open: boolean;
   onClose: () => void;
-  userEmail: string;
+  userEmail?: string;
+  userId?: string;
 }
 
-export default function UserProfileModal({ open, onClose, userEmail }: Props) {
+export default function UserProfileModal({ open, onClose, userEmail, userId }: Props) {
   const { state } = useStore();
   
   // Find seller info from products or purchases
-  const sellerProduct = state.products.find((p) => p.sellerEmail === userEmail);
-  const sellerName = sellerProduct?.seller || userEmail.split("@")[0];
-  const sellerUuid = sellerProduct?.sellerId || state.purchases.find((p) => p.sellerEmail === userEmail)?.sellerId || "";
+  const sellerProduct = state.products.find((p) => (userId ? p.sellerId === userId : p.sellerEmail === userEmail));
+  const sellerUuid = userId || sellerProduct?.sellerId || state.purchases.find((p) => p.sellerEmail === userEmail)?.sellerId || "";
   const dirEntry = sellerUuid ? state.userDirectory?.[sellerUuid] : undefined;
+  const sellerName = dirEntry?.name || sellerProduct?.seller || userEmail?.split("@")[0] || "Vendedor";
   const sellerId = sellerProduct?.sellerPublicId || state.purchases.find((p) => p.sellerEmail === userEmail)?.sellerPublicId || dirEntry?.publicId || "ID indisponível";
   const sellerAvatar = dirEntry?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(sellerName)}`;
   const isVerified = !!dirEntry?.isVerified;
 
-  const sellerProducts = state.products.filter((p) => p.sellerEmail === userEmail && p.approved);
-  const sellerPurchases = state.purchases.filter((p) => p.sellerEmail === userEmail);
+  const sellerProducts = state.products.filter((p) => p.sellerId === sellerUuid && p.approved);
+  const sellerPurchases = state.purchases.filter((p) => p.sellerId === sellerUuid);
   const sellerReviews = sellerPurchases.filter((p) => p.reviewed);
   
   const avgRating = sellerReviews.length > 0
