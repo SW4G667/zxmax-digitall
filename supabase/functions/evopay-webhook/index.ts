@@ -34,25 +34,31 @@ serve(async (req) => {
       // Fetch purchase + product to decide auto delivery
       const { data: purchase } = await admin
         .from("purchases")
-        .select("id, product_id, status, messages")
+        .select("id, product_id, status, messages, evopay_charge_id")
         .eq("id", purchaseId)
         .maybeSingle();
 
-      if (purchase && purchase.status === "pending") {
+      if (purchase && purchase.status === "pending" && (!purchase.evopay_charge_id || purchase.evopay_charge_id === chargeId)) {
         const { data: product } = await admin
           .from("products")
-          .select("delivery_type, delivery_content, sales")
+          .select("delivery_type, sales")
           .eq("id", purchase.product_id)
+          .maybeSingle();
+
+        const { data: delivery } = await admin
+          .from("product_delivery")
+          .select("delivery_content")
+          .eq("product_id", purchase.product_id)
           .maybeSingle();
 
         let newStatus = "paid";
         let messages = Array.isArray(purchase.messages) ? purchase.messages : [];
 
-        if (product?.delivery_type === "auto" && product?.delivery_content) {
+        if (product?.delivery_type === "auto" && delivery?.delivery_content) {
           newStatus = "delivered";
           messages = [
             ...messages,
-            { from: "System", text: `📦 ENTREGA_AUTO: ${product.delivery_content}`, date: new Date().toISOString() },
+            { from: "System", text: `📦 ENTREGA_AUTO: ${delivery.delivery_content}`, date: new Date().toISOString() },
           ];
         }
 
