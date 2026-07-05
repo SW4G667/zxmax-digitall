@@ -7,9 +7,10 @@ import DiscordIcon from "@/components/DiscordIcon";
 
 interface Props {
   onProfileClick?: () => void;
+  onAuthClick?: () => void;
 }
 
-export default function Header({ onProfileClick }: Props) {
+export default function Header({ onProfileClick, onAuthClick }: Props) {
   const { state, isDark, toggleDark } = useStore();
   const { profile } = useAuth();
   const user = state.currentUser;
@@ -40,13 +41,17 @@ export default function Header({ onProfileClick }: Props) {
           <button onClick={toggleDark} className="p-2 rounded-xl hover:bg-muted transition" title="Mudar tema">
             {isDark ? <Sun className="w-5 h-5 text-muted-foreground" /> : <Moon className="w-5 h-5 text-muted-foreground" />}
           </button>
-          {user && (
+          {user ? (
             <button onClick={onProfileClick} className="flex items-center gap-2.5 hover:bg-muted p-1.5 rounded-2xl transition">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-bold text-foreground leading-tight">{profile?.display_name || user.name}</p>
                 <p className="text-xs font-medium text-success">R$ {user.balance.toFixed(2)}</p>
               </div>
               <img src={profile?.avatar_url || user.avatar} alt="Avatar" className="w-9 h-9 rounded-full bg-primary/10 border-2 border-card shadow-sm" />
+            </button>
+          ) : (
+            <button onClick={onAuthClick} className="btn-gradient px-4 py-2 text-xs font-bold rounded-xl">
+              Entrar
             </button>
           )}
         </div>
