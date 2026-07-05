@@ -55,7 +55,7 @@ serve(async (req) => {
 
     const { data: purchase, error: purchaseError } = await serviceClient
       .from("purchases")
-      .select("id, product_id, buyer_id, buyer_email, status, amount, evopay_charge_id, pix_qr_code, pix_expires_at, products(name)")
+      .select("id, product_id, buyer_id, buyer_email, status, amount, evopay_charge_id, pix_qr_code, pix_expires_at")
       .eq("id", purchaseId)
       .maybeSingle();
 
@@ -74,7 +74,12 @@ serve(async (req) => {
     }
 
     const value = Number(purchase.amount);
-    const productName = (purchase.products as any)?.name || `Pedido #${purchase.id}`;
+    const { data: product } = await serviceClient
+      .from("products")
+      .select("name")
+      .eq("id", purchase.product_id)
+      .maybeSingle();
+    const productName = product?.name || `Pedido #${purchase.id}`;
     const buyerEmail = userData.user.email || purchase.buyer_email;
     if (!productName || !value || value < 5 || !buyerEmail) {
       throw new Error("Dados incompletos para a cobrança PIX");

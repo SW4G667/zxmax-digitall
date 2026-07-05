@@ -32,7 +32,11 @@ serve(async (req) => {
       });
     }
 
-    const apiKey = Deno.env.get("EVOPAY_API_KEY");
+    let apiKey = Deno.env.get("EVOPAY_API_KEY");
+    try {
+      const { data: setting } = await admin.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
+      if (setting?.value?.mode === "manual" && setting?.value?.apiKey) apiKey = setting.value.apiKey;
+    } catch (_e) { /* fallback to secret */ }
     if (!apiKey) throw new Error("EVOPAY_API_KEY não configurada");
 
     const url = new URL(req.url);
