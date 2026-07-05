@@ -13,21 +13,12 @@ serve(async (req) => {
   }
 
   try {
-    // Resolve API key: prefer admin-configured key (app_settings) when in manual mode, else secret
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
-    let apiKey = Deno.env.get("EVOPAY_API_KEY");
-    try {
-      const { data: setting } = await serviceClient.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
-      if (setting?.value?.mode === "manual" && setting?.value?.apiKey) {
-        apiKey = setting.value.apiKey;
-      }
-    } catch (_e) { /* fallback to secret */ }
-    if (!apiKey) throw new Error("EVOPAY_API_KEY não configurada");
 
-    // Validate the caller is authenticated
+    // Validate the caller is authenticated and use the verified identity only.
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -40,19 +31,57 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_ANON_KEY")!,
     );
     const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !userData.user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const body = await req.json();
-    const { purchaseId, productName, amount, buyerEmail, buyerName, buyerDocument } = body;
+    let apiKey = Deno.env.get("EVOPAY_API_KEY");
+    try {
+      const { data: setting } = await serviceClient.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
+      if (setting?.value?.mode === "manual" && setting?.value?.apiKey) {
+        apiKey = setting.value.apiKey;
+      }
+    } catch (_e) { /* fallback to secret */ }
+    if (!apiKey) throw new Error("EVOPAY_API_KEY não configurada");
 
-    const value = Number(amount);
-    if (!productName || !value || value <= 0 || !buyerEmail) {
+    const body = await req.json();
+    const purchaseId = Number(body.purchaseId);
+    const { buyerName, buyerDocument } = body;
+    if (!purchaseId || Number.isNaN(purchaseId)) throw new Error("Pedido inválido");
+
+    const { data: purchase, error: purchaseError } = await serviceClient
+      .from("purchases")
+      .select("id, product_id, buyer_id, buyer_email, status, amount, evopay_charge_id, pix_qr_code, pix_expires_at")
+      .eq("id", purchaseId)
+      .maybeSingle();
+
+    if (purchaseError || !purchase) throw new Error("Pedido não encontrado");
+    if (purchase.buyer_id !== userData.user.id) throw new Error("Você só pode pagar seus próprios pedidos");
+    if (purchase.status !== "pending") throw new Error("Este pedido não está pendente");
+
+    const existingExpiresAt = purchase.pix_expires_at ? new Date(purchase.pix_expires_at).getTime() : 0;
+    if (purchase.evopay_charge_id && purchase.pix_qr_code && existingExpiresAt > Date.now()) {
+      return new Response(JSON.stringify({
+        id: purchase.evopay_charge_id,
+        status: "PENDING",
+        amount: Number(purchase.amount),
+        qrCodeText: purchase.pix_qr_code,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 });
+    }
+
+    const value = Number(purchase.amount);
+    const { data: product } = await serviceClient
+      .from("products")
+      .select("name")
+      .eq("id", purchase.product_id)
+      .maybeSingle();
+    const productName = product?.name || `Pedido #${purchase.id}`;
+    const buyerEmail = userData.user.email || purchase.buyer_email;
+    if (!productName || !value || value < 5 || !buyerEmail) {
       throw new Error("Dados incompletos para a cobrança PIX");
     }
 
@@ -101,12 +130,21 @@ serve(async (req) => {
       throw new Error(`EvoPay (${response.status}): ${typeof msg === "string" ? msg : JSON.stringify(msg)}`);
     }
 
+    const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
+    await serviceClient.from("purchases").update({
+      evopay_charge_id: data.id,
+      pix_qr_code: data.qrCodeText,
+      pix_expires_at: expiresAt,
+      updated_at: new Date().toISOString(),
+    }).eq("id", purchaseId);
+
     return new Response(
       JSON.stringify({
         id: data.id,
         status: data.status,
         amount: data.amount,
         qrCodeText: data.qrCodeText,
+        expiresAt,
         qrCodeUrl: data.qrCodeUrl || (data.id ? `https://api.evopay.cash/v1/pix/qr-code/${data.id}` : null),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },

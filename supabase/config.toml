@@ -9,6 +9,9 @@ verify_jwt = false
 [functions.create-evopay-pix]
 verify_jwt = false
 
+[functions.create-purchase]
+verify_jwt = false
+
 [functions.check-evopay-status]
 verify_jwt = false
 

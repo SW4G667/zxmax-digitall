@@ -140,6 +140,13 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "product_delivery_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: true
+            referencedRelation: "products_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       products: {
@@ -521,6 +528,69 @@ export type Database = {
       }
     }
     Views: {
+      products_public: {
+        Row: {
+          approved: boolean | null
+          banner: string | null
+          category: string | null
+          created_at: string | null
+          delivery_type: string | null
+          description: string | null
+          id: number | null
+          image: string | null
+          name: string | null
+          price: number | null
+          questions: Json | null
+          rating: number | null
+          sales: number | null
+          seller_id: string | null
+          seller_name: string | null
+          seller_public_id: string | null
+          updated_at: string | null
+          variations: Json | null
+        }
+        Insert: {
+          approved?: boolean | null
+          banner?: string | null
+          category?: string | null
+          created_at?: string | null
+          delivery_type?: string | null
+          description?: string | null
+          id?: number | null
+          image?: string | null
+          name?: string | null
+          price?: number | null
+          questions?: Json | null
+          rating?: number | null
+          sales?: number | null
+          seller_id?: string | null
+          seller_name?: string | null
+          seller_public_id?: string | null
+          updated_at?: string | null
+          variations?: Json | null
+        }
+        Update: {
+          approved?: boolean | null
+          banner?: string | null
+          category?: string | null
+          created_at?: string | null
+          delivery_type?: string | null
+          description?: string | null
+          id?: number | null
+          image?: string | null
+          name?: string | null
+          price?: number | null
+          questions?: Json | null
+          rating?: number | null
+          sales?: number | null
+          seller_id?: string | null
+          seller_name?: string | null
+          seller_public_id?: string | null
+          updated_at?: string | null
+          variations?: Json | null
+        }
+        Relationships: []
+      }
       profiles_public: {
         Row: {
           avatar_url: string | null

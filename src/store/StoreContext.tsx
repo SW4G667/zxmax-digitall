@@ -337,22 +337,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         currentUser: user,
         userDirectory: {
           ...(s.userDirectory || {}),
-          [authUser.id]: { userId: authUser.id, publicId: userPublicId, email: user.email, name: user.name },
+          [authUser.id]: { userId: authUser.id, publicId: userPublicId, email: user.email, name: user.name, avatar: user.avatar, isVerified: user.isVerified },
         },
       }));
     }
   }, [authUser, profile, isAdmin, state.userBalances, state.userEarnings]);
 
   useEffect(() => {
-    if (!authUser) return;
     void (async () => {
-      const { data: profiles } = await (supabase as any).from("profiles").select("user_id, public_id, email, display_name, avatar_url, is_verified_seller");
+      const profileSource = isAdmin ? "profiles" : "profiles_public";
+      const profileSelect = isAdmin
+        ? "user_id, public_id, email, display_name, avatar_url, is_verified_seller"
+        : "user_id, public_id, display_name, avatar_url, is_verified_seller";
+      const { data: profiles } = await (supabase as any).from(profileSource).select(profileSelect);
       const directory = ((profiles || []) as any[]).reduce((acc, p) => {
-        acc[p.user_id] = { userId: p.user_id, publicId: String(p.public_id || ""), email: p.email, name: p.display_name || p.email?.split("@")[0] || "Usuário", avatar: p.avatar_url || undefined, isVerified: !!p.is_verified_seller };
+        acc[p.user_id] = { userId: p.user_id, publicId: String(p.public_id || ""), email: p.email || "", name: p.display_name || p.email?.split("@")[0] || "Usuário", avatar: p.avatar_url || undefined, isVerified: !!p.is_verified_seller };
         return acc;
       }, {} as Record<string, UserDirectoryEntry>);
 
-      const { data: docs } = await (supabase as any).from("seller_documents").select("id, user_id, file_path, file_name, status, created_at").order("created_at", { ascending: false });
+      const { data: docs } = authUser
+        ? await (supabase as any).from("seller_documents").select("id, user_id, file_path, file_name, status, created_at").order("created_at", { ascending: false })
+        : { data: [] };
       const sellerDocuments = ((docs || []) as any[]).map((d) => ({
         id: d.id,
         userId: d.user_id,
@@ -366,7 +371,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       setState((s) => ({ ...s, userDirectory: { ...(s.userDirectory || {}), ...directory }, sellerDocuments }));
     })();
-  }, [authUser]);
+  }, [authUser, isAdmin]);
 
   // Load admin-configurable gateway settings (only readable by admins via RLS)
   useEffect(() => {
@@ -389,13 +394,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
 
   useEffect(() => {
-    if (!authUser) return;
     void (async () => {
+      const productSource = authUser ? "products" : "products_public";
       const [{ data: dbProducts }, { data: dbPurchases }, { data: dbWithdrawals }, { data: deliveryRows }] = await Promise.all([
-        (supabase as any).from("products").select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at").order("created_at", { ascending: false }),
-        (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_public_id,seller_id,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false }),
-        (supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }),
-        (supabase as any).from("product_delivery").select("product_id,delivery_content"),
+        (supabase as any).from(productSource).select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at").order("created_at", { ascending: false }),
+        authUser
+          ? (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false })
+          : { data: [] },
+        authUser ? (supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }) : { data: [] },
+        authUser ? (supabase as any).from("product_delivery").select("product_id,delivery_content") : { data: [] },
       ]);
       const deliveryByProduct = new Map(((deliveryRows || []) as any[]).map((d) => [Number(d.product_id), d.delivery_content || undefined]));
       const products = ((dbProducts || []) as any[]).map((p) => ({ id: Number(p.id), name: p.name, price: Number(p.price), category: p.category, seller: p.seller_name, sellerEmail: "", sellerId: p.seller_id, sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0), image: p.image, banner: p.banner || undefined, description: p.description, approved: p.approved, deliveryType: p.delivery_type, deliveryContent: deliveryByProduct.get(Number(p.id)), variations: p.variations || [], questions: p.questions || [] })) as Product[];
@@ -403,9 +410,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "" })) as Withdrawal[];
       setState((s) => ({
         ...s,
-        products: products.length ? products : s.products,
-        purchases: purchases.length ? purchases : s.purchases,
-        withdrawals: withdrawals.length ? withdrawals : s.withdrawals,
+        products,
+        purchases,
+        withdrawals,
       }));
     })();
   }, [authUser]);
@@ -426,9 +433,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const addProduct = (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => {
     if (!state.currentUser) return;
-    const newProduct = { ...p, id: Date.now(), sales: 0, rating: 0, approved: false, sellerId: state.currentUser.id, sellerPublicId: state.currentUser.publicId };
+    const initialApproved = !!state.currentUser.isAdmin;
+    const newProduct = { ...p, id: Date.now(), sales: 0, rating: 0, approved: initialApproved, sellerId: state.currentUser.id, sellerPublicId: state.currentUser.publicId };
     void (async () => {
-      const { data } = await (supabase as any).from("products").insert({ seller_id: newProduct.sellerId, seller_public_id: newProduct.sellerPublicId, seller_email: newProduct.sellerEmail, seller_name: newProduct.seller, name: newProduct.name, price: newProduct.price, category: newProduct.category, image: newProduct.image, banner: newProduct.banner || null, description: newProduct.description, approved: false, delivery_type: newProduct.deliveryType, variations: newProduct.variations || [], questions: newProduct.questions || [] }).select("id").maybeSingle();
+      const { data } = await (supabase as any).from("products").insert({ seller_id: newProduct.sellerId, seller_public_id: newProduct.sellerPublicId, seller_email: newProduct.sellerEmail, seller_name: newProduct.seller, name: newProduct.name, price: newProduct.price, category: newProduct.category, image: newProduct.image, banner: newProduct.banner || null, description: newProduct.description, approved: initialApproved, delivery_type: newProduct.deliveryType, variations: newProduct.variations || [], questions: newProduct.questions || [] }).select("id").maybeSingle();
       if (data?.id) {
         await (supabase as any).from("product_delivery").upsert({ product_id: Number(data.id), delivery_type: newProduct.deliveryType, delivery_content: newProduct.deliveryContent || null });
         setState((s) => ({ ...s, products: s.products.map((pr) => (pr.id === newProduct.id ? { ...pr, id: Number(data.id) } : pr)) }));
@@ -499,26 +507,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const buyProduct = async (id: number, variation?: ProductVariation) => {
     const product = state.products.find((p) => p.id === id);
     if (!product || !state.currentUser) return null;
-    
-    const purchase: Purchase = {
-      id: Date.now(),
-      productId: id,
-      buyerEmail: state.currentUser.email,
-      buyerId: state.currentUser.id,
-      buyerPublicId: state.currentUser.publicId,
-      sellerEmail: product.sellerEmail,
-      sellerId: product.sellerId,
-      sellerPublicId: product.sellerPublicId || state.userDirectory?.[product.sellerId]?.publicId,
-      status: "pending",
-      createdAt: new Date().toISOString(),
-      amount: variation ? variation.price : product.price,
-      messages: [],
-      reviewed: false,
-      variationName: variation?.name,
-    };
-    const { data, error } = await (supabase as any).from("purchases").insert({ product_id: id, buyer_id: purchase.buyerId, buyer_public_id: purchase.buyerPublicId || "", seller_id: purchase.sellerId, seller_public_id: purchase.sellerPublicId || "", status: "pending", amount: purchase.amount, messages: [], variation_name: purchase.variationName || null }).select("id, created_at").maybeSingle();
-    if (error) return null;
-    const finalPurchase = data ? { ...purchase, id: Number(data.id), createdAt: data.created_at } : purchase;
+    const { data, error } = await supabase.functions.invoke("create-purchase", {
+      body: { productId: id, variationName: variation?.name || null },
+    });
+    if (error || data?.error || !data?.purchase) return null;
+    const finalPurchase = mapPurchaseRow(data.purchase);
     setState((s) => ({ ...s, purchases: [...s.purchases, finalPurchase] }));
     return finalPurchase.id;
   };
@@ -538,7 +531,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshPurchases = async () => {
-    const { data } = await (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_public_id,seller_id,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false });
+    const { data } = await (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false });
     if (!data) return;
     const purchases = (data as any[]).map(mapPurchaseRow) as Purchase[];
     setState((s) => ({ ...s, purchases }));
@@ -555,70 +548,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const markPurchasePaid = (id: number) => {
-    const existing = state.purchases.find((p) => p.id === id);
-    const prod = existing ? state.products.find((p) => p.id === existing.productId) : null;
-    const isAutoDelivery = prod?.deliveryType === "auto" && !!prod?.deliveryContent;
-    const dbStatus = isAutoDelivery ? "delivered" : "paid";
-    void (async () => {
-      const { data: current } = await (supabase as any).from("purchases").select("messages").eq("id", id).maybeSingle();
-      const baseMessages = Array.isArray(current?.messages) ? current.messages : [];
-      const messages = isAutoDelivery
-        ? [...baseMessages, { from: "System", text: `📦 ENTREGA_AUTO: ${prod?.deliveryContent}`, date: new Date().toISOString() }]
-        : baseMessages;
-      await (supabase as any).from("purchases").update({ status: dbStatus, messages }).eq("id", id);
-    })();
-    setState((s) => {
-      const purchase = s.purchases.find((p) => p.id === id);
-      if (!purchase) return s;
-      
-      const product = s.products.find((p) => p.id === purchase.productId);
-      const isAuto = product?.deliveryType === "auto";
-      
-      const newPurchases = s.purchases.map((p) => {
-        if (p.id === id) {
-          const updated: Purchase = { ...p, status: "paid" as const };
-          if (isAuto && product?.deliveryContent) {
-            updated.status = "delivered";
-            updated.messages = [
-              ...(updated.messages || []),
-              { from: "System", text: `📦 ENTREGA_AUTO: ${product.deliveryContent}`, date: new Date().toISOString() }
-            ];
-          }
-          return updated;
-        }
-        return p;
-      });
-
-      const newProducts = s.products.map((pr) => {
-        if (pr.id === purchase.productId) return { ...pr, sales: pr.sales + 1 };
-        return pr;
-      });
-
-      const sellerNet = Math.max(0, purchase.amount - (purchase.amount * s.config.commission) / 100);
-      const nextBalances = {
-        ...(s.userBalances || {}),
-        [purchase.sellerId]: (s.userBalances?.[purchase.sellerId] || 0) + sellerNet,
-      };
-      const nextEarnings = {
-        ...(s.userEarnings || {}),
-        [purchase.sellerId]: (s.userEarnings?.[purchase.sellerId] || 0) + sellerNet,
-      };
-
-      return {
-        ...s,
-        purchases: newPurchases,
-        products: newProducts,
-        userBalances: nextBalances,
-        userEarnings: nextEarnings,
-        currentUser: s.currentUser
-          ? {
-              ...s.currentUser,
-              balance: nextBalances[s.currentUser.id] || 0,
-              earnings: nextEarnings[s.currentUser.id] || 0,
-            }
-          : null,
-      };
-    });
+    void refreshPurchases();
   };
 
   const approvePurchase = (id: number) => {
@@ -974,7 +904,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const saveGatewaySettings = async (settings: { evopayApiKey?: string; evopayMode?: string }): Promise<boolean> => {
-    const value: Record<string, any> = {};
+    const { data: existing } = await (supabase as any).from("app_settings").select("value").eq("key", "evopay").maybeSingle();
+    const value: Record<string, any> = { ...(existing?.value || {}) };
     if (settings.evopayMode !== undefined) value.mode = settings.evopayMode;
     if (settings.evopayApiKey !== undefined && settings.evopayApiKey !== "") value.apiKey = settings.evopayApiKey;
     const { error } = await (supabase as any).from("app_settings").upsert({ key: "evopay", value }, { onConflict: "key" });
