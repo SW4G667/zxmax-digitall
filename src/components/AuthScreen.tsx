@@ -2,8 +2,9 @@ import React, { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { RocketEmoji, KeyEmoji } from "@/components/CustomEmojis";
 import { toast } from "sonner";
+import { X } from "lucide-react";
 
-export default function AuthScreen() {
+export default function AuthScreen({ onClose }: { onClose?: () => void }) {
   const { signUp, signIn } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
@@ -63,6 +64,8 @@ export default function AuthScreen() {
           } else {
             setError(err);
           }
+        } else {
+          onClose?.();
         }
       }
     } catch {
@@ -90,6 +93,11 @@ export default function AuthScreen() {
       </div>
 
       <div className="glass-card w-full max-w-md p-8 relative z-10 bg-card animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
+        {onClose && (
+          <button onClick={onClose} className="absolute right-4 top-4 p-2 rounded-xl hover:bg-muted transition" aria-label="Fechar login">
+            <X className="w-5 h-5 text-muted-foreground" />
+          </button>
+        )}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-black tracking-tighter text-foreground">
             ZX<span className="text-primary">MAX</span>
