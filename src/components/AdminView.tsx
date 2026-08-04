@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useStore, Product, Withdrawal, Purchase } from "@/store/StoreContext";
 import { MoneyEmoji, PackageEmoji, ChatEmoji, StarEmoji, ShieldEmoji } from "@/components/CustomEmojis";
-import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag, ArrowLeft, ExternalLink, Webhook, RefreshCw } from "lucide-react";
+import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag, ArrowLeft, ExternalLink, Webhook, RefreshCw, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import MyPurchasesView from "@/components/MyPurchasesView";
+import IntegrationsPanel from "@/components/IntegrationsPanel";
 import { supabase } from "@/integrations/supabase/client";
 
 interface WebhookLog {
@@ -20,7 +21,7 @@ interface WebhookLog {
 
 export default function AdminView() {
   const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument, saveGatewaySettings } = useStore();
-  const [tab, setTab] = useState<"products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "disputes" | "config" | "webhooks">("products");
+  const [tab, setTab] = useState<"products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "disputes" | "config" | "webhooks" | "apis">("products");
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [expandedLog, setExpandedLog] = useState<number | null>(null);
@@ -142,6 +143,7 @@ export default function AdminView() {
           { id: "notices", label: "Avisos", icon: StarEmoji },
           { id: "adminchat", label: "Chat Equipe", icon: ChatEmoji },
           { id: "webhooks", label: "Webhooks EvoPay", icon: Webhook },
+          { id: "apis", label: "APIs & Credenciais", icon: KeyRound },
           { id: "config", label: "Config", icon: Settings },
         ].map((t) => (
           <button
@@ -432,6 +434,8 @@ export default function AdminView() {
       )}
 
 
+
+      {tab === "apis" && <IntegrationsPanel />}
 
       {/* Config Tab */}
       {tab === "config" && (
