@@ -3,9 +3,6 @@ project_id = "dbekdedzgkfgtlytrnyw"
 [functions.discord-callback]
 verify_jwt = false
 
-[functions.create-abacatepay-checkout]
-verify_jwt = false
-
 [functions.create-evopay-pix]
 verify_jwt = false
 

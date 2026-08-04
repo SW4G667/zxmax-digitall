@@ -151,8 +151,6 @@ export interface AppConfig {
   discordScopes: string;
   discordMode: "automatic" | "manual";
   discordServerLink: string;
-  abacatepayApiKey: string;
-  abacatepayMode: "automatic" | "manual";
   evopayApiKey: string;
   evopayMode: "automatic" | "manual";
   evopayWebhookUrl: string;
@@ -240,8 +238,6 @@ const defaultConfig: AppConfig = {
   discordScopes: "identify email",
   discordMode: "automatic",
   discordServerLink: "https://discord.gg/zxmax",
-  abacatepayApiKey: "",
-  abacatepayMode: "automatic",
   evopayApiKey: "",
   evopayMode: "automatic",
   evopayWebhookUrl: typeof window !== "undefined" ? `https://dbekdedzgkfgtlytrnyw.supabase.co/functions/v1/evopay-webhook` : "",

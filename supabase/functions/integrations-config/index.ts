@@ -86,7 +86,18 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = body.action || "get";
 
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+
     if (action === "get") {
+      // Make sure the EvoPay webhook always has a secret token configured.
+      const { data: evoRow } = await admin.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
+      const evoValue: Record<string, any> = { ...(evoRow?.value || {}) };
+      if (!evoValue.webhookToken) {
+        evoValue.webhookToken = crypto.randomUUID().replace(/-/g, "");
+        await admin.from("app_settings").upsert({ key: "evopay", value: evoValue }, { onConflict: "key" });
+      }
+      const webhookUrl = `${supabaseUrl}/functions/v1/evopay-webhook?token=${evoValue.webhookToken}`;
+
       const { data: rows } = await admin
         .from("app_settings")
         .select("key, value")
@@ -99,7 +110,7 @@ serve(async (req) => {
         for (const f of fields.secret) safe[`${f}_masked`] = mask(value[f]);
         out[provider] = safe;
       }
-      return json({ integrations: out });
+      return json({ integrations: out, webhookUrl });
     }
 
     const provider = String(body.provider || "");

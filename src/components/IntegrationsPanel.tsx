@@ -44,6 +44,7 @@ export default function IntegrationsPanel() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string }>>({});
+  const [webhookUrl, setWebhookUrl] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -64,6 +65,7 @@ export default function IntegrationsPanel() {
         else next[p.id][f.key] = cfg[f.key] || "";
       }
     }
+    setWebhookUrl(data.webhookUrl || "");
     setValues(next);
     setMasks(nextMasks);
     setLoading(false);
@@ -151,6 +153,23 @@ export default function IntegrationsPanel() {
               <div className={`flex items-start gap-2 text-xs p-3 rounded-xl ${result.ok ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}>
                 {result.ok ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <XCircle className="w-4 h-4 shrink-0" />}
                 <span className="break-all">{result.message}</span>
+              </div>
+            )}
+
+            {p.id === "evopay" && webhookUrl && (
+              <div>
+                <label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">
+                  URL do Webhook (cole no painel da EvoPay — contém um token secreto)
+                </label>
+                <input
+                  readOnly
+                  value={webhookUrl}
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                  className="w-full p-3 rounded-xl bg-muted text-[11px] text-foreground font-mono select-all"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Chamadas sem esse token são rejeitadas, e todo pagamento é reconferido direto na EvoPay antes de liberar o pedido.
+                </p>
               </div>
             )}
 
