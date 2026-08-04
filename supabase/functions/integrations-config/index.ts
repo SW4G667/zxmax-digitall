@@ -15,7 +15,6 @@ const json = (body: unknown, status = 200) =>
 
 /** Fields we persist per provider. Secret fields are never returned to the client. */
 const PROVIDERS: Record<string, { secret: string[]; plain: string[] }> = {
-  vexopay: { secret: ["clientId", "clientSecret"], plain: ["mode", "enabled"] },
   evopay: { secret: ["apiKey"], plain: ["mode", "enabled"] },
   stripe: { secret: ["secretKey", "webhookSecret"], plain: ["publishableKey", "mode", "enabled"] },
   discord: { secret: ["clientSecret"], plain: ["clientId", "redirectUri", "scopes", "serverLink", "mode", "enabled"] },
@@ -25,16 +24,6 @@ const mask = (v: unknown) => (typeof v === "string" && v.length > 0 ? "•••
 
 async function testConnection(provider: string, cfg: Record<string, any>) {
   try {
-    if (provider === "vexopay") {
-      if (!cfg.clientId || !cfg.clientSecret) return { ok: false, message: "Client ID e Client Secret são obrigatórios." };
-      const r = await fetch("https://vexopay.com.br/api/balance", {
-        headers: { ci: cfg.clientId, cs: cfg.clientSecret, "Content-Type": "application/json" },
-      });
-      const body = await r.text();
-      return r.ok
-        ? { ok: true, message: `Conexão OK. Resposta: ${body.slice(0, 160)}` }
-        : { ok: false, message: `VexoPay respondeu ${r.status}: ${body.slice(0, 200)}` };
-    }
     if (provider === "evopay") {
       if (!cfg.apiKey) return { ok: false, message: "API Key é obrigatória." };
       const r = await fetch("https://api.evopay.cash/v1/balance", {
