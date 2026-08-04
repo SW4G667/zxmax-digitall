@@ -120,6 +120,10 @@ serve(async (req) => {
       }
     }
 
+    if (type === "DEPOSIT" && status === "COMPLETED" && !confirmed) {
+      logStatus = "unverified (não confirmado pela API EvoPay)";
+    }
+
     // Record the event for admin debugging
     await admin.from("webhook_logs").insert({
       source: "evopay",
