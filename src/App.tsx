@@ -15,7 +15,8 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
-          <Route path="*" element={<NotFound />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="*" element={<NotFound />} />>
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
