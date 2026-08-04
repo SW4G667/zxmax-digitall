@@ -60,7 +60,7 @@ export default function AdminView() {
     updateConfig({
       rules, commission, instantFee,
       authMode,
-      discordMode, discordClientId, discordClientSecret, discordRedirectUri, discordScopes, discordServerLink,
+      discordMode, discordClientId, discordRedirectUri, discordScopes, discordServerLink,
       discordLink: discordServerLink,
       evopayMode,
     });
