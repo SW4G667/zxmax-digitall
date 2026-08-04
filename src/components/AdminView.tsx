@@ -37,13 +37,9 @@ export default function AdminView() {
   // Discord config
   const [discordMode, setDiscordMode] = useState(state.config.discordMode);
   const [discordClientId, setDiscordClientId] = useState(state.config.discordClientId);
-  const [discordClientSecret, setDiscordClientSecret] = useState(state.config.discordClientSecret);
   const [discordRedirectUri, setDiscordRedirectUri] = useState(state.config.discordRedirectUri);
   const [discordScopes, setDiscordScopes] = useState(state.config.discordScopes);
   const [discordServerLink, setDiscordServerLink] = useState(state.config.discordServerLink);
-  // AbacatePay config
-  const [abacatepayMode, setAbacatepayMode] = useState(state.config.abacatepayMode);
-  const [abacatepayApiKey, setAbacatepayApiKey] = useState(state.config.abacatepayApiKey);
   // EvoPay config (active payment gateway)
   const [evopayMode, setEvopayMode] = useState(state.config.evopayMode);
   const [evopayApiKey, setEvopayApiKey] = useState("");
@@ -66,7 +62,6 @@ export default function AdminView() {
       authMode,
       discordMode, discordClientId, discordClientSecret, discordRedirectUri, discordScopes, discordServerLink,
       discordLink: discordServerLink,
-      abacatepayMode, abacatepayApiKey,
       evopayMode,
     });
     const tid = toast.loading("Salvando configurações...");
@@ -464,7 +459,7 @@ export default function AdminView() {
                 <button onClick={() => setAuthMode("manual")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${authMode === "manual" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Manual</button>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">No modo automático, o sistema usa as credenciais padrão. No manual, usa as configurações abaixo (Discord/AbacatePay).</p>
+            <p className="text-xs text-muted-foreground">No modo automático, o sistema usa as credenciais padrão. No manual, usa as configurações abaixo (Discord).</p>
           </div>
 
           {/* Discord */}
@@ -486,11 +481,7 @@ export default function AdminView() {
                   <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Client ID</label>
                   <input value={discordClientId} onChange={(e) => setDiscordClientId(e.target.value)} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
                 </div>
-                <div>
-                  <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Client Secret</label>
-                  <input type="password" value={discordClientSecret} onChange={(e) => setDiscordClientSecret(e.target.value)} placeholder="••••••••" className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
-                  <p className="text-[10px] text-muted-foreground mt-1">⚠️ Para uso real, configure também o secret DISCORD_CLIENT_SECRET no backend.</p>
-                </div>
+                <p className="text-[10px] text-muted-foreground">O Client Secret do Discord fica na aba "APIs & Credenciais" e é guardado apenas no servidor.</p>
                 <div>
                   <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Redirect URI</label>
                   <input value={discordRedirectUri} onChange={(e) => setDiscordRedirectUri(e.target.value)} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
