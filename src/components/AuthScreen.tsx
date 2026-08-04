@@ -35,6 +35,16 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
     window.location.href = `https://discord.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${scopes}`;
   };
 
+  const handleForgot = async () => {
+    if (!email) { setError("Digite seu e-mail para recuperar a senha."); return; }
+    const { supabase } = await import("@/integrations/supabase/client");
+    const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    if (err) { setError(err.message); return; }
+    toast.success("Enviamos um link de recuperação para o seu e-mail.");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -164,6 +174,12 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
             {loading ? "Aguarde..." : mode === "login" ? "Acessar Plataforma" : "Criar Conta"}
           </button>
         </form>
+
+        {mode === "login" && (
+          <button type="button" onClick={handleForgot} className="w-full text-center text-xs font-semibold text-primary mt-3 hover:underline">
+            Esqueceu sua senha?
+          </button>
+        )}
 
         <div className="mt-5 space-y-2">
           <button onClick={handleDiscord} className="w-full flex items-center justify-center gap-3 p-3 border border-border rounded-2xl hover:bg-muted transition text-sm font-semibold text-muted-foreground">

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface User {
@@ -510,7 +511,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase.functions.invoke("create-purchase", {
       body: { productId: id, variationName: variation?.name || null },
     });
-    if (error || data?.error || !data?.purchase) return null;
+    if (error || data?.error || !data?.purchase) {
+      const message = data?.error || error?.message || "Não foi possível registrar a compra.";
+      toast.error(message);
+      return null;
+    }
     const finalPurchase = mapPurchaseRow(data.purchase);
     setState((s) => ({ ...s, purchases: [...s.purchases, finalPurchase] }));
     return finalPurchase.id;
