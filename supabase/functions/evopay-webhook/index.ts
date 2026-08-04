@@ -16,6 +16,38 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  // ---- Authenticate the webhook call -------------------------------------
+  // EvoPay is configured with a URL that carries a secret token (see the admin
+  // panel, "APIs & Credenciais"). Without a valid token nothing is processed.
+  const { data: evoSetting } = await admin
+    .from("app_settings")
+    .select("value")
+    .eq("key", "evopay")
+    .maybeSingle();
+
+  const expectedToken: string | undefined = (evoSetting?.value as any)?.webhookToken;
+  const providedToken =
+    new URL(req.url).searchParams.get("token") || req.headers.get("x-webhook-token") || "";
+
+  if (!expectedToken || providedToken !== expectedToken) {
+    console.warn("evopay-webhook rejected: invalid or missing token");
+    await admin.from("webhook_logs").insert({
+      source: "evopay",
+      event_type: "AUTH",
+      status: "rejected",
+      order_id: null,
+      charge_id: null,
+      payload: null,
+      error: expectedToken ? "Token do webhook inválido" : "Token do webhook não configurado no painel",
+    });
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const apiKey = (evoSetting?.value as any)?.apiKey || Deno.env.get("EVOPAY_API_KEY");
+
   let event: any = null;
   try {
     event = await req.json();
@@ -29,8 +61,23 @@ serve(async (req) => {
 
     let logStatus = status || "received";
 
-    // Only act on completed deposits (cash-in)
-    if (type === "DEPOSIT" && status === "COMPLETED" && clientReference && !Number.isNaN(purchaseId)) {
+    // Never trust the payload alone: confirm the charge directly with EvoPay.
+    let confirmed = false;
+    if (type === "DEPOSIT" && status === "COMPLETED" && chargeId && apiKey) {
+      try {
+        const verify = await fetch(`https://api.evopay.cash/v1/pix?id=${encodeURIComponent(chargeId)}`, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        const verifyData = await verify.json().catch(() => ({}));
+        confirmed = verify.ok && (verifyData?.status === "COMPLETED" || verifyData?.status === "PAID");
+        if (!confirmed) console.warn("evopay-webhook: charge not confirmed by API", chargeId, verifyData?.status);
+      } catch (e) {
+        console.error("evopay-webhook verification failed", e);
+      }
+    }
+
+    // Only act on completed deposits (cash-in) confirmed by the EvoPay API
+    if (confirmed && clientReference && !Number.isNaN(purchaseId)) {
       // Fetch purchase + product to decide auto delivery
       const { data: purchase } = await admin
         .from("purchases")
