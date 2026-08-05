@@ -12,6 +12,16 @@ interface Profile {
   pix_key: string;
   is_verified_seller: boolean;
   document_type: string;
+  full_name?: string | null;
+  cpf?: string | null;
+  birth_date?: string | null;
+  phone?: string | null;
+  city?: string | null;
+  state?: string | null;
+  verification_selfie_path?: string | null;
+  verification_status?: string | null;
+  verification_notes?: string | null;
+  verification_submitted_at?: string | null;
 }
 
 interface BanInfo {
