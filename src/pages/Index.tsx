@@ -6,6 +6,7 @@ import BannedScreen from "@/components/BannedScreen";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import ProfileModal from "@/components/ProfileModal";
+import SideMenu from "@/components/SideMenu";
 import StoreView from "@/components/StoreView";
 import InventoryView from "@/components/InventoryView";
 import SupportView from "@/components/SupportView";
@@ -22,6 +23,7 @@ function Dashboard() {
   const [view, setView] = useState<View>("store");
   const [profileOpen, setProfileOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<number | null>(null);
 
   const handleOpenChat = (purchaseId: number) => {
@@ -50,7 +52,7 @@ function Dashboard() {
 
   return (
     <div className="bg-gradient-page min-h-screen pb-24">
-      <Header onProfileClick={() => setProfileOpen(true)} onAuthClick={() => setAuthOpen(true)} />
+      <Header onProfileClick={() => setProfileOpen(true)} onAuthClick={() => setAuthOpen(true)} onMenuClick={() => setMenuOpen(true)} />
       <main className="max-w-7xl mx-auto px-4 py-6">
         {view === "store" && <StoreView />}
         {view === "inventory" && <InventoryView onOpenChat={handleOpenChat} />}
@@ -62,6 +64,15 @@ function Dashboard() {
         if (!user && next !== "store") return setAuthOpen(true);
         setView(next);
       }} />
+      <SideMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onNavigate={(next) => {
+          if (!user && next !== "store") return setAuthOpen(true);
+          setView(next);
+        }}
+        onOpenProfile={() => (user ? setProfileOpen(true) : setAuthOpen(true))}
+      />
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
       {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
     </div>
