@@ -170,6 +170,7 @@ export default function AdminView() {
           { id: "withdrawals", label: "Saques", icon: MoneyEmoji, count: pendingWithdrawals.length },
           { id: "disputes", label: "Disputas", icon: ShieldAlert, count: disputes.length },
           { id: "documents", label: "Documentos", icon: FileText, count: pendingDocuments.length },
+          { id: "verifications", label: "Verificações", icon: ShieldEmoji },
           { id: "users", label: "Usuários", icon: Users },
           { id: "notices", label: "Avisos", icon: StarEmoji },
           { id: "adminchat", label: "Chat Equipe", icon: ChatEmoji },
