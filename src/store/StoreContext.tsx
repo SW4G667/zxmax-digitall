@@ -478,18 +478,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const approveProduct = (id: number) => {
-    void (supabase as any).from("products").update({ approved: true }).eq("id", id);
+  const approveProduct = async (id: number) => {
+    const { error } = await (supabase as any).from("products").update({ approved: true }).eq("id", id).select("id").maybeSingle();
+    if (error) {
+      toast.error("Não foi possível aprovar o anúncio: " + error.message);
+      await loadCatalog();
+      return false;
+    }
     setState((s) => ({
       ...s,
       products: s.products.map((p) => (p.id === id ? { ...p, approved: true } : p)),
     }));
+    await loadCatalog();
+    return true;
   };
 
-  const rejectProduct = (id: number) => {
-    void (supabase as any).from("products").delete().eq("id", id);
+  const rejectProduct = async (id: number) => {
+    const { error } = await (supabase as any).from("products").delete().eq("id", id);
+    if (error) {
+      toast.error("Não foi possível remover o anúncio: " + error.message);
+      return false;
+    }
     setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
+    return true;
   };
+
 
   const deleteProduct = async (id: number): Promise<{ paused: boolean }> => {
     // If product has orders, pause (unapprove) instead of deleting to preserve history
