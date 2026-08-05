@@ -21,10 +21,13 @@ interface WebhookLog {
 
 export default function AdminView() {
   const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument, saveGatewaySettings } = useStore();
-  const [tab, setTab] = useState<"products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "disputes" | "config" | "webhooks" | "apis">("products");
+  const [tab, setTab] = useState<"products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "verifications" | "disputes" | "config" | "webhooks" | "apis">("products");
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [expandedLog, setExpandedLog] = useState<number | null>(null);
+  const [kyc, setKyc] = useState<any[]>([]);
+  const [kycLoading, setKycLoading] = useState(false);
+  const [kycNotes, setKycNotes] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
   const [chatMsg, setChatMsg] = useState("");
   const [newTagName, setNewTagName] = useState("");
