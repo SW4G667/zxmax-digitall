@@ -21,10 +21,13 @@ interface WebhookLog {
 
 export default function AdminView() {
   const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument, saveGatewaySettings } = useStore();
-  const [tab, setTab] = useState<"products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "disputes" | "config" | "webhooks" | "apis">("products");
+  const [tab, setTab] = useState<"products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "verifications" | "disputes" | "config" | "webhooks" | "apis">("products");
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [expandedLog, setExpandedLog] = useState<number | null>(null);
+  const [kyc, setKyc] = useState<any[]>([]);
+  const [kycLoading, setKycLoading] = useState(false);
+  const [kycNotes, setKycNotes] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
   const [chatMsg, setChatMsg] = useState("");
   const [newTagName, setNewTagName] = useState("");
@@ -104,8 +107,41 @@ export default function AdminView() {
     setWebhookLogs((data || []) as WebhookLog[]);
   };
 
+  const loadKyc = async () => {
+    setKycLoading(true);
+    const { data, error } = await (supabase as any)
+      .from("profiles")
+      .select("user_id, public_id, email, display_name, full_name, cpf, birth_date, phone, city, state, verification_selfie_path, verification_status, verification_notes, verification_submitted_at, is_verified_seller")
+      .not("verification_status", "is", null)
+      .neq("verification_status", "none")
+      .order("verification_submitted_at", { ascending: false });
+    setKycLoading(false);
+    if (error) return toast.error("Não foi possível carregar as verificações.");
+    setKyc(data || []);
+  };
+
+  const reviewKyc = async (userId: string, approved: boolean) => {
+    const tid = toast.loading(approved ? "Aprovando..." : "Recusando...");
+    if (approved) {
+      const ok = await verifyUser(userId);
+      ok ? toast.success("Usuário verificado!", { id: tid }) : toast.error("Falha ao verificar.", { id: tid });
+    } else {
+      const { error } = await (supabase as any)
+        .from("profiles")
+        .update({
+          verification_status: "rejected",
+          is_verified_seller: false,
+          verification_notes: kycNotes[userId]?.trim() || "Documentos ilegíveis ou dados divergentes.",
+        })
+        .eq("user_id", userId);
+      error ? toast.error("Falha ao recusar.", { id: tid }) : toast.error("Verificação recusada.", { id: tid });
+    }
+    await loadKyc();
+  };
+
   useEffect(() => {
     if (tab === "webhooks") void loadWebhookLogs();
+    if (tab === "verifications") void loadKyc();
   }, [tab]);
 
   if (selectedDisputeId) {
@@ -134,6 +170,7 @@ export default function AdminView() {
           { id: "withdrawals", label: "Saques", icon: MoneyEmoji, count: pendingWithdrawals.length },
           { id: "disputes", label: "Disputas", icon: ShieldAlert, count: disputes.length },
           { id: "documents", label: "Documentos", icon: FileText, count: pendingDocuments.length },
+          { id: "verifications", label: "Verificações", icon: ShieldEmoji },
           { id: "users", label: "Usuários", icon: Users },
           { id: "notices", label: "Avisos", icon: StarEmoji },
           { id: "adminchat", label: "Chat Equipe", icon: ChatEmoji },
@@ -254,6 +291,63 @@ export default function AdminView() {
                 </div>
               );
             })
+          )}
+        </div>
+      )}
+
+      {/* Identity Verifications (KYC) Tab */}
+      {tab === "verifications" && (
+        <div className="glass-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-foreground">Verificação de identidade</h3>
+            <button onClick={loadKyc} className="text-xs font-bold text-primary flex items-center gap-1">
+              <RefreshCw className="w-3 h-3" /> Atualizar
+            </button>
+          </div>
+          <p className="text-sm text-muted-foreground mb-6">Confira se a foto mostra o rosto, o documento e o papel escrito ZXMAX, e se os dados batem.</p>
+          {kycLoading ? (
+            <p className="text-center text-xs text-muted-foreground py-10">Carregando...</p>
+          ) : kyc.length === 0 ? (
+            <p className="text-center text-xs text-muted-foreground py-10">Nenhuma verificação enviada ainda.</p>
+          ) : (
+            <div className="space-y-4">
+              {kyc.map((k) => (
+                <div key={k.user_id} className="p-4 bg-muted rounded-xl border border-border/40">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="min-w-0">
+                      <p className="font-bold text-foreground truncate">{k.full_name || k.display_name}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">ID: {k.public_id} · {k.email}</p>
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${k.verification_status === "approved" ? "bg-success/10 text-success" : k.verification_status === "rejected" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>
+                      {k.verification_status}
+                    </span>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-1 text-[11px] text-muted-foreground mb-3">
+                    <p>CPF: <span className="text-foreground">{k.cpf || "—"}</span></p>
+                    <p>Nascimento: <span className="text-foreground">{k.birth_date || "—"}</span></p>
+                    <p>Telefone: <span className="text-foreground">{k.phone || "—"}</span></p>
+                    <p>Cidade/UF: <span className="text-foreground">{[k.city, k.state].filter(Boolean).join("/") || "—"}</span></p>
+                  </div>
+                  {k.verification_status === "pending" && (
+                    <input
+                      value={kycNotes[k.user_id] || ""}
+                      onChange={(e) => setKycNotes((n) => ({ ...n, [k.user_id]: e.target.value }))}
+                      placeholder="Motivo (caso recuse)"
+                      className="w-full p-2.5 mb-3 rounded-lg bg-card border border-border/40 text-xs text-foreground outline-none focus:ring-2 ring-primary"
+                    />
+                  )}
+                  <div className="flex gap-2 flex-wrap">
+                    {k.verification_selfie_path && (
+                      <button onClick={() => openDocument(k.verification_selfie_path)} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1">
+                        <ExternalLink className="w-3 h-3" /> Ver foto
+                      </button>
+                    )}
+                    <button onClick={() => reviewKyc(k.user_id, true)} className="px-3 py-2 bg-success text-white text-xs font-bold rounded-lg">Aprovar</button>
+                    <button onClick={() => reviewKyc(k.user_id, false)} className="px-3 py-2 bg-destructive/10 text-destructive text-xs font-bold rounded-lg">Recusar</button>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}

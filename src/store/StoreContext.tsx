@@ -898,7 +898,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
 
   const verifyUser = async (userId: string): Promise<boolean> => {
-    const { error } = await supabase.from("profiles").update({ is_verified_seller: true }).eq("user_id", userId);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ is_verified_seller: true, verification_status: "approved", verification_notes: null } as any)
+      .eq("user_id", userId);
     if (error) return false;
 
     setState(s => ({

@@ -67,7 +67,13 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
 
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-3 mb-1">Conta</p>
         <div className="space-y-1 mb-4">
-          <Item icon={User} label="Meu perfil" hint="Nome, foto, verificação" onClick={() => { onOpenProfile(); onClose(); }} />
+          <a href="/perfil" className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-muted transition">
+            <span className="p-2 rounded-xl bg-primary/10 text-primary"><User className="w-4 h-4" /></span>
+            <span className="flex-1">
+              <span className="block text-sm font-bold text-foreground">Meu perfil</span>
+              <span className="block text-[11px] text-muted-foreground">Dados pessoais e verificação de identidade</span>
+            </span>
+          </a>
           <Item icon={Wallet} label="Sacar dinheiro" hint="Pix em 5 a 7 dias úteis" onClick={() => { onOpenProfile(); onClose(); }} />
         </div>
 
