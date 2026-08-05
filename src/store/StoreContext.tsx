@@ -181,8 +181,9 @@ interface StoreContextType {
   logout: () => void;
   addProduct: (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => void;
   updateProduct: (id: number, p: Partial<Omit<Product, "id" | "sellerId">>) => Promise<boolean>;
-  approveProduct: (id: number) => void;
-  rejectProduct: (id: number) => void;
+  approveProduct: (id: number) => Promise<boolean>;
+  rejectProduct: (id: number) => Promise<boolean>;
+  refreshProducts: () => Promise<void>;
   deleteProduct: (id: number) => Promise<{ paused: boolean }>;
   buyProduct: (id: number, variation?: ProductVariation) => Promise<number | null>;
   savePixCharge: (purchaseId: number, charge: { evopayId: string; qrCodeText: string; expiresAt: string }) => void;
@@ -694,7 +695,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       reason,
       active: true,
     });
-    if (error) return false;
+    if (error) {
+      toast.error(error.message.includes("administradora") ? "Não é possível banir uma conta administradora." : "Erro ao banir: " + error.message);
+      return false;
+    }
 
     setState((s) => ({
       ...s,
@@ -944,6 +948,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     <StoreContext.Provider
       value={{
         state, login, logout, addProduct, updateProduct, approveProduct, rejectProduct, deleteProduct,
+        refreshProducts: loadCatalog,
         buyProduct, savePixCharge, refreshPurchases, markOrderDelivered, markPurchasePaid, approvePurchase, revertPurchase, requestWithdraw,
         approveWithdraw, rejectWithdraw, updateConfig, updateProfile,
         banUser, unbanUser, addTicket, replyTicket, closeTicket, resolveTicket,
