@@ -21,7 +21,7 @@ export default function ProfileModal({ open, onClose }: Props) {
   const [editingPix, setEditingPix] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
-  const [showRules, setShowRules] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
@@ -124,24 +124,6 @@ export default function ProfileModal({ open, onClose }: Props) {
 
   const displayName = profile?.display_name || storeUser.name;
 
-  if (showRules) {
-    return (
-      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm" onClick={() => setShowRules(false)}>
-        <div className="glass-card w-full max-w-lg p-7 bg-card animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-2xl font-bold text-foreground">Regras da Plataforma</h3>
-            <button onClick={() => setShowRules(false)} className="p-2 hover:bg-muted rounded-xl"><X className="w-5 h-5 text-muted-foreground" /></button>
-          </div>
-          <div className="prose dark:prose-invert max-w-none">
-            <p className="whitespace-pre-wrap text-foreground">
-              {state.config.rules}
-            </p>
-          </div>
-          <button onClick={() => setShowRules(false)} className="w-full btn-gradient p-3 mt-6 rounded-xl font-bold">Entendi</button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm" onClick={onClose}>
@@ -241,9 +223,9 @@ export default function ProfileModal({ open, onClose }: Props) {
             <Upload className="w-4 h-4" /> {uploading ? "Enviando..." : "Enviar Documentos (RG / Certidão)"}
           </button>
           
-          <button onClick={() => setShowRules(true)} className="w-full flex items-center justify-center gap-2 p-3 border border-border rounded-xl text-muted-foreground font-semibold text-sm hover:bg-muted transition">
-            <Shield className="w-4 h-4" /> Regras da Plataforma
-          </button>
+          <a href="/perfil" className="w-full flex items-center justify-center gap-2 p-3 border border-border rounded-xl text-muted-foreground font-semibold text-sm hover:bg-muted transition">
+            <Shield className="w-4 h-4" /> Dados pessoais e verificação
+          </a>
 
           <button onClick={logout} className="w-full flex items-center justify-center gap-2 p-3 text-destructive font-bold text-sm hover:bg-destructive/5 rounded-xl transition">
             <DoorEmoji className="w-5 h-5" /> Sair da Conta
