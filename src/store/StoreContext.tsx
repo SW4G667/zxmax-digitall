@@ -390,29 +390,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
 
 
-  useEffect(() => {
-    void (async () => {
-      const productSource = authUser ? "products" : "products_public";
-      const [{ data: dbProducts }, { data: dbPurchases }, { data: dbWithdrawals }, { data: deliveryRows }] = await Promise.all([
-        (supabase as any).from(productSource).select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at").order("created_at", { ascending: false }),
-        authUser
-          ? (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false })
-          : { data: [] },
-        authUser ? (supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }) : { data: [] },
-        authUser ? (supabase as any).from("product_delivery").select("product_id,delivery_content") : { data: [] },
-      ]);
-      const deliveryByProduct = new Map(((deliveryRows || []) as any[]).map((d) => [Number(d.product_id), d.delivery_content || undefined]));
-      const products = ((dbProducts || []) as any[]).map((p) => ({ id: Number(p.id), name: p.name, price: Number(p.price), category: p.category, seller: p.seller_name, sellerEmail: "", sellerId: p.seller_id, sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0), image: p.image, banner: p.banner || undefined, description: p.description, approved: p.approved, deliveryType: p.delivery_type, deliveryContent: deliveryByProduct.get(Number(p.id)), variations: p.variations || [], questions: p.questions || [] })) as Product[];
-      const purchases = ((dbPurchases || []) as any[]).map(mapPurchaseRow) as Purchase[];
-      const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "" })) as Withdrawal[];
-      setState((s) => ({
-        ...s,
-        products,
-        purchases,
-        withdrawals,
-      }));
-    })();
+  const loadCatalog = React.useCallback(async () => {
+    const productSource = authUser ? "products" : "products_public";
+    const [{ data: dbProducts }, { data: dbPurchases }, { data: dbWithdrawals }, { data: deliveryRows }] = await Promise.all([
+      (supabase as any).from(productSource).select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at").order("created_at", { ascending: false }),
+      authUser
+        ? (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false })
+        : { data: [] },
+      authUser ? (supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }) : { data: [] },
+      authUser ? (supabase as any).from("product_delivery").select("product_id,delivery_content") : { data: [] },
+    ]);
+    const deliveryByProduct = new Map(((deliveryRows || []) as any[]).map((d) => [Number(d.product_id), d.delivery_content || undefined]));
+    const products = ((dbProducts || []) as any[]).map((p) => ({ id: Number(p.id), name: p.name, price: Number(p.price), category: p.category, seller: p.seller_name, sellerEmail: "", sellerId: p.seller_id, sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0), image: p.image, banner: p.banner || undefined, description: p.description, approved: p.approved, deliveryType: p.delivery_type, deliveryContent: deliveryByProduct.get(Number(p.id)), variations: p.variations || [], questions: p.questions || [] })) as Product[];
+    const purchases = ((dbPurchases || []) as any[]).map(mapPurchaseRow) as Purchase[];
+    const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "" })) as Withdrawal[];
+    setState((s) => ({
+      ...s,
+      products,
+      purchases,
+      withdrawals,
+    }));
   }, [authUser]);
+
+  useEffect(() => {
+    void loadCatalog();
+  }, [loadCatalog]);
+
 
   useEffect(() => {
     localStorage.setItem("zxmax_dark", String(isDark));
