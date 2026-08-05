@@ -107,8 +107,41 @@ export default function AdminView() {
     setWebhookLogs((data || []) as WebhookLog[]);
   };
 
+  const loadKyc = async () => {
+    setKycLoading(true);
+    const { data, error } = await (supabase as any)
+      .from("profiles")
+      .select("user_id, public_id, email, display_name, full_name, cpf, birth_date, phone, city, state, verification_selfie_path, verification_status, verification_notes, verification_submitted_at, is_verified_seller")
+      .not("verification_status", "is", null)
+      .neq("verification_status", "none")
+      .order("verification_submitted_at", { ascending: false });
+    setKycLoading(false);
+    if (error) return toast.error("Não foi possível carregar as verificações.");
+    setKyc(data || []);
+  };
+
+  const reviewKyc = async (userId: string, approved: boolean) => {
+    const tid = toast.loading(approved ? "Aprovando..." : "Recusando...");
+    if (approved) {
+      const ok = await verifyUser(userId);
+      ok ? toast.success("Usuário verificado!", { id: tid }) : toast.error("Falha ao verificar.", { id: tid });
+    } else {
+      const { error } = await (supabase as any)
+        .from("profiles")
+        .update({
+          verification_status: "rejected",
+          is_verified_seller: false,
+          verification_notes: kycNotes[userId]?.trim() || "Documentos ilegíveis ou dados divergentes.",
+        })
+        .eq("user_id", userId);
+      error ? toast.error("Falha ao recusar.", { id: tid }) : toast.error("Verificação recusada.", { id: tid });
+    }
+    await loadKyc();
+  };
+
   useEffect(() => {
     if (tab === "webhooks") void loadWebhookLogs();
+    if (tab === "verifications") void loadKyc();
   }, [tab]);
 
   if (selectedDisputeId) {
