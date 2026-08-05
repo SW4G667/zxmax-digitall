@@ -181,8 +181,9 @@ interface StoreContextType {
   logout: () => void;
   addProduct: (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => void;
   updateProduct: (id: number, p: Partial<Omit<Product, "id" | "sellerId">>) => Promise<boolean>;
-  approveProduct: (id: number) => void;
-  rejectProduct: (id: number) => void;
+  approveProduct: (id: number) => Promise<boolean>;
+  rejectProduct: (id: number) => Promise<boolean>;
+  refreshProducts: () => Promise<void>;
   deleteProduct: (id: number) => Promise<{ paused: boolean }>;
   buyProduct: (id: number, variation?: ProductVariation) => Promise<number | null>;
   savePixCharge: (purchaseId: number, charge: { evopayId: string; qrCodeText: string; expiresAt: string }) => void;
@@ -390,29 +391,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
 
 
-  useEffect(() => {
-    void (async () => {
-      const productSource = authUser ? "products" : "products_public";
-      const [{ data: dbProducts }, { data: dbPurchases }, { data: dbWithdrawals }, { data: deliveryRows }] = await Promise.all([
-        (supabase as any).from(productSource).select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at").order("created_at", { ascending: false }),
-        authUser
-          ? (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false })
-          : { data: [] },
-        authUser ? (supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }) : { data: [] },
-        authUser ? (supabase as any).from("product_delivery").select("product_id,delivery_content") : { data: [] },
-      ]);
-      const deliveryByProduct = new Map(((deliveryRows || []) as any[]).map((d) => [Number(d.product_id), d.delivery_content || undefined]));
-      const products = ((dbProducts || []) as any[]).map((p) => ({ id: Number(p.id), name: p.name, price: Number(p.price), category: p.category, seller: p.seller_name, sellerEmail: "", sellerId: p.seller_id, sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0), image: p.image, banner: p.banner || undefined, description: p.description, approved: p.approved, deliveryType: p.delivery_type, deliveryContent: deliveryByProduct.get(Number(p.id)), variations: p.variations || [], questions: p.questions || [] })) as Product[];
-      const purchases = ((dbPurchases || []) as any[]).map(mapPurchaseRow) as Purchase[];
-      const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "" })) as Withdrawal[];
-      setState((s) => ({
-        ...s,
-        products,
-        purchases,
-        withdrawals,
-      }));
-    })();
+  const loadCatalog = React.useCallback(async () => {
+    const productSource = authUser ? "products" : "products_public";
+    const [{ data: dbProducts }, { data: dbPurchases }, { data: dbWithdrawals }, { data: deliveryRows }] = await Promise.all([
+      (supabase as any).from(productSource).select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at").order("created_at", { ascending: false }),
+      authUser
+        ? (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false })
+        : { data: [] },
+      authUser ? (supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }) : { data: [] },
+      authUser ? (supabase as any).from("product_delivery").select("product_id,delivery_content") : { data: [] },
+    ]);
+    const deliveryByProduct = new Map(((deliveryRows || []) as any[]).map((d) => [Number(d.product_id), d.delivery_content || undefined]));
+    const products = ((dbProducts || []) as any[]).map((p) => ({ id: Number(p.id), name: p.name, price: Number(p.price), category: p.category, seller: p.seller_name, sellerEmail: "", sellerId: p.seller_id, sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0), image: p.image, banner: p.banner || undefined, description: p.description, approved: p.approved, deliveryType: p.delivery_type, deliveryContent: deliveryByProduct.get(Number(p.id)), variations: p.variations || [], questions: p.questions || [] })) as Product[];
+    const purchases = ((dbPurchases || []) as any[]).map(mapPurchaseRow) as Purchase[];
+    const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "" })) as Withdrawal[];
+    setState((s) => ({
+      ...s,
+      products,
+      purchases,
+      withdrawals,
+    }));
   }, [authUser]);
+
+  useEffect(() => {
+    void loadCatalog();
+  }, [loadCatalog]);
+
 
   useEffect(() => {
     localStorage.setItem("zxmax_dark", String(isDark));
@@ -475,18 +479,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const approveProduct = (id: number) => {
-    void (supabase as any).from("products").update({ approved: true }).eq("id", id);
+  const approveProduct = async (id: number) => {
+    const { error } = await (supabase as any).from("products").update({ approved: true }).eq("id", id).select("id").maybeSingle();
+    if (error) {
+      toast.error("Não foi possível aprovar o anúncio: " + error.message);
+      await loadCatalog();
+      return false;
+    }
     setState((s) => ({
       ...s,
       products: s.products.map((p) => (p.id === id ? { ...p, approved: true } : p)),
     }));
+    await loadCatalog();
+    return true;
   };
 
-  const rejectProduct = (id: number) => {
-    void (supabase as any).from("products").delete().eq("id", id);
+  const rejectProduct = async (id: number) => {
+    const { error } = await (supabase as any).from("products").delete().eq("id", id);
+    if (error) {
+      toast.error("Não foi possível remover o anúncio: " + error.message);
+      return false;
+    }
     setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
+    return true;
   };
+
 
   const deleteProduct = async (id: number): Promise<{ paused: boolean }> => {
     // If product has orders, pause (unapprove) instead of deleting to preserve history
@@ -678,7 +695,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       reason,
       active: true,
     });
-    if (error) return false;
+    if (error) {
+      toast.error(error.message.includes("administradora") ? "Não é possível banir uma conta administradora." : "Erro ao banir: " + error.message);
+      return false;
+    }
 
     setState((s) => ({
       ...s,
@@ -928,6 +948,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     <StoreContext.Provider
       value={{
         state, login, logout, addProduct, updateProduct, approveProduct, rejectProduct, deleteProduct,
+        refreshProducts: loadCatalog,
         buyProduct, savePixCharge, refreshPurchases, markOrderDelivered, markPurchasePaid, approvePurchase, revertPurchase, requestWithdraw,
         approveWithdraw, rejectWithdraw, updateConfig, updateProfile,
         banUser, unbanUser, addTicket, replyTicket, closeTicket, resolveTicket,

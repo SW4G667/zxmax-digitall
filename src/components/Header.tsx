@@ -1,16 +1,17 @@
 import React from "react";
 import { useStore } from "@/store/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
-import { Sun, Moon, Search } from "lucide-react";
+import { Sun, Moon, Search, Menu } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 import DiscordIcon from "@/components/DiscordIcon";
 
 interface Props {
   onProfileClick?: () => void;
   onAuthClick?: () => void;
+  onMenuClick?: () => void;
 }
 
-export default function Header({ onProfileClick, onAuthClick }: Props) {
+export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Props) {
   const { state, isDark, toggleDark } = useStore();
   const { profile } = useAuth();
   const user = state.currentUser;
@@ -18,6 +19,10 @@ export default function Header({ onProfileClick, onAuthClick }: Props) {
   return (
     <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-xl border-b border-border/40">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
+        <button onClick={onMenuClick} className="p-2 rounded-xl hover:bg-muted transition shrink-0" title="Menu" aria-label="Abrir menu">
+          <Menu className="w-6 h-6 text-foreground" />
+        </button>
+
         <h2 className="text-2xl font-black tracking-tighter text-foreground shrink-0">
           ZX<span className="text-primary">MAX</span>
         </h2>
