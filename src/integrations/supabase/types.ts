@@ -221,42 +221,72 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          birth_date: string | null
+          city: string
+          cpf: string
           created_at: string
           display_name: string
           document_type: string | null
           email: string
+          full_name: string
           id: string
           is_verified_seller: boolean
+          phone: string
           pix_key: string | null
           public_id: number
+          state: string
           updated_at: string
           user_id: string
+          verification_notes: string
+          verification_selfie_path: string
+          verification_status: string
+          verification_submitted_at: string | null
         }
         Insert: {
           avatar_url?: string | null
+          birth_date?: string | null
+          city?: string
+          cpf?: string
           created_at?: string
           display_name?: string
           document_type?: string | null
           email: string
+          full_name?: string
           id?: string
           is_verified_seller?: boolean
+          phone?: string
           pix_key?: string | null
           public_id?: number
+          state?: string
           updated_at?: string
           user_id: string
+          verification_notes?: string
+          verification_selfie_path?: string
+          verification_status?: string
+          verification_submitted_at?: string | null
         }
         Update: {
           avatar_url?: string | null
+          birth_date?: string | null
+          city?: string
+          cpf?: string
           created_at?: string
           display_name?: string
           document_type?: string | null
           email?: string
+          full_name?: string
           id?: string
           is_verified_seller?: boolean
+          phone?: string
           pix_key?: string | null
           public_id?: number
+          state?: string
           updated_at?: string
           user_id?: string
+          verification_notes?: string
+          verification_selfie_path?: string
+          verification_status?: string
+          verification_submitted_at?: string | null
         }
         Relationships: []
       }
