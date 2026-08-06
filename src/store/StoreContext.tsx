@@ -585,45 +585,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void supabase.functions.invoke("order-action", { body: { orderId: id, action: "revert" } }).then(() => refreshPurchases());
   };
 
-  const requestWithdraw = async (method: "normal" | "instant") => {
+  const requestWithdraw = async (method: "normal" | "instant", options?: { retryOf?: number }) => {
     if (!state.currentUser || state.currentUser.balance <= 0) return;
     const fee = method === "instant" ? (state.currentUser.balance * state.config.instantFee) / 100 : 0;
-    const pixKey = (profile as any)?.pix_key || state.currentUser.pixKey || "";
-    const amount = state.currentUser.balance - fee;
-    const userId = state.currentUser.id;
-    const { data } = await (supabase as any)
-      .from("withdrawals")
-      .insert({
-        user_id: userId,
-        user_public_id: String(state.currentUser.publicId || ""),
-        user_email: state.currentUser.email,
-        amount,
-        method,
-        status: "pending",
-        pix_key: pixKey,
-      })
-      .select("id, created_at")
-      .maybeSingle();
-    const w: Withdrawal = {
-      id: data ? Number(data.id) : Date.now(),
-      userEmail: state.currentUser.email,
-      userId,
-      amount,
-      method,
-      status: "pending",
-      createdAt: data?.created_at || new Date().toISOString(),
-      pixKey,
-    };
-    setState((s) => ({
-      ...s,
-      withdrawals: [...s.withdrawals, w],
-      userBalances: s.currentUser ? { ...(s.userBalances || {}), [s.currentUser.id]: 0 } : s.userBalances,
-      currentUser: s.currentUser ? { ...s.currentUser, balance: 0 } : null,
-    }));
+    const amount = Number((state.currentUser.balance - fee).toFixed(2));
+    // Idempotency: the same user + amount + method within the same minute never
+    // creates two withdrawals, even if the request is retried on a flaky network.
+    const minuteBucket = new Date().toISOString().slice(0, 16);
+    const idempotencyKey = `${state.currentUser.id}:${amount}:${method}:${options?.retryOf ?? "new"}:${minuteBucket}`;
+    const { error } = await (supabase as any).rpc("request_withdrawal", {
+      _amount: amount,
+      _method: method,
+      _idempotency_key: idempotencyKey,
+      _retry_of: options?.retryOf ?? null,
+    });
+    if (error) throw new Error(error.message || "Não foi possível solicitar o saque");
+    await loadCatalog();
   };
 
   const approveWithdraw = async (id: number) => {
     const withdrawal = state.withdrawals.find((w) => w.id === id);
+    let providerTx: string | null = null;
     if (withdrawal?.pixKey) {
       const pixType = inferPixType(withdrawal.pixKey);
       const { data, error } = await supabase.functions.invoke("evopay-withdraw", {
@@ -632,35 +614,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           pixKey: withdrawal.pixKey,
           pixType,
           description: "Saque ZXMAX",
-          clientReference: String(id),
+          // stable reference => gateway-side idempotency on retries
+          clientReference: `withdraw_${id}`,
         },
       });
       if (error || data?.error) {
         throw new Error(data?.error || error?.message || "Erro ao processar saque na EvoPay");
       }
+      providerTx = data?.id ? String(data.id) : null;
     }
-    void (supabase as any).from("withdrawals").update({ status: "approved" }).eq("id", id);
-    setState((s) => ({
-      ...s,
-      withdrawals: s.withdrawals.map((w) => (w.id === id ? { ...w, status: "approved" } : w)),
-    }));
+    const { error: rpcError } = await (supabase as any).rpc("approve_withdrawal", {
+      _id: id,
+      _provider_tx: providerTx,
+    });
+    if (rpcError) throw new Error(rpcError.message || "Erro ao aprovar o saque");
+    await loadCatalog();
   };
 
-  const rejectWithdraw = (id: number) =>
-    setState((s) => {
-      const withdrawal = s.withdrawals.find((w) => w.id === id);
-      if (!withdrawal) return s;
-
-      const refundedBalance = (s.userBalances?.[withdrawal.userId] || 0) + withdrawal.amount;
-      return {
-        ...s,
-        withdrawals: s.withdrawals.map((w) => (w.id === id ? { ...w, status: "rejected" } : w)),
-        userBalances: { ...(s.userBalances || {}), [withdrawal.userId]: refundedBalance },
-        currentUser: s.currentUser?.id === withdrawal.userId
-          ? { ...s.currentUser, balance: refundedBalance }
-          : s.currentUser,
-      };
+  const rejectWithdraw = async (id: number, reason?: string) => {
+    const { error } = await (supabase as any).rpc("reject_withdrawal", {
+      _id: id,
+      _reason: reason || "",
     });
+    if (error) throw new Error(error.message || "Erro ao recusar o saque");
+    await loadCatalog();
+  };
 
   const updateConfig = (c: Partial<AppConfig>) =>
     setState((s) => ({ ...s, config: { ...s.config, ...c } }));
