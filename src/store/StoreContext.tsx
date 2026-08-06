@@ -195,9 +195,9 @@ interface StoreContextType {
   markPurchasePaid: (purchaseId: number) => void;
   approvePurchase: (id: number) => void;
   revertPurchase: (id: number) => void;
-  requestWithdraw: (method: "normal" | "instant") => Promise<void>;
+  requestWithdraw: (method: "normal" | "instant", options?: { retryOf?: number }) => Promise<void>;
   approveWithdraw: (id: number) => Promise<void>;
-  rejectWithdraw: (id: number) => void;
+  rejectWithdraw: (id: number, reason?: string) => Promise<void>;
   updateConfig: (c: Partial<AppConfig>) => void;
   updateProfile: (name: string) => void;
   banUser: (identifier: string, reason?: string) => Promise<boolean>;
