@@ -110,6 +110,47 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_events: {
+        Row: {
+          charge_id: string | null
+          event_key: string
+          event_type: string
+          id: number
+          payload: Json
+          processed_at: string
+          provider: string
+          purchase_id: number | null
+        }
+        Insert: {
+          charge_id?: string | null
+          event_key: string
+          event_type: string
+          id?: number
+          payload?: Json
+          processed_at?: string
+          provider: string
+          purchase_id?: number | null
+        }
+        Update: {
+          charge_id?: string | null
+          event_key?: string
+          event_type?: string
+          id?: number
+          payload?: Json
+          processed_at?: string
+          provider?: string
+          purchase_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_events_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "purchases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_delivery: {
         Row: {
           created_at: string
@@ -650,6 +691,21 @@ export type Database = {
       }
     }
     Functions: {
+      apply_verified_payment: {
+        Args: {
+          _charge_id: string
+          _confirmed_amount: number
+          _event_key: string
+          _event_type: string
+          _payload?: Json
+          _provider: string
+          _purchase_id: number
+        }
+        Returns: {
+          applied: boolean
+          resulting_status: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
