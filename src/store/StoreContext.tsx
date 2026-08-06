@@ -101,6 +101,9 @@ export interface Withdrawal {
   status: "pending" | "approved" | "rejected";
   createdAt: string;
   pixKey?: string;
+  rejectionReason?: string;
+  providerTxId?: string;
+  retryOf?: number | null;
 }
 
 export interface SupportTicket {
