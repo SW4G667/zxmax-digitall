@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useStore, StoreProvider } from "@/store/StoreContext";
 import AuthScreen from "@/components/AuthScreen";
@@ -12,15 +13,17 @@ import InventoryView from "@/components/InventoryView";
 import SupportView from "@/components/SupportView";
 import AdminView from "@/components/AdminView";
 import MyPurchasesView from "@/components/MyPurchasesView";
+import WithdrawView from "@/components/WithdrawView";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-type View = "store" | "inventory" | "purchases" | "support" | "admin" | "profile";
+type View = "store" | "inventory" | "purchases" | "support" | "admin" | "withdraw";
+const PATHS: Record<View, string> = { store: "/loja", inventory: "/meus-produtos", purchases: "/minhas-compras", support: "/suporte", admin: "/admin", withdraw: "/sacar" };
 
-function Dashboard() {
+function Dashboard({ view }: { view: View }) {
   const { refreshPurchases } = useStore();
   const { isAdmin, user } = useAuth();
-  const [view, setView] = useState<View>("store");
+  const navigate = useNavigate();
   const [profileOpen, setProfileOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -28,12 +31,12 @@ function Dashboard() {
 
   const handleOpenChat = (purchaseId: number) => {
     setSelectedPurchaseId(purchaseId);
-    setView("purchases");
+    navigate(PATHS.purchases);
   };
 
   useEffect(() => {
     if (isAdmin && view === "store") {
-      setView("admin");
+      navigate(PATHS.admin, { replace: true });
     }
   }, [isAdmin]);
 
@@ -43,7 +46,7 @@ function Dashboard() {
       void refreshPurchases();
       toast.info("Voltamos do pagamento. A confirmação será validada automaticamente.");
       window.history.replaceState({}, "", "/");
-      setView("purchases");
+      navigate(PATHS.purchases, { replace: true });
     } else if (params.get("payment") === "canceled") {
       toast.info("Pagamento cancelado.");
       window.history.replaceState({}, "", "/");
@@ -59,17 +62,18 @@ function Dashboard() {
         {view === "purchases" && <MyPurchasesView initialSelectedId={selectedPurchaseId} />}
         {view === "support" && <SupportView />}
         {view === "admin" && isAdmin && <AdminView />}
+        {view === "withdraw" && <WithdrawView />}
       </main>
       <BottomNav current={view} onChange={(next) => {
         if (!user && next !== "store") return setAuthOpen(true);
-        setView(next);
+        navigate(PATHS[next]);
       }} />
       <SideMenu
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         onNavigate={(next) => {
           if (!user && next !== "store") return setAuthOpen(true);
-          setView(next);
+          navigate(PATHS[next]);
         }}
         onOpenProfile={() => (user ? setProfileOpen(true) : setAuthOpen(true))}
       />
@@ -79,7 +83,7 @@ function Dashboard() {
   );
 }
 
-function AppGate() {
+function AppGate({ view }: { view: View }) {
   const { user, loading, banned } = useAuth();
   const [discordLoading, setDiscordLoading] = useState(false);
 
@@ -173,15 +177,15 @@ function AppGate() {
 
   return (
     <StoreProvider>
-      <Dashboard />
+      <Dashboard view={view} />
     </StoreProvider>
   );
 }
 
-export default function Index() {
+export default function Index({ view }: { view: View }) {
   return (
     <AuthProvider>
-      <AppGate />
+      <AppGate view={view} />
     </AuthProvider>
   );
 }

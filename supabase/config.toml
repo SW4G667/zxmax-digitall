@@ -20,3 +20,9 @@ verify_jwt = false
 
 [functions.mark-order-delivered]
 verify_jwt = false
+
+[functions.order-action]
+verify_jwt = false
+
+[functions.integrations-config]
+verify_jwt = false
