@@ -417,6 +417,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void loadCatalog();
   }, [loadCatalog]);
 
+  useEffect(() => {
+    if (!authUser) return;
+    const channel = supabase.channel(`purchases_${authUser.id}`).on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "purchases" },
+      () => { void refreshPurchases(); },
+    ).subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [authUser]);
+
 
   useEffect(() => {
     localStorage.setItem("zxmax_dark", String(isDark));

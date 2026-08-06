@@ -50,7 +50,6 @@ serve(async (req) => {
 
     const body = await req.json();
     const purchaseId = Number(body.purchaseId);
-    const { buyerName, buyerDocument } = body;
     if (!purchaseId || Number.isNaN(purchaseId)) throw new Error("Pedido inválido");
 
     const { data: purchase, error: purchaseError } = await serviceClient
@@ -86,14 +85,19 @@ serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const callbackUrl = `${supabaseUrl}/functions/v1/evopay-webhook`;
+    const webhookToken = setting?.value?.webhookToken;
+    if (!webhookToken) throw new Error("Webhook EvoPay ainda não foi configurado pelo administrador");
+    const callbackUrl = `${supabaseUrl}/functions/v1/evopay-webhook?token=${encodeURIComponent(webhookToken)}`;
+    const { data: buyerProfile } = await serviceClient.from("profiles").select("display_name,cpf").eq("user_id", userData.user.id).maybeSingle();
+    const buyerDocument = String(buyerProfile?.cpf || "").replace(/\D/g, "");
+    if (![11, 14].includes(buyerDocument.length)) throw new Error("Cadastre um CPF válido no perfil antes de pagar");
 
     const payload = {
       amount: value,
       callbackUrl,
-      generatedName: buyerName || buyerEmail.split("@")[0],
+      generatedName: buyerProfile?.display_name || buyerEmail.split("@")[0],
       generatedEmail: buyerEmail,
-      generatedDocument: (buyerDocument || "11144477735").replace(/\D/g, ""),
+      generatedDocument: buyerDocument,
       expiresIn: 3600,
       clientReference: String(purchaseId ?? `order_${Date.now()}`),
     };
