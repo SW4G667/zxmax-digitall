@@ -8,13 +8,13 @@ type Field = { key: string; label: string; secret?: boolean; placeholder?: strin
 const PROVIDERS: { id: string; name: string; hint: string; fields: Field[] }[] = [
   {
     id: "vexopay",
-    name: "Vexopay",
-    hint: "Credenciais do processamento Vexopay. Teste a conexão antes de ativar em produção.",
+    name: "VexoPay (PIX + Crypto)",
+    hint: "Use o Client ID e o Client Secret gerados no painel da VexoPay em API Keys. A base padrão é https://vexopay.com.br/api",
     fields: [
-      { key: "baseUrl", label: "URL da API", placeholder: "https://processamento.evopay.cash" },
-      { key: "merchantId", label: "Merchant ID" },
-      { key: "apiKey", label: "API Key", secret: true },
-      { key: "webhookSecret", label: "Segredo do webhook", secret: true },
+      { key: "baseUrl", label: "Base URL", placeholder: "https://vexopay.com.br/api" },
+      { key: "clientId", label: "Client ID (ci)", placeholder: "vxp_ci_..." },
+      { key: "clientSecret", label: "Client Secret (cs)", secret: true, placeholder: "vxp_cs_..." },
+      { key: "webhookSecret", label: "Segredo do webhook (opcional)", secret: true },
     ],
   },
   {

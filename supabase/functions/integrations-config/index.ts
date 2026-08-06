@@ -16,7 +16,7 @@ const json = (body: unknown, status = 200) =>
 /** Fields we persist per provider. Secret fields are never returned to the client. */
 const PROVIDERS: Record<string, { secret: string[]; plain: string[] }> = {
   evopay: { secret: ["apiKey"], plain: ["mode", "enabled", "baseUrl"] },
-  vexopay: { secret: ["apiKey", "webhookSecret"], plain: ["mode", "enabled", "baseUrl", "merchantId"] },
+  vexopay: { secret: ["clientSecret", "webhookSecret"], plain: ["mode", "enabled", "baseUrl", "clientId"] },
   stripe: { secret: ["secretKey", "webhookSecret"], plain: ["publishableKey", "mode", "enabled"] },
   discord: { secret: ["clientSecret"], plain: ["clientId", "redirectUri", "scopes", "serverLink", "mode", "enabled"] },
 };
@@ -46,10 +46,15 @@ async function testConnection(provider: string, cfg: Record<string, any>) {
         : { ok: false, message: `Stripe: ${body?.error?.message || r.status}` };
     }
     if (provider === "vexopay") {
-      if (!cfg.apiKey) return { ok: false, message: "API Key é obrigatória." };
-      const baseUrl = String(cfg.baseUrl || "https://processamento.evopay.cash").replace(/\/$/, "");
-      const r = await fetch(`${baseUrl}/balance`, { headers: { Authorization: `Bearer ${cfg.apiKey}` } });
-      return r.ok ? { ok: true, message: "Conexão OK com a Vexopay." } : { ok: false, message: `Vexopay respondeu ${r.status}. Confira a URL e as credenciais.` };
+      if (!cfg.clientId || !cfg.clientSecret) return { ok: false, message: "Client ID (ci) e Client Secret (cs) são obrigatórios." };
+      const baseUrl = String(cfg.baseUrl || "https://vexopay.com.br/api").replace(/\/$/, "");
+      const r = await fetch(`${baseUrl}/balance`, {
+        headers: { ci: String(cfg.clientId), cs: String(cfg.clientSecret), Accept: "application/json" },
+      });
+      const body = await r.text();
+      return r.ok
+        ? { ok: true, message: `Conexão OK com a VexoPay. ${body.slice(0, 120)}` }
+        : { ok: false, message: `VexoPay respondeu ${r.status}: ${body.slice(0, 200)}` };
     }
     if (provider === "discord") {
       if (!cfg.clientId || !cfg.clientSecret) return { ok: false, message: "Client ID e Client Secret são obrigatórios." };

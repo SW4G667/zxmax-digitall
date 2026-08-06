@@ -250,10 +250,52 @@ export default function AdminView() {
                     }}
                     className="p-3 bg-success/10 text-success rounded-xl hover:bg-success/20 transition"
                   ><Check className="w-5 h-5" /></button>
-                  <button onClick={() => { rejectWithdraw(w.id); toast.error("Saque rejeitado."); }} className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition"><X className="w-5 h-5" /></button>
+                  <button
+                    onClick={async () => {
+                      const reason = window.prompt("Motivo da recusa (o usuário verá esta mensagem e poderá reenviar):", "");
+                      if (reason === null) return;
+                      try {
+                        await rejectWithdraw(w.id, reason);
+                        toast.error("Saque recusado.");
+                      } catch (err: any) {
+                        toast.error(err?.message || "Erro ao recusar o saque.");
+                      }
+                    }}
+                    className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition"
+                  ><X className="w-5 h-5" /></button>
                 </div>
               </div>
             ))
+          )}
+
+          <h3 className="font-bold text-foreground pt-4">Histórico de saques</h3>
+          {state.withdrawals.filter((w) => w.status !== "pending").length === 0 ? (
+            <div className="bg-card rounded-3xl p-6 text-center border-2 border-dashed border-border">
+              <p className="text-sm text-muted-foreground">Nenhum saque processado ainda.</p>
+            </div>
+          ) : (
+            state.withdrawals
+              .filter((w) => w.status !== "pending")
+              .map((w) => (
+                <div key={w.id} className="glass-card p-4 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-foreground">R$ {w.amount.toFixed(2)} · {w.userEmail}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {new Date(w.createdAt).toLocaleString("pt-BR")}
+                      {w.retryOf ? ` · reenvio do #${w.retryOf}` : ""}
+                    </p>
+                    {w.status === "rejected" && w.rejectionReason && (
+                      <p className="text-[11px] text-destructive mt-1">Motivo: {w.rejectionReason}</p>
+                    )}
+                    {w.status === "approved" && w.providerTxId && (
+                      <p className="text-[11px] text-muted-foreground font-mono mt-1">TX: {w.providerTxId}</p>
+                    )}
+                  </div>
+                  <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-lg ${w.status === "approved" ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}>
+                    {w.status === "approved" ? "Pago" : "Recusado"}
+                  </span>
+                </div>
+              ))
           )}
         </div>
       )}
