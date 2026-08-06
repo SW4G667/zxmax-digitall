@@ -407,7 +407,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const deliveryByProduct = new Map(((deliveryRows || []) as any[]).map((d) => [Number(d.product_id), d.delivery_content || undefined]));
     const products = ((dbProducts || []) as any[]).map((p) => ({ id: Number(p.id), name: p.name, price: Number(p.price), category: p.category, seller: p.seller_name, sellerEmail: "", sellerId: p.seller_id, sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0), image: p.image, banner: p.banner || undefined, description: p.description, approved: p.approved, deliveryType: p.delivery_type, deliveryContent: deliveryByProduct.get(Number(p.id)), variations: p.variations || [], questions: p.questions || [] })) as Product[];
     const purchases = ((dbPurchases || []) as any[]).map(mapPurchaseRow) as Purchase[];
-    const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "" })) as Withdrawal[];
+    const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "", rejectionReason: w.rejection_reason || "", providerTxId: w.provider_tx_id || "", retryOf: w.retry_of ?? null })) as Withdrawal[];
     setState((s) => ({
       ...s,
       products,
