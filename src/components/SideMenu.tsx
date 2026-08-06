@@ -1,8 +1,9 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { X, Store, Package, ShoppingBag, Headset, Shield, User, Wallet, FileText, HelpCircle, Lock, ScrollText } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
-type View = "store" | "inventory" | "purchases" | "support" | "admin" | "profile";
+type View = "store" | "inventory" | "purchases" | "support" | "admin" | "withdraw";
 
 interface Props {
   open: boolean;
@@ -67,34 +68,34 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
 
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-3 mb-1">Conta</p>
         <div className="space-y-1 mb-4">
-          <a href="/perfil" className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-muted transition">
+          <Link to="/perfil" onClick={onClose} className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-muted transition">
             <span className="p-2 rounded-xl bg-primary/10 text-primary"><User className="w-4 h-4" /></span>
             <span className="flex-1">
               <span className="block text-sm font-bold text-foreground">Meu perfil</span>
               <span className="block text-[11px] text-muted-foreground">Dados pessoais e verificação de identidade</span>
             </span>
-          </a>
-          <Item icon={Wallet} label="Sacar dinheiro" hint="Pix em 5 a 7 dias úteis" onClick={() => { onOpenProfile(); onClose(); }} />
+          </Link>
+          <Item icon={Wallet} label="Sacar dinheiro" hint="Pix em 5 a 7 dias úteis" onClick={() => go("withdraw")} />
         </div>
 
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-3 mb-1">Institucional</p>
         <div className="space-y-1">
-          <a href="/regras" className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-muted transition">
+          <Link to="/regras" onClick={onClose} className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-muted transition">
             <span className="p-2 rounded-xl bg-primary/10 text-primary"><ScrollText className="w-4 h-4" /></span>
             <span className="text-sm font-bold text-foreground">Regras da plataforma</span>
-          </a>
-          <a href="/faq" className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-muted transition">
+          </Link>
+          <Link to="/faq" onClick={onClose} className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-muted transition">
             <span className="p-2 rounded-xl bg-primary/10 text-primary"><HelpCircle className="w-4 h-4" /></span>
             <span className="text-sm font-bold text-foreground">Perguntas frequentes</span>
-          </a>
-          <a href="/termos" className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-muted transition">
+          </Link>
+          <Link to="/termos" onClick={onClose} className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-muted transition">
             <span className="p-2 rounded-xl bg-primary/10 text-primary"><FileText className="w-4 h-4" /></span>
             <span className="text-sm font-bold text-foreground">Termos de uso</span>
-          </a>
-          <a href="/privacidade" className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-muted transition">
+          </Link>
+          <Link to="/privacidade" onClick={onClose} className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-muted transition">
             <span className="p-2 rounded-xl bg-primary/10 text-primary"><Lock className="w-4 h-4" /></span>
             <span className="text-sm font-bold text-foreground">Política de privacidade</span>
-          </a>
+          </Link>
         </div>
       </aside>
     </div>

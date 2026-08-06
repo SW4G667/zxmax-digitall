@@ -69,7 +69,10 @@ serve(async (req) => {
           headers: { Authorization: `Bearer ${apiKey}` },
         });
         const verifyData = await verify.json().catch(() => ({}));
-        confirmed = verify.ok && (verifyData?.status === "COMPLETED" || verifyData?.status === "PAID");
+        confirmed = verify.ok &&
+          (verifyData?.status === "COMPLETED" || verifyData?.status === "PAID") &&
+          String(verifyData?.id || "") === chargeId &&
+          String(verifyData?.clientReference || "") === clientReference;
         if (!confirmed) console.warn("evopay-webhook: charge not confirmed by API", chargeId, verifyData?.status);
       } catch (e) {
         console.error("evopay-webhook verification failed", e);
@@ -81,40 +84,19 @@ serve(async (req) => {
       // Fetch purchase + product to decide auto delivery
       const { data: purchase } = await admin
         .from("purchases")
-        .select("id, product_id, status, messages, evopay_charge_id")
+        .select("id, product_id, status, messages, evopay_charge_id, amount")
         .eq("id", purchaseId)
         .maybeSingle();
 
       if (purchase && purchase.status === "pending" && (!purchase.evopay_charge_id || purchase.evopay_charge_id === chargeId)) {
-        const { data: product } = await admin
-          .from("products")
-          .select("delivery_type, sales")
-          .eq("id", purchase.product_id)
-          .maybeSingle();
-
-        const { data: delivery } = await admin
-          .from("product_delivery")
-          .select("delivery_content")
-          .eq("product_id", purchase.product_id)
-          .maybeSingle();
-
-        let newStatus = "paid";
-        let messages = Array.isArray(purchase.messages) ? purchase.messages : [];
-
-        if (product?.delivery_type === "auto" && delivery?.delivery_content) {
-          newStatus = "delivered";
-          messages = [
-            ...messages,
-            { from: "System", text: `📦 ENTREGA_AUTO: ${delivery.delivery_content}`, date: new Date().toISOString() },
-          ];
-        }
-
-        await admin.from("purchases").update({ status: newStatus, messages }).eq("id", purchaseId);
-        if (product) {
-          await admin.from("products").update({ sales: (product.sales || 0) + 1 }).eq("id", purchase.product_id);
-        }
-        logStatus = newStatus;
-        console.log(`Purchase ${purchaseId} marked as ${newStatus}`);
+        const confirmedAmount = Number(event.amount);
+        if (!Number.isFinite(confirmedAmount) || confirmedAmount !== Number(purchase.amount)) throw new Error("Valor confirmado diverge do pedido");
+        const { data: applied, error: applyError } = await admin.rpc("apply_verified_payment", {
+          _provider: "evopay", _event_key: `${chargeId}:${type}:${status}`, _event_type: type,
+          _purchase_id: purchaseId, _charge_id: chargeId, _confirmed_amount: confirmedAmount, _payload: event,
+        });
+        if (applyError) throw applyError;
+        logStatus = applied?.[0]?.resulting_status || "processed";
       } else {
         logStatus = purchase ? `ignored (already ${purchase.status})` : "ignored (purchase not found)";
       }

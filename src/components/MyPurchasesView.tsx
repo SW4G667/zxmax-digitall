@@ -89,12 +89,13 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
     toast.success("Pagamento confirmado!");
   };
 
-  const handleDispute = () => {
+  const handleDispute = async () => {
     if (!disputeReason.trim() || !selectedId) {
       toast.error("Por favor, descreva o motivo da disputa.");
       return;
     }
-    openDispute(selectedId, disputeReason);
+    const ok = await openDispute(selectedId, disputeReason.trim());
+    if (!ok) return toast.error("Não foi possível abrir a disputa neste estado do pedido.");
     toast.success("Disputa aberta! Um administrador irá analisar o caso.");
     setShowDisputeForm(false);
     setDisputeReason("");
@@ -110,9 +111,10 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
     setShowReview(false);
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!selectedId) return;
-    confirmDelivery(selectedId);
+    const ok = await confirmDelivery(selectedId);
+    if (!ok) return toast.error("Não foi possível confirmar a entrega.");
     toast.success("Entrega confirmada!");
     setShowReview(true);
   };

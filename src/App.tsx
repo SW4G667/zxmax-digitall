@@ -19,7 +19,13 @@ const App = () => (
       <Sonner position="top-center" richColors />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
+          <Route path="/" element={<Index view="store" />} />
+          <Route path="/loja" element={<Index view="store" />} />
+          <Route path="/meus-produtos" element={<Index view="inventory" />} />
+          <Route path="/minhas-compras" element={<Index view="purchases" />} />
+          <Route path="/suporte" element={<Index view="support" />} />
+          <Route path="/admin" element={<Index view="admin" />} />
+          <Route path="/sacar" element={<Index view="withdraw" />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/faq" element={<Faq />} />
           <Route path="/termos" element={<Termos />} />

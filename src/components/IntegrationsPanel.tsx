@@ -7,6 +7,17 @@ type Field = { key: string; label: string; secret?: boolean; placeholder?: strin
 
 const PROVIDERS: { id: string; name: string; hint: string; fields: Field[] }[] = [
   {
+    id: "vexopay",
+    name: "Vexopay",
+    hint: "Credenciais do processamento Vexopay. Teste a conexão antes de ativar em produção.",
+    fields: [
+      { key: "baseUrl", label: "URL da API", placeholder: "https://processamento.evopay.cash" },
+      { key: "merchantId", label: "Merchant ID" },
+      { key: "apiKey", label: "API Key", secret: true },
+      { key: "webhookSecret", label: "Segredo do webhook", secret: true },
+    ],
+  },
+  {
     id: "evopay",
     name: "EvoPay (PIX)",
     hint: "Gateway de pagamento ativo. Cole a API Key gerada no painel da EvoPay.",
@@ -76,7 +87,7 @@ export default function IntegrationsPanel() {
   const setField = (provider: string, key: string, val: string) =>
     setValues((v) => ({ ...v, [provider]: { ...(v[provider] || {}), [key]: val } }));
 
-  const run = async (provider: string, action: "save" | "test") => {
+  const run = async (provider: string, action: "save" | "test" | "simulate") => {
     setBusy(`${provider}:${action}`);
     const { data, error } = await supabase.functions.invoke("integrations-config", {
       body: { action, provider, values: values[provider] || {}, test: action === "save" },
@@ -187,6 +198,9 @@ export default function IntegrationsPanel() {
                 className="px-4 py-2.5 rounded-xl text-xs font-bold bg-muted text-foreground disabled:opacity-50"
               >
                 {busy === `${p.id}:test` ? "Testando..." : "Testar conexão"}
+              </button>
+              <button onClick={() => run(p.id, "simulate")} disabled={busy !== null} className="px-4 py-2.5 rounded-xl text-xs font-bold border border-border text-foreground disabled:opacity-50">
+                {busy === `${p.id}:simulate` ? "Simulando..." : "Simular evento"}
               </button>
             </div>
           </div>
