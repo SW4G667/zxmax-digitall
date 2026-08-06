@@ -16,7 +16,7 @@ const json = (body: unknown, status = 200) =>
 /** Fields we persist per provider. Secret fields are never returned to the client. */
 const PROVIDERS: Record<string, { secret: string[]; plain: string[] }> = {
   evopay: { secret: ["apiKey"], plain: ["mode", "enabled", "baseUrl"] },
-  vexopay: { secret: ["apiKey", "webhookSecret"], plain: ["mode", "enabled", "baseUrl", "merchantId"] },
+  vexopay: { secret: ["clientSecret", "webhookSecret"], plain: ["mode", "enabled", "baseUrl", "clientId"] },
   stripe: { secret: ["secretKey", "webhookSecret"], plain: ["publishableKey", "mode", "enabled"] },
   discord: { secret: ["clientSecret"], plain: ["clientId", "redirectUri", "scopes", "serverLink", "mode", "enabled"] },
 };
