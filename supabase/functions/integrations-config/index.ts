@@ -15,7 +15,8 @@ const json = (body: unknown, status = 200) =>
 
 /** Fields we persist per provider. Secret fields are never returned to the client. */
 const PROVIDERS: Record<string, { secret: string[]; plain: string[] }> = {
-  evopay: { secret: ["apiKey"], plain: ["mode", "enabled"] },
+  evopay: { secret: ["apiKey"], plain: ["mode", "enabled", "baseUrl"] },
+  vexopay: { secret: ["apiKey", "webhookSecret"], plain: ["mode", "enabled", "baseUrl", "merchantId"] },
   stripe: { secret: ["secretKey", "webhookSecret"], plain: ["publishableKey", "mode", "enabled"] },
   discord: { secret: ["clientSecret"], plain: ["clientId", "redirectUri", "scopes", "serverLink", "mode", "enabled"] },
 };
@@ -43,6 +44,12 @@ async function testConnection(provider: string, cfg: Record<string, any>) {
       return r.ok
         ? { ok: true, message: `Conexão OK com a Stripe (${cfg.secretKey.startsWith("sk_live") ? "live" : "test"}).` }
         : { ok: false, message: `Stripe: ${body?.error?.message || r.status}` };
+    }
+    if (provider === "vexopay") {
+      if (!cfg.apiKey) return { ok: false, message: "API Key é obrigatória." };
+      const baseUrl = String(cfg.baseUrl || "https://processamento.evopay.cash").replace(/\/$/, "");
+      const r = await fetch(`${baseUrl}/balance`, { headers: { Authorization: `Bearer ${cfg.apiKey}` } });
+      return r.ok ? { ok: true, message: "Conexão OK com a Vexopay." } : { ok: false, message: `Vexopay respondeu ${r.status}. Confira a URL e as credenciais.` };
     }
     if (provider === "discord") {
       if (!cfg.clientId || !cfg.clientSecret) return { ok: false, message: "Client ID e Client Secret são obrigatórios." };
@@ -129,6 +136,11 @@ serve(async (req) => {
     for (const f of fields.plain) if (incoming[f] !== undefined) current[f] = incoming[f];
     for (const f of fields.secret) {
       if (typeof incoming[f] === "string" && incoming[f].trim() !== "") current[f] = incoming[f].trim();
+    }
+
+    if (action === "simulate") {
+      await admin.from("webhook_logs").insert({ source: provider, event_type: "SIMULATION", status: "test_ok", payload: { simulated: true, requestedBy: userData.user.id } });
+      return json({ ok: true, message: "Evento de teste registrado sem alterar pedidos reais." });
     }
 
     if (action === "test") {

@@ -192,8 +192,8 @@ interface StoreContextType {
   markPurchasePaid: (purchaseId: number) => void;
   approvePurchase: (id: number) => void;
   revertPurchase: (id: number) => void;
-  requestWithdraw: (method: "normal" | "instant") => void;
-  approveWithdraw: (id: number) => void;
+  requestWithdraw: (method: "normal" | "instant") => Promise<void>;
+  approveWithdraw: (id: number) => Promise<void>;
   rejectWithdraw: (id: number) => void;
   updateConfig: (c: Partial<AppConfig>) => void;
   updateProfile: (name: string) => void;
@@ -208,8 +208,8 @@ interface StoreContextType {
   updatePixKey: (key: string) => void;
   sendAdminChat: (from: string, text: string) => void;
   sendPurchaseMessage: (purchaseId: number, from: string, text: string) => void;
-  confirmDelivery: (purchaseId: number) => void;
-  openDispute: (purchaseId: number, reason: string) => void;
+  confirmDelivery: (purchaseId: number) => Promise<boolean>;
+  openDispute: (purchaseId: number, reason: string) => Promise<boolean>;
   reviewPurchase: (purchaseId: number, stars: number, comment: string) => void;
   addProductQuestion: (productId: number, text: string) => void;
   answerProductQuestion: (productId: number, questionId: number, answer: string) => void;
@@ -535,11 +535,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const savePixCharge = (purchaseId: number, charge: { evopayId: string; qrCodeText: string; expiresAt: string }) => {
-    void (supabase as any).from("purchases").update({
-      evopay_charge_id: charge.evopayId,
-      pix_qr_code: charge.qrCodeText,
-      pix_expires_at: charge.expiresAt,
-    }).eq("id", purchaseId);
     setState((s) => ({
       ...s,
       purchases: s.purchases.map((p) =>
@@ -570,19 +565,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const approvePurchase = (id: number) => {
-    void (supabase as any).from("purchases").update({ status: "delivered" }).eq("id", id);
-    setState((s) => ({
-      ...s,
-      purchases: s.purchases.map((p) => (p.id === id ? { ...p, status: "delivered" as const } : p)),
-    }));
+    void supabase.functions.invoke("order-action", { body: { orderId: id, action: "approve" } }).then(() => refreshPurchases());
   };
 
   const revertPurchase = (id: number) => {
-    void (supabase as any).from("purchases").update({ status: "pending" }).eq("id", id);
-    setState((s) => ({
-      ...s,
-      purchases: s.purchases.map((p) => (p.id === id ? { ...p, status: "pending" as const } : p)),
-    }));
+    void supabase.functions.invoke("order-action", { body: { orderId: id, action: "revert" } }).then(() => refreshPurchases());
   };
 
   const requestWithdraw = async (method: "normal" | "instant") => {
@@ -772,26 +759,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       };
     });
 
-  const confirmDelivery = (purchaseId: number) =>
-    setState((s) => ({
-      ...s,
-      purchases: s.purchases.map((p) =>
-        p.id === purchaseId ? { ...p, status: "delivered" as const } : p
-      ),
-    }));
+  const confirmDelivery = async (purchaseId: number) => {
+    const { data, error } = await supabase.functions.invoke("order-action", { body: { orderId: purchaseId, action: "confirm_delivery" } });
+    if (error || data?.error) return false;
+    await refreshPurchases();
+    return true;
+  };
 
-  const openDispute = (purchaseId: number, reason: string) =>
-    setState((s) => {
-      const nextPurchases = s.purchases.map((p) =>
-        p.id === purchaseId ? { ...p, status: "dispute" as const, messages: [...(p.messages || []), { from: "System", text: `⚠️ DISPUTA ABERTA: ${reason}`, date: new Date().toISOString() }] } : p
-      );
-      const updated = nextPurchases.find((p) => p.id === purchaseId);
-      if (updated) void (supabase as any).from("purchases").update({ status: "dispute", messages: updated.messages }).eq("id", purchaseId);
-      return {
-      ...s,
-      purchases: nextPurchases,
-      };
-    });
+  const openDispute = async (purchaseId: number, reason: string) => {
+    const { data, error } = await supabase.functions.invoke("order-action", { body: { orderId: purchaseId, action: "open_dispute", reason } });
+    if (error || data?.error) return false;
+    await refreshPurchases();
+    return true;
+  };
 
   const reviewPurchase = (purchaseId: number, stars: number, comment: string) =>
     setState((s) => ({
