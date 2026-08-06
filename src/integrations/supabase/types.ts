@@ -558,13 +558,53 @@ export type Database = {
         }
         Relationships: []
       }
+      withdrawal_events: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          event_type: string
+          id: number
+          note: string
+          withdrawal_id: number
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: number
+          note?: string
+          withdrawal_id: number
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: number
+          note?: string
+          withdrawal_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "withdrawal_events_withdrawal_id_fkey"
+            columns: ["withdrawal_id"]
+            isOneToOne: false
+            referencedRelation: "withdrawals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       withdrawals: {
         Row: {
           amount: number
           created_at: string
           id: number
+          idempotency_key: string | null
           method: string
           pix_key: string
+          processed_at: string | null
+          provider_tx_id: string | null
+          rejection_reason: string
+          retry_of: number | null
           status: string
           updated_at: string
           user_email: string
@@ -575,8 +615,13 @@ export type Database = {
           amount?: number
           created_at?: string
           id?: number
+          idempotency_key?: string | null
           method?: string
           pix_key?: string
+          processed_at?: string | null
+          provider_tx_id?: string | null
+          rejection_reason?: string
+          retry_of?: number | null
           status?: string
           updated_at?: string
           user_email?: string
@@ -587,15 +632,28 @@ export type Database = {
           amount?: number
           created_at?: string
           id?: number
+          idempotency_key?: string | null
           method?: string
           pix_key?: string
+          processed_at?: string | null
+          provider_tx_id?: string | null
+          rejection_reason?: string
+          retry_of?: number | null
           status?: string
           updated_at?: string
           user_email?: string
           user_id?: string
           user_public_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "withdrawals_retry_of_fkey"
+            columns: ["retry_of"]
+            isOneToOne: false
+            referencedRelation: "withdrawals"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -706,6 +764,32 @@ export type Database = {
           resulting_status: string
         }[]
       }
+      approve_withdrawal: {
+        Args: { _id: number; _provider_tx?: string }
+        Returns: {
+          amount: number
+          created_at: string
+          id: number
+          idempotency_key: string | null
+          method: string
+          pix_key: string
+          processed_at: string | null
+          provider_tx_id: string | null
+          rejection_reason: string
+          retry_of: number | null
+          status: string
+          updated_at: string
+          user_email: string
+          user_id: string
+          user_public_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "withdrawals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -719,6 +803,67 @@ export type Database = {
         Returns: boolean
       }
       order_chat_open: { Args: { _order_id: number }; Returns: boolean }
+      reject_withdrawal: {
+        Args: { _id: number; _reason?: string }
+        Returns: {
+          amount: number
+          created_at: string
+          id: number
+          idempotency_key: string | null
+          method: string
+          pix_key: string
+          processed_at: string | null
+          provider_tx_id: string | null
+          rejection_reason: string
+          retry_of: number | null
+          status: string
+          updated_at: string
+          user_email: string
+          user_id: string
+          user_public_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "withdrawals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      request_withdrawal: {
+        Args: {
+          _amount: number
+          _idempotency_key?: string
+          _method?: string
+          _retry_of?: number
+        }
+        Returns: {
+          amount: number
+          created_at: string
+          id: number
+          idempotency_key: string | null
+          method: string
+          pix_key: string
+          processed_at: string | null
+          provider_tx_id: string | null
+          rejection_reason: string
+          retry_of: number | null
+          status: string
+          updated_at: string
+          user_email: string
+          user_id: string
+          user_public_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "withdrawals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      withdrawable_balance: {
+        Args: { _exclude_id?: number; _user_id: string }
+        Returns: number
+      }
     }
     Enums: {
       app_role: "admin" | "support" | "user"
