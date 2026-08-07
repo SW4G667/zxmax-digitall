@@ -40,10 +40,12 @@ serve(async (req) => {
     }
 
     let apiKey = Deno.env.get("EVOPAY_API_KEY");
+    let evoValue: Record<string, any> = {};
     try {
       const { data: setting } = await serviceClient.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
-      if (setting?.value?.mode === "manual" && setting?.value?.apiKey) {
-        apiKey = setting.value.apiKey;
+      evoValue = (setting?.value as any) || {};
+      if (evoValue.apiKey && (evoValue.mode === "manual" || !apiKey)) {
+        apiKey = evoValue.apiKey;
       }
     } catch (_e) { /* fallback to secret */ }
     if (!apiKey) throw new Error("EVOPAY_API_KEY não configurada");
@@ -85,12 +87,21 @@ serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const webhookToken = setting?.value?.webhookToken;
-    if (!webhookToken) throw new Error("Webhook EvoPay ainda não foi configurado pelo administrador");
+    // O webhook é opcional: se ainda não houver token, geramos um automaticamente
+    // para que a compra nunca seja bloqueada por falta de configuração.
+    let webhookToken: string = evoValue.webhookToken || "";
+    if (!webhookToken) {
+      webhookToken = crypto.randomUUID().replace(/-/g, "");
+      try {
+        await serviceClient
+          .from("app_settings")
+          .upsert({ key: "evopay", value: { ...evoValue, webhookToken } }, { onConflict: "key" });
+      } catch (_e) { /* segue mesmo se não conseguir salvar */ }
+    }
     const callbackUrl = `${supabaseUrl}/functions/v1/evopay-webhook?token=${encodeURIComponent(webhookToken)}`;
     const { data: buyerProfile } = await serviceClient.from("profiles").select("display_name,cpf").eq("user_id", userData.user.id).maybeSingle();
     const buyerDocument = String(buyerProfile?.cpf || "").replace(/\D/g, "");
-    if (![11, 14].includes(buyerDocument.length)) throw new Error("Cadastre um CPF válido no perfil antes de pagar");
+    if (![11, 14].includes(buyerDocument.length)) throw new Error("Cadastre um CPF válido em Meu perfil antes de pagar");
 
     const payload = {
       amount: value,

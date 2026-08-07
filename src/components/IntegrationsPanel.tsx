@@ -14,7 +14,6 @@ const PROVIDERS: { id: string; name: string; hint: string; fields: Field[] }[] =
       { key: "baseUrl", label: "Base URL", placeholder: "https://vexopay.com.br/api" },
       { key: "clientId", label: "Client ID (ci)", placeholder: "vxp_ci_..." },
       { key: "clientSecret", label: "Client Secret (cs)", secret: true, placeholder: "vxp_cs_..." },
-      { key: "webhookSecret", label: "Segredo do webhook (opcional)", secret: true },
     ],
   },
   {
