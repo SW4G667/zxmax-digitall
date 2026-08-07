@@ -87,12 +87,21 @@ serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const webhookToken = setting?.value?.webhookToken;
-    if (!webhookToken) throw new Error("Webhook EvoPay ainda não foi configurado pelo administrador");
+    // O webhook é opcional: se ainda não houver token, geramos um automaticamente
+    // para que a compra nunca seja bloqueada por falta de configuração.
+    let webhookToken: string = evoValue.webhookToken || "";
+    if (!webhookToken) {
+      webhookToken = crypto.randomUUID().replace(/-/g, "");
+      try {
+        await serviceClient
+          .from("app_settings")
+          .upsert({ key: "evopay", value: { ...evoValue, webhookToken } }, { onConflict: "key" });
+      } catch (_e) { /* segue mesmo se não conseguir salvar */ }
+    }
     const callbackUrl = `${supabaseUrl}/functions/v1/evopay-webhook?token=${encodeURIComponent(webhookToken)}`;
     const { data: buyerProfile } = await serviceClient.from("profiles").select("display_name,cpf").eq("user_id", userData.user.id).maybeSingle();
     const buyerDocument = String(buyerProfile?.cpf || "").replace(/\D/g, "");
-    if (![11, 14].includes(buyerDocument.length)) throw new Error("Cadastre um CPF válido no perfil antes de pagar");
+    if (![11, 14].includes(buyerDocument.length)) throw new Error("Cadastre um CPF válido em Meu perfil antes de pagar");
 
     const payload = {
       amount: value,
