@@ -104,66 +104,126 @@ export default function StoreView() {
 
   const productQuestions = product?.questions || [];
 
+  const [visibleCount, setVisibleCount] = useState(12);
+  const visible = filtered.slice(0, visibleCount);
+
   return (
-    <div className="animate-fade-in-up">
-      <div className="mb-10">
-        <div className="flex items-center gap-3 mb-2">
-          <h1 className="text-3xl md:text-4xl font-black text-foreground">Descobrir</h1>
-          <RocketEmoji className="w-8 h-8" />
+    <div className="store-ember animate-fade-in-up -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 px-4 sm:px-6 py-8 sm:py-10 min-h-[85vh] sm:rounded-3xl">
+      {/* Header + busca */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+        <div className="space-y-2">
+          <h1 className="store-card-title text-3xl md:text-4xl font-bold text-foreground tracking-tight">
+            Descobrir <span className="text-primary">ZXMAX</span>
+          </h1>
+          <p className="text-muted-foreground text-xs sm:text-sm font-medium uppercase tracking-widest">
+            Marketplace de Ativos Digitais
+          </p>
         </div>
-        <p className="text-muted-foreground">Os melhores produtos digitais com entrega imediata.</p>
+
+        <div className="relative w-full md:w-96 group">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="O que você está procurando?"
+            className="w-full bg-card border border-border text-foreground pl-12 pr-5 py-4 rounded-2xl outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all placeholder:text-muted-foreground"
+          />
+          <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" />
+        </div>
       </div>
 
-      {/* Search mobile */}
-      <div className="md:hidden flex items-center bg-card rounded-2xl px-4 py-3 mb-6 border border-border/40">
-        <Search className="w-4 h-4 text-muted-foreground" />
-        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar produtos..." className="bg-transparent border-none focus:ring-0 focus:outline-none text-sm w-full ml-2 text-foreground placeholder:text-muted-foreground" />
-      </div>
-
-      {/* Category pills */}
-      <div className="flex gap-2 overflow-x-auto pb-4 mb-8 scrollbar-hide">
+      {/* Categorias */}
+      <div className="flex gap-3 overflow-x-auto pb-4 mb-8 scrollbar-hide">
         {categories.map((cat) => (
-          <button key={cat} onClick={() => setCategory(cat)} className={`shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all ${category === cat ? "btn-gradient" : "bg-card border border-border/40 text-muted-foreground hover:text-foreground"}`}>
+          <button
+            key={cat}
+            onClick={() => { setCategory(cat); setVisibleCount(12); }}
+            className={`shrink-0 px-6 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all active:scale-95 ${
+              category === cat
+                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                : "bg-card border border-border text-muted-foreground hover:text-foreground hover:border-primary"
+            }`}
+          >
             {cat}
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filtered.map((p, i) => (
-          <div key={p.id} onClick={() => { setSelectedProduct(p.id); setSelectedVariation(null); setDetailTab("info"); }} className="glass-card overflow-hidden group animate-fade-in-up cursor-pointer" style={{ animationDelay: `${i * 0.08}s` }}>
-            <div className="relative h-48 overflow-hidden">
-              <img src={p.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={p.name} />
-              <div className="absolute top-3 right-3 bg-card/90 backdrop-blur px-3 py-1 rounded-full text-[11px] font-bold text-foreground shadow-sm">{p.category}</div>
-              {p.sales > 50 && (
-                <div className="absolute top-3 left-3 flex items-center gap-1 bg-destructive/90 backdrop-blur px-2 py-1 rounded-full">
-                  <FireEmoji className="w-3.5 h-3.5" />
-                  <span className="text-[10px] font-bold text-destructive-foreground">HOT</span>
+      {/* Grade de produtos */}
+      {filtered.length === 0 ? (
+        <div className="border border-dashed border-border rounded-3xl py-20 text-center">
+          <p className="store-card-title text-lg font-bold text-foreground">Nenhum produto encontrado</p>
+          <p className="text-sm text-muted-foreground mt-1">Tente outra categoria ou busca.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {visible.map((p, i) => (
+            <div
+              key={p.id}
+              onClick={() => { setSelectedProduct(p.id); setSelectedVariation(null); setDetailTab("info"); }}
+              className="group bg-card border border-border rounded-3xl overflow-hidden cursor-pointer transition-all duration-300 hover:border-primary hover:-translate-y-1 hover:shadow-[0_10px_30px_rgba(0,0,0,0.5)] animate-fade-in-up"
+              style={{ animationDelay: `${i * 0.05}s` }}
+            >
+              <div className="relative aspect-[4/3] bg-background overflow-hidden">
+                <img
+                  src={p.image}
+                  alt={p.name}
+                  loading="lazy"
+                  className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-700"
+                />
+                {p.sales > 50 && (
+                  <div className="absolute top-3 left-3 bg-primary text-primary-foreground text-[10px] font-black uppercase px-2 py-1 rounded-md tracking-tighter shadow-xl">
+                    Destaque
+                  </div>
+                )}
+                <div className="absolute bottom-0 left-0 right-0 h-1/2 bg-gradient-to-t from-card to-transparent" />
+              </div>
+
+              <div className="p-5 space-y-4">
+                <div className="flex items-center gap-2 min-w-0">
+                  <img
+                    src={state.userDirectory?.[p.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(p.seller)}`}
+                    alt={p.seller}
+                    className="w-6 h-6 rounded-full bg-muted object-cover shrink-0"
+                  />
+                  <span className="text-xs font-bold text-foreground truncate">{p.seller}</span>
+                  {state.userDirectory?.[p.sellerId]?.isVerified && (
+                    <CheckCircle className="w-3.5 h-3.5 text-primary shrink-0" />
+                  )}
                 </div>
-              )}
-            </div>
-            <div className="p-5">
-              <div className="flex justify-between items-start mb-1">
-                <h3 className="font-bold text-foreground leading-tight">{p.name}</h3>
-                <div className="flex items-center gap-0.5 shrink-0">
-                  <StarEmoji className="w-3.5 h-3.5" />
-                  <span className="text-xs font-bold text-foreground">{p.rating || "Novo"}</span>
+
+                <h3 className="store-card-title text-foreground font-bold text-lg leading-tight line-clamp-2 h-12">
+                  {p.name}
+                </h3>
+
+                <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium">
+                  <span className="text-primary font-bold">★ {p.rating || "Novo"}</span>
+                  <span>({p.sales} vendas)</span>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                  <span className="text-primary font-black text-xl">R$ {p.price.toFixed(2)}</span>
+                  <span className="bg-primary text-primary-foreground p-2.5 rounded-xl group-hover:brightness-110 transition-all">
+                    <ShoppingCart className="w-5 h-5" />
+                  </span>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mb-1">por <span className="text-primary font-semibold">{p.seller}</span></p>
-              <p className="text-xs text-muted-foreground mb-4 line-clamp-2">{p.description}</p>
-              <div className="flex items-end justify-between">
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Preço a partir de</p>
-                  <p className="text-xl font-black text-foreground">R$ {p.price.toFixed(2)}</p>
-                </div>
-                <span className="btn-gradient px-5 py-2.5 text-sm">Ver Produto</span>
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-2">{p.sales} vendas</p>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
+
+      {visibleCount < filtered.length && (
+        <div className="flex items-center justify-center pt-10">
+          <button
+            onClick={() => setVisibleCount((c) => c + 12)}
+            className="px-10 py-4 bg-card border border-border text-foreground rounded-2xl font-bold hover:bg-muted transition-all"
+          >
+            Carregar Mais Produtos
+          </button>
+        </div>
+      )}
+
 
       {/* Product Detail Modal */}
       {product && (

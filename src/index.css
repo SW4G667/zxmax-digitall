@@ -126,6 +126,46 @@
     background: linear-gradient(45deg, hsl(0 85% 55%), hsl(35 95% 55%));
     @apply text-primary-foreground text-[10px] px-2 py-0.5 rounded-full uppercase font-extrabold;
   }
+
+  /* Loja — direção "Ember edge storefront" (Charcoal & Ember + Space Grotesk/DM Sans) */
+  .store-ember {
+    --background: 0 0% 10%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 18%;
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 18%;
+    --popover-foreground: 0 0% 100%;
+    --muted: 0 0% 18%;
+    --muted-foreground: 0 0% 63%;
+    --border: 0 0% 29%;
+    --input: 0 0% 29%;
+    --primary: 13 79% 57%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 29%;
+    --secondary-foreground: 0 0% 100%;
+    --accent: 13 79% 57%;
+    --accent-foreground: 0 0% 100%;
+    --ring: 13 79% 57%;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: "DM Sans", Inter, sans-serif;
+  }
+  .store-ember .glass-card {
+    @apply bg-card border border-border rounded-3xl;
+    box-shadow: none;
+  }
+  .store-ember .glass-card:hover {
+    @apply border-primary;
+    transform: translateY(-4px);
+    box-shadow: 0 10px 30px hsl(0 0% 0% / 0.5);
+  }
+  .store-ember .btn-gradient {
+    background: hsl(var(--primary));
+    box-shadow: 0 8px 20px -6px hsl(var(--primary) / 0.5);
+  }
+  .store-card-title {
+    font-family: "Space Grotesk", Inter, sans-serif;
+  }
 }
 
 @layer utilities {
