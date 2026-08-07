@@ -108,7 +108,7 @@ export default function StoreView() {
   const visible = filtered.slice(0, visibleCount);
 
   return (
-    <div className="store-ember animate-fade-in-up -mx-4 sm:-mx-6 px-4 sm:px-6 py-8 sm:py-10 rounded-none sm:rounded-3xl">
+    <div className="store-ember animate-fade-in-up -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 px-4 sm:px-6 py-8 sm:py-10 min-h-[85vh] sm:rounded-3xl">
       {/* Header + busca */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
         <div className="space-y-2">
