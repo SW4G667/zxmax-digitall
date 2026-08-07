@@ -40,10 +40,12 @@ serve(async (req) => {
     }
 
     let apiKey = Deno.env.get("EVOPAY_API_KEY");
+    let evoValue: Record<string, any> = {};
     try {
       const { data: setting } = await serviceClient.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
-      if (setting?.value?.mode === "manual" && setting?.value?.apiKey) {
-        apiKey = setting.value.apiKey;
+      evoValue = (setting?.value as any) || {};
+      if (evoValue.apiKey && (evoValue.mode === "manual" || !apiKey)) {
+        apiKey = evoValue.apiKey;
       }
     } catch (_e) { /* fallback to secret */ }
     if (!apiKey) throw new Error("EVOPAY_API_KEY não configurada");
