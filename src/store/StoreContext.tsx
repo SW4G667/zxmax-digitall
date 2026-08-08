@@ -345,6 +345,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [authUser, profile, isAdmin, state.userBalances, state.userEarnings]);
 
   useEffect(() => {
+    if (!authUser) return;
+    void (async () => {
+      const { data, error } = await (supabase as any).rpc("current_user_withdrawable_balance");
+      if (error) return;
+      const available = Math.max(0, Number(data || 0));
+      setState((s) => ({
+        ...s,
+        userBalances: { ...s.userBalances, [authUser.id]: available },
+      }));
+    })();
+  }, [authUser, state.purchases, state.withdrawals]);
+
+  useEffect(() => {
     void (async () => {
       const profileSource = isAdmin ? "profiles" : "profiles_public";
       const profileSelect = isAdmin
@@ -586,9 +599,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const requestWithdraw = async (method: "normal" | "instant", options?: { retryOf?: number }) => {
-    if (!state.currentUser || state.currentUser.balance <= 0) return;
-    const fee = method === "instant" ? (state.currentUser.balance * state.config.instantFee) / 100 : 0;
-    const amount = Number((state.currentUser.balance - fee).toFixed(2));
+    if (!state.currentUser) throw new Error("Entre na sua conta para solicitar um saque");
+    const { data: balanceData, error: balanceError } = await (supabase as any).rpc("current_user_withdrawable_balance");
+    if (balanceError) throw new Error(balanceError.message || "Não foi possível validar o saldo");
+    const available = Math.max(0, Number(balanceData || 0));
+    if (available < 5) throw new Error("O saldo mínimo para saque é R$ 5,00");
+    const fee = method === "instant" ? (available * state.config.instantFee) / 100 : 0;
+    const amount = Number((available - fee).toFixed(2));
     // Idempotency: the same user + amount + method within the same minute never
     // creates two withdrawals, even if the request is retried on a flaky network.
     const minuteBucket = new Date().toISOString().slice(0, 16);
