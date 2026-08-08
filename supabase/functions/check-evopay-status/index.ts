@@ -33,17 +33,21 @@ serve(async (req) => {
     }
 
     let apiKey = Deno.env.get("EVOPAY_API_KEY");
+    let vexoValue: Record<string, any> = {};
     try {
-      const { data: setting } = await admin.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
-      if (setting?.value?.mode === "manual" && setting?.value?.apiKey) apiKey = setting.value.apiKey;
+      const { data: settings } = await admin.from("app_settings").select("key,value").in("key", ["evopay", "vexopay"]);
+      const evoValue: Record<string, any> = (settings?.find((row) => row.key === "evopay")?.value as any) || {};
+      vexoValue = (settings?.find((row) => row.key === "vexopay")?.value as any) || {};
+      if (evoValue.apiKey && (evoValue.mode === "manual" || !apiKey)) apiKey = evoValue.apiKey;
     } catch (_e) { /* fallback to secret */ }
-    if (!apiKey) throw new Error("EVOPAY_API_KEY não configurada");
 
     const url = new URL(req.url);
     let id = url.searchParams.get("id");
+    let provider = url.searchParams.get("provider") || "evopay";
     if (!id && req.method === "POST") {
       const body = await req.json().catch(() => ({}));
       id = body.id;
+      provider = body.provider === "vexopay" ? "vexopay" : "evopay";
     }
     if (!id) throw new Error("id da transação é obrigatório");
 
@@ -59,8 +63,14 @@ serve(async (req) => {
       });
     }
 
-    const response = await fetch(`https://api.evopay.cash/v1/pix?id=${encodeURIComponent(id)}`, {
-      headers: { "Authorization": `Bearer ${apiKey}` },
+    const useVexoPay = provider === "vexopay";
+    if (useVexoPay && (!vexoValue.clientId || !vexoValue.clientSecret)) throw new Error("Credenciais VexoPay não configuradas");
+    if (!useVexoPay && !apiKey) throw new Error("API Key EvoPay não configurada");
+    const baseUrl = useVexoPay ? String(vexoValue.baseUrl || "https://api.vexopay.com.br").replace(/\/$/, "") : "https://api.evopay.cash/v1";
+    const response = await fetch(`${baseUrl}/pix?id=${encodeURIComponent(id)}`, {
+      headers: useVexoPay
+        ? { ci: String(vexoValue.clientId), cs: String(vexoValue.clientSecret) }
+        : { "Authorization": `Bearer ${apiKey}` },
     });
     const data = await response.json();
 
