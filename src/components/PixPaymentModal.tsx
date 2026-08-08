@@ -7,6 +7,8 @@ export interface PixCharge {
   evopayId: string;
   qrCodeText: string;
   amount: number;
+  provider?: "evopay" | "vexopay";
+  purchaseId?: number;
 }
 
 interface Props {
@@ -29,7 +31,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
       if (paidRef.current) return;
       try {
         const { data } = await supabase.functions.invoke("check-evopay-status", {
-          body: { id: charge.evopayId },
+          body: { id: charge.evopayId, provider: charge.provider, purchaseId: charge.purchaseId },
         });
         if (data?.status === "COMPLETED" && !paidRef.current) {
           paidRef.current = true;

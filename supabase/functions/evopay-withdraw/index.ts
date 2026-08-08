@@ -28,8 +28,8 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
     );
-    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user }, error: authError } = await userClient.auth.getUser(token);
+    if (authError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -42,7 +42,7 @@ serve(async (req) => {
     const { data: roleRow } = await admin
       .from("user_roles")
       .select("role")
-      .eq("user_id", claimsData.claims.sub)
+      .eq("user_id", user.id)
       .eq("role", "admin")
       .maybeSingle();
     if (!roleRow) {

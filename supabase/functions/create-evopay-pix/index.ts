@@ -1,11 +1,14 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { z } from "npm:zod@3.23.8";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+const BodySchema = z.object({ purchaseId: z.coerce.number().int().positive() });
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -41,18 +44,19 @@ serve(async (req) => {
 
     let apiKey = Deno.env.get("EVOPAY_API_KEY");
     let evoValue: Record<string, any> = {};
+    let vexoValue: Record<string, any> = {};
     try {
-      const { data: setting } = await serviceClient.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
-      evoValue = (setting?.value as any) || {};
+      const { data: settings } = await serviceClient.from("app_settings").select("key,value").in("key", ["evopay", "vexopay"]);
+      evoValue = (settings?.find((row) => row.key === "evopay")?.value as any) || {};
+      vexoValue = (settings?.find((row) => row.key === "vexopay")?.value as any) || {};
       if (evoValue.apiKey && (evoValue.mode === "manual" || !apiKey)) {
         apiKey = evoValue.apiKey;
       }
     } catch (_e) { /* fallback to secret */ }
-    if (!apiKey) throw new Error("EVOPAY_API_KEY não configurada");
 
-    const body = await req.json();
-    const purchaseId = Number(body.purchaseId);
-    if (!purchaseId || Number.isNaN(purchaseId)) throw new Error("Pedido inválido");
+    const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) throw new Error("Pedido inválido");
+    const purchaseId = parsed.data.purchaseId;
 
     const { data: purchase, error: purchaseError } = await serviceClient
       .from("purchases")
@@ -115,11 +119,19 @@ serve(async (req) => {
 
     console.log("Creating EvoPay PIX charge:", JSON.stringify(payload));
 
-    const response = await fetch("https://api.evopay.cash/v1/pix", {
+    const useVexoPay = Boolean(vexoValue.enabled && vexoValue.clientId && vexoValue.clientSecret);
+    if (!useVexoPay && !apiKey) throw new Error("Nenhum gateway PIX ativo. Configure e ative a EvoPay ou VexoPay no painel administrativo.");
+
+    const baseUrl = useVexoPay
+      ? String(vexoValue.baseUrl || "https://api.vexopay.com.br").replace(/\/$/, "")
+      : "https://api.evopay.cash/v1";
+    const response = await fetch(`${baseUrl}/pix`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
+        ...(useVexoPay
+          ? { ci: String(vexoValue.clientId), cs: String(vexoValue.clientSecret) }
+          : { "Authorization": `Bearer ${apiKey}` }),
       },
       body: JSON.stringify(payload),
     });
@@ -142,7 +154,7 @@ serve(async (req) => {
 
     if (!response.ok) {
       const msg = data?.message || data?.error || "Erro ao criar cobrança PIX";
-      throw new Error(`EvoPay (${response.status}): ${typeof msg === "string" ? msg : JSON.stringify(msg)}`);
+      throw new Error(`${useVexoPay ? "VexoPay" : "EvoPay"} (${response.status}): ${typeof msg === "string" ? msg : JSON.stringify(msg)}`);
     }
 
     const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
@@ -159,6 +171,7 @@ serve(async (req) => {
         status: data.status,
         amount: data.amount,
         qrCodeText: data.qrCodeText,
+        provider: useVexoPay ? "vexopay" : "evopay",
         expiresAt,
         qrCodeUrl: data.qrCodeUrl || (data.id ? `https://api.evopay.cash/v1/pix/qr-code/${data.id}` : null),
       }),

@@ -1,11 +1,12 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useStore, ProductVariation } from "@/store/StoreContext";
 import { StarEmoji, FireEmoji, RocketEmoji, ShieldEmoji, ChatEmoji } from "@/components/CustomEmojis";
-import { Search, X, CheckCircle, ShoppingCart, MessageSquare, Star, Info, Send } from "lucide-react";
+import { Search, X, CheckCircle, ShoppingCart, MessageSquare, Star, Info, Send, SlidersHorizontal, ShieldCheck, Zap, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import UserProfileModal from "@/components/UserProfileModal";
 import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
 import AuthScreen from "@/components/AuthScreen";
+import { Button } from "@/components/ui/button";
 
 export default function StoreView() {
   const { state, addProductQuestion, buyProduct, refreshPurchases, savePixCharge } = useStore();
@@ -17,14 +18,30 @@ export default function StoreView() {
   const [selectedVariation, setSelectedVariation] = useState<ProductVariation | null>(null);
   const [detailTab, setDetailTab] = useState<"info" | "reviews" | "questions">("info");
   const [authOpen, setAuthOpen] = useState(false);
+  const [sort, setSort] = useState<"relevance" | "price-asc" | "price-desc" | "rating" | "sales">("relevance");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [minRating, setMinRating] = useState(0);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const approved = state.products.filter((p) => p.approved);
   const categories = ["Todos", ...state.config.categories];
-  const filtered = approved.filter((p) => {
-    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.category.toLowerCase().includes(search.toLowerCase());
-    const matchCat = category === "Todos" || p.category === category;
-    return matchSearch && matchCat;
-  });
+  const filtered = useMemo(() => {
+    const minimum = minPrice === "" ? 0 : Number(minPrice);
+    const maximum = maxPrice === "" ? Number.POSITIVE_INFINITY : Number(maxPrice);
+    const result = approved.filter((p) => {
+      const term = search.trim().toLowerCase();
+      const matchSearch = !term || p.name.toLowerCase().includes(term) || p.category.toLowerCase().includes(term) || p.seller.toLowerCase().includes(term);
+      return matchSearch && (category === "Todos" || p.category === category) && p.price >= minimum && p.price <= maximum && p.rating >= minRating;
+    });
+    return [...result].sort((a, b) => {
+      if (sort === "price-asc") return a.price - b.price;
+      if (sort === "price-desc") return b.price - a.price;
+      if (sort === "rating") return b.rating - a.rating;
+      if (sort === "sales") return b.sales - a.sales;
+      return (b.sales * 2 + b.rating) - (a.sales * 2 + a.rating);
+    });
+  }, [approved, search, category, minPrice, maxPrice, minRating, sort]);
 
   const product = selectedProduct ? state.products.find((p) => p.id === selectedProduct) : null;
   const productReviews = product
@@ -62,21 +79,14 @@ export default function StoreView() {
       const purchaseId = await buyProduct(product.id, selectedVariation || undefined);
       if (!purchaseId) throw new Error("Não foi possível registrar a compra.");
       const { supabase } = await import("@/integrations/supabase/client");
-      const { data, error } = await supabase.functions.invoke("create-evopay-pix", {
-        body: {
-          purchaseId,
-          productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name,
-          amount: price,
-          buyerName: state.currentUser.name,
-        },
-      });
+      const { data, error } = await supabase.functions.invoke("create-evopay-pix", { body: { purchaseId } });
 
-      if (error) throw error;
+      if (error) throw new Error((data as any)?.error || error.message);
 
       if (data?.qrCodeText) {
         setPaidPurchaseId(purchaseId);
-        savePixCharge(purchaseId, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: new Date(Date.now() + 3600 * 1000).toISOString() });
-        setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? price });
+        savePixCharge(purchaseId, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
+        setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? price, provider: data.provider || "evopay", purchaseId });
       } else if (data?.error) {
         toast.error("Erro ao gerar PIX: " + data.error);
       } else {
@@ -108,7 +118,7 @@ export default function StoreView() {
   const visible = filtered.slice(0, visibleCount);
 
   return (
-    <div className="store-ember animate-fade-in-up -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 px-4 sm:px-6 py-8 sm:py-10 min-h-[85vh] sm:rounded-3xl">
+    <div className="store-market animate-fade-in-up -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 px-4 sm:px-6 py-8 sm:py-10 min-h-[85vh]">
       {/* Header + busca */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
         <div className="space-y-2">
@@ -131,6 +141,25 @@ export default function StoreView() {
           <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" />
         </div>
       </div>
+
+      <div className="mb-5 flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
+        <Button variant="outline" onClick={() => setFiltersOpen((value) => !value)} className="lg:hidden justify-between">
+          <span className="flex items-center gap-2"><SlidersHorizontal className="w-4 h-4" /> Filtros</span>
+          <ChevronRight className={`w-4 h-4 transition-transform ${filtersOpen ? "rotate-90" : ""}`} />
+        </Button>
+        <div className={`${filtersOpen ? "grid" : "hidden"} lg:grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1`}>
+          <input type="number" min="0" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} placeholder="Preço mínimo" className="store-control" />
+          <input type="number" min="0" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} placeholder="Preço máximo" className="store-control" />
+          <select value={minRating} onChange={(e) => setMinRating(Number(e.target.value))} className="store-control">
+            <option value={0}>Qualquer avaliação</option><option value={3}>3+ estrelas</option><option value={4}>4+ estrelas</option><option value={4.5}>4,5+ estrelas</option>
+          </select>
+          <Button variant="ghost" onClick={() => { setMinPrice(""); setMaxPrice(""); setMinRating(0); }} className="text-muted-foreground">Limpar filtros</Button>
+        </div>
+        <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className="store-control lg:w-56">
+          <option value="relevance">Mais relevantes</option><option value="sales">Mais vendidos</option><option value="rating">Melhor avaliados</option><option value="price-asc">Menor preço</option><option value="price-desc">Maior preço</option>
+        </select>
+      </div>
+      <p className="text-xs text-muted-foreground mb-6">{filtered.length} {filtered.length === 1 ? "anúncio encontrado" : "anúncios encontrados"}</p>
 
       {/* Categorias */}
       <div className="flex gap-3 overflow-x-auto pb-4 mb-8 scrollbar-hide">
@@ -161,7 +190,7 @@ export default function StoreView() {
             <div
               key={p.id}
               onClick={() => { setSelectedProduct(p.id); setSelectedVariation(null); setDetailTab("info"); }}
-              className="group bg-card border border-border rounded-3xl overflow-hidden cursor-pointer transition-all duration-300 hover:border-primary hover:-translate-y-1 hover:shadow-[0_10px_30px_rgba(0,0,0,0.5)] animate-fade-in-up"
+               className="group bg-card border border-border rounded-lg overflow-hidden cursor-pointer transition-all duration-300 hover:border-primary hover:-translate-y-1 hover:shadow-xl animate-fade-in-up"
               style={{ animationDelay: `${i * 0.05}s` }}
             >
               <div className="relative aspect-[4/3] bg-background overflow-hidden">
@@ -227,25 +256,26 @@ export default function StoreView() {
 
       {/* Product Detail Modal */}
       {product && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-foreground/50 backdrop-blur-sm" onClick={() => setSelectedProduct(null)}>
-          <div className="glass-card w-full max-w-2xl bg-card animate-fade-in-up overflow-hidden max-h-[90vh] flex flex-col relative" onClick={(e) => e.stopPropagation()}>
+         <div className="fixed inset-0 z-[60] overflow-y-auto bg-background" onClick={() => setSelectedProduct(null)}>
+           <div className="min-h-screen w-full max-w-7xl mx-auto bg-background animate-fade-in-up relative px-4 sm:px-6 py-16" onClick={(e) => e.stopPropagation()}>
             <button onClick={() => setSelectedProduct(null)} className="absolute top-3 right-3 z-[10] bg-card/90 backdrop-blur p-2 rounded-full shadow-lg hover:bg-muted transition">
               <X className="w-5 h-5 text-foreground" />
             </button>
 
-            <div className="overflow-y-auto flex-1">
+             <div className="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-8">
               {/* Banner */}
-              <div className="relative h-44 sm:h-64 shrink-0">
+               <div className="relative aspect-[16/9] lg:aspect-[4/3] rounded-lg overflow-hidden bg-muted">
                 <img src={product.banner || product.image} className="w-full h-full object-cover" alt={product.name} />
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-card/95 to-transparent p-5 pt-14">
+                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-card/95 to-transparent p-5 pt-14 lg:hidden">
                   <h2 className="text-lg sm:text-2xl font-black text-foreground leading-tight">{product.name}</h2>
                   <p className="text-xs text-muted-foreground mt-1">{product.category}</p>
                 </div>
               </div>
 
-              <div className="p-4 sm:p-6 space-y-6">
+               <div className="space-y-6">
+                 <div className="hidden lg:block"><p className="text-xs font-bold text-primary uppercase">{product.category}</p><h2 className="text-3xl font-black text-foreground mt-2">{product.name}</h2></div>
                 {/* Seller section */}
-                <button onClick={() => setSelectedSellerId(product.sellerId)} className="w-full bg-muted rounded-2xl p-4 flex items-center gap-4 hover:bg-muted/80 transition text-left">
+                 <button onClick={() => setSelectedSellerId(product.sellerId)} className="w-full bg-muted rounded-lg p-4 flex items-center gap-4 hover:bg-muted/80 transition text-left">
                   <img src={state.userDirectory?.[product.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(product.seller)}`} className="w-12 h-12 rounded-full bg-primary/10 border-2 border-card shadow object-cover" alt={product.seller} />
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-foreground text-sm">{product.seller}</p>
@@ -387,16 +417,17 @@ export default function StoreView() {
             </div>
 
             {/* Sticky Purchase Action */}
-            <div className="p-4 sm:p-6 bg-card border-t border-border/40 shrink-0">
+            <div className="fixed bottom-0 left-0 right-0 z-20 p-4 bg-card border-t border-border shadow-xl">
+             <div className="max-w-7xl mx-auto">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-[10px] text-muted-foreground uppercase font-bold">Total</p>
                   <p className="text-2xl font-black text-foreground">R$ {(selectedVariation ? selectedVariation.price : product.price).toFixed(2)}</p>
                 </div>
-                <button onClick={handleBuy} disabled={buyLoading} className="flex-1 btn-gradient py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-primary/20 disabled:opacity-50">
-                  {buyLoading ? "Processando..." : <><ShoppingCart className="w-5 h-5" /> Comprar Agora</>}
-                </button>
-              </div>
+                 <Button onClick={handleBuy} disabled={buyLoading} size="lg" className="flex-1 lg:max-w-sm font-bold">
+                   {buyLoading ? "Criando pedido e PIX..." : <><ShoppingCart className="w-5 h-5 mr-2" /> Comprar agora</>}
+                 </Button>
+               </div></div>
             </div>
           </div>
         </div>
