@@ -790,6 +790,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      current_user_withdrawable_balance: { Args: never; Returns: number }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
