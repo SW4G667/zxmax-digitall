@@ -9,9 +9,9 @@ const PROVIDERS: { id: string; name: string; hint: string; fields: Field[] }[] =
   {
     id: "vexopay",
     name: "VexoPay (PIX + Crypto)",
-    hint: "Use o Client ID e o Client Secret gerados no painel da VexoPay em API Keys. A base padrão é https://vexopay.com.br/api",
+    hint: "Use o Client ID (ci) e o Client Secret (cs). Ative esta integração para que novas compras usem a VexoPay.",
     fields: [
-      { key: "baseUrl", label: "Base URL", placeholder: "https://vexopay.com.br/api" },
+      { key: "baseUrl", label: "Base URL", placeholder: "https://api.vexopay.com.br" },
       { key: "clientId", label: "Client ID (ci)", placeholder: "vxp_ci_..." },
       { key: "clientSecret", label: "Client Secret (cs)", secret: true, placeholder: "vxp_cs_..." },
     ],
@@ -55,6 +55,7 @@ export default function IntegrationsPanel() {
   const [busy, setBusy] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string }>>({});
   const [webhookUrl, setWebhookUrl] = useState("");
+  const [enabled, setEnabled] = useState<Record<string, boolean>>({});
 
   const load = async () => {
     setLoading(true);
@@ -66,10 +67,12 @@ export default function IntegrationsPanel() {
     }
     const next: Record<string, Record<string, string>> = {};
     const nextMasks: Record<string, Record<string, string>> = {};
+    const nextEnabled: Record<string, boolean> = {};
     for (const p of PROVIDERS) {
       const cfg = data.integrations?.[p.id] || {};
       next[p.id] = {};
       nextMasks[p.id] = {};
+      nextEnabled[p.id] = !!cfg.enabled;
       for (const f of p.fields) {
         if (f.secret) nextMasks[p.id][f.key] = cfg[`${f.key}_masked`] || "";
         else next[p.id][f.key] = cfg[f.key] || "";
@@ -77,6 +80,7 @@ export default function IntegrationsPanel() {
     }
     setWebhookUrl(data.webhookUrl || "");
     setValues(next);
+    setEnabled(nextEnabled);
     setMasks(nextMasks);
     setLoading(false);
   };
@@ -89,7 +93,7 @@ export default function IntegrationsPanel() {
   const run = async (provider: string, action: "save" | "test" | "simulate") => {
     setBusy(`${provider}:${action}`);
     const { data, error } = await supabase.functions.invoke("integrations-config", {
-      body: { action, provider, values: values[provider] || {}, test: action === "save" },
+      body: { action, provider, values: { ...(values[provider] || {}), enabled: !!enabled[provider] }, test: action === "save" },
     });
     setBusy(null);
     if (error || data?.error) {
@@ -138,6 +142,10 @@ export default function IntegrationsPanel() {
                 </h3>
                 <p className="text-[11px] text-muted-foreground mt-0.5">{p.hint}</p>
               </div>
+              <label className="flex items-center gap-2 text-xs font-bold text-foreground cursor-pointer">
+                <input type="checkbox" checked={!!enabled[p.id]} onChange={(event) => setEnabled((current) => ({ ...current, [p.id]: event.target.checked }))} className="h-4 w-4 accent-primary" />
+                Ativa
+              </label>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
