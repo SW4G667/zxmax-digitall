@@ -422,30 +422,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ]) as Promise<T | null>;
 
     try {
-      // Public catalog must work 100% - try products table first, fallback to products_public view
+      // Public catalog must work 100% - anon can only query via products_public view (RLS blocks direct products table)
       let dbProducts: any[] = [];
       
       if (!authUser) {
-        // Anon: try products table with approved filter
-        const { data, error } = await (supabase as any)
-          .from("products")
-          .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at,stock,min_quantity,delivery_time")
-          .eq("approved", true)
-          .order("created_at", { ascending: false });
-        
-        if (!error && data && data.length > 0) {
-          dbProducts = data;
-        } else {
-          // Fallback to products_public view
-          console.log("Trying products_public fallback, error:", error);
-          const { data: publicData } = await (supabase as any)
+        // Anon: MUST use products_public view (approved=true already in view definition)
+        // No timeout to guarantee visibility - this is the public storefront
+        try {
+          const { data, error } = await (supabase as any)
             .from("products_public")
             .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
             .order("created_at", { ascending: false });
-          if (publicData) dbProducts = publicData as any[];
+          
+          if (!error && data) {
+            dbProducts = data;
+            console.log("Anon products_public loaded:", dbProducts.length);
+          } else {
+            console.error("Anon products_public error:", error);
+            // Fallback try products table with approved filter (might fail due to RLS)
+            const { data: fallbackData } = await (supabase as any)
+              .from("products")
+              .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
+              .eq("approved", true)
+              .order("created_at", { ascending: false });
+            if (fallbackData) dbProducts = fallbackData as any[];
+          }
+        } catch (e) {
+          console.error("Anon load failed", e);
         }
       } else {
-        // Authenticated: try products table with timeout
+        // Authenticated: try products table (RLS allows approved OR own OR admin)
         const result = await withTimeout(
           (supabase as any)
             .from("products")
@@ -455,7 +461,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         );
         dbProducts = (result as any)?.data || [];
         
-        // If empty for auth user, also try public
+        // If empty for auth user, try public view as fallback
         if (dbProducts.length === 0) {
           const { data: publicData } = await (supabase as any)
             .from("products_public")

@@ -747,13 +747,26 @@ export default function AdminView() {
           </div>
 
           <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
-            <h3 className="font-bold text-white mb-3">Ações rápidas</h3>
+            <h3 className="font-bold text-white mb-3">Ações rápidas - Fix visibilidade</h3>
             <div className="flex flex-wrap gap-2">
-              <button onClick={()=>setTab('products' as any)} className="bg-[#0084ff] text-white px-4 py-2 rounded-xl text-xs font-bold">Aprovar Produtos</button>
+              <button onClick={async () => {
+                const tid = toast.loading("Aprovando todos produtos pendentes...");
+                try {
+                  const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "approve_all_products" } });
+                  if (error || data?.error) throw new Error(data?.error || error?.message);
+                  toast.success("Todos produtos aprovados! Agora aparecem para todos.", { id: tid });
+                  // Force reload catalog
+                  window.location.reload();
+                } catch (e: any) {
+                  toast.error("Erro: " + (e?.message || ""), { id: tid });
+                }
+              }} className="bg-[#ffbd2e] text-black px-4 py-2 rounded-xl text-xs font-black">Aprovar TODOS produtos (fix 0 produtos)</button>
+              <button onClick={()=>setTab('products' as any)} className="bg-[#0084ff] text-white px-4 py-2 rounded-xl text-xs font-bold">Aprovar Produtos individuais</button>
               <button onClick={()=>setTab('withdrawals' as any)} className="bg-[#00c950] text-white px-4 py-2 rounded-xl text-xs font-bold">Pagar Saques</button>
               <button onClick={()=>setTab('disputes' as any)} className="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold">Resolver Disputas</button>
               <button onClick={()=>setTab('security' as any)} className="bg-[#1a1a20] border border-[#25252e] text-white px-4 py-2 rounded-xl text-xs font-bold">Configurar 2FA</button>
             </div>
+            <p className="text-[11px] text-white/30 mt-3">Se produtos não aparecem para deslogados, clique em Aprovar TODOS. Isso aprova todos pendentes via service_role e faz aparecer na loja pública.</p>
           </div>
         </div>
       )}
