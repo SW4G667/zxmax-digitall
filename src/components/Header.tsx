@@ -32,7 +32,6 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
     return () => window.removeEventListener("zxmax:favorites-updated", handler as EventListener);
   }, [count]);
 
-  // Sync search from URL ?q= or ?cat=
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const urlQ = params.get("q") || "";
@@ -53,101 +52,65 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
       window.dispatchEvent(new CustomEvent("zxmax:search", { detail: "" }));
       return;
     }
-    // Navigate with query param for deep-link
     navigate(`/loja?q=${encodeURIComponent(trimmed)}`);
     window.dispatchEvent(new CustomEvent("zxmax:search", { detail: trimmed }));
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-card/90 backdrop-blur-xl border-b border-border/60">
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 h-16 flex items-center gap-2 sm:gap-4">
-        <button
-          onClick={onMenuClick}
-          className="p-2 rounded-lg hover:bg-muted transition shrink-0 group"
-          title="Menu"
-          aria-label="Abrir menu"
-        >
-          <div className="flex flex-col gap-[5px] w-5">
-            <span className="block h-[2px] w-5 bg-foreground group-hover:bg-primary transition rounded-full" />
-            <span className="block h-[2px] w-4 bg-foreground group-hover:bg-primary transition rounded-full" />
-            <span className="block h-[2px] w-5 bg-foreground group-hover:bg-primary transition rounded-full" />
+    <header className="sticky top-0 z-50 bg-[#0a0a0f] border-b border-[#1e1e28]">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 h-14 flex items-center gap-2 sm:gap-4">
+        <button onClick={onMenuClick} className="p-2 rounded-lg hover:bg-white/5 transition shrink-0 group" title="Menu" aria-label="Abrir menu">
+          <div className="flex flex-col gap-[4px] w-[18px]">
+            <span className="block h-[2px] w-full bg-white group-hover:bg-[#0084ff] transition rounded-full" />
+            <span className="block h-[2px] w-3/4 bg-white group-hover:bg-[#0084ff] transition rounded-full" />
+            <span className="block h-[2px] w-full bg-white group-hover:bg-[#0084ff] transition rounded-full" />
           </div>
         </button>
 
         <button onClick={() => navigate("/loja")} className="shrink-0 flex items-center" aria-label="Ir para a loja">
-          <h2 className="text-xl sm:text-2xl font-black tracking-tighter text-foreground">
-            ZX<span className="text-primary">MAX</span>
-          </h2>
+          <h2 className="text-xl sm:text-2xl font-black tracking-tighter text-white">ZX<span className="text-[#0084ff]">MAX</span></h2>
         </button>
 
-        <form onSubmit={submitSearch} className="hidden md:flex items-center bg-muted rounded-lg px-3 py-2 flex-1 max-w-xl border border-border/50 focus-within:border-primary transition">
-          <Search className="w-4 h-4 text-muted-foreground" />
-          <input
-            type="text"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar Robux, bots, contas, scripts..."
-            className="bg-transparent border-none focus:ring-0 focus:outline-none text-sm w-full ml-2 text-foreground placeholder:text-muted-foreground"
-          />
+        <form onSubmit={submitSearch} className="hidden md:flex items-center bg-[#15151a] border border-[#25252e] rounded-xl px-3 py-2 flex-1 max-w-xl focus-within:border-[#0084ff]/50 transition">
+          <Search className="w-4 h-4 text-white/30" />
+          <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar Robux, bots, contas, scripts..." className="bg-transparent border-none focus:ring-0 focus:outline-none text-sm w-full ml-2 text-white placeholder:text-white/30" />
         </form>
 
-        <div className="flex items-center gap-1 sm:gap-2 ml-auto">
-          {state.config.discordLink && (
-            <a href={state.config.discordLink} target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg hover:bg-muted transition hidden sm:inline-flex" title="Discord">
-              <DiscordIcon className="w-5 h-5 text-muted-foreground" />
-            </a>
-          )}
+        <div className="flex items-center gap-1 ml-auto">
+          {/* Discord small near bell as requested */}
+          <a href={state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-xl bg-[#5865F2]/10 border border-[#5865F2]/20 flex items-center justify-center hover:bg-[#5865F2]/20 transition" title="Entrar no Discord">
+            <DiscordIcon className="w-4 h-4 text-[#5865F2]" />
+          </a>
 
-          {/* Favorites */}
-          <button
-            onClick={() => navigate("/favoritos")}
-            className="relative p-2 rounded-lg hover:bg-muted transition"
-            title="Favoritos"
-          >
-            <Heart className={`w-5 h-5 ${favCount > 0 ? "text-primary fill-primary" : "text-muted-foreground"}`} />
-            {favCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-primary text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">
-                {favCount > 99 ? "99+" : favCount}
-              </span>
-            )}
+          <button onClick={() => navigate("/favoritos")} className="relative w-8 h-8 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center hover:bg-white/10 transition" title="Favoritos">
+            <Heart className={`w-4 h-4 ${favCount > 0 ? "text-[#0084ff] fill-[#0084ff]" : "text-white/40"}`} />
+            {favCount > 0 && <span className="absolute -top-1 -right-1 bg-[#0084ff] text-white text-[9px] font-black min-w-[16px] h-[16px] px-1 rounded-full flex items-center justify-center">{favCount > 99 ? "99+" : favCount}</span>}
           </button>
 
           <NotificationBell />
-          <button onClick={toggleDark} className="p-2 rounded-lg hover:bg-muted transition" title="Mudar tema">
-            {isDark ? <Sun className="w-5 h-5 text-muted-foreground" /> : <Moon className="w-5 h-5 text-muted-foreground" />}
+
+          <button onClick={toggleDark} className="w-8 h-8 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center hover:bg-white/10 transition" title="Mudar tema">
+            {isDark ? <Sun className="w-4 h-4 text-white/40" /> : <Moon className="w-4 h-4 text-white/40" />}
           </button>
+
           {user ? (
-            <button onClick={onProfileClick} className="flex items-center gap-2.5 hover:bg-muted p-1 pr-2 rounded-lg transition">
+            <button onClick={onProfileClick} className="flex items-center gap-2 hover:bg-white/5 p-1 pr-2 rounded-xl transition border border-transparent hover:border-white/10">
               <div className="text-right hidden sm:block leading-tight">
-                <p className="text-xs font-bold text-foreground flex items-center gap-1.5 justify-end">
-                  {profile?.display_name || user.email?.split("@")[0]}
-                  {isAdmin && <span className="admin-badge !text-[9px] !px-1.5 !py-[1px]">ADM</span>}
-                </p>
-                <p className="text-[11px] font-semibold text-primary flex items-center gap-1 justify-end">
-                  <Wallet className="w-3 h-3" /> R$ {Number(state.currentUser?.balance ?? 0).toFixed(2)}
-                </p>
+                <p className="text-xs font-bold text-white flex items-center gap-1 justify-end">{profile?.display_name || user.email?.split("@")[0]} {isAdmin && <span className="bg-[#ff8c00] text-white text-[8px] px-1.5 py-0.5 rounded-full uppercase font-black">ADM</span>}</p>
+                <p className="text-[11px] font-bold text-[#0084ff] flex items-center gap-1 justify-end"><Wallet className="w-3 h-3" /> R$ {Number(state.currentUser?.balance ?? 0).toFixed(2)}</p>
               </div>
-              <img src={profile?.avatar_url || state.currentUser?.avatar} alt="Avatar" className="w-9 h-9 rounded-lg bg-primary/10 border-2 border-card shadow-sm object-cover" />
+              <img src={profile?.avatar_url || state.currentUser?.avatar} alt="Avatar" className="w-8 h-8 rounded-lg bg-[#0084ff]/10 border border-white/10 object-cover" />
             </button>
           ) : (
-            <button onClick={onAuthClick} className="btn-gradient px-4 py-2 text-xs font-bold rounded-lg flex items-center gap-1.5">
-              Entrar
-            </button>
+            <button onClick={onAuthClick} className="bg-[#0084ff] hover:bg-[#0066cc] text-white px-4 py-2 text-xs font-black rounded-xl transition">Entrar</button>
           )}
         </div>
       </div>
 
-      {/* Mobile search */}
       <form onSubmit={submitSearch} className="md:hidden px-3 pb-3">
-        <div className="flex items-center bg-muted rounded-lg px-3 py-2 border border-border/50">
-          <Search className="w-4 h-4 text-muted-foreground" />
-          <input
-            type="text"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar produtos..."
-            className="bg-transparent border-none focus:ring-0 focus:outline-none text-sm w-full ml-2 text-foreground placeholder:text-muted-foreground"
-          />
+        <div className="flex items-center bg-[#15151a] border border-[#25252e] rounded-xl px-3 py-2.5">
+          <Search className="w-4 h-4 text-white/30" />
+          <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar produtos..." className="bg-transparent border-none focus:ring-0 focus:outline-none text-sm w-full ml-2 text-white placeholder:text-white/30" />
         </div>
       </form>
     </header>

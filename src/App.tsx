@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
 import { StoreProvider } from "@/store/StoreContext";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import CookieConsent from "@/components/CookieConsent";
 import Index from "./pages/Index.tsx";
 import ResetPassword from "./pages/ResetPassword.tsx";
 import Faq from "./pages/Faq.tsx";
@@ -25,6 +26,7 @@ const App = () => (
         <AuthProvider>
           <StoreProvider>
             <Sonner position="top-center" richColors />
+            <CookieConsent />
             <BrowserRouter>
               <Routes>
                 <Route path="/" element={<Index view="store" />} />
