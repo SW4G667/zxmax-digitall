@@ -64,6 +64,14 @@ export function useAuth() {
   return ctx;
 }
 
+// Helper: timeout wrapper
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -76,39 +84,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [challengeId, setChallengeId] = useState<string | null>(null);
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (data) setProfile(data as Profile);
-    return data as Profile | null;
+    try {
+      const { data } = await withTimeout(
+        supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
+        5000,
+        { data: null, error: null } as any
+      );
+      if (data) setProfile(data as Profile);
+      return data as Profile | null;
+    } catch {
+      return null;
+    }
   };
 
   const checkBan = async (userId: string) => {
-    const { data } = await supabase
-      .from("bans")
-      .select("reason, created_at")
-      .eq("user_id", userId)
-      .eq("active", true)
-      .limit(1)
-      .maybeSingle();
-    if (data) {
-      setBanned(data as BanInfo);
-      return true;
+    try {
+      const { data } = await withTimeout(
+        supabase.from("bans").select("reason, created_at").eq("user_id", userId).eq("active", true).limit(1).maybeSingle(),
+        4000,
+        { data: null } as any
+      );
+      if (data) {
+        setBanned(data as BanInfo);
+        return true;
+      }
+      setBanned(null);
+      return false;
+    } catch {
+      setBanned(null);
+      return false;
     }
-    setBanned(null);
-    return false;
   };
 
   const checkAdmin = async (userId: string) => {
     try {
-      const { data } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId)
-        .eq("role", "admin")
-        .maybeSingle();
+      const { data } = await withTimeout(
+        supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle(),
+        4000,
+        { data: null } as any
+      );
       setIsAdmin(!!data);
     } catch {
       setIsAdmin(false);
@@ -123,7 +137,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      const { data, error } = await supabase.auth.mfa.listFactors();
+      const { data, error } = await withTimeout(
+        supabase.auth.mfa.listFactors(),
+        5000,
+        { data: { totp: [] }, error: null } as any
+      );
       if (error) throw error;
       const verifiedTotp = (data?.totp || []).filter((f) => f.status === "verified");
       setMfaEnabled(verifiedTotp.length > 0);
@@ -147,11 +165,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let initTimeout: number | null = null;
 
-    // Fix: getSession FIRST, then onAuthStateChange to avoid race that caused "voltava pra conta do admin"
+    // Safety: force loading false after 10s no matter what
+    initTimeout = window.setTimeout(() => {
+      if (mounted) setLoading(false);
+    }, 10000);
+
     const init = async () => {
       try {
-        const { data: { session: sess } } = await supabase.auth.getSession();
+        const { data: { session: sess } } = await withTimeout(
+          supabase.auth.getSession(),
+          6000,
+          { data: { session: null } } as any
+        );
         if (!mounted) return;
         setSession(sess);
         setUser(sess?.user ?? null);
@@ -163,8 +190,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             evaluateMfa(sess).catch(() => null),
           ]);
         }
+      } catch (e) {
+        console.error("Auth init error", e);
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) {
+          setLoading(false);
+          if (initTimeout) clearTimeout(initTimeout);
+        }
       }
     };
 
@@ -177,13 +209,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (sess?.user) {
         setLoading(true);
-        await Promise.all([
-          fetchProfile(sess.user.id).catch(() => null),
-          checkBan(sess.user.id).catch(() => null),
-          checkAdmin(sess.user.id).catch(() => null),
-          evaluateMfa(sess).catch(() => null),
-        ]);
-        setLoading(false);
+        try {
+          await Promise.all([
+            fetchProfile(sess.user.id).catch(() => null),
+            checkBan(sess.user.id).catch(() => null),
+            checkAdmin(sess.user.id).catch(() => null),
+            evaluateMfa(sess).catch(() => null),
+          ]);
+        } finally {
+          if (mounted) setLoading(false);
+        }
       } else {
         setProfile(null);
         setBanned(null);
@@ -197,11 +232,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       mounted = false;
+      if (initTimeout) clearTimeout(initTimeout);
       subscription.unsubscribe();
     };
   }, [evaluateMfa]);
 
   const signUp = async (email: string, password: string, displayName: string) => {
+    // Basic rate limit check client side
+    const last = localStorage.getItem("zxmax_last_signup");
+    if (last && Date.now() - Number(last) < 5000) {
+      return { error: "Aguarde 5s antes de tentar novamente." };
+    }
+    localStorage.setItem("zxmax_last_signup", String(Date.now()));
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -215,16 +257,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
+    const key = `zxmax_login_attempts_${email}`;
+    const raw = localStorage.getItem(key);
+    const attempts = raw ? JSON.parse(raw) : { count: 0, last: 0 };
+    if (attempts.count >= 5 && Date.now() - attempts.last < 15 * 60 * 1000) {
+      return { error: "Muitas tentativas. Tente novamente em 15 minutos." };
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: error.message };
+    if (error) {
+      const next = { count: attempts.count + 1, last: Date.now() };
+      localStorage.setItem(key, JSON.stringify(next));
+      return { error: error.message };
+    }
+    localStorage.removeItem(key);
     if (data.session) void evaluateMfa(data.session);
     return { error: null };
   };
 
   const verifyMfa = async (code: string) => {
     if (!challengeId) return { error: "Nenhum desafio pendente." };
+    const factor = (await listFactors()).find((f) => f.status === "verified");
+    if (!factor) return { error: "Fator 2FA não encontrado." };
     const { data, error } = await supabase.auth.mfa.verify({
-      factorId: (await listFactors()).find((f) => f.status === "verified")?.id || "",
+      factorId: factor.id,
       challengeId,
       code,
     });

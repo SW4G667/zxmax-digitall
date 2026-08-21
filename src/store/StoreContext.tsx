@@ -397,25 +397,46 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
 
   const loadCatalog = React.useCallback(async () => {
-    const productSource = authUser ? "products" : "products_public";
-    const [{ data: dbProducts }, { data: dbPurchases }, { data: dbWithdrawals }, { data: deliveryRows }] = await Promise.all([
-      (supabase as any).from(productSource).select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at").order("created_at", { ascending: false }),
-      authUser
-        ? (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false })
-        : { data: [] },
-      authUser ? (supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }) : { data: [] },
-      authUser ? (supabase as any).from("product_delivery").select("product_id,delivery_content") : { data: [] },
-    ]);
-    const deliveryByProduct = new Map(((deliveryRows || []) as any[]).map((d) => [Number(d.product_id), d.delivery_content || undefined]));
-    const products = ((dbProducts || []) as any[]).map((p) => ({ id: Number(p.id), name: p.name, price: Number(p.price), category: p.category, seller: p.seller_name, sellerEmail: "", sellerId: p.seller_id, sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0), image: p.image, banner: p.banner || undefined, description: p.description, approved: p.approved, deliveryType: p.delivery_type, deliveryContent: deliveryByProduct.get(Number(p.id)), variations: p.variations || [], questions: p.questions || [] })) as Product[];
-    const purchases = ((dbPurchases || []) as any[]).map(mapPurchaseRow) as Purchase[];
-    const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "", rejectionReason: w.rejection_reason || "", providerTxId: w.provider_tx_id || "", retryOf: w.retry_of ?? null })) as Withdrawal[];
-    setState((s) => ({
-      ...s,
-      products,
-      purchases,
-      withdrawals,
-    }));
+    const withTimeout = <T,>(p: Promise<T>, ms = 6000): Promise<T | null> =>
+      Promise.race([
+        p,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+      ]) as Promise<T | null>;
+
+    try {
+      const productSource = authUser ? "products" : "products_public";
+      const results = await Promise.all([
+        withTimeout((supabase as any).from(productSource).select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at").order("created_at", { ascending: false }), 7000),
+        authUser
+          ? withTimeout((supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false }), 7000)
+          : Promise.resolve({ data: [] } as any),
+        authUser ? withTimeout((supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }), 7000) : Promise.resolve({ data: [] } as any),
+        authUser ? withTimeout((supabase as any).from("product_delivery").select("product_id,delivery_content"), 7000) : Promise.resolve({ data: [] } as any),
+      ]);
+
+      const dbProducts = (results[0] as any)?.data || [];
+      const dbPurchases = (results[1] as any)?.data || [];
+      const dbWithdrawals = (results[2] as any)?.data || [];
+      const deliveryRows = (results[3] as any)?.data || [];
+
+      const deliveryByProduct = new Map(((deliveryRows || []) as any[]).map((d) => [Number(d.product_id), d.delivery_content || undefined]));
+      const products = ((dbProducts || []) as any[]).map((p) => ({ id: Number(p.id), name: p.name, price: Number(p.price), category: p.category, seller: p.seller_name, sellerEmail: "", sellerId: p.seller_id, sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0), image: p.image, banner: p.banner || undefined, description: p.description, approved: p.approved, deliveryType: p.delivery_type, deliveryContent: deliveryByProduct.get(Number(p.id)), variations: p.variations || [], questions: p.questions || [] })) as Product[];
+      const purchases = ((dbPurchases || []) as any[]).map(mapPurchaseRow) as Purchase[];
+      const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "", rejectionReason: w.rejection_reason || "", providerTxId: w.provider_tx_id || "", retryOf: w.retry_of ?? null })) as Withdrawal[];
+      setState((s) => ({
+        ...s,
+        products,
+        purchases,
+        withdrawals,
+      }));
+    } catch (e) {
+      console.error("loadCatalog failed", e);
+      // Don't block UI - keep existing state, show toast only if user is logged
+      if (authUser) {
+        // toast.error("Falha ao carregar catálogo. Tentando novamente...");
+        setTimeout(() => void loadCatalog(), 3000);
+      }
+    }
   }, [authUser]);
 
   useEffect(() => {

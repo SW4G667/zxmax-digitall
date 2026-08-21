@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useStore, Product, Withdrawal, Purchase } from "@/store/StoreContext";
 import { MoneyEmoji, PackageEmoji, ChatEmoji, StarEmoji, ShieldEmoji } from "@/components/CustomEmojis";
-import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag, ArrowLeft, ExternalLink, Webhook, RefreshCw, KeyRound } from "lucide-react";
+import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag, ArrowLeft, ExternalLink, Webhook, RefreshCw, KeyRound, ShieldCheck, Lock } from "lucide-react";
 import { toast } from "sonner";
 import MyPurchasesView from "@/components/MyPurchasesView";
 import IntegrationsPanel from "@/components/IntegrationsPanel";
+import TwoFactorPanel from "@/components/TwoFactorPanel";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
 interface WebhookLog {
   id: number;
@@ -21,6 +23,7 @@ interface WebhookLog {
 
 export default function AdminView() {
   const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument, saveGatewaySettings } = useStore();
+  const { mfaEnabled, isAdmin } = useAuth();
   const [tab, setTab] = useState<"products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "verifications" | "disputes" | "config" | "webhooks" | "apis">("products");
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
@@ -159,8 +162,27 @@ export default function AdminView() {
   return (
     <div className="animate-fade-in-up pb-20">
       <div className="mb-8">
-        <h1 className="text-3xl font-black text-foreground mb-2">Painel Admin</h1>
-        <p className="text-muted-foreground">Gerenciamento global da plataforma.</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-black text-foreground mb-2 flex items-center gap-3">
+              Painel Admin
+              {mfaEnabled ? <span className="inline-flex items-center gap-1.5 text-[11px] bg-success/15 text-success border border-success/20 px-3 py-1 rounded-full"><ShieldCheck className="w-3.5 h-3.5" /> 2FA Ativo</span> : <span className="inline-flex items-center gap-1.5 text-[11px] bg-destructive/15 text-destructive border border-destructive/20 px-3 py-1 rounded-full"><Lock className="w-3.5 h-3.5" /> 2FA Inativo</span>}
+            </h1>
+            <p className="text-muted-foreground">Gerenciamento global da plataforma. Acesso protegido.</p>
+          </div>
+        </div>
+        {!mfaEnabled && (
+          <div className="mt-6 rounded-2xl border-2 border-destructive/30 bg-destructive/5 p-5">
+            <div className="flex gap-3">
+              <div className="p-2.5 rounded-xl bg-destructive/15 text-destructive h-fit"><ShieldAlert className="w-5 h-5" /></div>
+              <div className="flex-1">
+                <p className="font-black text-foreground">Proteja seu painel admin com 2FA</p>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">Administradores sem autenticador estão vulneráveis. Ative o Google Authenticator para exigir código de 6 dígitos ao logar no painel admin. O QR Code some após ativação e só o código é pedido no login.</p>
+                <div className="mt-4"><TwoFactorPanel /></div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
