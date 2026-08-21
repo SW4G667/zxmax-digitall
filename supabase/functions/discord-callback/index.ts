@@ -14,21 +14,34 @@ serve(async (req) => {
 
   try {
     const { code, redirectUri } = await req.json();
-    console.log("Discord callback received with code:", code?.substring(0, 10) + "...");
-    
-    if (!code) {
-      throw new Error("Missing code parameter");
+
+    if (!code || typeof code !== "string") {
+      return new Response(JSON.stringify({ success: false, error: "Missing code parameter" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const clientId = "1485093454517371070";
+    const clientId = Deno.env.get("DISCORD_CLIENT_ID") || "1485093454517371070";
     const clientSecret = Deno.env.get("DISCORD_CLIENT_SECRET");
     if (!clientSecret) {
-      console.error("DISCORD_CLIENT_SECRET not configured");
-      throw new Error("DISCORD_CLIENT_SECRET not configured");
+      return new Response(JSON.stringify({ success: false, error: "Discord não configurado no servidor." }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const finalRedirectUri = redirectUri || "https://zxmax-digital-uqwt.onrender.com/";
-    console.log("Using redirect URI:", finalRedirectUri);
+    // SECURITY: only allow redirect URIs that exactly match known origins.
+    const ALLOWED_REDIRECTS = (Deno.env.get("DISCORD_ALLOWED_REDIRECTS") ||
+      "https://zxmax.vercel.app,https://zxmax-digitall.vercel.app,http://localhost:8080,http://127.0.0.1:8080"
+    ).split(",").map((s) => s.trim()).filter(Boolean);
+
+    const requested = (redirectUri || "").replace(/\/+$/, "");
+    const finalRedirectUri =
+      ALLOWED_REDIRECTS.map((s) => s.replace(/\/+$/, "")).find((s) => s === requested) ||
+      "https://zxmax.vercel.app/";
+
+    if (requested && finalRedirectUri.replace(/\/+$/, "") !== requested) {
+      console.warn("Blocked disallowed Discord redirect URI:", requested);
+    }
 
     // Exchange code for access token
     console.log("Exchanging code for Discord access token...");

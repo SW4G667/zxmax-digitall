@@ -40,8 +40,10 @@ serve(async (req) => {
     }
 
     let apiKey = Deno.env.get("EVOPAY_API_KEY");
+    let setting: { value: any } | null = null;
     try {
-      const { data: setting } = await serviceClient.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
+      const { data } = await serviceClient.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
+      setting = data as { value: any } | null;
       if (setting?.value?.mode === "manual" && setting?.value?.apiKey) {
         apiKey = setting.value.apiKey;
       }
@@ -69,6 +71,8 @@ serve(async (req) => {
         status: "PENDING",
         amount: Number(purchase.amount),
         qrCodeText: purchase.pix_qr_code,
+        expiresAt: purchase.pix_expires_at,
+        qrCodeUrl: `https://api.evopay.cash/v1/pix/qr-code/${purchase.evopay_charge_id}`,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 });
     }
 
@@ -85,8 +89,23 @@ serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const webhookToken = setting?.value?.webhookToken;
-    if (!webhookToken) throw new Error("Webhook EvoPay ainda não foi configurado pelo administrador");
+    // If the admin hasn't set a webhook token yet, auto-generate a strong one
+    // and persist it. This avoids breaking the whole PIX flow on a fresh deploy.
+    let webhookToken: string | undefined = setting?.value?.webhookToken;
+    if (!webhookToken) {
+      const bytes = new Uint8Array(32);
+      crypto.getRandomValues(bytes);
+      webhookToken = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+      const nextValue = { ...(setting?.value || {}), webhookToken };
+      const { error: upsertErr } = await serviceClient
+        .from("app_settings")
+        .upsert({ key: "evopay", value: nextValue }, { onConflict: "key" });
+      if (upsertErr) {
+        console.error("Could not persist webhook token", upsertErr);
+        throw new Error("Não foi possível configurar o webhook de pagamento. Contate o admin.");
+      }
+      setting = { value: nextValue };
+    }
     const callbackUrl = `${supabaseUrl}/functions/v1/evopay-webhook?token=${encodeURIComponent(webhookToken)}`;
     const { data: buyerProfile } = await serviceClient.from("profiles").select("display_name,cpf").eq("user_id", userData.user.id).maybeSingle();
     const buyerDocument = String(buyerProfile?.cpf || "").replace(/\D/g, "");

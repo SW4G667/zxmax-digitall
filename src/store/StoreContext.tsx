@@ -233,7 +233,7 @@ const defaultConfig: AppConfig = {
   commission: 10,
   instantFee: 7,
   discordLink: "https://discord.gg/zxmax",
-  categories: ["Bots Discord", "Contas", "Scripts", "Assinaturas", "Designs Digitais", "Serviços Online", "Consultoria Virtual", "Keys de Software", "Arquivos"],
+  categories: ["Robux e Gift Cards", "Bots Discord", "Contas", "Scripts", "Assinaturas", "Designs Digitais", "Serviços Online", "Consultoria Virtual", "Keys de Software", "Arquivos", "Jogos e Itens"],
   globalNotice: "",
   authMode: "automatic",
   discordClientId: "1485093454517371070",
@@ -313,8 +313,10 @@ const inferPixType = (key: string): string => {
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { user: authUser, profile, isAdmin, signOut } = useAuth();
   const [state, setState] = useState<AppState>(loadState);
-  const [isDark, setIsDark] = useState(() => {
-    return localStorage.getItem("zxmax_dark") === "true";
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    // GGMAX-style: dark theme is the default. Only opt OUT via theme toggle.
+    const stored = localStorage.getItem("zxmax_dark");
+    return stored === null ? true : stored === "true";
   });
 
   // Sync auth user to store state

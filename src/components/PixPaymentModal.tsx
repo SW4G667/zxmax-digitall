@@ -7,6 +7,7 @@ export interface PixCharge {
   evopayId: string;
   qrCodeText: string;
   amount: number;
+  qrCodeUrl?: string | null;
 }
 
 interface Props {
@@ -20,27 +21,60 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
   const [status, setStatus] = useState<"waiting" | "paid">("waiting");
   const paidRef = useRef(false);
 
+  const PAID_STATUSES = ["COMPLETED", "PAID", "CONFIRMED", "paid", "completed"];
+
   useEffect(() => {
     paidRef.current = false;
     setStatus("waiting");
     if (!charge) return;
 
-    const interval = setInterval(async () => {
+    let attempts = 0;
+    const MAX_ATTEMPTS = 90; // ~6 minutes at 4s interval
+
+    const tick = async () => {
       if (paidRef.current) return;
+      attempts += 1;
       try {
-        const { data } = await supabase.functions.invoke("check-evopay-status", {
+        // 1) Ask the edge function to re-check the charge with EvoPay.
+        const { data, error } = await supabase.functions.invoke("check-evopay-status", {
           body: { id: charge.evopayId },
         });
-        if (data?.status === "COMPLETED" && !paidRef.current) {
+        const gatewayPaid = !error && (
+          PAID_STATUSES.includes(data?.status) ||
+          String(data?.status || "").toUpperCase() === "COMPLETED" ||
+          String(data?.status || "").toUpperCase() === "PAID"
+        );
+
+        // 2) Fallback: also verify the local order status (covers webhook-only updates)
+        let localPaid = false;
+        try {
+          const { data: latest } = await (supabase as any)
+            .from("purchases")
+            .select("status")
+            .eq("evopay_charge_id", charge.evopayId)
+            .maybeSingle();
+          if (latest && ["paid", "delivered"].includes(latest.status)) localPaid = true;
+        } catch { /* ignore */ }
+
+        if (gatewayPaid || localPaid) {
+          if (paidRef.current) return;
           paidRef.current = true;
           setStatus("paid");
           clearInterval(interval);
           onPaid();
+        } else if (data?.status === "EXPIRED" || data?.status === "CANCELED" || data?.status === "FAILED") {
+          clearInterval(interval);
+          toast.error("O pagamento expirou ou foi cancelado. Gere um novo PIX.");
         }
       } catch {
         /* keep polling */
       }
-    }, 4000);
+      if (attempts >= MAX_ATTEMPTS) clearInterval(interval);
+    };
+
+    const interval = setInterval(tick, 4000);
+    // Check once immediately so users don't wait 4s on return-from-bank
+    void tick();
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -59,7 +93,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
     }
   };
 
-  const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(charge.qrCodeText)}`;
+  const qrImg = charge.qrCodeUrl || `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(charge.qrCodeText)}`;
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-foreground/50 backdrop-blur-sm" onClick={onClose}>

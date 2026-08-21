@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { RocketEmoji, KeyEmoji } from "@/components/CustomEmojis";
 import { toast } from "sonner";
-import { X } from "lucide-react";
+import { X, ShieldCheck, Loader2 } from "lucide-react";
 
 export default function AuthScreen({ onClose }: { onClose?: () => void }) {
-  const { signUp, signIn } = useAuth();
+  const { signUp, signIn, verifyMfa, needsMfa } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -13,6 +13,15 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // 2FA state
+  const [code, setCode] = useState<string[]>(["", "", "", "", "", ""]);
+  const [verifying, setVerifying] = useState(false);
+  const codeRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  useEffect(() => {
+    if (needsMfa) setTimeout(() => codeRefs.current[0]?.focus(), 50);
+  }, [needsMfa]);
 
   const handleDiscord = () => {
     let cfg: any = {};
@@ -54,7 +63,7 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
     try {
       if (mode === "register") {
         if (password !== confirmPassword) { setError("As senhas não coincidem."); setLoading(false); return; }
-        if (password.length < 6) { setError("Senha deve ter pelo menos 6 caracteres."); setLoading(false); return; }
+        if (password.length < 8) { setError("A senha deve ter pelo menos 8 caracteres."); setLoading(false); return; }
         if (!name.trim()) { setError("Digite seu nome."); setLoading(false); return; }
 
         const { error: err } = await signUp(email, password, name.trim());
@@ -74,9 +83,9 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
           } else {
             setError(err);
           }
-        } else {
-          onClose?.();
         }
+        // On success the provider will set `needsMfa` if 2FA is enrolled, which
+        // swaps this modal to the code screen. Otherwise the parent closes it.
       }
     } catch {
       setError("Erro inesperado. Tente novamente.");
@@ -84,10 +93,51 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
     setLoading(false);
   };
 
+  const handleCodeChange = (idx: number, value: string) => {
+    const v = value.replace(/\D/g, "").slice(-1);
+    const next = [...code];
+    next[idx] = v;
+    setCode(next);
+    if (v && idx < 5) codeRefs.current[idx + 1]?.focus();
+    if (next.every((d) => d) && next.join("").length === 6) {
+      void handleVerifyMfa(next.join(""));
+    }
+  };
+
+  const handleCodeKey = (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Backspace" && !code[idx] && idx > 0) codeRefs.current[idx - 1]?.focus();
+  };
+
+  const handleCodePaste = (e: React.ClipboardEvent) => {
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (pasted.length === 6) {
+      e.preventDefault();
+      setCode(pasted.split(""));
+      void handleVerifyMfa(pasted);
+    }
+  };
+
+  const handleVerifyMfa = async (value?: string) => {
+    const token = value || code.join("");
+    if (token.length !== 6) { setError("Digite o código de 6 dígitos."); return; }
+    setVerifying(true);
+    setError("");
+    const { error: err } = await verifyMfa(token);
+    setVerifying(false);
+    if (err) {
+      setError(err);
+      setCode(["", "", "", "", "", ""]);
+      codeRefs.current[0]?.focus();
+      return;
+    }
+    toast.success("Autenticação de dois fatores confirmada!");
+    onClose?.();
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-gradient-page">
-        <div className="absolute inset-0 grid grid-cols-3 gap-4 p-8 opacity-20 blur-lg">
+        <div className="absolute inset-0 grid grid-cols-3 gap-4 p-8 opacity-20 blur-lg" aria-hidden>
           {[
             "https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=300",
             "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=300",
@@ -99,94 +149,140 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
             <img key={i} src={src} className="w-full h-48 object-cover rounded-3xl" alt="" />
           ))}
         </div>
-        <div className="absolute inset-0 bg-foreground/60 dark:bg-foreground/80" />
+        <div className="absolute inset-0 bg-foreground/70 dark:bg-foreground/85" />
       </div>
 
-      <div className="glass-card w-full max-w-md p-8 relative z-10 bg-card animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
+      <div className="glass-card w-full max-w-md p-8 relative z-10 bg-card animate-fade-in-up">
         {onClose && (
           <button onClick={onClose} className="absolute right-4 top-4 p-2 rounded-xl hover:bg-muted transition" aria-label="Fechar login">
             <X className="w-5 h-5 text-muted-foreground" />
           </button>
         )}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-black tracking-tighter text-foreground">
-            ZX<span className="text-primary">MAX</span>
-          </h1>
-          <div className="flex items-center justify-center gap-2 mt-2">
-            <RocketEmoji className="w-5 h-5" />
-            <p className="text-muted-foreground text-sm">O futuro do comércio digital</p>
+
+        {/* 2FA VERIFICATION SCREEN */}
+        {needsMfa ? (
+          <div className="text-center">
+            <div className="mx-auto w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+              <ShieldCheck className="w-8 h-8 text-primary" />
+            </div>
+            <h1 className="text-2xl font-black tracking-tight text-foreground">Verificação em duas etapas</h1>
+            <p className="text-sm text-muted-foreground mt-2 mb-6">
+              Digite o código de 6 dígitos gerado pelo seu aplicativo autenticador (Google Authenticator, Authy, etc).
+            </p>
+
+            <div className="flex justify-center gap-2 mb-5" onPaste={handleCodePaste}>
+              {code.map((d, i) => (
+                <input
+                  key={i}
+                  ref={(el) => (codeRefs.current[i] = el)}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={1}
+                  value={d}
+                  onChange={(e) => handleCodeChange(i, e.target.value)}
+                  onKeyDown={(e) => handleCodeKey(i, e)}
+                  className="w-12 h-14 text-center text-xl font-black rounded-xl bg-muted border border-transparent focus:border-primary focus:ring-2 focus:ring-primary/40 outline-none text-foreground"
+                />
+              ))}
+            </div>
+
+            {error && <p className="text-destructive text-sm font-medium mb-3">{error}</p>}
+
+            <button
+              onClick={() => handleVerifyMfa()}
+              disabled={verifying || code.join("").length !== 6}
+              className="w-full btn-gradient p-4 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {verifying ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
+              {verifying ? "Verificando..." : "Confirmar código"}
+            </button>
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="text-center mb-8">
+              <h1 className="text-4xl font-black tracking-tighter text-foreground">
+                ZX<span className="text-primary">MAX</span>
+              </h1>
+              <div className="flex items-center justify-center gap-2 mt-2">
+                <RocketEmoji className="w-5 h-5" />
+                <p className="text-muted-foreground text-sm">O futuro do comércio digital</p>
+              </div>
+            </div>
 
-        <div className="flex gap-1 mb-6 p-1 bg-muted rounded-2xl">
-          <button
-            onClick={() => { setMode("login"); setError(""); }}
-            className={`flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all ${mode === "login" ? "bg-card shadow-sm text-primary" : "text-muted-foreground"}`}
-          >
-            Entrar
-          </button>
-          <button
-            onClick={() => { setMode("register"); setError(""); }}
-            className={`flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all ${mode === "register" ? "bg-card shadow-sm text-primary" : "text-muted-foreground"}`}
-          >
-            Criar Conta
-          </button>
-        </div>
+            <div className="flex gap-1 mb-6 p-1 bg-muted rounded-2xl">
+              <button
+                onClick={() => { setMode("login"); setError(""); }}
+                className={`flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all ${mode === "login" ? "bg-card shadow-sm text-primary" : "text-muted-foreground"}`}
+              >
+                Entrar
+              </button>
+              <button
+                onClick={() => { setMode("register"); setError(""); }}
+                className={`flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all ${mode === "register" ? "bg-card shadow-sm text-primary" : "text-muted-foreground"}`}
+              >
+                Criar Conta
+              </button>
+            </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
-          {mode === "register" && (
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Nome Completo"
-              className="w-full p-4 rounded-2xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground placeholder:text-muted-foreground text-sm"
-            />
-          )}
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="E-mail"
-            required
-            className="w-full p-4 rounded-2xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground placeholder:text-muted-foreground text-sm"
-          />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Senha"
-            required
-            className="w-full p-4 rounded-2xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground placeholder:text-muted-foreground text-sm"
-          />
-          {mode === "register" && (
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirmar Senha"
-              className="w-full p-4 rounded-2xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground placeholder:text-muted-foreground text-sm"
-            />
-          )}
-          {error && <p className="text-destructive text-sm font-medium">{error}</p>}
-          <button type="submit" disabled={loading} className="w-full btn-gradient p-4 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
-            <KeyEmoji className="w-5 h-5" />
-            {loading ? "Aguarde..." : mode === "login" ? "Acessar Plataforma" : "Criar Conta"}
-          </button>
-        </form>
+            <form onSubmit={handleSubmit} className="space-y-3">
+              {mode === "register" && (
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Nome Completo"
+                  className="w-full p-4 rounded-2xl bg-muted border border-transparent focus:border-primary focus:ring-2 focus:ring-primary/40 outline-none text-foreground placeholder:text-muted-foreground text-sm"
+                />
+              )}
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="E-mail"
+                required
+                autoComplete="email"
+                className="w-full p-4 rounded-2xl bg-muted border border-transparent focus:border-primary focus:ring-2 focus:ring-primary/40 outline-none text-foreground placeholder:text-muted-foreground text-sm"
+              />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Senha"
+                required
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                className="w-full p-4 rounded-2xl bg-muted border border-transparent focus:border-primary focus:ring-2 focus:ring-primary/40 outline-none text-foreground placeholder:text-muted-foreground text-sm"
+              />
+              {mode === "register" && (
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirmar Senha"
+                  className="w-full p-4 rounded-2xl bg-muted border border-transparent focus:border-primary focus:ring-2 focus:ring-primary/40 outline-none text-foreground placeholder:text-muted-foreground text-sm"
+                />
+              )}
+              {error && <p className="text-destructive text-sm font-medium">{error}</p>}
+              <button type="submit" disabled={loading} className="w-full btn-gradient p-4 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+                <KeyEmoji className="w-5 h-5" />
+                {loading ? "Aguarde..." : mode === "login" ? "Acessar Plataforma" : "Criar Conta"}
+              </button>
+            </form>
 
-        {mode === "login" && (
-          <button type="button" onClick={handleForgot} className="w-full text-center text-xs font-semibold text-primary mt-3 hover:underline">
-            Esqueceu sua senha?
-          </button>
+            {mode === "login" && (
+              <button type="button" onClick={handleForgot} className="w-full text-center text-xs font-semibold text-primary mt-3 hover:underline">
+                Esqueceu sua senha?
+              </button>
+            )}
+
+            <div className="mt-5 space-y-2">
+              <button onClick={handleDiscord} className="w-full flex items-center justify-center gap-3 p-3 border border-border rounded-2xl hover:bg-muted transition text-sm font-semibold text-muted-foreground">
+                <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="#5865F2" d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082 0.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128c.126-.094.252-.192.373-.292a.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.086 2.157 2.419 0 1.334-.947 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.086 2.157 2.419 0 1.334-.946 2.419-2.157 2.419z"/></svg>
+                Entrar com Discord
+              </button>
+            </div>
+          </>
         )}
-
-        <div className="mt-5 space-y-2">
-          <button onClick={handleDiscord} className="w-full flex items-center justify-center gap-3 p-3 border border-border rounded-2xl hover:bg-muted transition text-sm font-semibold text-muted-foreground">
-            <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="#5865F2" d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128c.126-.094.252-.192.373-.292a.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.086 2.157 2.419 0 1.334-.947 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.086 2.157 2.419 0 1.334-.946 2.419-2.157 2.419z"/></svg>
-            Entrar com Discord
-          </button>
-        </div>
       </div>
     </div>
   );

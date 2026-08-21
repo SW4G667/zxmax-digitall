@@ -20,11 +20,25 @@
   
   <meta property="og:title" content="ZXMAX | Marketplace Digital Elite">
   <meta name="twitter:title" content="ZXMAX | Marketplace Digital Elite">
-  <meta property="og:description" content="ZXMAX - O maior marketplace de produtos digitais. Compre e venda bots, contas, scripts, designs e mais.">
-  <meta name="twitter:description" content="ZXMAX - O maior marketplace de produtos digitais. Compre e venda bots, contas, scripts, designs e mais.">
+    <meta property="og:description" content="ZXMAX - O maior marketplace de produtos digitais. Compre e venda bots, contas, scripts, designs e mais.">
+    <meta name="twitter:description" content="ZXMAX - O maior marketplace de produtos digitais. Compre e venda bots, contas, scripts, designs e mais.">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script>
+      // Apply saved theme before paint to avoid flash (default dark = GGMAX style)
+      (function () {
+        try {
+          var stored = localStorage.getItem("zxmax_dark");
+          var isDark = stored === null ? true : stored === "true";
+          if (isDark) document.documentElement.classList.add("dark");
+        } catch (e) {}
+      })();
+    </script>
 </head>
 
-  <body>
+  <body class="dark">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

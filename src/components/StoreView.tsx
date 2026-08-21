@@ -20,8 +20,24 @@ export default function StoreView() {
 
   const approved = state.products.filter((p) => p.approved);
   const categories = ["Todos", ...state.config.categories];
+
+  React.useEffect(() => {
+    const onSearch = (e: Event) => {
+      const detail = (e as CustomEvent<string>).detail;
+      if (detail) {
+        setSearch(detail);
+        setCategory("Todos");
+        setSelectedProduct(null);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    };
+    window.addEventListener("zxmax:search", onSearch as EventListener);
+    return () => window.removeEventListener("zxmax:search", onSearch as EventListener);
+  }, []);
+
   const filtered = approved.filter((p) => {
-    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.category.toLowerCase().includes(search.toLowerCase());
+    const q = search.toLowerCase().trim();
+    const matchSearch = !q || p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q) || (p.description || "").toLowerCase().includes(q);
     const matchCat = category === "Todos" || p.category === category;
     return matchSearch && matchCat;
   });
@@ -75,8 +91,8 @@ export default function StoreView() {
 
       if (data?.qrCodeText) {
         setPaidPurchaseId(purchaseId);
-        savePixCharge(purchaseId, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: new Date(Date.now() + 3600 * 1000).toISOString() });
-        setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? price });
+        savePixCharge(purchaseId, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
+        setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? price, qrCodeUrl: data.qrCodeUrl });
       } else if (data?.error) {
         toast.error("Erro ao gerar PIX: " + data.error);
       } else {
@@ -114,8 +130,8 @@ export default function StoreView() {
         <p className="text-muted-foreground">Os melhores produtos digitais com entrega imediata.</p>
       </div>
 
-      {/* Search mobile */}
-      <div className="md:hidden flex items-center bg-card rounded-2xl px-4 py-3 mb-6 border border-border/40">
+      {/* Search on store page (desktop; mobile uses header) */}
+      <div className="hidden md:flex items-center bg-card rounded-lg px-4 py-3 mb-6 border border-border/50 focus-within:border-primary transition">
         <Search className="w-4 h-4 text-muted-foreground" />
         <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar produtos..." className="bg-transparent border-none focus:ring-0 focus:outline-none text-sm w-full ml-2 text-foreground placeholder:text-muted-foreground" />
       </div>

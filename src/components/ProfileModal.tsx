@@ -5,6 +5,7 @@ import { StarEmoji, MoneyEmoji, DoorEmoji, CameraEmoji, KeyEmoji } from "@/compo
 import { X, Edit, Upload, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import TwoFactorPanel from "@/components/TwoFactorPanel";
 
 interface Props {
   open: boolean;
@@ -226,6 +227,8 @@ export default function ProfileModal({ open, onClose }: Props) {
           <a href="/perfil" className="w-full flex items-center justify-center gap-2 p-3 border border-border rounded-xl text-muted-foreground font-semibold text-sm hover:bg-muted transition">
             <Shield className="w-4 h-4" /> Dados pessoais e verificação
           </a>
+
+          <TwoFactorPanel />
 
           <button onClick={logout} className="w-full flex items-center justify-center gap-2 p-3 text-destructive font-bold text-sm hover:bg-destructive/5 rounded-xl transition">
             <DoorEmoji className="w-5 h-5" /> Sair da Conta

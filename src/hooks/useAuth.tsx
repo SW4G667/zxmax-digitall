@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { User, Session } from "@supabase/supabase-js";
+import type { User, Session, Factor, AdminFactorType } from "@supabase/supabase-js";
 
 interface Profile {
   id: string;
@@ -29,6 +29,12 @@ interface BanInfo {
   created_at: string;
 }
 
+export interface TotpEnroll {
+  id: string;
+  qr: string;
+  secret: string;
+}
+
 interface AuthContextType {
   user: User | null;
   profile: Profile | null;
@@ -36,8 +42,15 @@ interface AuthContextType {
   loading: boolean;
   banned: BanInfo | null;
   isAdmin: boolean;
+  mfaEnabled: boolean;
+  needsMfa: boolean;
   signUp: (email: string, password: string, displayName: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  verifyMfa: (code: string) => Promise<{ error: string | null }>;
+  enrollTotpStart: () => Promise<{ data: TotpEnroll | null; error: string | null }>;
+  enrollTotpVerify: (factorId: string, code: string) => Promise<{ error: string | null }>;
+  unenrollTotp: (factorId: string) => Promise<{ error: string | null }>;
+  listFactors: () => Promise<Factor[]>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   updateProfile: (data: Partial<Pick<Profile, "display_name" | "avatar_url" | "pix_key" | "document_type">>) => Promise<void>;
@@ -58,6 +71,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [banned, setBanned] = useState<BanInfo | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [needsMfa, setNeedsMfa] = useState(false);
+  const [challengeId, setChallengeId] = useState<string | null>(null);
 
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase
@@ -85,55 +101,91 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   };
 
-  const checkAdmin = async (userId: string, _email?: string) => {
-    const { data } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("role", "admin")
-      .maybeSingle();
-    setIsAdmin(!!data);
+  const checkAdmin = async (userId: string) => {
+    try {
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("role", "admin")
+        .maybeSingle();
+      setIsAdmin(!!data);
+    } catch {
+      setIsAdmin(false);
+    }
   };
 
+  const evaluateMfa = useCallback(async (sess: Session | null) => {
+    if (!sess) {
+      setMfaEnabled(false);
+      setNeedsMfa(false);
+      setChallengeId(null);
+      return;
+    }
+    try {
+      const { data, error } = await supabase.auth.mfa.listFactors();
+      if (error) throw error;
+      const verifiedTotp = (data?.totp || []).filter((f) => f.status === "verified");
+      setMfaEnabled(verifiedTotp.length > 0);
+      // Current authenticator assurance level (aal1 = only password, aal2 = 2FA)
+      const aal: string = (sess as any)?.aal || sess.user?.aal || sess.user?.app_metadata?.aal || "aal1";
+      if (verifiedTotp.length > 0 && aal !== "aal2" && verifiedTotp[0]) {
+        if (!challengeId) {
+          const { data: chal, error: chalErr } = await supabase.auth.mfa.challenge({
+            factorId: verifiedTotp[0].id,
+          });
+          if (!chalErr && chal?.id) setChallengeId(chal.id);
+        }
+        setNeedsMfa(true);
+      } else {
+        setNeedsMfa(false);
+      }
+    } catch {
+      setMfaEnabled(false);
+      setNeedsMfa(false);
+    }
+  }, [challengeId]);
+
   useEffect(() => {
-    // Set up auth listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, sess) => {
       setSession(sess);
       setUser(sess?.user ?? null);
-      
+
       if (sess?.user) {
-        // Use setTimeout to avoid Supabase deadlock
-        setTimeout(async () => {
-          await fetchProfile(sess.user.id);
-          await checkBan(sess.user.id);
-          await checkAdmin(sess.user.id, sess.user.email);
-          setLoading(false);
-        }, 0);
+        setLoading(true);
+        await fetchProfile(sess.user.id).catch(() => null);
+        await checkBan(sess.user.id).catch(() => null);
+        await checkAdmin(sess.user.id).catch(() => null);
+        await evaluateMfa(sess).catch(() => null);
+        setLoading(false);
       } else {
         setProfile(null);
         setBanned(null);
         setIsAdmin(false);
+        setMfaEnabled(false);
+        setNeedsMfa(false);
+        setChallengeId(null);
         setLoading(false);
       }
     });
 
-    // Then check existing session
-    supabase.auth.getSession().then(({ data: { session: sess } }) => {
+    supabase.auth.getSession().then(async ({ data: { session: sess } }) => {
       setSession(sess);
       setUser(sess?.user ?? null);
       if (sess?.user) {
-        Promise.all([
-          fetchProfile(sess.user.id),
-          checkBan(sess.user.id),
-          checkAdmin(sess.user.id, sess.user.email),
-        ]).then(() => setLoading(false));
-      } else {
-        setLoading(false);
+        setLoading(true);
+        await Promise.all([
+          fetchProfile(sess.user.id).catch(() => null),
+          checkBan(sess.user.id).catch(() => null),
+          checkAdmin(sess.user.id).catch(() => null),
+          evaluateMfa(sess).catch(() => null),
+        ]);
       }
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [evaluateMfa]);
 
   const signUp = async (email: string, password: string, displayName: string) => {
     const { error } = await supabase.auth.signUp({
@@ -149,9 +201,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error: error.message };
+    // Kick off MFA evaluation (it will also create a challenge if needed)
+    if (data.session) void evaluateMfa(data.session);
     return { error: null };
+  };
+
+  const verifyMfa = async (code: string) => {
+    if (!challengeId) return { error: "Nenhum desafio pendente." };
+    const { data, error } = await supabase.auth.mfa.verify({
+      factorId: (await listFactors()).find((f) => f.status === "verified")?.id || "",
+      challengeId,
+      code,
+    });
+    if (error) return { error: error.message };
+    if (data?.session) {
+      setSession(data.session);
+      setUser(data.session.user);
+    }
+    setNeedsMfa(false);
+    setChallengeId(null);
+    setMfaEnabled(true);
+    return { error: null };
+  };
+
+  const enrollTotpStart = async (): Promise<{ data: TotpEnroll | null; error: string | null }> => {
+    const { data, error } = await supabase.auth.mfa.enroll({
+      factorType: "totp" as AdminFactorType,
+      friendlyName: "ZXMAX Authenticator",
+      issuer: "ZXMAX",
+    } as any);
+    if (error || !data) return { data: null, error: error?.message || "Falha ao iniciar 2FA" };
+    return {
+      data: { id: data.id, qr: data.totp.qr_code, secret: data.totp.secret },
+      error: null,
+    };
+  };
+
+  const enrollTotpVerify = async (factorId: string, code: string) => {
+    const challenge = await supabase.auth.mfa.challenge({ factorId });
+    if (challenge.error) return { error: challenge.error.message };
+    const verify = await supabase.auth.mfa.verify({ factorId, challengeId: challenge.data!.id, code });
+    if (verify.error) return { error: verify.error.message };
+    setMfaEnabled(true);
+    setNeedsMfa(false);
+    if (verify.data?.session) {
+      setSession(verify.data.session);
+      setUser(verify.data.session.user);
+    }
+    return { error: null };
+  };
+
+  const unenrollTotp = async (factorId: string) => {
+    const { error } = await supabase.auth.mfa.unenroll({ factorId });
+    if (error) return { error: error.message };
+    setMfaEnabled(false);
+    setNeedsMfa(false);
+    return { error: null };
+  };
+
+  const listFactors = async (): Promise<Factor[]> => {
+    const { data } = await supabase.auth.mfa.listFactors();
+    return data?.totp || [];
   };
 
   const signOut = async () => {
@@ -159,6 +271,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
     setBanned(null);
     setIsAdmin(false);
+    setMfaEnabled(false);
+    setNeedsMfa(false);
+    setChallengeId(null);
   };
 
   const refreshProfile = async () => {
@@ -174,8 +289,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user, profile, session, loading, banned, isAdmin,
-      signUp, signIn, signOut: signOut,
-      refreshProfile, updateProfile: updateProfileFn,
+      mfaEnabled, needsMfa,
+      signUp, signIn, verifyMfa,
+      enrollTotpStart, enrollTotpVerify, unenrollTotp, listFactors,
+      signOut, refreshProfile, updateProfile: updateProfileFn,
     }}>
       {children}
     </AuthContext.Provider>

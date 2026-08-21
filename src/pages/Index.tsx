@@ -20,9 +20,11 @@ import { toast } from "sonner";
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "withdraw";
 const PATHS: Record<View, string> = { store: "/loja", inventory: "/meus-produtos", purchases: "/minhas-compras", support: "/suporte", admin: "/admin", withdraw: "/sacar" };
 
+const PROTECTED_VIEWS: View[] = ["inventory", "purchases", "support", "withdraw"];
+
 function Dashboard({ view }: { view: View }) {
   const { refreshPurchases } = useStore();
-  const { isAdmin, user } = useAuth();
+  const { isAdmin, user, needsMfa } = useAuth();
   const navigate = useNavigate();
   const [profileOpen, setProfileOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -34,11 +36,20 @@ function Dashboard({ view }: { view: View }) {
     navigate(PATHS.purchases);
   };
 
+  const requiresAuth = PROTECTED_VIEWS.includes(view) || (view === "admin");
+
+  // Automatically open the login modal for protected routes when signed out.
   useEffect(() => {
-    if (isAdmin && view === "store") {
-      navigate(PATHS.admin, { replace: true });
+    if (!user && requiresAuth) {
+      setAuthOpen(true);
     }
-  }, [isAdmin]);
+  }, [user, requiresAuth]);
+
+  // Keep the auth modal open while a 2FA challenge is pending, even right
+  // after a successful password sign-in.
+  useEffect(() => {
+    if (needsMfa) setAuthOpen(true);
+  }, [needsMfa]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -51,18 +62,32 @@ function Dashboard({ view }: { view: View }) {
       toast.info("Pagamento cancelado.");
       window.history.replaceState({}, "", "/");
     }
-  }, [user, refreshPurchases]);
+  }, [user, refreshPurchases, navigate]);
 
   return (
     <div className="bg-gradient-page min-h-screen pb-24">
       <Header onProfileClick={() => setProfileOpen(true)} onAuthClick={() => setAuthOpen(true)} onMenuClick={() => setMenuOpen(true)} />
       <main className="max-w-7xl mx-auto px-4 py-6">
         {view === "store" && <StoreView />}
-        {view === "inventory" && <InventoryView onOpenChat={handleOpenChat} />}
-        {view === "purchases" && <MyPurchasesView initialSelectedId={selectedPurchaseId} />}
-        {view === "support" && <SupportView />}
-        {view === "admin" && isAdmin && <AdminView />}
-        {view === "withdraw" && <WithdrawView />}
+        {view === "inventory" && user && <InventoryView onOpenChat={handleOpenChat} />}
+        {view === "purchases" && user && <MyPurchasesView initialSelectedId={selectedPurchaseId} />}
+        {view === "support" && user && <SupportView />}
+        {view === "admin" && user && isAdmin && <AdminView />}
+        {view === "withdraw" && user && <WithdrawView />}
+        {requiresAuth && !user && (
+          <div className="text-center py-20 glass-card">
+            <p className="text-3xl mb-3">🔐</p>
+            <p className="text-foreground font-bold mb-1">Faça login para continuar</p>
+            <p className="text-muted-foreground text-sm mb-5">Você precisa estar conectado para acessar esta área.</p>
+            <button onClick={() => setAuthOpen(true)} className="btn-gradient px-6 py-3 rounded-xl font-bold text-sm">Entrar / Criar conta</button>
+          </div>
+        )}
+        {view === "admin" && user && !isAdmin && (
+          <div className="text-center py-20 glass-card">
+            <p className="text-3xl mb-3">⛔</p>
+            <p className="text-foreground font-bold">Acesso restrito a administradores.</p>
+          </div>
+        )}
       </main>
       <BottomNav current={view} onChange={(next) => {
         if (!user && next !== "store") return setAuthOpen(true);

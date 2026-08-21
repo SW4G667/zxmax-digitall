@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useStore, Purchase } from "@/store/StoreContext";
 import { ShoppingBagEmoji, StarEmoji } from "@/components/CustomEmojis";
-import { Search, ShieldAlert, Copy, ArrowLeft, QrCode } from "lucide-react";
+import { Search, ShieldAlert, Copy, ArrowLeft, QrCode, MessageSquare, Eye, PackageCheck, CircleDot, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,12 +10,43 @@ import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
 import { supabase } from "@/integrations/supabase/client";
 
 const statusMap: Record<Purchase["status"], { label: string; cls: string }> = {
-  pending: { label: "Pendente", cls: "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30" },
+  pending: { label: "Aguardando pagamento", cls: "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30" },
   paid: { label: "Pago", cls: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" },
   delivered: { label: "Entregue", cls: "bg-primary/20 text-primary border-primary/30" },
-  dispute: { label: "Disputa", cls: "bg-destructive/20 text-destructive border-destructive/30" },
+  dispute: { label: "Em disputa", cls: "bg-destructive/20 text-destructive border-destructive/30" },
   cancelled: { label: "Cancelado", cls: "bg-muted text-muted-foreground border-border" },
 };
+
+const STAGES: { key: Purchase["status"] | "concluded"; label: string }[] = [
+  { key: "pending", label: "Pago" },       // 1) pagamento confirmado
+  { key: "paid", label: "Entregue" },      // 2) produto entregue
+  { key: "delivered", label: "Concluído" },// 3) comprador confirma
+  { key: "concluded", label: "Finalizado" },
+];
+
+function StageStepper({ status }: { status: Purchase["status"] }) {
+  const order: Purchase["status"][] = ["pending", "paid", "delivered", "dispute", "cancelled"];
+  let activeIdx = order.indexOf(status);
+  if (status === "cancelled" || status === "dispute") activeIdx = -1; // show warning state separately
+  return (
+    <div className="flex items-center gap-1 mt-2">
+      {["Pago", "Entregue", "Concluído"].map((label, i) => {
+        const done = activeIdx > i || (status === "delivered" && i <= 2);
+        const current = activeIdx === i;
+        return (
+          <div key={label} className="flex items-center gap-1 flex-1 min-w-0">
+            <div className={`flex items-center justify-center w-5 h-5 rounded-full border text-[10px] font-black shrink-0
+              ${done ? "bg-primary border-primary text-primary-foreground" : current ? "border-primary text-primary animate-pulse-ring" : "border-border text-muted-foreground"}`}>
+              {done ? <CheckCircle2 className="w-3 h-3" /> : i + 1}
+            </div>
+            <span className={`text-[10px] font-bold truncate ${done || current ? "text-foreground" : "text-muted-foreground"}`}>{label}</span>
+            {i < 2 && <div className={`h-[2px] flex-1 rounded-full ${done ? "bg-primary" : "bg-border"}`} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function MyPurchasesView({ initialSelectedId }: { initialSelectedId?: number | null }) {
   const { state, confirmDelivery, openDispute, reviewPurchase, savePixCharge, markPurchasePaid } = useStore();
@@ -38,7 +69,9 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
 
   const visiblePurchases = state.currentUser?.isAdmin
     ? state.purchases
-    : state.purchases.filter((p) => p.buyerEmail === state.currentUser?.email);
+    : state.purchases.filter(
+        (p) => p.buyerId === state.currentUser?.id || p.sellerId === state.currentUser?.id
+      );
   const filtered = visiblePurchases.filter((p) => {
     const product = state.products.find((pr) => pr.id === p.productId);
     return product?.name.toLowerCase().includes(search.toLowerCase());
@@ -72,8 +105,8 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
       });
       if (error) throw error;
       if (data?.qrCodeText) {
-        savePixCharge(purchase.id, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: new Date(Date.now() + 3600 * 1000).toISOString() });
-        setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? purchase.amount });
+        savePixCharge(purchase.id, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
+        setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? purchase.amount, qrCodeUrl: data.qrCodeUrl });
       } else {
         toast.error("Erro ao gerar PIX. Tente novamente.");
       }
@@ -262,16 +295,56 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
         {filtered.map((p) => {
           const prod = state.products.find((pr) => pr.id === p.productId);
           return (
-            <div key={p.id} onClick={() => setSelectedId(p.id)} className="glass-card p-5 flex items-center gap-5 cursor-pointer hover:border-primary/50 transition group">
-              <img src={prod?.image} className="w-16 h-16 rounded-2xl object-cover" alt="" />
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-start">
-                  <h4 className="font-bold text-foreground truncate group-hover:text-primary transition">{prod?.name}</h4>
-                  <Badge className={statusMap[p.status].cls}>{statusMap[p.status].label}</Badge>
+            <div key={p.id} className="glass-card p-4 sm:p-5 hover:border-primary/40 transition">
+              <div className="flex items-start gap-4">
+                <img src={prod?.image} className="w-16 h-16 rounded-lg object-cover shrink-0" alt="" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-foreground truncate">{prod?.name}</h4>
+                      {p.variationName && <p className="text-[10px] text-primary font-bold">Opção: {p.variationName}</p>}
+                      <p className="text-xs text-muted-foreground mt-0.5">Pedido #{p.id} · {new Date(p.createdAt).toLocaleDateString("pt-BR")}</p>
+                    </div>
+                    <Badge className={`${statusMap[p.status].cls} shrink-0`}>{statusMap[p.status].label}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between mt-2 gap-3 flex-wrap">
+                    <p className="text-sm font-black text-foreground">R$ {p.amount.toFixed(2)}</p>
+                    <div className="flex items-center gap-2">
+                      {p.status === "pending" ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handlePayPix(p, e); }}
+                          disabled={loadingPix === p.id}
+                          className="btn-gradient px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5"
+                        >
+                          <QrCode className="w-3.5 h-3.5" /> {loadingPix === p.id ? "Gerando..." : "Pagar Pix"}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSelectedId(p.id); }}
+                          className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 transition flex items-center gap-1.5"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" /> Chat
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setSelectedId(p.id)}
+                        className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 transition flex items-center gap-1.5"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> Detalhes
+                      </button>
+                    </div>
+                  </div>
+                  {p.status !== "cancelled" && p.status !== "dispute" && (
+                    <div className="mt-3 max-w-md">
+                      <StageStepper status={p.status} />
+                    </div>
+                  )}
+                  {p.status === "dispute" && (
+                    <p className="mt-2 text-[11px] font-bold text-destructive flex items-center gap-1">
+                      <ShieldAlert className="w-3.5 h-3.5" /> Disputa em análise pela equipe.
+                    </p>
+                  )}
                 </div>
-                {p.variationName && <p className="text-[10px] text-primary font-bold">Opção: {p.variationName}</p>}
-                <p className="text-xs text-muted-foreground mt-0.5">Comprado em {new Date(p.createdAt).toLocaleDateString()}</p>
-                <p className="text-sm font-black text-foreground mt-1">R$ {p.amount.toFixed(2)}</p>
               </div>
             </div>
           );
