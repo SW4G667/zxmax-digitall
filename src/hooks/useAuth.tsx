@@ -44,6 +44,7 @@ interface AuthContextType {
   isAdmin: boolean;
   mfaEnabled: boolean;
   needsMfa: boolean;
+  mfaChecked: boolean;
   signUp: (email: string, password: string, displayName: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   verifyMfa: (code: string) => Promise<{ error: string | null }>;
@@ -64,7 +65,6 @@ export function useAuth() {
   return ctx;
 }
 
-// Helper: timeout wrapper
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([
     promise,
@@ -81,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [needsMfa, setNeedsMfa] = useState(false);
+  const [mfaChecked, setMfaChecked] = useState(false);
   const [challengeId, setChallengeId] = useState<string | null>(null);
 
   const fetchProfile = async (userId: string) => {
@@ -134,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setMfaEnabled(false);
       setNeedsMfa(false);
       setChallengeId(null);
+      setMfaChecked(true);
       return;
     }
     try {
@@ -160,6 +162,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       setMfaEnabled(false);
       setNeedsMfa(false);
+    } finally {
+      setMfaChecked(true);
     }
   }, [challengeId]);
 
@@ -167,9 +171,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     let initTimeout: number | null = null;
 
-    // Safety: force loading false after 10s no matter what
     initTimeout = window.setTimeout(() => {
-      if (mounted) setLoading(false);
+      if (mounted) {
+        setLoading(false);
+        setMfaChecked(true);
+      }
     }, 10000);
 
     const init = async () => {
@@ -189,9 +195,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             checkAdmin(sess.user.id).catch(() => null),
             evaluateMfa(sess).catch(() => null),
           ]);
+        } else {
+          setMfaChecked(true);
         }
       } catch (e) {
         console.error("Auth init error", e);
+        setMfaChecked(true);
       } finally {
         if (mounted) {
           setLoading(false);
@@ -206,6 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!mounted) return;
       setSession(sess);
       setUser(sess?.user ?? null);
+      setMfaChecked(false);
 
       if (sess?.user) {
         setLoading(true);
@@ -226,6 +236,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setMfaEnabled(false);
         setNeedsMfa(false);
         setChallengeId(null);
+        setMfaChecked(true);
         setLoading(false);
       }
     });
@@ -238,7 +249,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [evaluateMfa]);
 
   const signUp = async (email: string, password: string, displayName: string) => {
-    // Basic rate limit check client side
     const last = localStorage.getItem("zxmax_last_signup");
     if (last && Date.now() - Number(last) < 5000) {
       return { error: "Aguarde 5s antes de tentar novamente." };
@@ -263,7 +273,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (attempts.count >= 5 && Date.now() - attempts.last < 15 * 60 * 1000) {
       return { error: "Muitas tentativas. Tente novamente em 15 minutos." };
     }
-
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       const next = { count: attempts.count + 1, last: Date.now() };
@@ -271,12 +280,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: error.message };
     }
     localStorage.removeItem(key);
+    setMfaChecked(false);
     if (data.session) void evaluateMfa(data.session);
     return { error: null };
   };
 
   const verifyMfa = async (code: string) => {
-    if (!challengeId) return { error: "Nenhum desafio pendente." };
+    if (!challengeId) {
+      // Try to get challenge from existing verified factor
+      const factors = await listFactors();
+      const verified = factors.find((f) => f.status === "verified");
+      if (!verified) return { error: "Nenhum desafio pendente. Faça login novamente." };
+      const chal = await supabase.auth.mfa.challenge({ factorId: verified.id });
+      if (chal.error || !chal.data?.id) return { error: "Falha ao criar desafio 2FA." };
+      setChallengeId(chal.data.id);
+      const { data, error } = await supabase.auth.mfa.verify({
+        factorId: verified.id,
+        challengeId: chal.data.id,
+        code,
+      });
+      if (error) return { error: error.message };
+      if (data?.session) {
+        setSession(data.session);
+        setUser(data.session.user);
+      }
+      setNeedsMfa(false);
+      setChallengeId(null);
+      setMfaEnabled(true);
+      return { error: null };
+    }
     const factor = (await listFactors()).find((f) => f.status === "verified");
     if (!factor) return { error: "Fator 2FA não encontrado." };
     const { data, error } = await supabase.auth.mfa.verify({
@@ -296,12 +328,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const enrollTotpStart = async (): Promise<{ data: TotpEnroll | null; error: string | null }> => {
+    try {
+      const { data: existing } = await supabase.auth.mfa.listFactors();
+      const unverified = (existing?.totp || []).filter((f) => f.status !== "verified");
+      for (const f of unverified) {
+        try {
+          await supabase.auth.mfa.unenroll({ factorId: f.id });
+        } catch {}
+      }
+    } catch {}
+
+    const uniqueName = `ZXMAX Authenticator ${Date.now().toString().slice(-4)}`;
     const { data, error } = await supabase.auth.mfa.enroll({
       factorType: "totp" as AdminFactorType,
-      friendlyName: "ZXMAX Authenticator",
+      friendlyName: uniqueName,
       issuer: "ZXMAX",
     } as any);
-    if (error || !data) return { data: null, error: error?.message || "Falha ao iniciar 2FA" };
+    if (error || !data) {
+      if (error?.message?.includes("already exists")) {
+        try {
+          const { data: existing2 } = await supabase.auth.mfa.listFactors();
+          for (const f of existing2?.totp || []) {
+            if (f.status !== "verified") {
+              await supabase.auth.mfa.unenroll({ factorId: f.id }).catch(() => {});
+            }
+          }
+          const retry = await supabase.auth.mfa.enroll({
+            factorType: "totp" as AdminFactorType,
+            friendlyName: `ZXMAX ${Math.random().toString(36).slice(2, 6)}`,
+            issuer: "ZXMAX",
+          } as any);
+          if (retry.error || !retry.data) return { data: null, error: retry.error?.message || "Falha ao iniciar 2FA" };
+          return {
+            data: { id: retry.data.id, qr: retry.data.totp.qr_code, secret: retry.data.totp.secret },
+            error: null,
+          };
+        } catch {}
+      }
+      return { data: null, error: error?.message || "Falha ao iniciar 2FA" };
+    }
     return {
       data: { id: data.id, qr: data.totp.qr_code, secret: data.totp.secret },
       error: null,
@@ -315,6 +380,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (verify.error) return { error: verify.error.message };
     setMfaEnabled(true);
     setNeedsMfa(false);
+    setMfaChecked(true);
     if (verify.data?.session) {
       setSession(verify.data.session);
       setUser(verify.data.session.user);
@@ -342,6 +408,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAdmin(false);
     setMfaEnabled(false);
     setNeedsMfa(false);
+    setMfaChecked(true);
     setChallengeId(null);
   };
 
@@ -358,7 +425,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user, profile, session, loading, banned, isAdmin,
-      mfaEnabled, needsMfa,
+      mfaEnabled, needsMfa, mfaChecked,
       signUp, signIn, verifyMfa,
       enrollTotpStart, enrollTotpVerify, unenrollTotp, listFactors,
       signOut, refreshProfile, updateProfile: updateProfileFn,

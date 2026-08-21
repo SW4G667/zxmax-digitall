@@ -25,16 +25,44 @@ export default function TwoFactorPanel() {
 
   const startEnroll = async () => {
     setBusy(true);
-    const { data, error } = await enrollTotpStart();
-    setBusy(false);
-    if (error || !data) {
-      toast.error(error || "Não foi possível iniciar a configuração.");
-      return;
+    try {
+      const { data, error } = await enrollTotpStart();
+      if (error || !data) {
+        // If already exists, try to clean and inform user
+        if (error.includes("already exists")) {
+          toast.error("Já existe um código pendente. Limpando e gerando novo...");
+          // Force clean all unverified
+          const factors = await listFactors();
+          for (const f of factors) {
+            if (f.status !== "verified") {
+              await unenrollTotp(f.id).catch(() => {});
+            }
+          }
+          const retry = await enrollTotpStart();
+          if (retry.error || !retry.data) {
+            toast.error(retry.error || "Não foi possível gerar novo código. Tente remover o 2FA existente primeiro.");
+            setBusy(false);
+            return;
+          }
+          setQr(retry.data.qr);
+          setSecret(retry.data.secret);
+          setFactorId(retry.data.id);
+          setStage("verify");
+          setBusy(false);
+          return;
+        }
+        toast.error(error || "Não foi possível iniciar a configuração.");
+        setBusy(false);
+        return;
+      }
+      setQr(data.qr);
+      setSecret(data.secret);
+      setFactorId(data.id);
+      setStage("verify");
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao configurar 2FA");
     }
-    setQr(data.qr);
-    setSecret(data.secret);
-    setFactorId(data.id);
-    setStage("verify");
+    setBusy(false);
   };
 
   const confirmEnroll = async () => {

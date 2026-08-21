@@ -24,7 +24,7 @@ const PROTECTED_VIEWS: View[] = ["inventory", "purchases", "support", "withdraw"
 
 function Dashboard({ view }: { view: View }) {
   const { refreshPurchases } = useStore();
-  const { isAdmin, user, needsMfa, mfaEnabled } = useAuth();
+  const { isAdmin, user, needsMfa, mfaEnabled, mfaChecked } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [authOpen, setAuthOpen] = useState(false);
@@ -73,7 +73,8 @@ function Dashboard({ view }: { view: View }) {
   }, [user, refreshPurchases, navigate]);
 
   // Admin MFA enforcement - only admin needs authenticator to prevent hacker invasion
-  if (view === "admin" && user && isAdmin && !mfaEnabled) {
+  // Wait for mfaChecked to avoid flicker/loading stuck
+  if (view === "admin" && user && isAdmin && mfaChecked && !mfaEnabled) {
     return (
       <AppShell>
         <div className="max-w-2xl mx-auto py-10">
@@ -92,6 +93,10 @@ function Dashboard({ view }: { view: View }) {
         </div>
       </AppShell>
     );
+  }
+
+  if (view === "admin" && user && isAdmin && !mfaChecked) {
+    return <LoadingScreen message="Verificando proteção admin..." />;
   }
 
   return (
