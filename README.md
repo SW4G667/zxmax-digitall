@@ -1,73 +1,26 @@
-# Welcome to your Lovable project
+# ZX MAX
 
-## Project info
+Crie um site completo de marketplace de produtos digitais/virtuais chamado ZXMAX, com visual bonito, atrativo e moderno inspirado em https://ggmax.com.br e https://ereemby.com/: fundo claro com gradiente suave (branco/cinza claro para roxo/azul vibrante), cards brancos ou coloridos com sombras suaves e bordas arredondadas, cores vibrantes (roxo, azul, rosa, verde neon em destaques), espaçamento generoso, animações suaves (hover scale/lift, fade-in, pulse em botões), tipografia bold moderna (Poppins ou Inter), header clean com logo ZXMAX grande e chamativo, barra de pesquisa central, ícones coloridos, layout responsivo perfeito. O site é um marketplace onde qualquer usuário pode vender produtos digitais/virtuais (bots Discord, contas de jogos/streaming, scripts, serviços online, designs digitais, consultoria virtual, arquivos, keys de software, etc.). Foco em atrair clientes: variedade enorme, fotos bonitas, descrições detalhadas, avaliações reais, chat de negociação/entrega, sistema de disputa (admin intervém e reverte pagamento se golpe), e você ganha taxa em cada venda. Use emojis customizados estilizados (não use emojis padrão do sistema, celular ou PC): crie todos com CSS puro ou SVG (ex: estrela dourada com raios pulsantes, chave neon colorida com glow, dinheiro voando com partículas, coração roxo pulsante, foguete colorido acelerando, escudo azul com aura, balão de chat com efeito de digitação, câmera com flash colorido, etc.). Coloque emojis customizados em títulos, botões, toasts, sidebar e produtos (ex: Loja 🔥, Meus Anúncios 📦, Carteira 💰, Suporte 📩, Sair 🚪). **Tela inicial bonita e chamativa:** - Fundo com produtos em destaque desfocados (blur) para destacar a tela de login/register - Tela de login/register centralizada com design bonito e moderno (abas "Entrar" e "Criar conta") - Registro: email + senha + confirmar senha + botão "Criar conta" (ou login com Discord/Google via OAuth) - Login: email/senha + botões grandes e coloridos "Entrar com Discord" e "Entrar com Google" - Salva sessão no localStorage (mantém logado ao fechar navegador) - Botão pequeno no header para mudar tema (light/dark) **Sistema de login e registro obrigatório:** - Site começa na tela de login/register (não permite acessar nada sem conta) - Após registro/login bem-sucedido, redireciona para dashboard "Loja" - Se email for exatamente "admin@keybot.com", redireciona silenciosamente para painel admin (sem texto explicativo visível) **Bottom navigation com três barrinhas:** - Barra inferior com ícones grandes e coloridos para navegação rápida: - Loja (ícone custom de carrinho 🔥) - Meus Anúncios (ícone custom de pacote 📦) — ao clicar, abre página com lista de produtos criados pelo usuário + botão grande "Criar Novo Produto" - Suporte (ícone custom de headset 📩) - Clique neles muda a página principal **Bolinha de perfil (foto + nome):** - No header: bolinha redonda com foto de perfil (upload ou default avatar) + nome do usuário ao lado - Ao clicar na bolinha: abre mini-perfil modal ou página com: - Foto maior - Nome editável - Saldo atual (R$) - Avaliações (estrelas médias + total) - Ganhos totais - Botão "Enviar documentos" (upload de RG/CPF/selfie para verificação de saque — admin vê e aprova) - Botão "Editar perfil" (mudar foto, nome, etc.) **Painel Admin (acesso só com conta admin@keybot.com):** - Você controla tudo: taxa de comissão (ex: 10%), taxa saque instantâneo (5-7%), categorias, produtos, usuários, saques, suporte, avisos, disputas, etc. - Aba "Configurações Gerais": Stripe Publishable Key, Secret Key, taxa comissão, taxa saque instantâneo, link Discord (obrigatório para botão funcionar) - Aba "Categorias": adicionar/editar categorias (ex: Bots Discord, Contas de Jogos, Designs Digitais, Serviços Online, Consultoria Virtual, etc.) - Aba "Produtos": ver todos os produtos (pendentes/aprovados) + botão "Aprovar" ou "Rejeitar" - Aba "Compras": lista de compras (pendente/pago/entregue/disputa) + botão "Aprovar Entrega" ou "Reverter Pagamento" (se golpe) - Aba "Saque": lista de pedidos de saque (valor, método: 5-7 dias normal ou instantâneo com taxa 5-7%) - Admin verifica documentos (foto RG/CPF/selfie) antes de aprovar saque - Botão "Aprovar Saque" (envia dinheiro via Stripe Connect ou manual) - Aba "Suporte/Disputas": lista de tickets/chats/disputas + ao clicar abre chat completo com histórico (bolhas, data/hora, preview de imagem) - Admin responde diretamente no chat - Botão "Chamar Suporte" no chat do usuário envia mensagem "Aguardando suporte" - Se detectar golpe, admin pode reverter pagamento (devolver dinheiro pro comprador) e banir usuário (temporário ou permanente) - Aba "Avisos": textarea para mandar aviso global (banner/toast para todos os usuários logados) - Aba "Usuários": ver lista de usuários, saldo, ganhos, documentos enviados para saque, banir/desbanir **Sistema de vendas e entrega para usuários:** - Usuários criam e vendem produtos digitais/virtuais (ganham dinheiro menos sua taxa de comissão) - Ao criar produto: nome, categoria (select), descrição, preço, foto upload, entrega automática (envia código/key/link via chat) ou manual - Saldo aparece em "Carteira" - Usuário solicita saque (normal 5-7 dias sem taxa ou instantâneo com taxa 5-7%) - Admin verifica documentos na aba Saque antes de aprovar **Fluxo de compra:** - Na loja pública: cards de produtos com nome, categoria, preço, foto, quantidade vendida, avaliações (estrelas médias) - Ao clicar "Comprar": abre Stripe Checkout real (pagamento automático com cartão/Pix, não mensagem falsa) - Webhook do Stripe confirma pagamento e muda status para "Pago" no admin - Após aprovação manual do admin, abre chat entre comprador e vendedor - Vendedor entrega manualmente (conversa no chat) ou automaticamente (envia código/key/link) - No chat: botão "Chamar Suporte" (envia mensagem "Aguardando suporte") - Após entrega aprovada, comprador avalia vendedor (estrelas + comentário) **Perfil do vendedor:** - Mostra foto, nome, avaliações (estrelas médias + comentários), saldo, ganhos totais **Barra de pesquisa:** - Barra de pesquisa no header ou na loja para buscar produtos por nome/categoria Use localStorage para persistir login, produtos, compras, saldo, saques, chave Pix, link Discord. Código limpo, comentado, responsivo, modais bonitos, toasts de sucesso/erro, animações suaves. Entregue o HTML completo atualizado pronto para salvar como index.html e abrir direto.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+This project was built with [Lovable](https://lovable.dev).
 
-## How can I edit this code?
+**Live app**: https://zxmax-digital.lovable.app
 
-There are several ways of editing your application.
+## Build with Lovable
 
-**Use Lovable**
+Continue developing this project in the [Lovable editor](https://lovable.dev/projects/9a9706a8-1828-4709-abbf-bfab14dde6f0).
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+- **Ship faster**: describe what you want to build and Lovable handles the code.
+- **Stay in sync**: every change made in Lovable is committed straight to this repository.
+- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
 
-Changes made via Lovable will be committed automatically to this repo.
+## Development
 
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
+git clone <this-repository-url>
+cd <repository-name>
 npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
 npm run dev
 ```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)

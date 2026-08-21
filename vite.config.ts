@@ -8,14 +8,10 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    allowedHosts: true,
     hmr: {
       overlay: false,
     },
-  },
-  preview: {
-    host: "0.0.0.0",
-    port: 4173,
-    allowedHosts: true,
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {

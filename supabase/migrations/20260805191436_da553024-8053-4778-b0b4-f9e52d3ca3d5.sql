@@ -1,0 +1,1 @@
+REVOKE ALL ON FUNCTION public.prevent_admin_ban() FROM PUBLIC, anon, authenticated;

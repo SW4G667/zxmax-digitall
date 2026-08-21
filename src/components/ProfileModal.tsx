@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from "react";
-import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import React, { useState, useRef } from "react";
+import { useStore } from "@/store/StoreContext";
+import { useAuth } from "@/hooks/useAuth";
 import { StarEmoji, MoneyEmoji, DoorEmoji, CameraEmoji, KeyEmoji } from "@/components/CustomEmojis";
-import { X, CreditCard as Edit, Upload, Copy, Check } from "lucide-react";
+import { X, Edit, Upload, Shield } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import TwoFactorPanel from "@/components/TwoFactorPanel";
 
 interface Props {
   open: boolean;
@@ -11,110 +13,118 @@ interface Props {
 }
 
 export default function ProfileModal({ open, onClose }: Props) {
-  const { profile, user, signOut, refreshProfile } = useAuth();
-  const [editName, setEditName] = useState("");
+  const { state, requestWithdraw, logout, updatePixKey, submitSellerDocument } = useStore();
+  const { user: authUser, profile, updateProfile: updateAuthProfile, refreshProfile } = useAuth();
+  const storeUser = state.currentUser;
+  const [editName, setEditName] = useState(profile?.display_name || storeUser?.name || "");
   const [editing, setEditing] = useState(false);
-  const [pixKey, setPixKey] = useState("");
+  const [pixKey, setPixKey] = useState(profile?.pix_key || storeUser?.pixKey || "");
   const [editingPix, setEditingPix] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [copiedId, setCopiedId] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (profile) {
-      setEditName(profile.display_name || "");
-      setPixKey(profile.pix_key || "");
-    }
-  }, [profile]);
-
-  if (!open || !profile || !user) return null;
-
-  const displayName = profile.display_name || profile.email?.split("@")[0] || "Usuario";
-  const avatarUrl = profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(displayName)}`;
+  if (!open || !storeUser || !authUser) return null;
 
   const handleSave = async () => {
-    if (!editName.trim()) return;
-    setSaving(true);
-    try {
-      const { error } = await supabase
-        .from("users")
-        .update({ display_name: editName.trim(), updated_at: new Date().toISOString() })
-        .eq("id", user.id);
-
-      if (error) throw error;
-      await refreshProfile();
+    if (editName.trim()) {
+      await updateAuthProfile({ display_name: editName.trim() });
       toast.success("Perfil atualizado!");
-    } catch (err) {
-      toast.error("Erro ao atualizar perfil");
     }
-    setSaving(false);
     setEditing(false);
   };
 
   const handleSavePix = async () => {
-    if (!pixKey.trim()) return;
-    setSaving(true);
-    try {
-      const { error } = await supabase
-        .from("users")
-        .update({ pix_key: pixKey.trim(), updated_at: new Date().toISOString() })
-        .eq("id", user.id);
-
-      if (error) throw error;
-      await refreshProfile();
+    if (pixKey.trim()) {
+      await updateAuthProfile({ pix_key: pixKey.trim() });
+      updatePixKey(pixKey.trim());
       toast.success("Chave Pix salva!");
-    } catch (err) {
-      toast.error("Erro ao salvar chave Pix");
     }
-    setSaving(false);
     setEditingPix(false);
   };
 
-  const handleWithdraw = async () => {
-    const balance = Number(profile.balance || 0);
-    if (balance < 3.50) {
-      toast.error("O saldo minimo para saque e de R$ 3,50.");
-      return;
-    }
-    if (!profile.pix_key) {
-      toast.error("Cadastre sua chave Pix antes de solicitar saque.");
+  const handleWithdraw = (method: "normal" | "instant") => {
+    if (!storeUser.isVerified) return toast.error("Você precisa ter seus documentos aprovados pelo admin para sacar.");
+    if (storeUser.balance < 3.50) return toast.error("Saldo mínimo para saque é R$ 3,50.");
+    if (!profile?.pix_key && !storeUser.pixKey) return toast.error("Cadastre sua chave Pix antes de solicitar saque.");
+    requestWithdraw(method);
+    toast.success("Saque solicitado! Após aprovação do admin, o valor cai em 5 a 7 dias úteis.");
+  };
+
+  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Arquivo muito grande. Máximo: 5MB.");
       return;
     }
 
+    setUploading(true);
     try {
-      const { error } = await supabase.from("withdrawals").insert({
-        seller_id: user.id,
-        amount: balance,
-        pix_key: profile.pix_key,
-        type: "normal",
-        fee: 0,
-      });
+      const filePath = `${authUser.id}/${Date.now()}_${file.name}`;
+      const { error } = await supabase.storage
+        .from("documents")
+        .upload(filePath, file);
 
       if (error) throw error;
-
-      // Deduct balance
-      await supabase
-        .from("users")
-        .update({ balance: 0, updated_at: new Date().toISOString() })
-        .eq("id", user.id);
-
-      await refreshProfile();
-      toast.success(`Saque solicitado com sucesso!`);
-    } catch (err) {
-      toast.error("Erro ao solicitar saque");
+      submitSellerDocument(filePath, file.name);
+      await updateAuthProfile({ document_type: "rg_ou_certidao" });
+      toast.success("Documento enviado com sucesso! Aguarde verificação.");
+    } catch (err: any) {
+      toast.error("Erro ao enviar documento: " + (err.message || "Tente novamente."));
     }
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const copyUserId = async () => {
-    await navigator.clipboard.writeText(user.id);
-    setCopiedId(true);
-    toast.success("ID copiado!");
-    setTimeout(() => setCopiedId(false), 2000);
+  const compressImage = (file: File, max = 256): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, max / Math.max(img.width, img.height));
+          const w = Math.round(img.width * scale);
+          const h = Math.round(img.height * scale);
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return reject(new Error("Canvas não suportado"));
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL("image/jpeg", 0.82));
+        };
+        img.onerror = reject;
+        img.src = reader.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Selecione uma imagem.");
+      return;
+    }
+    setAvatarUploading(true);
+    try {
+      const dataUrl = await compressImage(file, 256);
+      await updateAuthProfile({ avatar_url: dataUrl });
+      await refreshProfile();
+      toast.success("Foto de perfil atualizada!");
+    } catch (err: any) {
+      toast.error("Erro ao atualizar foto: " + (err?.message || "Tente novamente."));
+    }
+    setAvatarUploading(false);
+    if (avatarInputRef.current) avatarInputRef.current.value = "";
   };
 
-  const handleLogout = async () => {
-    await signOut();
-    onClose();
-  };
+  const displayName = profile?.display_name || storeUser.name;
+
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm" onClick={onClose}>
@@ -124,39 +134,19 @@ export default function ProfileModal({ open, onClose }: Props) {
           <button onClick={onClose} className="p-2 hover:bg-muted rounded-xl"><X className="w-5 h-5 text-muted-foreground" /></button>
         </div>
 
-        {/* User ID */}
-        <div className="mb-4 p-3 bg-muted rounded-xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground uppercase font-bold mb-1">Seu ID</p>
-              <p className="text-xs font-mono text-foreground break-all">{user.id}</p>
-            </div>
-            <button onClick={copyUserId} className="p-2 hover:bg-card rounded-lg transition">
-              {copiedId ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4 text-muted-foreground" />}
-            </button>
-          </div>
-        </div>
-
         <div className="flex items-center gap-5 mb-6 p-5 bg-muted rounded-2xl">
           <div className="relative">
-            <img src={avatarUrl} className="w-20 h-20 rounded-2xl object-cover shadow-lg" alt="Avatar" />
-            <button className="absolute -bottom-2 -right-2 bg-card p-1.5 rounded-lg shadow-md border border-border">
+            <img src={profile?.avatar_url || storeUser.avatar} className="w-20 h-20 rounded-2xl object-cover shadow-lg" alt="Avatar" />
+            <input type="file" ref={avatarInputRef} accept="image/*" onChange={handleAvatarUpload} className="hidden" />
+            <button onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading} className="absolute -bottom-2 -right-2 bg-card p-1.5 rounded-lg shadow-md border border-border hover:bg-muted transition disabled:opacity-50">
               <CameraEmoji className="w-4 h-4" />
             </button>
           </div>
           <div className="flex-1">
             {editing ? (
               <div className="flex gap-2">
-                <input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="text-lg font-bold bg-card rounded-xl px-3 py-1 border border-border text-foreground flex-1 outline-none focus:ring-2 ring-primary"
-                  autoFocus
-                  disabled={saving}
-                />
-                <button onClick={handleSave} disabled={saving} className="btn-gradient px-3 py-1 text-xs disabled:opacity-50">
-                  {saving ? "Salvando..." : "Salvar"}
-                </button>
+                <input value={editName} onChange={(e) => setEditName(e.target.value)} className="text-lg font-bold bg-card rounded-xl px-3 py-1 border border-border text-foreground flex-1" autoFocus />
+                <button onClick={handleSave} className="btn-gradient px-3 py-1 text-xs">Salvar</button>
               </div>
             ) : (
               <div className="flex items-center gap-2">
@@ -164,21 +154,23 @@ export default function ProfileModal({ open, onClose }: Props) {
                 <button onClick={() => setEditing(true)}><Edit className="w-4 h-4 text-muted-foreground" /></button>
               </div>
             )}
-            <p className="text-muted-foreground text-sm mt-0.5">{profile.email}</p>
-            <div className="flex gap-0.5 mt-1">
-              {[1, 2, 3, 4, 5].map((s) => <StarEmoji key={s} className="w-4 h-4" />)}
-            </div>
+            <p className="text-muted-foreground text-xs mt-0.5 font-mono break-all">ID: {storeUser.publicId}</p>
+            {storeUser.isVerified && (
+              <p className="text-success text-sm mt-0.5 font-semibold flex items-center gap-1">
+                <Shield className="w-3 h-3" /> Vendedor Verificado
+              </p>
+            )}
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 mb-6">
           <div className="p-4 bg-primary/5 rounded-2xl">
-            <p className="text-[10px] font-bold text-primary uppercase">Saldo Disponivel</p>
-            <p className="text-2xl font-black text-primary">R$ {Number(profile.balance || 0).toFixed(2)}</p>
+            <p className="text-[10px] font-bold text-primary uppercase">Saldo Disponível</p>
+            <p className="text-2xl font-black text-primary">R$ {storeUser.balance.toFixed(2)}</p>
           </div>
           <div className="p-4 bg-success/5 rounded-2xl">
             <p className="text-[10px] font-bold text-success uppercase">Ganhos Totais</p>
-            <p className="text-2xl font-black text-success">R$ {Number(profile.earnings || 0).toFixed(2)}</p>
+            <p className="text-2xl font-black text-success">R$ {storeUser.earnings.toFixed(2)}</p>
           </div>
         </div>
 
@@ -189,7 +181,7 @@ export default function ProfileModal({ open, onClose }: Props) {
               <KeyEmoji className="w-4 h-4" /> Dados para Saque (Pix)
             </p>
             {!editingPix && (
-              <button onClick={() => setEditingPix(true)} className="text-primary text-xs font-bold">{profile.pix_key ? "Editar" : "Cadastrar"}</button>
+              <button onClick={() => setEditingPix(true)} className="text-primary text-xs font-bold">{profile?.pix_key || storeUser.pixKey ? "Editar" : "Cadastrar"}</button>
             )}
           </div>
           {editingPix ? (
@@ -197,37 +189,48 @@ export default function ProfileModal({ open, onClose }: Props) {
               <input
                 value={pixKey}
                 onChange={(e) => setPixKey(e.target.value)}
-                placeholder="CPF, email, telefone ou chave aleatoria"
+                placeholder="CPF, email, telefone ou chave aleatória"
                 className="flex-1 p-2.5 rounded-xl bg-card text-foreground text-sm border border-border outline-none focus:ring-2 ring-primary"
                 autoFocus
-                disabled={saving}
               />
-              <button onClick={handleSavePix} disabled={saving} className="btn-gradient px-3 py-1 text-xs disabled:opacity-50">
-                {saving ? "Salvando..." : "Salvar"}
-              </button>
+              <button onClick={handleSavePix} className="btn-gradient px-3 py-1 text-xs">Salvar</button>
               <button onClick={() => setEditingPix(false)} className="text-xs text-muted-foreground">Cancelar</button>
             </div>
           ) : (
-            <p className="text-sm text-foreground">{profile.pix_key || <span className="text-muted-foreground italic">Nenhuma chave cadastrada</span>}</p>
+            <p className="text-sm text-foreground">{profile?.pix_key || storeUser.pixKey || <span className="text-muted-foreground italic">Nenhuma chave cadastrada</span>}</p>
           )}
         </div>
 
         <div className="space-y-2">
-          {Number(profile.balance || 0) >= 3.50 && (
-            <button
-              onClick={handleWithdraw}
-              className="w-full flex items-center justify-between p-4 btn-gradient rounded-xl font-bold text-sm hover:opacity-90 transition"
-            >
-              <div className="flex items-center gap-2">
-                <MoneyEmoji className="w-5 h-5" />
-                <span>Solicitar Saque (R$ 3,50+)</span>
-              </div>
-            </button>
-          )}
-          <button className="w-full flex items-center justify-center gap-2 p-3 border border-border rounded-xl text-muted-foreground font-semibold text-sm hover:bg-muted transition">
-            <Upload className="w-4 h-4" /> Enviar Documentos (RG ou Certidao)
+          <button onClick={() => handleWithdraw("normal")} className="w-full flex items-center justify-between p-4 bg-foreground text-background rounded-xl font-bold text-sm hover:opacity-90 transition">
+            <div className="flex items-center gap-2">
+              <MoneyEmoji className="w-5 h-5" />
+              <span>Solicitar Saque (5 a 7 dias úteis)</span>
+            </div>
           </button>
-          <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 p-3 text-destructive font-bold text-sm hover:bg-destructive/5 rounded-xl transition">
+
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept="image/*,.pdf"
+            onChange={handleDocumentUpload}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="w-full flex items-center justify-center gap-2 p-3 border border-border rounded-xl text-muted-foreground font-semibold text-sm hover:bg-muted transition disabled:opacity-50"
+          >
+            <Upload className="w-4 h-4" /> {uploading ? "Enviando..." : "Enviar Documentos (RG / Certidão)"}
+          </button>
+          
+          <a href="/perfil" className="w-full flex items-center justify-center gap-2 p-3 border border-border rounded-xl text-muted-foreground font-semibold text-sm hover:bg-muted transition">
+            <Shield className="w-4 h-4" /> Dados pessoais e verificação
+          </a>
+
+          <TwoFactorPanel />
+
+          <button onClick={logout} className="w-full flex items-center justify-center gap-2 p-3 text-destructive font-bold text-sm hover:bg-destructive/5 rounded-xl transition">
             <DoorEmoji className="w-5 h-5" /> Sair da Conta
           </button>
         </div>

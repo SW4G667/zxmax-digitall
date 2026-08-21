@@ -7,540 +7,866 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.4"
+  }
   public: {
     Tables: {
-      users: {
+      app_settings: {
         Row: {
-          id: string
-          email: string
-          display_name: string
-          avatar_url: string | null
-          balance: number
-          earnings: number
-          pix_key: string | null
-          role: 'user' | 'seller' | 'support' | 'admin'
-          is_banned: boolean
-          ban_reason: string | null
-          banned_at: string | null
-          banned_by: string | null
-          is_seller: boolean
-          seller_approved: boolean
-          documents_uploaded: boolean
           created_at: string
+          key: string
           updated_at: string
+          value: Json
         }
         Insert: {
-          id: string
-          email: string
-          display_name?: string
-          avatar_url?: string | null
-          balance?: number
-          earnings?: number
-          pix_key?: string | null
-          role?: 'user' | 'seller' | 'support' | 'admin'
-          is_banned?: boolean
-          ban_reason?: string | null
-          banned_at?: string | null
-          banned_by?: string | null
-          is_seller?: boolean
-          seller_approved?: boolean
-          documents_uploaded?: boolean
           created_at?: string
+          key: string
           updated_at?: string
+          value?: Json
         }
         Update: {
-          id?: string
-          email?: string
-          display_name?: string
-          avatar_url?: string | null
-          balance?: number
-          earnings?: number
-          pix_key?: string | null
-          role?: 'user' | 'seller' | 'support' | 'admin'
-          is_banned?: boolean
-          ban_reason?: string | null
-          banned_at?: string | null
-          banned_by?: string | null
-          is_seller?: boolean
-          seller_approved?: boolean
-          documents_uploaded?: boolean
           created_at?: string
+          key?: string
           updated_at?: string
+          value?: Json
         }
+        Relationships: []
       }
-      products: {
+      bans: {
         Row: {
-          id: string
-          seller_id: string
-          name: string
-          description: string
-          category: string
-          price: number
-          main_image: string | null
-          banner_image: string | null
-          delivery_type: 'manual' | 'automatic'
-          delivery_content: string | null
-          variations: Json | null
-          status: 'pending' | 'approved' | 'rejected'
-          rejection_reason: string | null
-          allow_affiliates: boolean
-          affiliate_commission: number
+          active: boolean
+          banned_by: string
           created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          seller_id: string
-          name: string
-          description?: string
-          category: string
-          price: number
-          main_image?: string | null
-          banner_image?: string | null
-          delivery_type?: 'manual' | 'automatic'
-          delivery_content?: string | null
-          variations?: Json | null
-          status?: 'pending' | 'approved' | 'rejected'
-          rejection_reason?: string | null
-          allow_affiliates?: boolean
-          affiliate_commission?: number
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          seller_id?: string
-          name?: string
-          description?: string
-          category?: string
-          price?: number
-          main_image?: string | null
-          banner_image?: string | null
-          delivery_type?: 'manual' | 'automatic'
-          delivery_content?: string | null
-          variations?: Json | null
-          status?: 'pending' | 'approved' | 'rejected'
-          rejection_reason?: string | null
-          allow_affiliates?: boolean
-          affiliate_commission?: number
-          created_at?: string
-          updated_at?: string
-        }
-      }
-      purchases: {
-        Row: {
           id: string
-          buyer_id: string
-          seller_id: string
-          product_id: string
-          amount: number
-          status: 'pending' | 'paid' | 'delivered' | 'dispute'
-          delivery_content: string | null
-          affiliate_id: string | null
-          affiliate_commission: number
-          created_at: string
-          updated_at: string
-          metadata: Json | null
-        }
-        Insert: {
-          id?: string
-          buyer_id: string
-          seller_id: string
-          product_id: string
-          amount: number
-          status?: 'pending' | 'paid' | 'delivered' | 'dispute'
-          delivery_content?: string | null
-          affiliate_id?: string | null
-          affiliate_commission?: number
-          created_at?: string
-          updated_at?: string
-          metadata?: Json | null
-        }
-        Update: {
-          id?: string
-          buyer_id?: string
-          seller_id?: string
-          product_id?: string
-          amount?: number
-          status?: 'pending' | 'paid' | 'delivered' | 'dispute'
-          delivery_content?: string | null
-          affiliate_id?: string | null
-          affiliate_commission?: number
-          created_at?: string
-          updated_at?: string
-          metadata?: Json | null
-        }
-      }
-      reviews: {
-        Row: {
-          id: string
-          product_id: string
-          buyer_id: string
-          purchase_id: string
-          rating: number
-          comment: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          product_id: string
-          buyer_id: string
-          purchase_id: string
-          rating: number
-          comment?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          product_id?: string
-          buyer_id?: string
-          purchase_id?: string
-          rating?: number
-          comment?: string | null
-          created_at?: string
-        }
-      }
-      questions: {
-        Row: {
-          id: string
-          product_id: string
-          buyer_id: string
-          question: string
-          answer: string | null
-          answered_at: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          product_id: string
-          buyer_id: string
-          question: string
-          answer?: string | null
-          answered_at?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          product_id?: string
-          buyer_id?: string
-          question?: string
-          answer?: string | null
-          answered_at?: string | null
-          created_at?: string
-        }
-      }
-      affiliate_links: {
-        Row: {
-          id: string
-          product_id: string
-          affiliate_id: string
-          code: string
-          clicks: number
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          product_id: string
-          affiliate_id: string
-          code: string
-          clicks?: number
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          product_id?: string
-          affiliate_id?: string
-          code?: string
-          clicks?: number
-          created_at?: string
-        }
-      }
-      notifications: {
-        Row: {
-          id: string
+          reason: string
           user_id: string
-          type: string
-          title: string
-          content: string
-          data: Json | null
-          read: boolean
-          created_at: string
         }
         Insert: {
-          id?: string
-          user_id: string
-          type: string
-          title: string
-          content: string
-          data?: Json | null
-          read?: boolean
+          active?: boolean
+          banned_by: string
           created_at?: string
+          id?: string
+          reason?: string
+          user_id: string
         }
         Update: {
+          active?: boolean
+          banned_by?: string
+          created_at?: string
           id?: string
+          reason?: string
           user_id?: string
-          type?: string
-          title?: string
-          content?: string
-          data?: Json | null
-          read?: boolean
-          created_at?: string
         }
-      }
-      tickets: {
-        Row: {
-          id: string
-          user_id: string
-          subject: string
-          status: 'open' | 'closed'
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          subject: string
-          status?: 'open' | 'closed'
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          user_id?: string
-          subject?: string
-          status?: 'open' | 'closed'
-          created_at?: string
-          updated_at?: string
-        }
-      }
-      ticket_messages: {
-        Row: {
-          id: string
-          ticket_id: string
-          sender_id: string
-          message: string
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          ticket_id: string
-          sender_id: string
-          message: string
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          ticket_id?: string
-          sender_id?: string
-          message?: string
-          created_at?: string
-        }
-      }
-      purchase_messages: {
-        Row: {
-          id: string
-          purchase_id: string
-          sender_id: string
-          message: string
-          attachment_url: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          purchase_id: string
-          sender_id: string
-          message: string
-          attachment_url?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          purchase_id?: string
-          sender_id?: string
-          message?: string
-          attachment_url?: string | null
-          created_at?: string
-        }
-      }
-      admin_chat: {
-        Row: {
-          id: string
-          sender_id: string
-          message: string
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          sender_id: string
-          message: string
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          sender_id?: string
-          message?: string
-          created_at?: string
-        }
-      }
-      withdrawals: {
-        Row: {
-          id: string
-          seller_id: string
-          amount: number
-          pix_key: string
-          status: 'pending' | 'approved' | 'rejected' | 'processing' | 'completed'
-          type: 'normal' | 'instant'
-          fee: number
-          created_at: string
-          processed_at: string | null
-        }
-        Insert: {
-          id?: string
-          seller_id: string
-          amount: number
-          pix_key: string
-          status?: 'pending' | 'approved' | 'rejected' | 'processing' | 'completed'
-          type: 'normal' | 'instant'
-          fee?: number
-          created_at?: string
-          processed_at?: string | null
-        }
-        Update: {
-          id?: string
-          seller_id?: string
-          amount?: number
-          pix_key?: string
-          status?: 'pending' | 'approved' | 'rejected' | 'processing' | 'completed'
-          type?: 'normal' | 'instant'
-          fee?: number
-          created_at?: string
-          processed_at?: string | null
-        }
-      }
-      documents: {
-        Row: {
-          id: string
-          user_id: string
-          type: 'rg' | 'birth_certificate'
-          file_url: string
-          status: 'pending' | 'approved' | 'rejected'
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          type: 'rg' | 'birth_certificate'
-          file_url: string
-          status?: 'pending' | 'approved' | 'rejected'
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          user_id?: string
-          type?: 'rg' | 'birth_certificate'
-          file_url?: string
-          status?: 'pending' | 'approved' | 'rejected'
-          created_at?: string
-        }
-      }
-      discord_connections: {
-        Row: {
-          id: string
-          user_id: string
-          discord_id: string
-          discord_username: string
-          discord_avatar: string | null
-          access_token: string
-          refresh_token: string
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          discord_id: string
-          discord_username: string
-          discord_avatar?: string | null
-          access_token: string
-          refresh_token: string
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          user_id?: string
-          discord_id?: string
-          discord_username?: string
-          discord_avatar?: string | null
-          access_token?: string
-          refresh_token?: string
-          created_at?: string
-          updated_at?: string
-        }
+        Relationships: []
       }
       global_notices: {
         Row: {
-          id: string
-          title: string
-          content: string
-          active: boolean
           created_at: string
+          created_by: string
+          id: string
+          text: string
         }
         Insert: {
-          id?: string
-          title: string
-          content: string
-          active?: boolean
           created_at?: string
+          created_by: string
+          id?: string
+          text: string
         }
         Update: {
-          id?: string
-          title?: string
-          content?: string
-          active?: boolean
           created_at?: string
+          created_by?: string
+          id?: string
+          text?: string
         }
+        Relationships: []
       }
-      config: {
+      order_messages: {
         Row: {
-          id: string
-          key: string
-          value: string | null
+          body: string | null
           created_at: string
+          id: string
+          image_path: string | null
+          order_id: number
+          sender_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          image_path?: string | null
+          order_id: number
+          sender_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          image_path?: string | null
+          order_id?: number
+          sender_id?: string
+        }
+        Relationships: []
+      }
+      payment_events: {
+        Row: {
+          charge_id: string | null
+          event_key: string
+          event_type: string
+          id: number
+          payload: Json
+          processed_at: string
+          provider: string
+          purchase_id: number | null
+        }
+        Insert: {
+          charge_id?: string | null
+          event_key: string
+          event_type: string
+          id?: number
+          payload?: Json
+          processed_at?: string
+          provider: string
+          purchase_id?: number | null
+        }
+        Update: {
+          charge_id?: string | null
+          event_key?: string
+          event_type?: string
+          id?: number
+          payload?: Json
+          processed_at?: string
+          provider?: string
+          purchase_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_events_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "purchases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_delivery: {
+        Row: {
+          created_at: string
+          delivery_content: string | null
+          delivery_type: string
+          product_id: number
           updated_at: string
         }
         Insert: {
-          id?: string
-          key: string
-          value?: string | null
           created_at?: string
+          delivery_content?: string | null
+          delivery_type?: string
+          product_id: number
           updated_at?: string
         }
         Update: {
-          id?: string
-          key?: string
-          value?: string | null
           created_at?: string
+          delivery_content?: string | null
+          delivery_type?: string
+          product_id?: number
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "product_delivery_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: true
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_delivery_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: true
+            referencedRelation: "products_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products: {
+        Row: {
+          approved: boolean
+          banner: string | null
+          category: string
+          created_at: string
+          delivery_content: string | null
+          delivery_type: string
+          description: string
+          id: number
+          image: string
+          name: string
+          price: number
+          questions: Json
+          rating: number
+          sales: number
+          seller_email: string
+          seller_id: string
+          seller_name: string
+          seller_public_id: string
+          updated_at: string
+          variations: Json
+        }
+        Insert: {
+          approved?: boolean
+          banner?: string | null
+          category?: string
+          created_at?: string
+          delivery_content?: string | null
+          delivery_type?: string
+          description?: string
+          id?: number
+          image?: string
+          name: string
+          price?: number
+          questions?: Json
+          rating?: number
+          sales?: number
+          seller_email?: string
+          seller_id: string
+          seller_name?: string
+          seller_public_id?: string
+          updated_at?: string
+          variations?: Json
+        }
+        Update: {
+          approved?: boolean
+          banner?: string | null
+          category?: string
+          created_at?: string
+          delivery_content?: string | null
+          delivery_type?: string
+          description?: string
+          id?: number
+          image?: string
+          name?: string
+          price?: number
+          questions?: Json
+          rating?: number
+          sales?: number
+          seller_email?: string
+          seller_id?: string
+          seller_name?: string
+          seller_public_id?: string
+          updated_at?: string
+          variations?: Json
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          birth_date: string | null
+          city: string
+          cpf: string
+          created_at: string
+          display_name: string
+          document_type: string | null
+          email: string
+          full_name: string
+          id: string
+          is_verified_seller: boolean
+          phone: string
+          pix_key: string | null
+          public_id: number
+          state: string
+          updated_at: string
+          user_id: string
+          verification_notes: string
+          verification_selfie_path: string
+          verification_status: string
+          verification_submitted_at: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          birth_date?: string | null
+          city?: string
+          cpf?: string
+          created_at?: string
+          display_name?: string
+          document_type?: string | null
+          email: string
+          full_name?: string
+          id?: string
+          is_verified_seller?: boolean
+          phone?: string
+          pix_key?: string | null
+          public_id?: number
+          state?: string
+          updated_at?: string
+          user_id: string
+          verification_notes?: string
+          verification_selfie_path?: string
+          verification_status?: string
+          verification_submitted_at?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          birth_date?: string | null
+          city?: string
+          cpf?: string
+          created_at?: string
+          display_name?: string
+          document_type?: string | null
+          email?: string
+          full_name?: string
+          id?: string
+          is_verified_seller?: boolean
+          phone?: string
+          pix_key?: string | null
+          public_id?: number
+          state?: string
+          updated_at?: string
+          user_id?: string
+          verification_notes?: string
+          verification_selfie_path?: string
+          verification_status?: string
+          verification_submitted_at?: string | null
+        }
+        Relationships: []
+      }
+      purchases: {
+        Row: {
+          amount: number
+          buyer_email: string
+          buyer_id: string
+          buyer_public_id: string
+          created_at: string
+          evopay_charge_id: string | null
+          id: number
+          messages: Json
+          pix_expires_at: string | null
+          pix_qr_code: string | null
+          product_id: number
+          review_comment: string | null
+          review_stars: number | null
+          reviewed: boolean
+          seller_email: string
+          seller_id: string
+          seller_public_id: string
+          status: string
+          updated_at: string
+          variation_name: string | null
+        }
+        Insert: {
+          amount?: number
+          buyer_email?: string
+          buyer_id: string
+          buyer_public_id?: string
+          created_at?: string
+          evopay_charge_id?: string | null
+          id?: number
+          messages?: Json
+          pix_expires_at?: string | null
+          pix_qr_code?: string | null
+          product_id: number
+          review_comment?: string | null
+          review_stars?: number | null
+          reviewed?: boolean
+          seller_email?: string
+          seller_id: string
+          seller_public_id?: string
+          status?: string
+          updated_at?: string
+          variation_name?: string | null
+        }
+        Update: {
+          amount?: number
+          buyer_email?: string
+          buyer_id?: string
+          buyer_public_id?: string
+          created_at?: string
+          evopay_charge_id?: string | null
+          id?: number
+          messages?: Json
+          pix_expires_at?: string | null
+          pix_qr_code?: string | null
+          product_id?: number
+          review_comment?: string | null
+          review_stars?: number | null
+          reviewed?: boolean
+          seller_email?: string
+          seller_id?: string
+          seller_public_id?: string
+          status?: string
+          updated_at?: string
+          variation_name?: string | null
+        }
+        Relationships: []
+      }
+      seller_documents: {
+        Row: {
+          created_at: string
+          document_type: string
+          file_name: string
+          file_path: string
+          id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_type?: string
+          file_name?: string
+          file_path: string
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          document_type?: string
+          file_name?: string
+          file_path?: string
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      team_chat: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_tag_assignments: {
+        Row: {
+          id: string
+          tag_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          tag_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          tag_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_tag_assignments_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "user_tags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_tags: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      webhook_logs: {
+        Row: {
+          charge_id: string | null
+          created_at: string
+          error: string | null
+          event_type: string | null
+          id: number
+          order_id: number | null
+          payload: Json | null
+          source: string
+          status: string | null
+        }
+        Insert: {
+          charge_id?: string | null
+          created_at?: string
+          error?: string | null
+          event_type?: string | null
+          id?: never
+          order_id?: number | null
+          payload?: Json | null
+          source?: string
+          status?: string | null
+        }
+        Update: {
+          charge_id?: string | null
+          created_at?: string
+          error?: string | null
+          event_type?: string | null
+          id?: never
+          order_id?: number | null
+          payload?: Json | null
+          source?: string
+          status?: string | null
+        }
+        Relationships: []
+      }
+      withdrawal_events: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          event_type: string
+          id: number
+          note: string
+          withdrawal_id: number
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: number
+          note?: string
+          withdrawal_id: number
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: number
+          note?: string
+          withdrawal_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "withdrawal_events_withdrawal_id_fkey"
+            columns: ["withdrawal_id"]
+            isOneToOne: false
+            referencedRelation: "withdrawals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      withdrawals: {
+        Row: {
+          amount: number
+          created_at: string
+          id: number
+          idempotency_key: string | null
+          method: string
+          pix_key: string
+          processed_at: string | null
+          provider_tx_id: string | null
+          rejection_reason: string
+          retry_of: number | null
+          status: string
+          updated_at: string
+          user_email: string
+          user_id: string
+          user_public_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          id?: number
+          idempotency_key?: string | null
+          method?: string
+          pix_key?: string
+          processed_at?: string | null
+          provider_tx_id?: string | null
+          rejection_reason?: string
+          retry_of?: number | null
+          status?: string
+          updated_at?: string
+          user_email?: string
+          user_id: string
+          user_public_id?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: number
+          idempotency_key?: string | null
+          method?: string
+          pix_key?: string
+          processed_at?: string | null
+          provider_tx_id?: string | null
+          rejection_reason?: string
+          retry_of?: number | null
+          status?: string
+          updated_at?: string
+          user_email?: string
+          user_id?: string
+          user_public_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "withdrawals_retry_of_fkey"
+            columns: ["retry_of"]
+            isOneToOne: false
+            referencedRelation: "withdrawals"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
-      [_ in never]: never
+      products_public: {
+        Row: {
+          approved: boolean | null
+          banner: string | null
+          category: string | null
+          created_at: string | null
+          delivery_type: string | null
+          description: string | null
+          id: number | null
+          image: string | null
+          name: string | null
+          price: number | null
+          questions: Json | null
+          rating: number | null
+          sales: number | null
+          seller_id: string | null
+          seller_name: string | null
+          seller_public_id: string | null
+          updated_at: string | null
+          variations: Json | null
+        }
+        Insert: {
+          approved?: boolean | null
+          banner?: string | null
+          category?: string | null
+          created_at?: string | null
+          delivery_type?: string | null
+          description?: string | null
+          id?: number | null
+          image?: string | null
+          name?: string | null
+          price?: number | null
+          questions?: Json | null
+          rating?: number | null
+          sales?: number | null
+          seller_id?: string | null
+          seller_name?: string | null
+          seller_public_id?: string | null
+          updated_at?: string | null
+          variations?: Json | null
+        }
+        Update: {
+          approved?: boolean | null
+          banner?: string | null
+          category?: string | null
+          created_at?: string | null
+          delivery_type?: string | null
+          description?: string | null
+          id?: number | null
+          image?: string | null
+          name?: string | null
+          price?: number | null
+          questions?: Json | null
+          rating?: number | null
+          sales?: number | null
+          seller_id?: string | null
+          seller_name?: string | null
+          seller_public_id?: string | null
+          updated_at?: string | null
+          variations?: Json | null
+        }
+        Relationships: []
+      }
+      profiles_public: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          display_name: string | null
+          is_verified_seller: boolean | null
+          public_id: number | null
+          user_id: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          display_name?: string | null
+          is_verified_seller?: boolean | null
+          public_id?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          display_name?: string | null
+          is_verified_seller?: boolean | null
+          public_id?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      [_ in never]: never
+      apply_verified_payment: {
+        Args: {
+          _charge_id: string
+          _confirmed_amount: number
+          _event_key: string
+          _event_type: string
+          _payload?: Json
+          _provider: string
+          _purchase_id: number
+        }
+        Returns: {
+          applied: boolean
+          resulting_status: string
+        }[]
+      }
+      approve_withdrawal: {
+        Args: { _id: number; _provider_tx?: string }
+        Returns: {
+          amount: number
+          created_at: string
+          id: number
+          idempotency_key: string | null
+          method: string
+          pix_key: string
+          processed_at: string | null
+          provider_tx_id: string | null
+          rejection_reason: string
+          retry_of: number | null
+          status: string
+          updated_at: string
+          user_email: string
+          user_id: string
+          user_public_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "withdrawals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_banned: { Args: { _user_id: string }; Returns: boolean }
+      is_order_party: {
+        Args: { _order_id: number; _user_id: string }
+        Returns: boolean
+      }
+      order_chat_open: { Args: { _order_id: number }; Returns: boolean }
+      reject_withdrawal: {
+        Args: { _id: number; _reason?: string }
+        Returns: {
+          amount: number
+          created_at: string
+          id: number
+          idempotency_key: string | null
+          method: string
+          pix_key: string
+          processed_at: string | null
+          provider_tx_id: string | null
+          rejection_reason: string
+          retry_of: number | null
+          status: string
+          updated_at: string
+          user_email: string
+          user_id: string
+          user_public_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "withdrawals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      request_withdrawal: {
+        Args: {
+          _amount: number
+          _idempotency_key?: string
+          _method?: string
+          _retry_of?: number
+        }
+        Returns: {
+          amount: number
+          created_at: string
+          id: number
+          idempotency_key: string | null
+          method: string
+          pix_key: string
+          processed_at: string | null
+          provider_tx_id: string | null
+          rejection_reason: string
+          retry_of: number | null
+          status: string
+          updated_at: string
+          user_email: string
+          user_id: string
+          user_public_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "withdrawals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      withdrawable_balance: {
+        Args: { _exclude_id?: number; _user_id: string }
+        Returns: number
+      }
     }
     Enums: {
-      user_role: 'user' | 'seller' | 'support' | 'admin'
-      product_status: 'pending' | 'approved' | 'rejected'
-      purchase_status: 'pending' | 'paid' | 'delivered' | 'dispute'
-      ticket_status: 'open' | 'closed'
-      withdrawal_status: 'pending' | 'approved' | 'rejected' | 'processing' | 'completed'
-      document_status: 'pending' | 'approved' | 'rejected'
-      document_type: 'rg' | 'birth_certificate'
-      delivery_type: 'manual' | 'automatic'
-      withdrawal_type: 'normal' | 'instant'
+      app_role: "admin" | "support" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -548,33 +874,33 @@ export type Database = {
   }
 }
 
-type DatabaseWithoutInternals = Omit<Database, 'public'>
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, 'public'>]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])[TableName] extends {
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema['Tables'] &
-        DefaultSchema['Views'])
-    ? (DefaultSchema['Tables'] &
-        DefaultSchema['Views'])[DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -583,23 +909,23 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema['Tables']
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
-    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Insert: infer I
       }
       ? I
@@ -608,23 +934,23 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema['Tables']
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
-    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Update: infer U
       }
       ? U
@@ -633,23 +959,42 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema['Enums']
+    | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums']
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums'][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema['Enums']
-    ? DefaultSchema['Enums'][DefaultSchemaEnumNameOrOptions]
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "support", "user"],
+    },
   },
 } as const

@@ -1,7 +1,28 @@
 project_id = "dbekdedzgkfgtlytrnyw"
 
-[functions.create-checkout]
+[functions.discord-callback]
 verify_jwt = false
 
-[functions.secure-signup]
+[functions.create-evopay-pix]
+verify_jwt = false
+
+[functions.create-purchase]
+verify_jwt = false
+
+[functions.check-evopay-status]
+verify_jwt = false
+
+[functions.evopay-webhook]
+verify_jwt = false
+
+[functions.evopay-withdraw]
+verify_jwt = false
+
+[functions.mark-order-delivered]
+verify_jwt = false
+
+[functions.order-action]
+verify_jwt = false
+
+[functions.integrations-config]
 verify_jwt = false

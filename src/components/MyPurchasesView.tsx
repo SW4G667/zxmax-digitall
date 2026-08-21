@@ -1,85 +1,159 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useStore, Purchase } from "@/store/StoreContext";
-import { BagCheckEmoji, StarEmoji, ChatEmoji, ShieldEmoji } from "@/components/CustomEmojis";
+import { ShoppingBagEmoji, StarEmoji } from "@/components/CustomEmojis";
+import { Search, ShieldAlert, Copy, ArrowLeft, QrCode, MessageSquare, Eye, PackageCheck, CircleDot, CheckCircle2 } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
-import { ArrowLeft, Send, Copy, ExternalLink, Lock, Image as ImageIcon } from "lucide-react";
+import OrderChat from "@/components/OrderChat";
+import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
+import { supabase } from "@/integrations/supabase/client";
 
 const statusMap: Record<Purchase["status"], { label: string; cls: string }> = {
-  pending: { label: "Pendente", cls: "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30" },
+  pending: { label: "Aguardando pagamento", cls: "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30" },
   paid: { label: "Pago", cls: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" },
   delivered: { label: "Entregue", cls: "bg-primary/20 text-primary border-primary/30" },
-  dispute: { label: "Disputa", cls: "bg-destructive/20 text-destructive border-destructive/30" },
+  dispute: { label: "Em disputa", cls: "bg-destructive/20 text-destructive border-destructive/30" },
+  cancelled: { label: "Cancelado", cls: "bg-muted text-muted-foreground border-border" },
 };
 
-export default function MyPurchasesView() {
-  const { state, openDispute, confirmDelivery, reviewPurchase, sendPurchaseMessage } = useStore();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [msg, setMsg] = useState("");
-  const [reviewStars, setReviewStars] = useState(5);
-  const [reviewText, setReviewText] = useState("");
+const STAGES: { key: Purchase["status"] | "concluded"; label: string }[] = [
+  { key: "pending", label: "Pago" },       // 1) pagamento confirmado
+  { key: "paid", label: "Entregue" },      // 2) produto entregue
+  { key: "delivered", label: "Concluído" },// 3) comprador confirma
+  { key: "concluded", label: "Finalizado" },
+];
+
+function StageStepper({ status }: { status: Purchase["status"] }) {
+  const order: Purchase["status"][] = ["pending", "paid", "delivered", "dispute", "cancelled"];
+  let activeIdx = order.indexOf(status);
+  if (status === "cancelled" || status === "dispute") activeIdx = -1; // show warning state separately
+  return (
+    <div className="flex items-center gap-1 mt-2">
+      {["Pago", "Entregue", "Concluído"].map((label, i) => {
+        const done = activeIdx > i || (status === "delivered" && i <= 2);
+        const current = activeIdx === i;
+        return (
+          <div key={label} className="flex items-center gap-1 flex-1 min-w-0">
+            <div className={`flex items-center justify-center w-5 h-5 rounded-full border text-[10px] font-black shrink-0
+              ${done ? "bg-primary border-primary text-primary-foreground" : current ? "border-primary text-primary animate-pulse-ring" : "border-border text-muted-foreground"}`}>
+              {done ? <CheckCircle2 className="w-3 h-3" /> : i + 1}
+            </div>
+            <span className={`text-[10px] font-bold truncate ${done || current ? "text-foreground" : "text-muted-foreground"}`}>{label}</span>
+            {i < 2 && <div className={`h-[2px] flex-1 rounded-full ${done ? "bg-primary" : "bg-border"}`} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export default function MyPurchasesView({ initialSelectedId }: { initialSelectedId?: number | null }) {
+  const { state, confirmDelivery, openDispute, reviewPurchase, savePixCharge, markPurchasePaid } = useStore();
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<number | null>(initialSelectedId || null);
+
+  useEffect(() => {
+    if (initialSelectedId) {
+      setSelectedId(initialSelectedId);
+    }
+  }, [initialSelectedId]);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [showDisputeForm, setShowDisputeForm] = useState(false);
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState("");
   const [showReview, setShowReview] = useState(false);
-  const [showSupportConfirm, setShowSupportConfirm] = useState(false);
-  const [showDisputeConfirm, setShowDisputeConfirm] = useState(false);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [pixCharge, setPixCharge] = useState<PixCharge | null>(null);
+  const [resumeId, setResumeId] = useState<number | null>(null);
+  const [loadingPix, setLoadingPix] = useState<number | null>(null);
 
-  if (!state.currentUser) return null;
+  const visiblePurchases = state.currentUser?.isAdmin
+    ? state.purchases
+    : state.purchases.filter(
+        (p) => p.buyerId === state.currentUser?.id || p.sellerId === state.currentUser?.id
+      );
+  const filtered = visiblePurchases.filter((p) => {
+    const product = state.products.find((pr) => pr.id === p.productId);
+    return product?.name.toLowerCase().includes(search.toLowerCase());
+  }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const myPurchases = state.purchases.filter((p) => p.buyerEmail === state.currentUser!.email);
-  const selected = myPurchases.find((p) => p.id === selectedId);
-  const selectedProduct = selected ? state.products.find((pr) => pr.id === selected.productId) : null;
+  const selected = selectedId ? state.purchases.find((p) => p.id === selectedId) : null;
+  const selectedProduct = selected ? state.products.find((p) => p.id === selected.productId) : null;
 
-  const handleSend = () => {
-    if (!msg.trim() || !selected) return;
-    // Chat restriction: buyer can only message after payment
-    if (selected.status === "pending") {
-      toast.error("Finalize o pagamento para conversar.");
+  const handlePayPix = async (purchase: Purchase, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!state.currentUser) return;
+    const product = state.products.find((p) => p.id === purchase.productId);
+    const expired = purchase.pixExpiresAt ? new Date(purchase.pixExpiresAt).getTime() < Date.now() : true;
+    setResumeId(purchase.id);
+    // Reuse existing valid QR
+    if (purchase.pixQrCode && purchase.evopayChargeId && !expired) {
+      setPixCharge({ evopayId: purchase.evopayChargeId, qrCodeText: purchase.pixQrCode, amount: purchase.amount });
       return;
     }
-    sendPurchaseMessage(selected.id, state.currentUser!.email, msg.trim());
-    setMsg("");
+    // Generate a new Pix
+    setLoadingPix(purchase.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-evopay-pix", {
+        body: {
+          purchaseId: purchase.id,
+          productName: purchase.variationName ? `${product?.name} - ${purchase.variationName}` : product?.name,
+          amount: purchase.amount,
+          buyerEmail: state.currentUser.email,
+          buyerName: state.currentUser.name,
+        },
+      });
+      if (error) throw error;
+      if (data?.qrCodeText) {
+        savePixCharge(purchase.id, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
+        setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? purchase.amount, qrCodeUrl: data.qrCodeUrl });
+      } else {
+        toast.error("Erro ao gerar PIX. Tente novamente.");
+      }
+    } catch (err: any) {
+      toast.error("Erro ao gerar PIX: " + (err.message || "tente novamente"));
+    } finally {
+      setLoadingPix(null);
+    }
   };
 
-  const handleCallSupport = () => {
-    if (!selected) return;
-    sendPurchaseMessage(selected.id, state.currentUser!.email, "⚠️ Aguardando suporte — ajuda solicitada pelo comprador.");
-    toast.success("Suporte chamado! Aguarde um administrador.");
-    setShowSupportConfirm(false);
+  const handlePixPaid = () => {
+    if (resumeId != null) markPurchasePaid(resumeId);
+    toast.success("Pagamento confirmado!");
   };
 
-  const handleConfirm = () => {
-    if (!selected) return;
-    confirmDelivery(selected.id);
+  const handleDispute = async () => {
+    if (!disputeReason.trim() || !selectedId) {
+      toast.error("Por favor, descreva o motivo da disputa.");
+      return;
+    }
+    const ok = await openDispute(selectedId, disputeReason.trim());
+    if (!ok) return toast.error("Não foi possível abrir a disputa neste estado do pedido.");
+    toast.success("Disputa aberta! Um administrador irá analisar o caso.");
+    setShowDisputeForm(false);
+    setDisputeReason("");
+  };
+
+  const handleReview = () => {
+    if (!selectedId || !comment.trim()) {
+      toast.error("Por favor, escreva um comentário.");
+      return;
+    }
+    reviewPurchase(selectedId, rating, comment);
+    toast.success("Avaliação enviada!");
+    setShowReview(false);
+  };
+
+  const handleConfirm = async () => {
+    if (!selectedId) return;
+    const ok = await confirmDelivery(selectedId);
+    if (!ok) return toast.error("Não foi possível confirmar a entrega.");
     toast.success("Entrega confirmada!");
     setShowReview(true);
   };
 
-  const handleDispute = () => {
-    if (!selected) return;
-    openDispute(selected.id);
-    toast.info("Disputa aberta! O admin irá analisar.");
-    setShowDisputeConfirm(false);
-  };
-
-  const handleReview = () => {
-    if (!reviewText.trim()) { toast.error("Escreva um comentário."); return; }
-    if (!selected) return;
-    reviewPurchase(selected.id, reviewStars, reviewText.trim());
-    toast.success("Avaliação enviada!");
-    setShowReview(false);
-    setReviewStars(5);
-    setReviewText("");
-  };
-
-  /* ── Chat view ── */
   if (selected && selectedProduct) {
-    const chat = selected.messages || [];
-    const isChatLocked = selected.status === "pending";
-
-    // Detect delivery content in messages
-    const deliveryMsg = chat.find((m) => m.text.startsWith("📦 Entrega:") || m.text.includes("ENTREGA_AUTO:"));
+    const isChatLocked = selected.status === "pending" || selected.status === "cancelled";
 
     return (
       <div className="animate-fade-in-up max-w-2xl mx-auto">
@@ -87,51 +161,56 @@ export default function MyPurchasesView() {
           <ArrowLeft className="w-4 h-4" /> Voltar
         </button>
 
-        {/* Product info header */}
         <div className="glass-card p-5 mb-4 flex gap-4 items-center">
           <img src={selectedProduct.image} className="w-16 h-16 rounded-2xl object-cover" alt={selectedProduct.name} />
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-foreground truncate">{selectedProduct.name}</h3>
-            <p className="text-xs text-muted-foreground">Vendedor: <span className="text-primary font-semibold">{selectedProduct.seller}</span></p>
+            <p className="text-xs text-muted-foreground">
+              {state.currentUser?.isAdmin
+                ? `Comprador: ${selected.buyerEmail} · Vendedor: ${selected.sellerEmail}`
+                : <>Vendedor: <span className="text-primary font-semibold">{selectedProduct.seller}</span></>}
+            </p>
             <p className="text-sm font-black text-foreground mt-0.5">R$ {selected.amount.toFixed(2)}</p>
           </div>
           <Badge className={statusMap[selected.status].cls}>{statusMap[selected.status].label}</Badge>
         </div>
 
-        {/* Delivery preview badge */}
-        {selected.status === "delivered" && selectedProduct.deliveryType === "auto" && selectedProduct.deliveryContent && (
-          <div className="glass-card p-4 mb-4 border-2 border-success/30 bg-success/5">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-bold text-success uppercase bg-success/10 px-2 py-0.5 rounded-full">📦 Produto Entregue</span>
-            </div>
-            <div className="flex items-center gap-2 bg-muted rounded-xl p-3">
-              <p className="flex-1 text-sm text-foreground font-mono break-all">{selectedProduct.deliveryContent}</p>
-              <button onClick={() => { navigator.clipboard.writeText(selectedProduct.deliveryContent || ""); toast.success("Copiado!"); }} className="shrink-0 p-1.5 hover:bg-card rounded-lg">
-                <Copy className="w-4 h-4 text-muted-foreground" />
-              </button>
-              {selectedProduct.deliveryContent.startsWith("http") && (
-                <a href={selectedProduct.deliveryContent} target="_blank" rel="noopener noreferrer" className="shrink-0 p-1.5 hover:bg-card rounded-lg">
-                  <ExternalLink className="w-4 h-4 text-primary" />
-                </a>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Feedback section at top for delivered+not reviewed */}
-        {selected.status === "delivered" && !selected.reviewed && !showReview && (
-          <div className="glass-card p-5 mb-4 border-2 border-primary/20 bg-primary/5">
-            <h4 className="font-bold text-foreground mb-2 flex items-center gap-2">
-              <StarEmoji className="w-5 h-5" /> Deixe sua avaliação!
-            </h4>
-            <p className="text-xs text-muted-foreground mb-3">Seu feedback ajuda outros compradores e o vendedor.</p>
-            <Button onClick={() => setShowReview(true)} className="btn-gradient w-full">
-              <StarEmoji className="w-4 h-4" /> Avaliar Produto
+        {/* Pending: pay with Pix */}
+        {selected.status === "pending" && (
+          <div className="glass-card p-4 mb-4 border-2 border-yellow-500/30 bg-yellow-500/5">
+            <p className="text-sm text-foreground mb-3">Seu pedido está aguardando pagamento.</p>
+            <Button onClick={(e) => handlePayPix(selected, e)} disabled={loadingPix === selected.id} className="w-full btn-gradient font-bold">
+              <QrCode className="w-4 h-4 mr-2" />
+              {loadingPix === selected.id ? "Gerando..." : (selected.pixQrCode && selected.pixExpiresAt && new Date(selected.pixExpiresAt).getTime() > Date.now() ? "Pagar com Pix" : "Gerar novo Pix")}
             </Button>
           </div>
         )}
 
-        {/* Review form */}
+        {/* Delivery Info */}
+        {(selected.status === "delivered" || selected.status === "paid") && (
+          <div className="glass-card p-4 mb-4 border-2 border-success/30 bg-success/5">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-bold text-success uppercase bg-success/10 px-2 py-0.5 rounded-full">📦 Informações de Entrega</span>
+            </div>
+            {selectedProduct.deliveryType === "auto" && selectedProduct.deliveryContent ? (
+              <div className="flex items-center gap-2 bg-muted rounded-xl p-3">
+                <p className="flex-1 text-sm text-foreground font-mono break-all">{selectedProduct.deliveryContent}</p>
+                <button onClick={() => { navigator.clipboard.writeText(selectedProduct.deliveryContent || ""); toast.success("Copiado!"); }} className="shrink-0 p-1.5 hover:bg-card rounded-lg">
+                  <Copy className="w-4 h-4 text-muted-foreground" />
+                </button>
+              </div>
+            ) : (
+              <p className="text-sm text-foreground">Aguardando o vendedor entregar. Combine pelo chat abaixo.</p>
+            )}
+            {selected.status === "paid" && (
+              <Button onClick={handleConfirm} className="w-full mt-3 bg-success hover:bg-success/90 text-white font-bold">
+                Confirmar Recebimento
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Review Form */}
         {showReview && (
           <div className="glass-card p-5 mb-4 animate-fade-in-up">
             <h4 className="font-bold text-foreground mb-3 flex items-center gap-2">
@@ -139,14 +218,14 @@ export default function MyPurchasesView() {
             </h4>
             <div className="flex gap-1 mb-3">
               {[1, 2, 3, 4, 5].map((s) => (
-                <button key={s} onClick={() => setReviewStars(s)}>
-                  <StarEmoji className="w-7 h-7" filled={s <= reviewStars} />
+                <button key={s} onClick={() => setRating(s)}>
+                  <StarEmoji className="w-7 h-7" filled={s <= rating} />
                 </button>
               ))}
             </div>
             <textarea
-              value={reviewText}
-              onChange={(e) => setReviewText(e.target.value)}
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
               placeholder="Escreva seu comentário (obrigatório)..."
               className="w-full bg-secondary/50 border border-border/40 rounded-xl p-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none h-20 mb-3"
             />
@@ -154,160 +233,41 @@ export default function MyPurchasesView() {
           </div>
         )}
 
-        {/* Already reviewed */}
-        {selected.reviewed && (
-          <div className="glass-card p-4 mb-4 bg-success/5 border border-success/20">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-bold text-success">Sua avaliação</span>
-              <div className="flex gap-0.5">
-                {[1, 2, 3, 4, 5].map((s) => (
-                  <StarEmoji key={s} className="w-3.5 h-3.5" filled={s <= (selected.reviewStars || 0)} />
-                ))}
-              </div>
-            </div>
-            <p className="text-sm text-foreground">{selected.reviewComment}</p>
-          </div>
-        )}
-
-        {/* Chat messages */}
-        <div className="glass-card p-4 mb-4 min-h-[250px] max-h-[400px] overflow-y-auto flex flex-col gap-2">
-          {isChatLocked && (
-            <div className="flex flex-col items-center justify-center py-10 text-center">
-              <Lock className="w-8 h-8 text-muted-foreground mb-2" />
-              <p className="text-sm text-muted-foreground font-medium">Finalize o pagamento para conversar.</p>
-            </div>
+        {/* Chat */}
+        <div className="flex items-center justify-between mb-2 px-1">
+          <h4 className="text-xs font-bold text-muted-foreground uppercase">Chat</h4>
+          {!state.currentUser?.isAdmin && !isChatLocked && (
+            <button onClick={() => setShowDisputeForm(true)} className="text-[10px] font-bold text-destructive uppercase hover:underline">
+              Abrir Disputa
+            </button>
           )}
-          {!isChatLocked && chat.length === 0 && (
-            <p className="text-center text-muted-foreground text-sm py-10">Nenhuma mensagem ainda. Inicie a conversa!</p>
-          )}
-          {!isChatLocked && chat.map((m, i) => {
-            const isMe = m.from === state.currentUser!.email;
-            const isImage = m.text.startsWith("data:image/");
-            const isFile = !isImage && m.text.startsWith("data:");
-            const fileName = isFile ? (m.text.match(/data:([^;]+)/)?.[1] || "arquivo") : "";
-            return (
-              <div key={i} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm ${isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-secondary text-foreground rounded-bl-md"}`}>
-                  {isImage ? (
-                    <img src={m.text} alt="Imagem" className="max-w-full max-h-48 rounded-lg cursor-pointer" onClick={() => window.open(m.text, "_blank")} />
-                  ) : isFile ? (
-                    <a href={m.text} download={`arquivo.${fileName.split("/")[1] || "bin"}`} className="flex items-center gap-2 underline">
-                      📎 Baixar arquivo ({fileName.split("/")[1] || "arquivo"})
-                    </a>
-                  ) : (
-                    <p>{m.text}</p>
-                  )}
-                  <p className={`text-[10px] mt-1 ${isMe ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
-                    {new Date(m.date).toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
         </div>
+        <OrderChat orderId={selected.id} locked={isChatLocked} />
 
-        {/* Message input */}
-        {!isChatLocked ? (
-          <div className="glass-card p-3 mb-4">
-            {/* Image preview */}
-            {imagePreview && (
-              <div className="mb-2 relative inline-block">
-                {imagePreview.startsWith("data:image/") ? (
-                  <img src={imagePreview} alt="Preview" className="max-h-24 rounded-lg" />
-                ) : (
-                  <div className="bg-muted rounded-lg px-3 py-2 text-xs text-foreground">📎 Arquivo selecionado</div>
-                )}
-                <button onClick={() => setImagePreview(null)} className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs">×</button>
+        <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
+
+
+        {/* Dispute Modal */}
+        {showDisputeForm && (
+          <div className="fixed inset-0 z-[70] bg-foreground/60 backdrop-blur-md flex items-center justify-center p-4" onClick={() => setShowDisputeForm(false)}>
+            <div className="glass-card w-full max-w-md p-6 bg-card animate-fade-in-up" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center gap-3 mb-4 text-destructive">
+                <ShieldAlert className="w-6 h-6" />
+                <h3 className="text-xl font-bold">Abrir Disputa</h3>
               </div>
-            )}
-            <div className="flex gap-2 items-center">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,application/pdf,.doc,.docx,.txt,.zip,.rar,.xlsx,.csv"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  if (file.size > 5 * 1024 * 1024) {
-                    toast.error("Arquivo muito grande! Máximo 5MB.");
-                    return;
-                  }
-                  const reader = new FileReader();
-                  reader.onload = () => setImagePreview(reader.result as string);
-                  reader.readAsDataURL(file);
-                  e.target.value = "";
-                }}
+              <p className="text-sm text-muted-foreground mb-4">
+                Descreva detalhadamente o problema. Um administrador entrará no chat para mediar a situação.
+              </p>
+              <textarea 
+                value={disputeReason} 
+                onChange={(e) => setDisputeReason(e.target.value)} 
+                placeholder="Ex: O produto não funciona, o vendedor não responde..." 
+                className="w-full p-4 rounded-2xl bg-muted border-none focus:ring-2 ring-destructive outline-none text-sm text-foreground mb-4 resize-none" 
+                rows={4} 
               />
-              <button onClick={() => fileInputRef.current?.click()} className="p-2 rounded-xl hover:bg-muted transition shrink-0" title="Enviar imagem">
-                <ImageIcon className="w-4 h-4 text-muted-foreground" />
-              </button>
-              <input
-                value={msg}
-                onChange={(e) => setMsg(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                placeholder="Digite sua mensagem..."
-                className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-              />
-              <Button size="icon" onClick={() => {
-                if (imagePreview && selected) {
-                  sendPurchaseMessage(selected.id, state.currentUser!.email, imagePreview);
-                  setImagePreview(null);
-                  toast.success("Imagem enviada!");
-                } else {
-                  handleSend();
-                }
-              }} className="btn-gradient shrink-0 w-9 h-9">
-                <Send className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="glass-card p-3 mb-4 text-center">
-            <p className="text-xs text-muted-foreground font-medium">💳 Finalize o pagamento para desbloquear o chat.</p>
-          </div>
-        )}
-
-        {/* Action buttons */}
-        <div className="flex gap-3 flex-wrap">
-          {selected.status === "paid" && !selected.reviewed && (
-            <Button onClick={handleConfirm} className="bg-emerald-600 hover:bg-emerald-700 text-white flex-1">
-              ✓ Confirmar Entrega
-            </Button>
-          )}
-          {selected.status === "paid" && (
-            <Button variant="destructive" onClick={() => setShowDisputeConfirm(true)} className="flex-1">
-              <ShieldEmoji className="w-4 h-4" /> Abrir Disputa
-            </Button>
-          )}
-          <Button variant="outline" onClick={() => setShowSupportConfirm(true)} className="flex-1">
-            <ChatEmoji className="w-4 h-4" /> Chamar Suporte
-          </Button>
-        </div>
-
-        {/* Support confirmation dialog */}
-        {showSupportConfirm && (
-          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm" onClick={() => setShowSupportConfirm(false)}>
-            <div className="glass-card w-full max-w-sm p-6 bg-card animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
-              <h3 className="font-bold text-foreground mb-2">Chamar Suporte?</h3>
-              <p className="text-sm text-muted-foreground mb-4">Tem certeza que quer chamar o suporte? Isso abrirá um chat de ajuda.</p>
-              <div className="flex gap-2">
-                <button onClick={handleCallSupport} className="flex-1 btn-gradient py-2.5 rounded-xl text-sm font-bold">Sim, chamar</button>
-                <button onClick={() => setShowSupportConfirm(false)} className="flex-1 border border-border py-2.5 rounded-xl text-sm font-bold text-muted-foreground">Cancelar</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Dispute confirmation dialog */}
-        {showDisputeConfirm && (
-          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm" onClick={() => setShowDisputeConfirm(false)}>
-            <div className="glass-card w-full max-w-sm p-6 bg-card animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
-              <h3 className="font-bold text-foreground mb-2">Abrir Disputa?</h3>
-              <p className="text-sm text-muted-foreground mb-4">Ao abrir disputa, um admin irá analisar o caso e poderá reverter o pagamento se necessário.</p>
-              <div className="flex gap-2">
-                <button onClick={handleDispute} className="flex-1 bg-destructive text-destructive-foreground py-2.5 rounded-xl text-sm font-bold">Sim, abrir disputa</button>
-                <button onClick={() => setShowDisputeConfirm(false)} className="flex-1 border border-border py-2.5 rounded-xl text-sm font-bold text-muted-foreground">Cancelar</button>
+              <div className="flex gap-3">
+                <button onClick={() => setShowDisputeForm(false)} className="flex-1 py-3 rounded-xl font-bold text-sm bg-muted text-foreground">Cancelar</button>
+                <button onClick={handleDispute} className="flex-1 py-3 rounded-xl font-bold text-sm bg-destructive text-white hover:opacity-90">Confirmar Disputa</button>
               </div>
             </div>
           </div>
@@ -316,46 +276,87 @@ export default function MyPurchasesView() {
     );
   }
 
-  /* ── Purchase list ── */
   return (
     <div className="animate-fade-in-up">
-      <div className="flex items-center gap-3 mb-8">
-        <h1 className="text-3xl md:text-4xl font-black text-foreground">Minhas Compras</h1>
-        <BagCheckEmoji className="w-8 h-8" />
+      <div className="mb-10">
+        <div className="flex items-center gap-3 mb-2">
+          <h1 className="text-3xl md:text-4xl font-black text-foreground">Minhas Compras</h1>
+          <ShoppingBagEmoji className="w-8 h-8" />
+        </div>
+        <p className="text-muted-foreground">Acompanhe seus pedidos e acesse seus produtos.</p>
       </div>
 
-      {myPurchases.length === 0 ? (
-        <div className="text-center py-20">
-          <BagCheckEmoji className="w-16 h-16 mx-auto mb-4 opacity-30" />
-          <p className="text-muted-foreground font-medium">Você ainda não comprou nada.</p>
-        </div>
-      ) : (
-        <div className="grid gap-4">
-          {myPurchases.map((purchase, i) => {
-            const product = state.products.find((pr) => pr.id === purchase.productId);
-            if (!product) return null;
-            return (
-              <button
-                key={purchase.id}
-                onClick={() => setSelectedId(purchase.id)}
-                className="glass-card p-4 flex gap-4 items-center text-left w-full animate-fade-in-up hover:ring-2 hover:ring-primary/30"
-                style={{ animationDelay: `${i * 0.06}s` }}
-              >
-                <img src={product.image} className="w-14 h-14 rounded-xl object-cover shrink-0" alt={product.name} />
+      <div className="bg-card rounded-2xl px-4 py-3 mb-8 border border-border/40 flex items-center gap-3">
+        <Search className="w-4 h-4 text-muted-foreground" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome do produto..." className="bg-transparent border-none focus:ring-0 outline-none text-sm w-full text-foreground" />
+      </div>
+
+      <div className="grid gap-4">
+        {filtered.map((p) => {
+          const prod = state.products.find((pr) => pr.id === p.productId);
+          return (
+            <div key={p.id} className="glass-card p-4 sm:p-5 hover:border-primary/40 transition">
+              <div className="flex items-start gap-4">
+                <img src={prod?.image} className="w-16 h-16 rounded-lg object-cover shrink-0" alt="" />
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-foreground text-sm truncate">{product.name}</h3>
-                  <p className="text-xs text-muted-foreground">por {product.seller}</p>
-                  <p className="text-sm font-black text-foreground">R$ {purchase.amount.toFixed(2)}</p>
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-foreground truncate">{prod?.name}</h4>
+                      {p.variationName && <p className="text-[10px] text-primary font-bold">Opção: {p.variationName}</p>}
+                      <p className="text-xs text-muted-foreground mt-0.5">Pedido #{p.id} · {new Date(p.createdAt).toLocaleDateString("pt-BR")}</p>
+                    </div>
+                    <Badge className={`${statusMap[p.status].cls} shrink-0`}>{statusMap[p.status].label}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between mt-2 gap-3 flex-wrap">
+                    <p className="text-sm font-black text-foreground">R$ {p.amount.toFixed(2)}</p>
+                    <div className="flex items-center gap-2">
+                      {p.status === "pending" ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handlePayPix(p, e); }}
+                          disabled={loadingPix === p.id}
+                          className="btn-gradient px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5"
+                        >
+                          <QrCode className="w-3.5 h-3.5" /> {loadingPix === p.id ? "Gerando..." : "Pagar Pix"}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSelectedId(p.id); }}
+                          className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 transition flex items-center gap-1.5"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" /> Chat
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setSelectedId(p.id)}
+                        className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 transition flex items-center gap-1.5"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> Detalhes
+                      </button>
+                    </div>
+                  </div>
+                  {p.status !== "cancelled" && p.status !== "dispute" && (
+                    <div className="mt-3 max-w-md">
+                      <StageStepper status={p.status} />
+                    </div>
+                  )}
+                  {p.status === "dispute" && (
+                    <p className="mt-2 text-[11px] font-bold text-destructive flex items-center gap-1">
+                      <ShieldAlert className="w-3.5 h-3.5" /> Disputa em análise pela equipe.
+                    </p>
+                  )}
                 </div>
-                <div className="flex flex-col items-end gap-1">
-                  <Badge className={statusMap[purchase.status].cls}>{statusMap[purchase.status].label}</Badge>
-                  {purchase.reviewed && <span className="text-[10px] text-success font-bold flex items-center gap-0.5"><StarEmoji className="w-3 h-3" /> Avaliado</span>}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
+              </div>
+            </div>
+          );
+        })}
+
+        {filtered.length === 0 && (
+          <div className="text-center py-20 bg-card rounded-3xl border-2 border-dashed border-border">
+            <p className="text-3xl mb-3">🛍️</p>
+            <p className="text-muted-foreground font-medium">Você ainda não fez nenhuma compra.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

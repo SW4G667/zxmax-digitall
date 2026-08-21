@@ -1,26 +1,20 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useStore } from "@/store/StoreContext";
 import { Bell } from "lucide-react";
-import { BagCheckEmoji, StarEmoji, ChatEmoji, ShieldEmoji, MoneyEmoji } from "@/components/CustomEmojis";
-
-const isBrowser = typeof window !== 'undefined';
+import { BagCheckEmoji, StarEmoji, ChatEmoji, ShieldEmoji } from "@/components/CustomEmojis";
 
 export default function NotificationBell() {
   const { state } = useStore();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"purchases" | "global">("purchases");
   const [lastSeenCount, setLastSeenCount] = useState(() => {
-    if (isBrowser) {
-      try {
-        return parseInt(localStorage.getItem("zxmax_notif_seen") || "0", 10);
-      } catch { return 0; }
-    }
-    return 0;
+    try {
+      return parseInt(localStorage.getItem("zxmax_notif_seen") || "0", 10);
+    } catch { return 0; }
   });
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!isBrowser) return;
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
@@ -65,11 +59,7 @@ export default function NotificationBell() {
     setOpen(!open);
     if (!open) {
       setLastSeenCount(totalCount);
-      if (isBrowser) {
-        try {
-          localStorage.setItem("zxmax_notif_seen", String(totalCount));
-        } catch {}
-      }
+      localStorage.setItem("zxmax_notif_seen", String(totalCount));
     }
   };
 
@@ -89,9 +79,9 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-12 w-80 sm:w-96 glass-card bg-card p-0 overflow-hidden z-[100] animate-fade-in-up shadow-xl rounded-2xl">
+        <div className="absolute right-0 top-12 w-80 sm:w-96 glass-card bg-card p-0 overflow-hidden z-[100] animate-fade-in-up shadow-xl">
           {/* Tabs */}
-          <div className="flex border-b border-border/40 bg-muted/30">
+          <div className="flex border-b border-border/40">
             <button
               onClick={() => setTab("purchases")}
               className={`flex-1 py-3 px-3 text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
@@ -100,7 +90,7 @@ export default function NotificationBell() {
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <BagCheckEmoji className="w-4 h-4" /> Compras
+              <BagCheckEmoji className="w-4 h-4" /> Compras e Opiniões
             </button>
             <button
               onClick={() => setTab("global")}
@@ -110,9 +100,9 @@ export default function NotificationBell() {
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <ChatEmoji className="w-4 h-4" /> Mensagens
+              <ChatEmoji className="w-4 h-4" /> Mensagens Globais
               {globalCount > 0 && (
-                <span className="ml-1 bg-destructive text-destructive-foreground text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{globalCount > 9 ? "9+" : globalCount}</span>
+                <span className="ml-1 bg-destructive text-destructive-foreground text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{globalCount}</span>
               )}
             </button>
           </div>
@@ -121,10 +111,7 @@ export default function NotificationBell() {
             {tab === "purchases" && (
               <>
                 {purchaseNotifs.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <BagCheckEmoji className="w-8 h-8 text-muted-foreground/50 mb-2" />
-                    <p className="text-center text-muted-foreground text-xs">Nenhuma notificação de compra.</p>
-                  </div>
+                  <p className="text-center text-muted-foreground text-xs py-8">Nenhuma nova notificação.</p>
                 ) : (
                   purchaseNotifs.map((p) => {
                     const product = state.products.find((pr) => pr.id === p.productId);
@@ -139,12 +126,11 @@ export default function NotificationBell() {
                             </p>
                           ) : p.status === "paid" ? (
                             <p className="text-xs text-foreground truncate">
-                              <BagCheckEmoji className="w-3 h-3 inline mr-1" />
                               Alguém comprou <span className="font-bold">{product?.name}</span>
                             </p>
                           ) : (
                             <p className="text-xs text-foreground truncate">
-                              <span className="font-bold">{product?.name}</span> pronto para entrega
+                              Entrega disponível: <span className="font-bold">{product?.name}</span>
                             </p>
                           )}
                           <p className="text-[10px] text-muted-foreground mt-0.5">
@@ -160,44 +146,38 @@ export default function NotificationBell() {
 
             {tab === "global" && (
               <>
-                {globalNotices.length === 0 && ticketNotifs.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <ChatEmoji className="w-8 h-8 text-muted-foreground/50 mb-2" />
-                    <p className="text-center text-muted-foreground text-xs">Nenhuma mensagem nova.</p>
+                {/* Global notices */}
+                {globalNotices.map((n) => (
+                  <div key={n.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition border-b border-border/20">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <ShieldEmoji className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-foreground truncate">Aviso Global</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{n.text}</p>
+                      <p className="text-[9px] text-muted-foreground/60 mt-0.5">{new Date(n.date).toLocaleDateString("pt-BR")}</p>
+                    </div>
                   </div>
-                ) : (
-                  <>
-                    {/* Global notices */}
-                    {globalNotices.map((n) => (
-                      <div key={n.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition border-b border-border/20">
-                        <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                          <ShieldEmoji className="w-5 h-5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold text-foreground truncate">📢 Aviso Global</p>
-                          <p className="text-[10px] text-muted-foreground truncate">{n.text}</p>
-                          <p className="text-[9px] text-muted-foreground/60 mt-0.5">{new Date(n.date).toLocaleDateString("pt-BR")}</p>
-                        </div>
-                      </div>
-                    ))}
+                ))}
 
-                    {/* Ticket replies */}
-                    {ticketNotifs.map((t) => {
-                      const lastMsg = t.messages.filter((m) => m.from !== email).pop();
-                      return (
-                        <div key={t.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition border-b border-border/20 cursor-pointer">
-                          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                            <ChatEmoji className="w-5 h-5" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-foreground truncate">💬 {t.subject}</p>
-                            <p className="text-[10px] text-muted-foreground truncate">{lastMsg?.text}</p>
-                            <p className="text-[9px] text-muted-foreground/60 mt-0.5">{new Date(lastMsg?.date || "").toLocaleDateString("pt-BR")}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </>
+                {/* Ticket replies */}
+                {ticketNotifs.map((t) => {
+                  const lastMsg = t.messages.filter((m) => m.from !== email).pop();
+                  return (
+                    <div key={t.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition border-b border-border/20 cursor-pointer">
+                      <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                        <ChatEmoji className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-foreground truncate">{t.subject}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{lastMsg?.text}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {globalNotices.length === 0 && ticketNotifs.length === 0 && (
+                  <p className="text-center text-muted-foreground text-xs py-8">Nenhuma mensagem nova.</p>
                 )}
               </>
             )}
