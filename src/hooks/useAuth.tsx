@@ -72,6 +72,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
   ]);
 }
 
+const ENROLL_STORAGE_KEY = "zxmax_mfa_enroll";
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -139,6 +141,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
+      // Admin-only MFA: only check MFA if user is admin (prevents regular users from seeing 2FA prompt)
+      // isAdmin state might be stale, so we also check via DB if needed, but we use current isAdmin
+      // If not admin, skip MFA requirement
+      if (!isAdmin) {
+        // Still detect if user has MFA enabled for display purposes, but don't require it
+        const { data } = await withTimeout(
+          supabase.auth.mfa.listFactors(),
+          2000,
+          { data: { totp: [] }, error: null } as any
+        );
+        const verifiedTotp = (data?.totp || []).filter((f) => f.status === "verified");
+        setMfaEnabled(verifiedTotp.length > 0);
+        setNeedsMfa(false);
+        setMfaChecked(true);
+        return;
+      }
+
       const { data, error } = await withTimeout(
         supabase.auth.mfa.listFactors(),
         2000,
@@ -147,6 +166,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
       const verifiedTotp = (data?.totp || []).filter((f) => f.status === "verified");
       setMfaEnabled(verifiedTotp.length > 0);
+
+      // Check if MFA was already verified in this session (avoid asking every time)
+      const verifiedFlag = sessionStorage.getItem("zxmax_admin_mfa_verified");
+      if (verifiedFlag && Date.now() - Number(verifiedFlag) < 12 * 60 * 60 * 1000) {
+        setNeedsMfa(false);
+        setMfaChecked(true);
+        return;
+      }
+
       const aal: string = (sess as any)?.aal || sess.user?.aal || sess.user?.app_metadata?.aal || "aal1";
       if (verifiedTotp.length > 0 && aal !== "aal2" && verifiedTotp[0]) {
         if (!challengeId) {
@@ -165,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setMfaChecked(true);
     }
-  }, [challengeId]);
+  }, [challengeId, isAdmin]);
 
   useEffect(() => {
     let mounted = true;
@@ -286,17 +314,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const verifyMfa = async (code: string) => {
-    if (!challengeId) {
-      // Try to get challenge from existing verified factor
-      const factors = await listFactors();
-      const verified = factors.find((f) => f.status === "verified");
-      if (!verified) return { error: "Nenhum desafio pendente. Faça login novamente." };
-      const chal = await supabase.auth.mfa.challenge({ factorId: verified.id });
-      if (chal.error || !chal.data?.id) return { error: "Falha ao criar desafio 2FA." };
-      setChallengeId(chal.data.id);
+    const doVerify = async (cid: string, fid: string) => {
       const { data, error } = await supabase.auth.mfa.verify({
-        factorId: verified.id,
-        challengeId: chal.data.id,
+        factorId: fid,
+        challengeId: cid,
         code,
       });
       if (error) return { error: error.message };
@@ -307,24 +328,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setNeedsMfa(false);
       setChallengeId(null);
       setMfaEnabled(true);
+      // Mark MFA as verified for this session (admin only, 12h)
+      try {
+        sessionStorage.setItem("zxmax_admin_mfa_verified", String(Date.now()));
+      } catch {}
       return { error: null };
+    };
+
+    if (!challengeId) {
+      const factors = await listFactors();
+      const verified = factors.find((f) => f.status === "verified");
+      if (!verified) return { error: "Nenhum desafio pendente. Faça login novamente." };
+      const chal = await supabase.auth.mfa.challenge({ factorId: verified.id });
+      if (chal.error || !chal.data?.id) return { error: "Falha ao criar desafio 2FA." };
+      setChallengeId(chal.data.id);
+      return await doVerify(chal.data.id, verified.id);
     }
     const factor = (await listFactors()).find((f) => f.status === "verified");
     if (!factor) return { error: "Fator 2FA não encontrado." };
-    const { data, error } = await supabase.auth.mfa.verify({
-      factorId: factor.id,
-      challengeId,
-      code,
-    });
-    if (error) return { error: error.message };
-    if (data?.session) {
-      setSession(data.session);
-      setUser(data.session.user);
-    }
-    setNeedsMfa(false);
-    setChallengeId(null);
-    setMfaEnabled(true);
-    return { error: null };
+    return await doVerify(challengeId, factor.id);
   };
 
   const enrollTotpStart = async (): Promise<{ data: TotpEnroll | null; error: string | null }> => {
@@ -410,6 +432,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setNeedsMfa(false);
     setMfaChecked(true);
     setChallengeId(null);
+    try {
+      sessionStorage.removeItem("zxmax_admin_mfa_verified");
+      localStorage.removeItem(ENROLL_STORAGE_KEY);
+    } catch {}
   };
 
   const refreshProfile = async () => {

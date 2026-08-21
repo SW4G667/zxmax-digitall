@@ -397,21 +397,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
 
   const loadCatalog = React.useCallback(async () => {
-    const withTimeout = <T,>(p: Promise<T>, ms = 2500): Promise<T | null> =>
+    const withTimeout = <T,>(p: Promise<T>, ms = 4000): Promise<T | null> =>
       Promise.race([
         p,
         new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
       ]) as Promise<T | null>;
 
     try {
-      const productSource = authUser ? "products" : "products_public";
+      // Public catalog must work 100% - no timeout for anon to avoid empty store
+      const baseProductQuery = (supabase as any)
+        .from("products")
+        .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
+        .order("created_at", { ascending: false });
+
+      let productPromise: Promise<any>;
+      if (!authUser) {
+        // Anon: only approved, no timeout wrapper to guarantee visibility
+        productPromise = baseProductQuery.eq("approved", true);
+      } else {
+        productPromise = withTimeout(baseProductQuery, 5000) as Promise<any>;
+      }
+
       const results = await Promise.all([
-        withTimeout((supabase as any).from(productSource).select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at").order("created_at", { ascending: false }), 3000),
+        productPromise,
         authUser
-          ? withTimeout((supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false }), 3000)
+          ? withTimeout((supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false }), 5000)
           : Promise.resolve({ data: [] } as any),
-        authUser ? withTimeout((supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }), 3000) : Promise.resolve({ data: [] } as any),
-        authUser ? withTimeout((supabase as any).from("product_delivery").select("product_id,delivery_content"), 3000) : Promise.resolve({ data: [] } as any),
+        authUser ? withTimeout((supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }), 5000) : Promise.resolve({ data: [] } as any),
+        authUser ? withTimeout((supabase as any).from("product_delivery").select("product_id,delivery_content"), 5000) : Promise.resolve({ data: [] } as any),
       ]);
 
       const dbProducts = (results[0] as any)?.data || [];
@@ -470,7 +483,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const addProduct = (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => {
     if (!state.currentUser) return;
-    const initialApproved = !!state.currentUser.isAdmin;
+    // Admin products are always auto-approved, even if state is stale, check isAdmin from auth
+    const initialApproved = !!state.currentUser.isAdmin || isAdmin;
     const newProduct = { ...p, id: Date.now(), sales: 0, rating: 0, approved: initialApproved, sellerId: state.currentUser.id, sellerPublicId: state.currentUser.publicId };
     void (async () => {
       const { data } = await (supabase as any).from("products").insert({ seller_id: newProduct.sellerId, seller_public_id: newProduct.sellerPublicId, seller_email: newProduct.sellerEmail, seller_name: newProduct.seller, name: newProduct.name, price: newProduct.price, category: newProduct.category, image: newProduct.image, banner: newProduct.banner || null, description: newProduct.description, approved: initialApproved, delivery_type: newProduct.deliveryType, variations: newProduct.variations || [], questions: newProduct.questions || [] }).select("id").maybeSingle();
