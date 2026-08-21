@@ -88,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data } = await withTimeout(
         supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
-        5000,
+        2500,
         { data: null, error: null } as any
       );
       if (data) setProfile(data as Profile);
@@ -102,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data } = await withTimeout(
         supabase.from("bans").select("reason, created_at").eq("user_id", userId).eq("active", true).limit(1).maybeSingle(),
-        4000,
+        2000,
         { data: null } as any
       );
       if (data) {
@@ -121,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data } = await withTimeout(
         supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle(),
-        4000,
+        2000,
         { data: null } as any
       );
       setIsAdmin(!!data);
@@ -141,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await withTimeout(
         supabase.auth.mfa.listFactors(),
-        5000,
+        2000,
         { data: { totp: [] }, error: null } as any
       );
       if (error) throw error;
@@ -176,13 +176,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         setMfaChecked(true);
       }
-    }, 10000);
+    }, 3000);
 
     const init = async () => {
       try {
         const { data: { session: sess } } = await withTimeout(
           supabase.auth.getSession(),
-          6000,
+          2500,
           { data: { session: null } } as any
         );
         if (!mounted) return;

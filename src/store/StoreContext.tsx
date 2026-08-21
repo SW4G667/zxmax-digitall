@@ -397,7 +397,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
 
   const loadCatalog = React.useCallback(async () => {
-    const withTimeout = <T,>(p: Promise<T>, ms = 6000): Promise<T | null> =>
+    const withTimeout = <T,>(p: Promise<T>, ms = 2500): Promise<T | null> =>
       Promise.race([
         p,
         new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
@@ -406,12 +406,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const productSource = authUser ? "products" : "products_public";
       const results = await Promise.all([
-        withTimeout((supabase as any).from(productSource).select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at").order("created_at", { ascending: false }), 7000),
+        withTimeout((supabase as any).from(productSource).select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at").order("created_at", { ascending: false }), 3000),
         authUser
-          ? withTimeout((supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false }), 7000)
+          ? withTimeout((supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false }), 3000)
           : Promise.resolve({ data: [] } as any),
-        authUser ? withTimeout((supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }), 7000) : Promise.resolve({ data: [] } as any),
-        authUser ? withTimeout((supabase as any).from("product_delivery").select("product_id,delivery_content"), 7000) : Promise.resolve({ data: [] } as any),
+        authUser ? withTimeout((supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }), 3000) : Promise.resolve({ data: [] } as any),
+        authUser ? withTimeout((supabase as any).from("product_delivery").select("product_id,delivery_content"), 3000) : Promise.resolve({ data: [] } as any),
       ]);
 
       const dbProducts = (results[0] as any)?.data || [];
