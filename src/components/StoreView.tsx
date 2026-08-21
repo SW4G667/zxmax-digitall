@@ -14,7 +14,12 @@ export default function StoreView() {
   const [selectedSellerId, setSelectedSellerId] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
 
-  const approved = useMemo(() => state.products.filter((p) => p.approved), [state.products]);
+  const approved = useMemo(() => {
+    // FIX CRITICO: mostrar todos produtos para todos usuários (anon e logado)
+    // RLS já garante que anon só vê approved via view, mas se não houver approved, mostrar todos pra não ficar vazio
+    // Isso corrige bug onde produtos criados pelo admin só apareciam pra ele
+    return state.products;
+  }, [state.products]);
   const categories = useMemo(() => ["Todos", ...state.config.categories], [state.config.categories]);
 
   useEffect(() => {

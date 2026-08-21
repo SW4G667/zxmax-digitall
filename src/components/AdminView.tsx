@@ -90,29 +90,46 @@ export default function AdminView() {
   };
 
   const openDocument = async (path: string) => {
+    if (!path || typeof path !== 'string') {
+      toast.error("Caminho do documento inválido");
+      return;
+    }
+    // Sanitize path
+    const cleanPath = path.trim();
+    if (!cleanPath) {
+      toast.error("Documento sem arquivo");
+      return;
+    }
     try {
-      // Try via admin-verify edge function (service role)
-      const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "get_document_url", filePath: path } });
+      // Try via admin-verify edge function (service role) - bypass RLS
+      const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "get_document_url", filePath: cleanPath } });
       if (!error && data?.url) {
         window.open(data.url, "_blank", "noopener,noreferrer");
         return;
       }
-    } catch {}
-    // Fallback direct
+      if (error) console.error("admin-verify get_document_url error", error);
+    } catch (e) {
+      console.error("admin-verify failed", e);
+    }
+    // Fallback direct via storage
     try {
-      const { data, error } = await supabase.storage.from("documents").createSignedUrl(path, 60 * 10);
-      if (error || !data?.signedUrl) throw error || new Error("URL vazia");
+      const { data, error } = await supabase.storage.from("documents").createSignedUrl(cleanPath, 60 * 10);
+      if (error) throw error;
+      if (!data?.signedUrl) throw new Error("URL vazia");
       window.open(data.signedUrl, "_blank", "noopener,noreferrer");
     } catch (e: any) {
-      toast.error("Não foi possível abrir: " + (e?.message || "verifique bucket"));
-      // Try to download directly
+      console.error("createSignedUrl failed", e);
+      toast.error("Não foi possível abrir: " + (e?.message || "verifique bucket RLS"));
+      // Last fallback: try download
       try {
-        const { data } = await supabase.storage.from("documents").download(path);
+        const { data } = await supabase.storage.from("documents").download(cleanPath);
         if (data) {
           const url = URL.createObjectURL(data);
           window.open(url, "_blank");
         }
-      } catch {}
+      } catch (err) {
+        console.error("download failed", err);
+      }
     }
   };
 
@@ -485,24 +502,24 @@ export default function AdminView() {
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <div className="min-w-0">
                     <p className="font-bold text-foreground truncate">{doc.userEmail || "Usuário"}</p>
-                    <p className="text-[10px] text-muted-foreground font-mono">ID: {doc.userPublicId}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono">ID: {doc.userPublicId || doc.user_public_id || ""}</p>
                     <p className="text-[10px] text-muted-foreground truncate">{doc.fileName}</p>
                   </div>
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${doc.status === "approved" ? "bg-success/10 text-success" : doc.status === "rejected" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>{doc.status}</span>
                 </div>
                 <div className="flex gap-2 flex-wrap">
-                  <button onClick={() => openDocument(doc.filePath)} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1"><ExternalLink className="w-3 h-3" /> Abrir</button>
+                  <button onClick={() => openDocument(doc.file_path || doc.filePath || "")} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1"><ExternalLink className="w-3 h-3" /> Abrir</button>
                   <button onClick={async () => { 
                     const tid = toast.loading("Aprovando...");
                     try {
-                      const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "verify_user", userId: doc.user_id || doc.userId, documentId: doc.id } });
+                      const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "verify_user", userId: doc.user_id || doc.user_id, documentId: doc.id } });
                       if (error || data?.error) throw new Error(data?.error || error?.message);
                       reviewSellerDocument(doc.id, "approved");
                       toast.success("Documento aprovado e vendedor verificado!", { id: tid });
                       void loadDocs();
                     } catch (e: any) {
                       reviewSellerDocument(doc.id, "approved");
-                      const ok = await verifyUser(doc.user_id || doc.userId);
+                      const ok = await verifyUser(doc.user_id || doc.user_id);
                       if (ok) {
                         toast.success("Aprovado (fallback)!", { id: tid });
                         void loadDocs();
@@ -752,13 +769,26 @@ export default function AdminView() {
               <button onClick={async () => {
                 const tid = toast.loading("Aprovando todos produtos pendentes...");
                 try {
+                  // Try via edge function (service_role)
                   const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "approve_all_products" } });
-                  if (error || data?.error) throw new Error(data?.error || error?.message);
-                  toast.success("Todos produtos aprovados! Agora aparecem para todos.", { id: tid });
-                  // Force reload catalog
-                  window.location.reload();
+                  if (!error && !data?.error) {
+                    toast.success("Todos produtos aprovados via Edge Function! Agora aparecem para todos.", { id: tid });
+                    setTimeout(() => window.location.reload(), 1000);
+                    return;
+                  }
+                  throw new Error(data?.error || error?.message || "Edge Function falhou");
                 } catch (e: any) {
-                  toast.error("Erro: " + (e?.message || ""), { id: tid });
+                  console.error("Edge approve all failed, trying direct", e);
+                  // Fallback: direct update (requires admin RLS policy)
+                  try {
+                    const { error: directError } = await supabase.from("products").update({ approved: true }).eq("approved", false);
+                    if (directError) throw directError;
+                    toast.success("Todos produtos aprovados via direto! Recarregando...", { id: tid });
+                    setTimeout(() => window.location.reload(), 1000);
+                  } catch (directErr: any) {
+                    console.error("Direct approve all failed", directErr);
+                    toast.error("Falha ao aprovar: " + (directErr?.message || e?.message || "") + " - Verifique se function admin-verify está deployada e RLS fix aplicada.", { id: tid });
+                  }
                 }
               }} className="bg-[#ffbd2e] text-black px-4 py-2 rounded-xl text-xs font-black">Aprovar TODOS produtos (fix 0 produtos)</button>
               <button onClick={()=>setTab('products' as any)} className="bg-[#0084ff] text-white px-4 py-2 rounded-xl text-xs font-bold">Aprovar Produtos individuais</button>
