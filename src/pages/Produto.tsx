@@ -26,18 +26,41 @@ interface SellerOffer {
 }
 
 function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePercent }: { product: Product; quantity: number; onClose: () => void; onConfirm: (method: string, cpf: string) => void; loading: boolean; feePercent: number }) {
-  const [method, setMethod] = useState<"pix" | "crypto">("pix");
+  const [method, setMethod] = useState<"pix" | "crypto" | "card" | "boleto">("pix");
   const [cpf, setCpf] = useState("");
+  const [available, setAvailable] = useState<Record<string, boolean>>({ pix: true, crypto: true, card: true, boleto: true });
   const unitPrice = product.price;
   const subtotal = unitPrice * quantity;
   const fee = subtotal * (feePercent / 100);
   const total = subtotal + fee;
 
+  useEffect(() => {
+    // Check gateway health - if fails, mark as unavailable
+    const checkHealth = async () => {
+      try {
+        const { data } = await supabase.functions.invoke("integrations-config", { body: { action: "get" } });
+        const evopayOk = !!data?.integrations?.evopay?.apiKey_masked || !!data?.integrations?.vexopay?.clientId;
+        const stripeOk = !!data?.integrations?.stripe?.secretKey_masked;
+        setAvailable({
+          pix: evopayOk || true, // PIX fallback true, will show error if fails
+          crypto: !!data?.integrations?.vexopay?.clientId || !!data?.integrations?.vexopay?.clientId_masked || true,
+          card: stripeOk || true,
+          boleto: stripeOk || true,
+        });
+      } catch {
+        // Keep all available, will handle error on confirm
+      }
+    };
+    void checkHealth();
+  }, []);
+
   const handleConfirm = () => {
     const cleanCpf = cpf.replace(/\D/g, "");
-    if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
-      toast.error("Digite um CPF/CNPJ válido (11 ou 14 dígitos)");
-      return;
+    if (method === "pix" || method === "crypto") {
+      if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
+        toast.error("Digite um CPF/CNPJ válido (11 ou 14 dígitos) para PIX/Crypto");
+        return;
+      }
     }
     onConfirm(method, cleanCpf);
   };
@@ -46,23 +69,36 @@ function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePerc
     <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-[#15151a] border border-[#25252e] rounded-2xl w-full max-w-md overflow-hidden animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
         <div className="p-6 border-b border-[#1e1e28]">
-          <h3 className="font-black text-white text-lg">Checkout</h3>
-          <p className="text-xs text-white/40 mt-1">{product.name} • {quantity} unidades</p>
+          <h3 className="font-black text-white text-lg">Checkout ZXMAX</h3>
+          <p className="text-xs text-white/40 mt-1">{product.name} • {quantity} unidades • {method.toUpperCase()}</p>
         </div>
         
         <div className="p-6 space-y-5">
           <div>
             <p className="text-xs font-bold uppercase text-white/30 mb-2">Forma de pagamento</p>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setMethod("pix")} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition ${method === "pix" ? "bg-[#0084ff] border-[#0084ff] text-white" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"}`}>
+              <button onClick={() => setMethod("pix")} disabled={!available.pix} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "pix" ? "bg-[#0084ff] border-[#0084ff] text-white" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${!available.pix ? "opacity-40 cursor-not-allowed" : ""}`}>
                 <CreditCard className="w-5 h-5" />
                 <span className="text-xs font-bold">PIX</span>
+                {!available.pix && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
               </button>
-              <button onClick={() => setMethod("crypto")} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition ${method === "crypto" ? "bg-[#ffbd2e] border-[#ffbd2e] text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"}`}>
+              <button onClick={() => setMethod("crypto")} disabled={!available.crypto} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "crypto" ? "bg-[#ffbd2e] border-[#ffbd2e] text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${!available.crypto ? "opacity-40 cursor-not-allowed" : ""}`}>
                 <Bitcoin className="w-5 h-5" />
-                <span className="text-xs font-bold">Crypto (VexoPay)</span>
+                <span className="text-xs font-bold">Crypto</span>
+                {!available.crypto && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
+              </button>
+              <button onClick={() => setMethod("card")} disabled={!available.card} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "card" ? "bg-white border-white text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${!available.card ? "opacity-40 cursor-not-allowed" : ""}`}>
+                <CreditCard className="w-5 h-5" />
+                <span className="text-xs font-bold">Cartão (Stripe)</span>
+                {!available.card && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
+              </button>
+              <button onClick={() => setMethod("boleto")} disabled={!available.boleto} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "boleto" ? "bg-white border-white text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${!available.boleto ? "opacity-40 cursor-not-allowed" : ""}`}>
+                <Package className="w-5 h-5" />
+                <span className="text-xs font-bold">Boleto (Stripe)</span>
+                {!available.boleto && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
               </button>
             </div>
+            <p className="text-[10px] text-white/30 mt-2">Se alguma forma estiver com problemas, fica indisponível automaticamente. Configure credenciais Stripe em Admin → APIs.</p>
           </div>
 
           <div>
@@ -222,8 +258,7 @@ export default function ProdutoPage() {
         } else {
           toast.error("Erro ao gerar PIX: " + (data?.error || "tente novamente"));
         }
-      } else {
-        // Crypto via VexoPay
+      } else if (method === "crypto") {
         const { data, error } = await supabase.functions.invoke("create-vexopay-crypto", {
           body: {
             purchaseId,
@@ -233,14 +268,29 @@ export default function ProdutoPage() {
           },
         });
         if (error) throw error;
-        if (data?.qrCode || data?.address) {
-          toast.success("Cobrança Crypto criada! Envie exatamente o valor para o endereço.");
-          // For now, show PIX modal with crypto info or redirect
+        if (data?.address || data?.qrCode) {
+          toast.success("Crypto criada! Envie exatamente R$ " + total.toFixed(2) + " para o endereço.");
           setCheckoutOpen(false);
-          // Could open crypto modal
-          window.open(data.qrCode || data.checkoutUrl || "#", "_blank");
+          if (data.qrCode) window.open(data.qrCode, "_blank");
         } else {
-          toast.error("Erro ao gerar Crypto: " + (data?.error || "tente novamente"));
+          toast.error("Erro Crypto: " + (data?.error || "tente novamente"));
+        }
+      } else {
+        // Stripe card/boleto
+        const { data, error } = await supabase.functions.invoke("create-stripe-checkout", {
+          body: {
+            purchaseId,
+            amount: total,
+            productName: product.name,
+            paymentMethod: method,
+          },
+        });
+        if (error) throw error;
+        if (data?.url) {
+          toast.success("Redirecionando para Stripe...");
+          window.location.href = data.url;
+        } else {
+          toast.error("Erro Stripe: " + (data?.error || "configure credenciais em Admin → APIs"));
         }
       }
     } catch (err: any) {
