@@ -324,30 +324,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return stored === null ? true : stored === "true";
   });
 
-  // Sync auth user to store state
+  // Sync auth user to store state - fixed to avoid admin account switch bug
   useEffect(() => {
-    if (authUser && profile) {
-      const userPublicId = publicIdFromProfile(profile, authUser.id);
+    if (authUser) {
+      // If profile exists, use it, otherwise create minimal user from authUser to avoid stuck
+      const userPublicId = profile ? publicIdFromProfile(profile, authUser.id) : publicIdFromProfile({ public_id: authUser.id.slice(0, 8) }, authUser.id);
       const user: User = {
         id: authUser.id,
         publicId: userPublicId,
-        email: profile.email || authUser.email || "",
-        name: profile.display_name || authUser.email?.split("@")[0] || "",
+        email: profile?.email || authUser.email || "",
+        name: profile?.display_name || authUser.email?.split("@")[0] || "Usuário",
         balance: state.userBalances[authUser.id] || 0,
         earnings: state.userEarnings[authUser.id] || 0,
-        avatar: profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(profile.display_name || "")}`,
+        avatar: profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(profile?.display_name || authUser.email || "")}`,
         isAdmin,
-        pixKey: profile.pix_key || "",
-        isVerified: profile.is_verified_seller,
+        pixKey: profile?.pix_key || "",
+        isVerified: profile?.is_verified_seller || false,
       };
-      setState((s) => ({
-        ...s,
-        currentUser: user,
-        userDirectory: {
-          ...(s.userDirectory || {}),
-          [authUser.id]: { userId: authUser.id, publicId: userPublicId, email: user.email, name: user.name, avatar: user.avatar, isVerified: user.isVerified },
-        },
-      }));
+      setState((s) => {
+        // Avoid switching to admin account randomly - only update if user id matches or currentUser is null
+        if (s.currentUser && s.currentUser.id !== authUser.id) {
+          console.log("Preventing account switch from", s.currentUser.id, "to", authUser.id);
+          // If current user is different, only switch if authUser is actually the logged user
+          // This prevents the bug where profile photo bugs and returns to admin account
+          if (!profile) return s; // Don't switch if profile not loaded yet
+        }
+        return {
+          ...s,
+          currentUser: user,
+          userDirectory: {
+            ...(s.userDirectory || {}),
+            [authUser.id]: { userId: authUser.id, publicId: userPublicId, email: user.email || "", name: user.name, avatar: user.avatar, isVerified: user.isVerified },
+          },
+        };
+      });
+    } else {
+      // No auth user, clear currentUser
+      setState((s) => ({ ...s, currentUser: null }));
     }
   }, [authUser, profile, isAdmin, state.userBalances, state.userEarnings]);
 
