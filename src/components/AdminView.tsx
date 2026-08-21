@@ -90,9 +90,30 @@ export default function AdminView() {
   };
 
   const openDocument = async (path: string) => {
-    const { data, error } = await supabase.storage.from("documents").createSignedUrl(path, 60 * 5);
-    if (error || !data?.signedUrl) return toast.error("Não foi possível abrir o documento.");
-    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    try {
+      // Try via admin-verify edge function (service role)
+      const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "get_document_url", filePath: path } });
+      if (!error && data?.url) {
+        window.open(data.url, "_blank", "noopener,noreferrer");
+        return;
+      }
+    } catch {}
+    // Fallback direct
+    try {
+      const { data, error } = await supabase.storage.from("documents").createSignedUrl(path, 60 * 10);
+      if (error || !data?.signedUrl) throw error || new Error("URL vazia");
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    } catch (e: any) {
+      toast.error("Não foi possível abrir: " + (e?.message || "verifique bucket"));
+      // Try to download directly
+      try {
+        const { data } = await supabase.storage.from("documents").download(path);
+        if (data) {
+          const url = URL.createObjectURL(data);
+          window.open(url, "_blank");
+        }
+      } catch {}
+    }
   };
 
   const loadWebhookLogs = async () => {
@@ -125,25 +146,43 @@ export default function AdminView() {
 
   const reviewKyc = async (userId: string, approved: boolean) => {
     const tid = toast.loading(approved ? "Aprovando..." : "Recusando...");
-    if (approved) {
-      const ok = await verifyUser(userId);
-      ok ? toast.success("Usuário verificado!", { id: tid }) : toast.error("Falha ao verificar.", { id: tid });
-    } else {
-      const { error } = await (supabase as any)
-        .from("profiles")
-        .update({
+    try {
+      if (approved) {
+        const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "verify_user", userId } });
+        if (error || data?.error) throw new Error(data?.error || error?.message || "Falha");
+        toast.success("Usuário verificado!", { id: tid });
+      } else {
+        const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "reject_user", userId, notes: kycNotes[userId]?.trim() || "Documentos ilegíveis" } });
+        if (error || data?.error) throw new Error(data?.error || error?.message || "Falha");
+        toast.success("Verificação recusada.", { id: tid });
+      }
+    } catch (e: any) {
+      // Fallback to direct
+      if (approved) {
+        const ok = await verifyUser(userId);
+        ok ? toast.success("Usuário verificado! (fallback)", { id: tid }) : toast.error("Falha ao verificar: " + (e?.message || ""), { id: tid });
+      } else {
+        const { error } = await (supabase as any).from("profiles").update({
           verification_status: "rejected",
           is_verified_seller: false,
-          verification_notes: kycNotes[userId]?.trim() || "Documentos ilegíveis ou dados divergentes.",
-        })
-        .eq("user_id", userId);
-      error ? toast.error("Falha ao recusar.", { id: tid }) : toast.error("Verificação recusada.", { id: tid });
+          verification_notes: kycNotes[userId]?.trim() || "Documentos ilegíveis",
+        } as any).eq("user_id", userId);
+        error ? toast.error("Falha ao recusar: " + error.message, { id: tid }) : toast.success("Recusado (fallback)", { id: tid });
+      }
     }
     await loadKyc();
   };
 
   const [docs, setDocs] = useState<any[]>([]);
   const loadDocs = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "get_documents" } });
+      if (!error && data?.documents) {
+        setDocs(data.documents);
+        return;
+      }
+    } catch {}
+    // Fallback to direct query
     const { data } = await (supabase as any).from("seller_documents").select("id, user_id, file_path, file_name, status, created_at").order("created_at", { ascending: false }).limit(100);
     if (data) setDocs(data);
   };
@@ -453,7 +492,25 @@ export default function AdminView() {
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   <button onClick={() => openDocument(doc.filePath)} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1"><ExternalLink className="w-3 h-3" /> Abrir</button>
-                  <button onClick={async () => { const tid = toast.loading("Aprovando..."); reviewSellerDocument(doc.id, "approved"); const ok = await verifyUser(doc.userId); ok ? toast.success("Documento aprovado e vendedor verificado!", { id: tid }) : toast.error("Documento marcado, mas não foi possível verificar o vendedor.", { id: tid }); }} className="px-3 py-2 bg-success text-white text-xs font-bold rounded-lg">Aprovar</button>
+                  <button onClick={async () => { 
+                    const tid = toast.loading("Aprovando...");
+                    try {
+                      const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "verify_user", userId: doc.user_id || doc.userId, documentId: doc.id } });
+                      if (error || data?.error) throw new Error(data?.error || error?.message);
+                      reviewSellerDocument(doc.id, "approved");
+                      toast.success("Documento aprovado e vendedor verificado!", { id: tid });
+                      void loadDocs();
+                    } catch (e: any) {
+                      reviewSellerDocument(doc.id, "approved");
+                      const ok = await verifyUser(doc.user_id || doc.userId);
+                      if (ok) {
+                        toast.success("Aprovado (fallback)!", { id: tid });
+                        void loadDocs();
+                      } else {
+                        toast.error("Erro ao verificar: " + (e?.message || "tente novamente"), { id: tid });
+                      }
+                    }
+                  }} className="px-3 py-2 bg-[#00c950] text-white text-xs font-bold rounded-lg">Aprovar</button>
                   <button onClick={() => { reviewSellerDocument(doc.id, "rejected"); toast.error("Documento rejeitado."); }} className="px-3 py-2 bg-destructive/10 text-destructive text-xs font-bold rounded-lg">Rejeitar</button>
                 </div>
               </div>
