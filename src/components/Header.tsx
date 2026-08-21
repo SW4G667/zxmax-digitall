@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { useStore } from "@/store/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
-import { useNavigate } from "react-router-dom";
-import { Sun, Moon, Search, Menu, Wallet } from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { Sun, Moon, Search, Wallet, Heart } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 import DiscordIcon from "@/components/DiscordIcon";
+import useFavorites from "@/hooks/useFavorites";
 
 interface Props {
   onProfileClick?: () => void;
@@ -16,9 +17,28 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
   const { state, isDark, toggleDark } = useStore();
   const { profile, user, isAdmin } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [q, setQ] = useState("");
+  const { count } = useFavorites();
+  const [favCount, setFavCount] = useState(count);
 
-  // Persist search in a tiny custom event so StoreView can react.
+  useEffect(() => {
+    setFavCount(count);
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail === "number") setFavCount(detail);
+    };
+    window.addEventListener("zxmax:favorites-updated", handler as EventListener);
+    return () => window.removeEventListener("zxmax:favorites-updated", handler as EventListener);
+  }, [count]);
+
+  // Sync search from URL ?q= or ?cat=
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const urlQ = params.get("q") || "";
+    if (urlQ) setQ(urlQ);
+  }, [location.search]);
+
   useEffect(() => {
     const handler = () => setQ("");
     window.addEventListener("zxmax:clear-search", handler);
@@ -27,9 +47,15 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
 
   const submitSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!q.trim()) return;
-    window.dispatchEvent(new CustomEvent("zxmax:search", { detail: q.trim() }));
-    navigate("/loja");
+    const trimmed = q.trim();
+    if (!trimmed) {
+      navigate("/loja");
+      window.dispatchEvent(new CustomEvent("zxmax:search", { detail: "" }));
+      return;
+    }
+    // Navigate with query param for deep-link
+    navigate(`/loja?q=${encodeURIComponent(trimmed)}`);
+    window.dispatchEvent(new CustomEvent("zxmax:search", { detail: trimmed }));
   };
 
   return (
@@ -41,7 +67,6 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
           title="Menu"
           aria-label="Abrir menu"
         >
-          {/* Três barrinhas estilo GGMAX */}
           <div className="flex flex-col gap-[5px] w-5">
             <span className="block h-[2px] w-5 bg-foreground group-hover:bg-primary transition rounded-full" />
             <span className="block h-[2px] w-4 bg-foreground group-hover:bg-primary transition rounded-full" />
@@ -72,6 +97,21 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
               <DiscordIcon className="w-5 h-5 text-muted-foreground" />
             </a>
           )}
+
+          {/* Favorites */}
+          <button
+            onClick={() => navigate("/favoritos")}
+            className="relative p-2 rounded-lg hover:bg-muted transition"
+            title="Favoritos"
+          >
+            <Heart className={`w-5 h-5 ${favCount > 0 ? "text-primary fill-primary" : "text-muted-foreground"}`} />
+            {favCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-primary text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">
+                {favCount > 99 ? "99+" : favCount}
+              </span>
+            )}
+          </button>
+
           <NotificationBell />
           <button onClick={toggleDark} className="p-2 rounded-lg hover:bg-muted transition" title="Mudar tema">
             {isDark ? <Sun className="w-5 h-5 text-muted-foreground" /> : <Moon className="w-5 h-5 text-muted-foreground" />}

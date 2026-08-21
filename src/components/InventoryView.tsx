@@ -105,7 +105,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     e.preventDefault();
     if (!state.currentUser?.isVerified) return toast.error("Sua conta precisa ser verificada pelo admin para criar anúncios.");
     if (!form.name || !form.price) return toast.error("Preencha nome e preço.");
-    if (parseFloat(form.price) < 5) return toast.error("O preço mínimo de um produto é R$ 5,00.");
+    if (parseFloat(form.price) < 2) return toast.error("O preço mínimo de um produto é R$ 2,00.");
     const parsedVariations = variations.filter((v) => v.name && v.price).map((v) => ({ name: v.name, price: parseFloat(v.price) }));
 
     if (editingId !== null) {

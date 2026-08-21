@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ArrowLeft, Shield, Upload, Loader2, CheckCircle2, Clock, XCircle } from "lucide-react";
+import TwoFactorPanel from "@/components/TwoFactorPanel";
+import LoadingScreen from "@/components/LoadingScreen";
+import AppShell from "@/components/AppShell";
 
 const STATUS_META: Record<string, { label: string; className: string; icon: any }> = {
   none: { label: "Não verificado", className: "bg-muted text-muted-foreground", icon: Shield },
@@ -148,11 +151,7 @@ function PerfilInner() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-page">
-        <Loader2 className="w-6 h-6 animate-spin text-primary" />
-      </div>
-    );
+    return <LoadingScreen message="Carregando perfil..." />;
   }
 
   if (!user) {
@@ -165,8 +164,8 @@ function PerfilInner() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-page">
-      <div className="max-w-3xl mx-auto p-5 pb-24">
+    <AppShell>
+      <div className="max-w-3xl mx-auto">
         <a href="/" className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 text-sm">
           <ArrowLeft className="w-4 h-4" /> Voltar para a loja
         </a>
@@ -207,6 +206,10 @@ function PerfilInner() {
           </button>
         </div>
 
+        <div className="mb-5">
+          <TwoFactorPanel />
+        </div>
+
         <div className="glass-card p-6">
           <h2 className="font-bold text-foreground mb-1">Verificação de identidade</h2>
           <p className="text-xs text-muted-foreground mb-4">
@@ -243,14 +246,10 @@ function PerfilInner() {
           )}
         </div>
       </div>
-    </div>
+    </AppShell>
   );
 }
 
 export default function Perfil() {
-  return (
-    <AuthProvider>
-      <PerfilInner />
-    </AuthProvider>
-  );
+  return <PerfilInner />;
 }

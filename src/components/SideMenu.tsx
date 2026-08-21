@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { X, Store, Package, ShoppingBag, Headset, Shield, User, Wallet, FileText, HelpCircle, Lock, ScrollText } from "lucide-react";
+import { X, Store, Package, ShoppingBag, Headset, Shield, User, Wallet, FileText, HelpCircle, Lock, ScrollText, Heart, Gamepad2, Bot, Key, File, Palette, Briefcase, GraduationCap, Settings } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "withdraw";
@@ -57,9 +57,16 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
           </button>
         )}
 
-        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-3 mb-1">Navegar</p>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-3 mb-1">Marketplace</p>
         <div className="space-y-1 mb-4">
           <Item icon={Store} label="Loja" hint="Ver todos os anúncios" onClick={() => go("store")} />
+          <Link to="/favoritos" onClick={onClose} className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-muted transition">
+            <span className="p-2 rounded-xl bg-primary/10 text-primary"><Heart className="w-4 h-4" /></span>
+            <span className="flex-1">
+              <span className="block text-sm font-bold text-foreground">Favoritos</span>
+              <span className="block text-[11px] text-muted-foreground">Seus produtos salvos</span>
+            </span>
+          </Link>
           <Item icon={Package} label="Anunciar / Meus produtos" hint="Criar, editar e gerenciar anúncios" onClick={() => go("inventory")} />
           <Item icon={ShoppingBag} label="Minhas compras" hint="Pedidos, entregas e chat" onClick={() => go("purchases")} />
           <Item icon={Headset} label="Suporte" hint="Falar com a equipe" onClick={() => go("support")} />
@@ -72,7 +79,7 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
             <span className="p-2 rounded-xl bg-primary/10 text-primary"><User className="w-4 h-4" /></span>
             <span className="flex-1">
               <span className="block text-sm font-bold text-foreground">Meu perfil</span>
-              <span className="block text-[11px] text-muted-foreground">Dados pessoais e verificação de identidade</span>
+              <span className="block text-[11px] text-muted-foreground">Dados pessoais e verificação</span>
             </span>
           </Link>
           <Item icon={Wallet} label="Sacar dinheiro" hint="Pix em 5 a 7 dias úteis" onClick={() => go("withdraw")} />
