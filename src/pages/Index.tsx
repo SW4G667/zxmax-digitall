@@ -12,8 +12,10 @@ import MyPurchasesView from "@/components/MyPurchasesView";
 import WithdrawView from "@/components/WithdrawView";
 import AppShell from "@/components/AppShell";
 import LoadingScreen from "@/components/LoadingScreen";
+import TwoFactorPanel from "@/components/TwoFactorPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { ShieldCheck, Lock } from "lucide-react";
 
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "withdraw";
 const PATHS: Record<View, string> = { store: "/loja", inventory: "/meus-produtos", purchases: "/minhas-compras", support: "/suporte", admin: "/admin", withdraw: "/sacar" };
@@ -22,13 +24,12 @@ const PROTECTED_VIEWS: View[] = ["inventory", "purchases", "support", "withdraw"
 
 function Dashboard({ view }: { view: View }) {
   const { refreshPurchases } = useStore();
-  const { isAdmin, user, needsMfa } = useAuth();
+  const { isAdmin, user, needsMfa, mfaEnabled } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [authOpen, setAuthOpen] = useState(false);
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<number | null>(null);
 
-  // Deep-link ?order={id} in minhas-compras (used in emails)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const orderId = params.get("order");
@@ -51,9 +52,7 @@ function Dashboard({ view }: { view: View }) {
   const requiresAuth = PROTECTED_VIEWS.includes(view) || view === "admin";
 
   useEffect(() => {
-    if (!user && requiresAuth) {
-      setAuthOpen(true);
-    }
+    if (!user && requiresAuth) setAuthOpen(true);
   }, [user, requiresAuth]);
 
   useEffect(() => {
@@ -73,13 +72,35 @@ function Dashboard({ view }: { view: View }) {
     }
   }, [user, refreshPurchases, navigate]);
 
+  // Admin MFA enforcement - only admin needs authenticator to prevent hacker invasion
+  if (view === "admin" && user && isAdmin && !mfaEnabled) {
+    return (
+      <AppShell>
+        <div className="max-w-2xl mx-auto py-10">
+          <div className="rounded-2xl border-2 border-destructive/30 bg-destructive/5 p-8 text-center mb-6">
+            <div className="w-16 h-16 rounded-2xl bg-destructive/15 border border-destructive/20 flex items-center justify-center mx-auto mb-4">
+              <Lock className="w-8 h-8 text-destructive" />
+            </div>
+            <h2 className="text-2xl font-black text-white">Proteção Admin Obrigatória</h2>
+            <p className="text-sm text-white/60 mt-2 leading-relaxed">
+              Para impedir invasão de hackers, o painel admin exige <strong className="text-white">Google Authenticator (2FA)</strong>.<br />
+              Ative agora. O QR Code vai aparecer para escanear e depois <strong className="text-white">some</strong> — só o código de 6 dígitos será pedido no login.
+            </p>
+          </div>
+          <TwoFactorPanel />
+          <p className="text-[11px] text-white/30 text-center mt-4">Após ativar, deslogue e logue novamente: vai pedir o código do autenticador. Você pode gerar novo código quando quiser em "Gerar novo código".</p>
+        </div>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
       {view === "store" && <StoreView />}
       {view === "inventory" && user && <InventoryView onOpenChat={handleOpenChat} />}
       {view === "purchases" && user && <MyPurchasesView initialSelectedId={selectedPurchaseId} />}
       {view === "support" && user && <SupportView />}
-      {view === "admin" && user && isAdmin && <AdminView />}
+      {view === "admin" && user && isAdmin && mfaEnabled && <AdminView />}
       {view === "withdraw" && user && <WithdrawView />}
       {requiresAuth && !user && (
         <div className="text-center py-20 glass-card">
@@ -95,6 +116,7 @@ function Dashboard({ view }: { view: View }) {
           <p className="text-foreground font-bold">Acesso restrito a administradores.</p>
         </div>
       )}
+      {view === "admin" && user && isAdmin && !mfaEnabled && null}
       {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
     </AppShell>
   );
@@ -107,49 +129,32 @@ function AppGate({ view }: { view: View }) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
-
     if (code && !user) {
       setDiscordLoading(true);
       window.history.replaceState({}, "", "/");
-
       supabase.functions.invoke("discord-callback", {
         body: { code, redirectUri: window.location.origin + "/" },
       }).then(({ data, error }) => {
         if (error) {
-          console.error("Discord callback error:", error);
           toast.error("Erro ao fazer login com Discord: " + error.message);
           setDiscordLoading(false);
           return;
         }
         if (!data?.success) {
-          console.error("Discord callback failed:", data);
           toast.error("Erro ao fazer login com Discord: " + (data?.error || "Tente novamente."));
           setDiscordLoading(false);
           return;
         }
         if (data.access_token && data.token_type === "magiclink") {
-          supabase.auth.verifyOtp({
-            email: data.user.email,
-            token: data.access_token,
-            type: "magiclink",
-          }).then(({ error: verifyErr }) => {
+          supabase.auth.verifyOtp({ email: data.user.email, token: data.access_token, type: "magiclink" }).then(({ error: verifyErr }) => {
             if (verifyErr) toast.error("Erro ao autenticar: " + verifyErr.message);
             else toast.success("Login com Discord realizado!");
             setDiscordLoading(false);
-          }).catch(() => {
-            toast.error("Erro inesperado ao autenticar.");
-            setDiscordLoading(false);
           });
         } else if (data.password && data.user?.email) {
-          supabase.auth.signInWithPassword({
-            email: data.user.email,
-            password: data.password,
-          }).then(({ error: signInErr }) => {
+          supabase.auth.signInWithPassword({ email: data.user.email, password: data.password }).then(({ error: signInErr }) => {
             if (signInErr) toast.error("Erro ao autenticar: " + signInErr.message);
             else toast.success("Conta criada e login realizado com Discord!");
-            setDiscordLoading(false);
-          }).catch(() => {
-            toast.error("Erro inesperado ao autenticar.");
             setDiscordLoading(false);
           });
         } else {

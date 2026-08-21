@@ -24,7 +24,7 @@ interface WebhookLog {
 export default function AdminView() {
   const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument, saveGatewaySettings } = useStore();
   const { mfaEnabled, isAdmin } = useAuth();
-  const [tab, setTab] = useState<"products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "verifications" | "disputes" | "config" | "webhooks" | "apis">("products");
+  const [tab, setTab] = useState<"products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "verifications" | "disputes" | "config" | "webhooks" | "apis" | "security">("products");
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [expandedLog, setExpandedLog] = useState<number | null>(null);
@@ -188,6 +188,7 @@ export default function AdminView() {
       {/* Tabs */}
       <div className="flex gap-2 overflow-x-auto pb-4 mb-6 scrollbar-hide">
         {[
+          { id: "security", label: "Segurança 2FA", icon: ShieldCheck },
           { id: "products", label: "Produtos", icon: PackageEmoji, count: pendingProducts.length },
           { id: "withdrawals", label: "Saques", icon: MoneyEmoji, count: pendingWithdrawals.length },
           { id: "disputes", label: "Disputas", icon: ShieldAlert, count: disputes.length },
@@ -589,6 +590,18 @@ export default function AdminView() {
 
 
       {tab === "apis" && <IntegrationsPanel />}
+
+      {tab === "security" && (
+        <div className="space-y-6 max-w-2xl">
+          <div className="glass-card p-6 border border-white/10 bg-[#0a0a0f]">
+            <h3 className="font-black text-white flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-success" /> Segurança do Painel Admin</h3>
+            <p className="text-xs text-white/50 mt-2 leading-relaxed">
+              O 2FA é <strong className="text-white">só para admin</strong> — impede invasão mesmo se alguém descobrir sua senha. Ao ativar, o QR Code aparece uma vez para escanear no Google Authenticator e depois <strong className="text-white">some</strong>. No próximo login, só pede o código de 6 dígitos.
+            </p>
+          </div>
+          <TwoFactorPanel />
+        </div>
+      )}
 
       {/* Config Tab */}
       {tab === "config" && (
