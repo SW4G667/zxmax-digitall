@@ -17,8 +17,6 @@ serve(async (req) => {
   );
 
   // ---- Authenticate the webhook call -------------------------------------
-  // EvoPay is configured with a URL that carries a secret token (see the admin
-  // panel, "APIs & Credenciais"). Without a valid token nothing is processed.
   const { data: evoSetting } = await admin
     .from("app_settings")
     .select("value")
@@ -49,6 +47,7 @@ serve(async (req) => {
   const apiKey = (evoSetting?.value as any)?.apiKey || Deno.env.get("EVOPAY_API_KEY");
 
   let event: any = null;
+  let purchaseIdForEmail: number | null = null;
   try {
     event = await req.json();
     console.log("EvoPay webhook received:", JSON.stringify(event));
@@ -81,7 +80,6 @@ serve(async (req) => {
 
     // Only act on completed deposits (cash-in) confirmed by the EvoPay API
     if (confirmed && clientReference && !Number.isNaN(purchaseId)) {
-      // Fetch purchase + product to decide auto delivery
       const { data: purchase } = await admin
         .from("purchases")
         .select("id, product_id, status, messages, evopay_charge_id, amount")
@@ -97,6 +95,28 @@ serve(async (req) => {
         });
         if (applyError) throw applyError;
         logStatus = applied?.[0]?.resulting_status || "processed";
+        purchaseIdForEmail = purchaseId;
+
+        // Trigger transactional emails (buyer + seller) - fire and forget, idempotent via send-email logs
+        try {
+          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+          const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+          const headers = { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}`, "apikey": serviceKey };
+          // buyer email
+          await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ type: "purchase_confirmed", purchaseId }),
+          }).catch(() => {});
+          // seller email
+          await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ type: "new_sale", purchaseId }),
+          }).catch(() => {});
+        } catch (e) {
+          console.error("Failed to trigger emails from webhook", e);
+        }
       } else {
         logStatus = purchase ? `ignored (already ${purchase.status})` : "ignored (purchase not found)";
       }
@@ -106,7 +126,6 @@ serve(async (req) => {
       logStatus = "unverified (não confirmado pela API EvoPay)";
     }
 
-    // Record the event for admin debugging
     await admin.from("webhook_logs").insert({
       source: "evopay",
       event_type: type || null,
@@ -134,7 +153,6 @@ serve(async (req) => {
         error: error?.message || String(error),
       });
     } catch (_e) { /* ignore logging failure */ }
-    // Always return 200 so EvoPay doesn't retry forever on parse issues
     return new Response(JSON.stringify({ received: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

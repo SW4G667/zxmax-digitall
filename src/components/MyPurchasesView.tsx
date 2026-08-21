@@ -88,7 +88,7 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
     setResumeId(purchase.id);
     // Reuse existing valid QR
     if (purchase.pixQrCode && purchase.evopayChargeId && !expired) {
-      setPixCharge({ evopayId: purchase.evopayChargeId, qrCodeText: purchase.pixQrCode, amount: purchase.amount });
+      setPixCharge({ evopayId: purchase.evopayChargeId, qrCodeText: purchase.pixQrCode, amount: purchase.amount, purchaseId: purchase.id });
       return;
     }
     // Generate a new Pix
@@ -106,7 +106,7 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
       if (error) throw error;
       if (data?.qrCodeText) {
         savePixCharge(purchase.id, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
-        setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? purchase.amount, qrCodeUrl: data.qrCodeUrl });
+        setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? purchase.amount, qrCodeUrl: data.qrCodeUrl, purchaseId: purchase.id });
       } else {
         toast.error("Erro ao gerar PIX. Tente novamente.");
       }
@@ -117,9 +117,15 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
     }
   };
 
-  const handlePixPaid = () => {
+  const handlePixPaid = async () => {
     if (resumeId != null) markPurchasePaid(resumeId);
     toast.success("Pagamento confirmado!");
+    if (resumeId) {
+      try {
+        await supabase.functions.invoke("send-email", { body: { type: "purchase_confirmed", purchaseId: resumeId } });
+        await supabase.functions.invoke("send-email", { body: { type: "new_sale", purchaseId: resumeId } });
+      } catch {}
+    }
   };
 
   const handleDispute = async () => {

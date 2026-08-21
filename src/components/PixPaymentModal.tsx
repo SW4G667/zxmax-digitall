@@ -8,6 +8,7 @@ export interface PixCharge {
   qrCodeText: string;
   amount: number;
   qrCodeUrl?: string | null;
+  purchaseId?: number;
 }
 
 interface Props {
@@ -29,13 +30,12 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
     if (!charge) return;
 
     let attempts = 0;
-    const MAX_ATTEMPTS = 90; // ~6 minutes at 4s interval
+    const MAX_ATTEMPTS = 90;
 
     const tick = async () => {
       if (paidRef.current) return;
       attempts += 1;
       try {
-        // 1) Ask the edge function to re-check the charge with EvoPay.
         const { data, error } = await supabase.functions.invoke("check-evopay-status", {
           body: { id: charge.evopayId },
         });
@@ -45,16 +45,19 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
           String(data?.status || "").toUpperCase() === "PAID"
         );
 
-        // 2) Fallback: also verify the local order status (covers webhook-only updates)
         let localPaid = false;
+        let purchaseId: number | null = charge.purchaseId || null;
         try {
           const { data: latest } = await (supabase as any)
             .from("purchases")
-            .select("status")
+            .select("id, status")
             .eq("evopay_charge_id", charge.evopayId)
             .maybeSingle();
-          if (latest && ["paid", "delivered"].includes(latest.status)) localPaid = true;
-        } catch { /* ignore */ }
+          if (latest) {
+            if (["paid", "delivered"].includes(latest.status)) localPaid = true;
+            purchaseId = latest.id;
+          }
+        } catch {}
 
         if (gatewayPaid || localPaid) {
           if (paidRef.current) return;
@@ -62,6 +65,18 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
           setStatus("paid");
           clearInterval(interval);
           onPaid();
+
+          // Trigger transactional emails (idempotent)
+          if (purchaseId) {
+            try {
+              await supabase.functions.invoke("send-email", {
+                body: { type: "purchase_confirmed", purchaseId },
+              });
+              await supabase.functions.invoke("send-email", {
+                body: { type: "new_sale", purchaseId },
+              });
+            } catch {}
+          }
         } else if (data?.status === "EXPIRED" || data?.status === "CANCELED" || data?.status === "FAILED") {
           clearInterval(interval);
           toast.error("O pagamento expirou ou foi cancelado. Gere um novo PIX.");
@@ -73,7 +88,6 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
     };
 
     const interval = setInterval(tick, 4000);
-    // Check once immediately so users don't wait 4s on return-from-bank
     void tick();
 
     return () => clearInterval(interval);

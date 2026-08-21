@@ -127,7 +127,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
       const verifiedTotp = (data?.totp || []).filter((f) => f.status === "verified");
       setMfaEnabled(verifiedTotp.length > 0);
-      // Current authenticator assurance level (aal1 = only password, aal2 = 2FA)
       const aal: string = (sess as any)?.aal || sess.user?.aal || sess.user?.app_metadata?.aal || "aal1";
       if (verifiedTotp.length > 0 && aal !== "aal2" && verifiedTotp[0]) {
         if (!challengeId) {
@@ -147,16 +146,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [challengeId]);
 
   useEffect(() => {
+    let mounted = true;
+
+    // Fix: getSession FIRST, then onAuthStateChange to avoid race that caused "voltava pra conta do admin"
+    const init = async () => {
+      try {
+        const { data: { session: sess } } = await supabase.auth.getSession();
+        if (!mounted) return;
+        setSession(sess);
+        setUser(sess?.user ?? null);
+        if (sess?.user) {
+          await Promise.all([
+            fetchProfile(sess.user.id).catch(() => null),
+            checkBan(sess.user.id).catch(() => null),
+            checkAdmin(sess.user.id).catch(() => null),
+            evaluateMfa(sess).catch(() => null),
+          ]);
+        }
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    void init();
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, sess) => {
+      if (!mounted) return;
       setSession(sess);
       setUser(sess?.user ?? null);
 
       if (sess?.user) {
         setLoading(true);
-        await fetchProfile(sess.user.id).catch(() => null);
-        await checkBan(sess.user.id).catch(() => null);
-        await checkAdmin(sess.user.id).catch(() => null);
-        await evaluateMfa(sess).catch(() => null);
+        await Promise.all([
+          fetchProfile(sess.user.id).catch(() => null),
+          checkBan(sess.user.id).catch(() => null),
+          checkAdmin(sess.user.id).catch(() => null),
+          evaluateMfa(sess).catch(() => null),
+        ]);
         setLoading(false);
       } else {
         setProfile(null);
@@ -169,22 +195,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    supabase.auth.getSession().then(async ({ data: { session: sess } }) => {
-      setSession(sess);
-      setUser(sess?.user ?? null);
-      if (sess?.user) {
-        setLoading(true);
-        await Promise.all([
-          fetchProfile(sess.user.id).catch(() => null),
-          checkBan(sess.user.id).catch(() => null),
-          checkAdmin(sess.user.id).catch(() => null),
-          evaluateMfa(sess).catch(() => null),
-        ]);
-      }
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, [evaluateMfa]);
 
   const signUp = async (email: string, password: string, displayName: string) => {
@@ -203,7 +217,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error: error.message };
-    // Kick off MFA evaluation (it will also create a challenge if needed)
     if (data.session) void evaluateMfa(data.session);
     return { error: null };
   };
