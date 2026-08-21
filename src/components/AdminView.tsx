@@ -24,7 +24,7 @@ interface WebhookLog {
 export default function AdminView() {
   const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument, saveGatewaySettings } = useStore();
   const { mfaEnabled, isAdmin } = useAuth();
-  const [tab, setTab] = useState<"dashboard" | "products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "verifications" | "disputes" | "config" | "webhooks" | "apis" | "security">("dashboard");
+  const [tab, setTab] = useState<"dashboard" | "products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "verifications" | "disputes" | "config" | "webhooks" | "apis" | "security" | "roles">("dashboard");
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [expandedLog, setExpandedLog] = useState<number | null>(null);
@@ -142,9 +142,20 @@ export default function AdminView() {
     await loadKyc();
   };
 
+  const [docs, setDocs] = useState<any[]>([]);
+  const loadDocs = async () => {
+    const { data } = await (supabase as any).from("seller_documents").select("id, user_id, file_path, file_name, status, created_at").order("created_at", { ascending: false }).limit(100);
+    if (data) setDocs(data);
+  };
+
   useEffect(() => {
     if (tab === "webhooks") void loadWebhookLogs();
     if (tab === "verifications") void loadKyc();
+    if (tab === "documents") void loadDocs();
+    if (tab === "dashboard") {
+      void loadWebhookLogs();
+      void loadDocs();
+    }
   }, [tab]);
 
   if (selectedDisputeId) {
@@ -189,6 +200,7 @@ export default function AdminView() {
       <div className="flex gap-2 overflow-x-auto pb-4 mb-6 scrollbar-hide">
         {[
           { id: "dashboard", label: "Dashboard", icon: ShieldCheck },
+          { id: "roles", label: "Cargos", icon: Users },
           { id: "security", label: "Segurança 2FA", icon: ShieldCheck },
           { id: "products", label: "Produtos", icon: PackageEmoji, count: pendingProducts.length },
           { id: "withdrawals", label: "Saques", icon: MoneyEmoji, count: pendingWithdrawals.length },
@@ -420,13 +432,16 @@ export default function AdminView() {
 
       {/* Documents Tab */}
       {tab === "documents" && (
-        <div className="glass-card p-6">
-          <h3 className="font-bold text-foreground mb-4">Verificação de Documentos</h3>
-          <p className="text-sm text-muted-foreground mb-6">Aprove documentos para liberar a função de saque para os usuários.</p>
+        <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-white">Verificação de Documentos</h3>
+            <button onClick={loadDocs} className="text-xs font-bold text-[#0084ff] flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Atualizar</button>
+          </div>
+          <p className="text-sm text-white/40 mb-6">Aprove documentos para liberar saque. Se não aparece, verifique RLS e bucket.</p>
           <div className="space-y-4">
-            {(state.sellerDocuments || []).length === 0 ? (
-              <p className="text-center text-xs text-muted-foreground py-10">Nenhum documento enviado ainda.</p>
-            ) : (state.sellerDocuments || []).map((doc) => (
+            {(docs.length === 0 && (state.sellerDocuments || []).length === 0) ? (
+              <p className="text-center text-xs text-white/40 py-10">Nenhum documento enviado ainda.</p>
+            ) : (docs.length > 0 ? docs : state.sellerDocuments || []).map((doc: any) => (
               <div key={doc.id} className="p-4 bg-muted rounded-xl border border-border/40">
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <div className="min-w-0">
@@ -591,6 +606,57 @@ export default function AdminView() {
 
 
       {tab === "apis" && <IntegrationsPanel />}
+
+      {tab === "roles" && (
+        <div className="space-y-6 max-w-3xl">
+          <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
+            <h3 className="font-black text-white flex items-center gap-2"><Users className="w-5 h-5 text-[#0084ff]" /> Cargos e Permissões</h3>
+            <p className="text-xs text-white/50 mt-2">Dê acesso admin por e-mail e crie cargos custom com permissões.</p>
+          </div>
+
+          <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6 space-y-4">
+            <h4 className="font-bold text-white">Dar cargo por e-mail</h4>
+            <div className="grid gap-3">
+              <input id="role-email" placeholder="E-mail do usuário" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none" />
+              <select id="role-select" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm">
+                <option value="admin">Admin (total)</option>
+                <option value="moderator">Moderador (produtos + disputas)</option>
+                <option value="support">Suporte (chat)</option>
+                <option value="finance">Financeiro (saques)</option>
+              </select>
+              <button
+                onClick={async () => {
+                  const emailInput = document.getElementById('role-email') as HTMLInputElement;
+                  const roleSelect = document.getElementById('role-select') as HTMLSelectElement;
+                  const email = emailInput?.value?.trim();
+                  const role = roleSelect?.value;
+                  if (!email) return toast.error("Digite e-mail");
+                  const { data: prof } = await supabase.from("profiles").select("user_id").eq("email", email).maybeSingle();
+                  if (!prof?.user_id) return toast.error("Usuário não encontrado");
+                  const { error } = await supabase.from("user_roles").upsert({ user_id: prof.user_id, role }, { onConflict: "user_id,role" });
+                  if (error) return toast.error(error.message);
+                  toast.success(`Cargo ${role} dado para ${email}`);
+                  emailInput.value = "";
+                }}
+                className="bg-[#0084ff] text-white px-6 py-3 rounded-xl font-bold text-sm"
+              >
+                Dar acesso
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
+            <h4 className="font-bold text-white mb-3">Usuários com acesso</h4>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {Object.values(state.userDirectory || {}).slice(0, 20).map((u: any) => (
+                <div key={u.userId} className="flex items-center justify-between p-3 rounded-xl bg-[#0a0a0f] border border-[#1e1e28]">
+                  <div><p className="text-sm font-bold text-white truncate">{u.name}</p><p className="text-[11px] text-white/40 font-mono">{u.email} • ID {u.publicId}</p></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {tab === "dashboard" && (
         <div className="space-y-6">
