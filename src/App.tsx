@@ -25,9 +25,9 @@ const App = () => (
       <ErrorBoundary>
         <AuthProvider>
           <StoreProvider>
-            <Sonner position="top-center" richColors />
-            <CookieConsent />
             <BrowserRouter>
+              <Sonner position="top-center" richColors />
+              <CookieConsent />
               <Routes>
                 <Route path="/" element={<Index view="store" />} />
                 <Route path="/loja" element={<Index view="store" />} />
