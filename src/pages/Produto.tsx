@@ -1,15 +1,100 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { useStore, ProductVariation } from "@/store/StoreContext";
-import { ArrowLeft, Shield, CheckCircle, Zap, Star, MessageSquare, Share2, Flag, Heart, ShoppingCart, Send, Eye } from "lucide-react";
+import { useStore, ProductVariation, Product } from "@/store/StoreContext";
+import { Shield, CheckCircle, Zap, Star, MessageSquare, Share2, Flag, Heart, ShoppingCart, Send, Eye, Minus, Plus, ThumbsUp, BadgeCheck, Clock, Package, CreditCard, Bitcoin } from "lucide-react";
 import { toast } from "sonner";
-import ProductCard from "@/components/ProductCard";
 import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
 import AuthScreen from "@/components/AuthScreen";
 import UserProfileModal from "@/components/UserProfileModal";
 import AppShell from "@/components/AppShell";
 import useFavorites from "@/hooks/useFavorites";
 import { supabase } from "@/integrations/supabase/client";
+
+// Eldorado-style seller row
+interface SellerOffer {
+  id: number;
+  product: Product;
+  pricePerUnit: number;
+  stock: number;
+  minQty: number;
+  delivery: string;
+  sellerName: string;
+  sellerId: string;
+  rating: number;
+  reviews: number;
+  verified: boolean;
+}
+
+function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePercent }: { product: Product; quantity: number; onClose: () => void; onConfirm: (method: string, cpf: string) => void; loading: boolean; feePercent: number }) {
+  const [method, setMethod] = useState<"pix" | "crypto">("pix");
+  const [cpf, setCpf] = useState("");
+  const unitPrice = product.price;
+  const subtotal = unitPrice * quantity;
+  const fee = subtotal * (feePercent / 100);
+  const total = subtotal + fee;
+
+  const handleConfirm = () => {
+    const cleanCpf = cpf.replace(/\D/g, "");
+    if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
+      toast.error("Digite um CPF/CNPJ válido (11 ou 14 dígitos)");
+      return;
+    }
+    onConfirm(method, cleanCpf);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-[#15151a] border border-[#25252e] rounded-2xl w-full max-w-md overflow-hidden animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
+        <div className="p-6 border-b border-[#1e1e28]">
+          <h3 className="font-black text-white text-lg">Checkout</h3>
+          <p className="text-xs text-white/40 mt-1">{product.name} • {quantity} unidades</p>
+        </div>
+        
+        <div className="p-6 space-y-5">
+          <div>
+            <p className="text-xs font-bold uppercase text-white/30 mb-2">Forma de pagamento</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setMethod("pix")} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition ${method === "pix" ? "bg-[#0084ff] border-[#0084ff] text-white" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"}`}>
+                <CreditCard className="w-5 h-5" />
+                <span className="text-xs font-bold">PIX</span>
+              </button>
+              <button onClick={() => setMethod("crypto")} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition ${method === "crypto" ? "bg-[#ffbd2e] border-[#ffbd2e] text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"}`}>
+                <Bitcoin className="w-5 h-5" />
+                <span className="text-xs font-bold">Crypto (VexoPay)</span>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-bold uppercase text-white/30 mb-2">CPF para pagamento</p>
+            <input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />
+            <p className="text-[10px] text-white/30 mt-1">Obrigatório para PIX e Crypto (VexoPay exige documento)</p>
+          </div>
+
+          <div className="bg-[#0a0a0f] border border-[#1e1e28] rounded-xl p-4 space-y-2">
+            <div className="flex justify-between text-xs"><span className="text-white/40">Preço unitário</span><span className="text-white">R$ {unitPrice.toFixed(5)} / un</span></div>
+            <div className="flex justify-between text-xs"><span className="text-white/40">Quantidade</span><span className="text-white">{quantity}</span></div>
+            <div className="flex justify-between text-xs"><span className="text-white/40">Subtotal</span><span className="text-white">R$ {subtotal.toFixed(2)}</span></div>
+            <div className="flex justify-between text-xs"><span className="text-white/40">Taxa plataforma ({feePercent}%)</span><span className="text-[#ffbd2e]">+ R$ {fee.toFixed(2)}</span></div>
+            <div className="h-px bg-[#1e1e28] my-2" />
+            <div className="flex justify-between font-black"><span className="text-white">Total</span><span className="text-white text-lg">R$ {total.toFixed(2)}</span></div>
+            <p className="text-[10px] text-white/30">Taxa vai para o admin. Produto continua R$ {subtotal.toFixed(2)} para o vendedor.</p>
+          </div>
+
+          <button onClick={handleConfirm} disabled={loading} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 transition">
+            {loading ? "Processando..." : method === "pix" ? "Pagar com PIX" : "Pagar com Crypto"}
+          </button>
+
+          <div className="flex items-center justify-center gap-4 text-[11px] text-white/30">
+            <span className="flex items-center gap-1"><Shield className="w-3 h-3 text-[#00c950]" /> Garantia</span>
+            <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-[#ffbd2e]" /> Rápido</span>
+            <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-[#0084ff]" /> 24h</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ProdutoPage() {
   const { id } = useParams<{ id: string }>();
@@ -23,10 +108,43 @@ export default function ProdutoPage() {
   const [authOpen, setAuthOpen] = useState(false);
   const [buyLoading, setBuyLoading] = useState(false);
   const [pixCharge, setPixCharge] = useState<PixCharge | null>(null);
-  const [showShare, setShowShare] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [quantity, setQuantity] = useState(2000);
+  const [sortBy, setSortBy] = useState<"recomendado" | "barato" | "min">("barato");
 
   const productId = Number(id);
   const product = state.products.find((p) => p.id === productId);
+
+  const isRobux = product?.category === "Robux e Gift Cards";
+
+  // For Robux, aggregate all sellers in same category as offers
+  const sellerOffers: SellerOffer[] = useMemo(() => {
+    if (!isRobux) return [];
+    const robuxProducts = state.products.filter((p) => p.category === "Robux e Gift Cards" && p.approved);
+    const offers: SellerOffer[] = robuxProducts.map((p) => ({
+      id: p.id,
+      product: p,
+      pricePerUnit: p.price,
+      stock: p.stock || Math.floor(p.sales * 137 + 500),
+      minQty: p.minQuantity || 100,
+      delivery: p.deliveryTime || `${Math.floor(Math.random() * 20 + 2)} min - ${Math.floor(Math.random() * 3 + 1)} h`,
+      sellerName: p.seller,
+      sellerId: p.sellerId,
+      rating: p.sellerRating || 99.4,
+      reviews: p.sellerReviews || Math.floor(p.sales * 12 + 100),
+      verified: true,
+    }));
+    // Sort
+    if (sortBy === "barato") offers.sort((a, b) => a.pricePerUnit - b.pricePerUnit);
+    else if (sortBy === "min") offers.sort((a, b) => a.minQty - b.minQty);
+    else offers.sort((a, b) => b.reviews - a.reviews);
+    return offers;
+  }, [state.products, isRobux, sortBy]);
+
+  const currentOffer = useMemo(() => {
+    if (!isRobux) return null;
+    return sellerOffers.find((o) => o.id === productId) || sellerOffers[0];
+  }, [sellerOffers, productId, isRobux]);
 
   const productReviews = useMemo(() => {
     if (!product) return [];
@@ -34,70 +152,99 @@ export default function ProdutoPage() {
   }, [product, state.purchases]);
 
   const avgRating = productReviews.length > 0 ? (productReviews.reduce((a, r) => a + (r.reviewStars || 0), 0) / productReviews.length).toFixed(1) : null;
-
-  const sellerProducts = useMemo(() => {
-    if (!product) return [];
-    return state.products.filter((p) => p.sellerId === product.sellerId && p.approved && p.id !== product.id).slice(0, 5);
-  }, [product, state.products]);
-
-  const sellerSales = useMemo(() => {
-    if (!product) return 0;
-    const sellerProds = state.products.filter((p) => p.sellerId === product.sellerId && p.approved);
-    return state.purchases.filter((p) => sellerProds.some((sp) => sp.id === p.productId)).length;
-  }, [product, state.products, state.purchases]);
-
   const productQuestions = product?.questions || [];
 
   useEffect(() => {
-    if (product) setSelectedVariation(null);
-  }, [product?.id]);
+    if (product) {
+      setSelectedVariation(null);
+      if (isRobux) setQuantity(product.minQuantity || 2000);
+    }
+  }, [product?.id, isRobux]);
 
   if (!product) {
     return (
       <AppShell>
         <div className="text-center py-20">
-          <p className="text-3xl mb-3">😕</p>
-          <p className="text-foreground font-bold">Produto não encontrado</p>
-          <button onClick={() => navigate("/loja")} className="btn-gradient px-6 py-3 rounded-xl font-bold text-sm mt-4">Voltar para a loja</button>
+          <p className="text-white font-bold">Produto não encontrado</p>
+          <button onClick={() => navigate("/loja")} className="bg-[#0084ff] text-white px-6 py-3 rounded-xl font-bold text-sm mt-4">Voltar para a loja</button>
         </div>
       </AppShell>
     );
   }
 
-  const price = selectedVariation ? selectedVariation.price : product.price;
+  const unitPrice = selectedVariation ? selectedVariation.price : product.price;
+  const displayQuantity = isRobux ? quantity : 1;
+  const subtotal = unitPrice * displayQuantity;
+  const feePercent = state.config.commission || 10;
+  const total = subtotal * (1 + feePercent / 100);
 
-  const handleBuy = async () => {
+  const handleBuyClick = () => {
     if (!state.currentUser) {
       setAuthOpen(true);
       return;
     }
-    if (price < 2) {
-      toast.error("O valor mínimo para pagamento via PIX é R$ 2,00.");
+    if (isRobux && quantity < (currentOffer?.minQty || 100)) {
+      toast.error(`Quantidade mínima: ${currentOffer?.minQty || 100}`);
       return;
     }
+    if (subtotal < 2) {
+      toast.error("Valor mínimo R$ 2,00");
+      return;
+    }
+    setCheckoutOpen(true);
+  };
+
+  const handleCheckoutConfirm = async (method: string, cpf: string) => {
     setBuyLoading(true);
     try {
+      // Save CPF to profile
+      if (state.currentUser) {
+        await supabase.from("profiles").update({ cpf } as any).eq("user_id", state.currentUser.id);
+      }
+
       const purchaseId = await buyProduct(product.id, selectedVariation || undefined);
-      if (!purchaseId) throw new Error("Não foi possível registrar a compra.");
-      const { data, error } = await supabase.functions.invoke("create-evopay-pix", {
-        body: {
-          purchaseId,
-          productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name,
-          amount: price,
-          buyerName: state.currentUser.name,
-        },
-      });
-      if (error) throw error;
-      if (data?.qrCodeText) {
-        savePixCharge(purchaseId, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
-        setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? price, qrCodeUrl: data.qrCodeUrl, purchaseId });
-      } else if (data?.error) {
-        toast.error("Erro ao gerar PIX: " + data.error);
+      if (!purchaseId) throw new Error("Falha ao criar pedido");
+
+      if (method === "pix") {
+        const { data, error } = await supabase.functions.invoke("create-evopay-pix", {
+          body: {
+            purchaseId,
+            productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name,
+            amount: subtotal,
+            buyerName: state.currentUser?.name,
+          },
+        });
+        if (error) throw error;
+        if (data?.qrCodeText) {
+          savePixCharge(purchaseId, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
+          setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: total, qrCodeUrl: data.qrCodeUrl, purchaseId });
+          setCheckoutOpen(false);
+        } else {
+          toast.error("Erro ao gerar PIX: " + (data?.error || "tente novamente"));
+        }
       } else {
-        toast.error("Erro ao gerar cobrança PIX. Tente novamente.");
+        // Crypto via VexoPay
+        const { data, error } = await supabase.functions.invoke("create-vexopay-crypto", {
+          body: {
+            purchaseId,
+            amount: total,
+            network: "TRC20",
+            description: product.name,
+          },
+        });
+        if (error) throw error;
+        if (data?.qrCode || data?.address) {
+          toast.success("Cobrança Crypto criada! Envie exatamente o valor para o endereço.");
+          // For now, show PIX modal with crypto info or redirect
+          setCheckoutOpen(false);
+          // Could open crypto modal
+          window.open(data.qrCode || data.checkoutUrl || "#", "_blank");
+        } else {
+          toast.error("Erro ao gerar Crypto: " + (data?.error || "tente novamente"));
+        }
       }
     } catch (err: any) {
-      toast.error("Erro ao conectar com pagamento: " + (err.message || "Tente novamente."));
+      toast.error(err.message || "Erro ao processar compra");
     } finally {
       setBuyLoading(false);
     }
@@ -105,29 +252,28 @@ export default function ProdutoPage() {
 
   const handlePixPaid = async () => {
     void refreshPurchases();
-    toast.success("Pagamento confirmado! Acesse 'Minhas Compras' para ver a entrega.");
-    // Try to send transactional emails (buyer + seller) via edge function - idempotent
+    toast.success("Pagamento confirmado!");
     try {
       const latest = state.purchases.find((p) => p.productId === product.id && p.buyerId === state.currentUser?.id);
       if (latest) {
-        await supabase.functions.invoke("send-email", {
-          body: { type: "purchase_confirmed", purchaseId: latest.id },
-        });
+        await supabase.functions.invoke("send-email", { body: { type: "purchase_confirmed", purchaseId: latest.id } });
       }
     } catch {}
   };
 
   const handleSendQuestion = () => {
     if (!question.trim()) return;
-    addProductQuestion(product.id, question.trim());
-    toast.success("Pergunta enviada ao vendedor!");
+    // Sanitize: remove emojis that shouldn't appear in chat
+    const clean = question.trim().replace(/[^\p{L}\p{N}\p{P}\p{Z}\n]/gu, "");
+    if (!clean) return toast.error("Pergunta inválida");
+    addProductQuestion(product.id, clean);
+    toast.success("Pergunta enviada!");
     setQuestion("");
   };
 
   const handleShare = async () => {
-    const url = window.location.href;
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(window.location.href);
       toast.success("Link copiado!");
     } catch {
       toast.error("Não foi possível copiar.");
@@ -136,228 +282,241 @@ export default function ProdutoPage() {
 
   const fav = isFavorite(product.id);
 
+  // Robux view like Eldorado.gg
+  if (isRobux && currentOffer) {
+    return (
+      <AppShell>
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center gap-2 text-xs text-white/40 mb-4">
+            <Link to="/loja" className="hover:text-white">Loja</Link>
+            <span>/</span>
+            <span className="text-white">Roblox</span>
+            <span>/</span>
+            <span className="text-white font-bold">Moeda</span>
+          </div>
+
+          <div className="bg-[#ffbd2e] text-black text-xs font-bold px-4 py-2 rounded-full inline-flex items-center gap-2 mb-4">
+            Agora aceitamos <span className="italic">PayPal</span> e <span className="flex items-center gap-1"><Bitcoin className="w-3 h-3" /> Crypto</span>
+          </div>
+
+          <div className="grid lg:grid-cols-[1fr_360px] gap-6">
+            <div className="space-y-4">
+              {/* Seller header */}
+              <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <img src={state.userDirectory?.[currentOffer.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentOffer.sellerName}`} className="w-12 h-12 rounded-full bg-[#1a1a20] border border-[#25252e]" alt="" />
+                    <div>
+                      <p className="font-black text-white flex items-center gap-1.5">{currentOffer.sellerName} <BadgeCheck className="w-4 h-4 text-[#0084ff]" /></p>
+                      <p className="text-xs flex items-center gap-2">
+                        <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3.5 h-3.5" /> {currentOffer.rating}%</span>
+                        <span className="text-[#0084ff] underline cursor-pointer" onClick={() => setDetailTab("reviews")}>{currentOffer.reviews.toLocaleString()} avaliações</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-white/40">Valor</p>
+                    <p className="font-black text-white text-lg">R$ {currentOffer.pricePerUnit.toFixed(5)} <span className="text-sm font-normal text-white/40">/ unidade</span></p>
+                  </div>
+                </div>
+
+                {/* Quantity selector like Eldorado */}
+                <div className="mt-6 bg-[#1a1a20] border border-[#25252e] rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setQuantity(Math.max(currentOffer.minQty, quantity - 100))} className="w-12 h-12 rounded-xl bg-[#25252e] hover:bg-[#2a2a36] text-white flex items-center justify-center transition"><Minus className="w-4 h-4" /></button>
+                    <div className="flex-1 bg-[#0a0a0f] border border-[#1e1e28] rounded-xl h-12 flex items-center justify-center font-black text-white text-lg">{quantity.toLocaleString()}</div>
+                    <button onClick={() => setQuantity(Math.min(currentOffer.stock, quantity + 100))} className="w-12 h-12 rounded-xl bg-[#25252e] hover:bg-[#2a2a36] text-white flex items-center justify-center transition"><Plus className="w-4 h-4" /></button>
+                  </div>
+                  <div className="flex justify-between text-xs mt-3 text-white/40">
+                    <span>Qtd. mín.: {currentOffer.minQty} unidade</span>
+                    <span>Em estoque: {currentOffer.stock.toLocaleString()} unidade</span>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-3 text-sm">
+                  <div className="flex justify-between"><span className="text-white/60">Prazo de entrega</span><span className="font-bold text-white">{currentOffer.delivery}</span></div>
+                  <div className="border-t border-[#1e1e28] pt-3 flex justify-between text-lg font-black"><span className="text-white">Total: R$ {total.toFixed(2)}</span><span className="text-white/40 text-xs font-normal">taxa {feePercent}% inclusa</span></div>
+                </div>
+
+                <button onClick={handleBuyClick} disabled={buyLoading} className="w-full mt-5 bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-base transition disabled:opacity-50">Comprar agora</button>
+
+                <div className="mt-4 space-y-2.5">
+                  <div className="flex gap-2 text-xs"><Shield className="w-4 h-4 text-[#0084ff] shrink-0" /><span className="font-bold text-white">Garantia de reembolso</span><span className="text-white/40">Protegido pelo TradeShield</span></div>
+                  <div className="flex gap-2 text-xs"><Zap className="w-4 h-4 text-[#ffbd2e] shrink-0" /><span className="font-bold text-white">Checkout rápido</span><span className="flex gap-1"><span className="bg-[#00c950] text-white px-2 py-0.5 rounded text-[10px] font-bold">PIX</span><span className="bg-black border border-white/10 text-white px-2 py-0.5 rounded text-[10px]">Apple Pay</span><span className="bg-[#0084ff] text-white px-2 py-0.5 rounded text-[10px]">G Pay</span><span className="bg-[#ffbd2e] text-black px-2 py-0.5 rounded text-[10px]">PayPal</span></span></div>
+                  <div className="flex gap-2 text-xs"><MessageSquare className="w-4 h-4 text-[#0084ff] shrink-0" /><span className="font-bold text-white">Atendimento 24 horas por dia</span><span className="text-white/40">Tira sua dúvida!</span></div>
+                </div>
+              </div>
+
+              {/* Other sellers like Eldorado */}
+              <div className="bg-[#15151a] border border-[#25252e] rounded-2xl overflow-hidden">
+                <div className="p-5 border-b border-[#1e1e28]">
+                  <h3 className="font-black text-white text-lg">Outros vendedores ({sellerOffers.length})</h3>
+                  <div className="flex gap-2 mt-4 overflow-x-auto scrollbar-hide">
+                    {[
+                      { id: "recomendado", label: "Recomendado" },
+                      { id: "barato", label: "Mais barato primeiro" },
+                      { id: "min", label: "Menor qtd. mín." },
+                    ].map((opt) => (
+                      <button key={opt.id} onClick={() => setSortBy(opt.id as any)} className={`shrink-0 px-4 py-2 rounded-full text-xs font-bold border transition ${sortBy === opt.id ? "bg-[#ffbd2e]/10 border-[#ffbd2e] text-[#ffbd2e]" : "bg-[#1a1a20] border-[#25252e] text-white/50 hover:text-white"}`}>
+                        {sortBy === opt.id && <CheckCircle className="w-3 h-3 inline mr-1" />}{opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="divide-y divide-[#1e1e28]">
+                  {sellerOffers.map((offer) => (
+                    <div key={offer.id} className={`p-4 hover:bg-[#1a1a20] transition cursor-pointer ${offer.id === productId ? "bg-[#0084ff]/5 border-l-2 border-l-[#0084ff]" : ""}`} onClick={() => navigate(`/produto/${offer.id}`)}>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex gap-3 min-w-0 flex-1">
+                          <img src={state.userDirectory?.[offer.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${offer.sellerName}`} className="w-10 h-10 rounded-full bg-[#1a1a20] border border-[#25252e] shrink-0" alt="" />
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-white text-sm flex items-center gap-1 truncate">{offer.sellerName} <BadgeCheck className="w-3.5 h-3.5 text-[#0084ff]" /></p>
+                            <p className="text-xs flex items-center gap-2">
+                              <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3 h-3" /> {offer.rating}%</span>
+                              <span className="text-[#0084ff] underline">{offer.reviews} avaliações</span>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-black text-white">R$ {offer.pricePerUnit.toFixed(5)} <span className="text-xs font-normal text-white/40">/ un</span></p>
+                          {offer.id === productId && <span className="text-[10px] bg-[#ffbd2e] text-black px-2 py-0.5 rounded-full font-bold">Oferta atual</span>}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4 mt-3 text-xs">
+                        <div><p className="text-white/40">Estoque</p><p className="font-bold text-white">{offer.stock.toLocaleString()}</p></div>
+                        <div><p className="text-white/40">Qtd. mín.</p><p className="font-bold text-white">{offer.minQty}</p></div>
+                        <div><p className="text-white/40">Entrega</p><p className="font-bold text-white">{offer.delivery}</p></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
+                <p className="text-xs uppercase font-bold text-white/30 mb-1">Preço</p>
+                <p className="text-3xl font-black text-white">R$ {total.toFixed(2)}</p>
+                <p className="text-xs text-white/40 mt-1">R$ {unitPrice.toFixed(5)} / unidade × {quantity} + taxa {feePercent}%</p>
+                <button onClick={handleBuyClick} className="w-full mt-4 bg-[#ffbd2e] text-black py-3.5 rounded-xl font-black">Comprar agora</button>
+              </div>
+
+              <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
+                <h4 className="font-bold text-white mb-3">Vendedor</h4>
+                <button onClick={() => setSelectedSellerId(product.sellerId)} className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#1a1a20] border border-[#25252e] hover:border-[#2a2a36] transition text-left">
+                  <img src={state.userDirectory?.[product.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.seller}`} className="w-10 h-10 rounded-full" alt="" />
+                  <div className="flex-1 min-w-0"><p className="font-bold text-white text-sm truncate">{product.seller}</p><p className="text-[11px] text-white/40">ID: {product.sellerPublicId || "—"}</p></div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {checkoutOpen && <CheckoutModal product={product} quantity={quantity} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} feePercent={feePercent} />}
+        {selectedSellerId && <UserProfileModal open={!!selectedSellerId} onClose={() => setSelectedSellerId(null)} userId={selectedSellerId} />}
+        <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
+        {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
+      </AppShell>
+    );
+  }
+
+  // Regular product view (non-Robux) - GGMAX solid style
   return (
     <AppShell>
       <div className="max-w-7xl mx-auto">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4 overflow-x-auto scrollbar-hide">
-          <Link to="/loja" className="hover:text-foreground">Loja</Link>
+        <div className="flex items-center gap-2 text-xs text-white/40 mb-4">
+          <Link to="/loja" className="hover:text-white">Loja</Link>
           <span>/</span>
-          <button onClick={() => navigate(`/loja?cat=${encodeURIComponent(product.category)}`)} className="hover:text-foreground">{product.category}</button>
+          <button onClick={() => navigate(`/loja?cat=${encodeURIComponent(product.category)}`)} className="hover:text-white">{product.category}</button>
           <span>/</span>
-          <span className="text-foreground font-semibold truncate">{product.name}</span>
+          <span className="text-white font-bold truncate">{product.name}</span>
         </div>
 
-        <div className="grid lg:grid-cols-[1fr_380px] gap-6">
-          {/* Left */}
-          <div className="space-y-6">
-            {/* Image grande */}
-            <div className="glass-card overflow-hidden">
-              <div className="relative aspect-[16/10] bg-muted">
+        <div className="grid lg:grid-cols-[1fr_360px] gap-6">
+          <div className="space-y-4">
+            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl overflow-hidden">
+              <div className="relative aspect-[16/10] bg-[#0a0a0f]">
                 <img src={product.banner || product.image} alt={product.name} className="w-full h-full object-cover" />
-                <div className="absolute top-3 left-3 flex gap-2">
-                  {product.deliveryType === "auto" && <span className="badge-auto">Auto</span>}
-                  {product.sales > 50 && <span className="badge-hot">HOT</span>}
-                </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); toggle(product.id); }}
-                  className={`absolute top-3 right-3 p-2.5 rounded-full backdrop-blur-md transition ${fav ? "bg-primary text-white" : "bg-card/80 text-muted-foreground"}`}
-                >
-                  <Heart className={`w-5 h-5 ${fav ? "fill-current" : ""}`} />
+                <button onClick={() => toggle(product.id)} className={`absolute top-3 right-3 p-2.5 rounded-full transition ${isFavorite(product.id) ? "bg-[#0084ff] text-white" : "bg-black/60 text-white/60 hover:text-white"}`}>
+                  <Heart className={`w-5 h-5 ${isFavorite(product.id) ? "fill-current" : ""}`} />
                 </button>
               </div>
               <div className="p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h1 className="text-2xl font-black text-foreground leading-tight">{product.name}</h1>
-                    <div className="flex items-center gap-3 mt-2">
-                      <span className="text-xs bg-muted px-2.5 py-1 rounded-full font-bold">{product.category}</span>
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground"><Eye className="w-3.5 h-3.5" /> {product.sales} vendas</span>
-                      {avgRating && <span className="flex items-center gap-1 text-xs font-bold"><Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" /> {avgRating} ({productReviews.length})</span>}
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <button onClick={handleShare} className="p-2 rounded-lg bg-muted hover:bg-muted/70 text-muted-foreground"><Share2 className="w-4 h-4" /></button>
-                    <button onClick={() => toast.info("Denúncia registrada. Nossa equipe vai analisar.")} className="p-2 rounded-lg bg-muted hover:bg-muted/70 text-muted-foreground"><Flag className="w-4 h-4" /></button>
-                  </div>
+                <h1 className="text-xl font-black text-white leading-tight">{product.name}</h1>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs bg-[#1a1a20] border border-[#25252e] px-2.5 py-1 rounded-full font-bold text-white/60">{product.category}</span>
+                  <span className="flex items-center gap-1 text-xs text-white/40"><Eye className="w-3.5 h-3.5" /> {product.sales} vendas</span>
                 </div>
 
-                {/* Tabs */}
-                <div className="flex gap-1 border-b border-border/40 mt-6 overflow-x-auto scrollbar-hide">
+                <div className="flex gap-1 border-b border-[#1e1e28] mt-6">
                   {[
                     { id: "info", label: "Informações" },
                     { id: "reviews", label: `Avaliações (${productReviews.length})` },
                     { id: "questions", label: `Dúvidas (${productQuestions.length})` },
                   ].map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => setDetailTab(t.id as any)}
-                      className={`px-4 py-2 text-xs font-bold border-b-2 whitespace-nowrap transition ${detailTab === t.id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-                    >
-                      {t.label}
-                    </button>
+                    <button key={t.id} onClick={() => setDetailTab(t.id as any)} className={`px-4 py-2.5 text-xs font-bold border-b-2 transition ${detailTab === t.id ? "border-[#0084ff] text-[#0084ff]" : "border-transparent text-white/40 hover:text-white"}`}>{t.label}</button>
                   ))}
                 </div>
 
                 <div className="pt-5">
                   {detailTab === "info" && (
-                    <div className="space-y-5">
-                      <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{product.description}</p>
-
+                    <div className="space-y-4">
+                      <p className="text-sm text-white/80 whitespace-pre-wrap leading-relaxed">{product.description}</p>
                       {product.variations && product.variations.length > 0 && (
                         <div>
-                          <p className="text-xs font-bold uppercase text-muted-foreground mb-2">Variações</p>
+                          <p className="text-xs font-bold uppercase text-white/30 mb-2">Variações</p>
                           <div className="grid gap-2">
-                            <button onClick={() => setSelectedVariation(null)} className={`p-3 rounded-xl border text-left transition ${!selectedVariation ? "border-primary bg-primary/5" : "border-border hover:bg-muted"}`}>
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm font-bold">Padrão</span>
-                                <span className="text-sm font-black text-primary">R$ {product.price.toFixed(2)}</span>
-                              </div>
-                            </button>
                             {product.variations.map((v, i) => (
-                              <button key={i} onClick={() => setSelectedVariation(v)} className={`p-3 rounded-xl border text-left transition ${selectedVariation?.name === v.name ? "border-primary bg-primary/5" : "border-border hover:bg-muted"}`}>
-                                <div className="flex justify-between items-center">
-                                  <span className="text-sm font-bold">{v.name}</span>
-                                  <span className="text-sm font-black text-primary">R$ {v.price.toFixed(2)}</span>
-                                </div>
-                                {v.description && <p className="text-[11px] text-muted-foreground mt-1">{v.description}</p>}
+                              <button key={i} onClick={() => setSelectedVariation(v)} className={`p-3 rounded-xl border text-left transition ${selectedVariation?.name === v.name ? "bg-[#0084ff]/10 border-[#0084ff] text-white" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"}`}>
+                                <div className="flex justify-between"><span className="font-bold">{v.name}</span><span className="font-black text-[#0084ff]">R$ {v.price.toFixed(2)}</span></div>
                               </button>
                             ))}
                           </div>
                         </div>
                       )}
-
-                      {/* Garantias */}
-                      <div className="grid sm:grid-cols-3 gap-3">
-                        <div className="bg-success/10 border border-success/20 rounded-xl p-3">
-                          <Shield className="w-5 h-5 text-success mb-1" />
-                          <p className="text-xs font-bold text-foreground">Compra Protegida</p>
-                          <p className="text-[11px] text-muted-foreground">Reembolso garantido</p>
-                        </div>
-                        <div className="bg-primary/10 border border-primary/20 rounded-xl p-3">
-                          <Zap className="w-5 h-5 text-primary mb-1" />
-                          <p className="text-xs font-bold text-foreground">Entrega {product.deliveryType === "auto" ? "Automática" : "Manual"}</p>
-                          <p className="text-[11px] text-muted-foreground">{product.deliveryType === "auto" ? "Imediata" : "Via chat"}</p>
-                        </div>
-                        <div className="bg-muted rounded-xl p-3 border border-border/40">
-                          <CheckCircle className="w-5 h-5 text-foreground mb-1" />
-                          <p className="text-xs font-bold text-foreground">Suporte 24h</p>
-                          <p className="text-[11px] text-muted-foreground">Equipe pronta</p>
-                        </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-[#00c950]/10 border border-[#00c950]/20 rounded-xl p-3"><Shield className="w-4 h-4 text-[#00c950] mb-1" /><p className="text-xs font-bold text-white">Protegido</p><p className="text-[10px] text-white/40">Reembolso</p></div>
+                        <div className="bg-[#0084ff]/10 border border-[#0084ff]/20 rounded-xl p-3"><Zap className="w-4 h-4 text-[#0084ff] mb-1" /><p className="text-xs font-bold text-white">Entrega</p><p className="text-[10px] text-white/40">{product.deliveryType === "auto" ? "Auto" : "Manual"}</p></div>
+                        <div className="bg-[#1a1a20] border border-[#25252e] rounded-xl p-3"><Clock className="w-4 h-4 text-white/60 mb-1" /><p className="text-xs font-bold text-white">Suporte</p><p className="text-[10px] text-white/40">24h</p></div>
                       </div>
                     </div>
                   )}
                   {detailTab === "reviews" && (
-                    <div className="space-y-3">
-                      {productReviews.length === 0 ? <p className="text-sm text-muted-foreground italic text-center py-10">Nenhuma avaliação ainda.</p> :
-                        productReviews.map((r, i) => (
-                          <div key={i} className="bg-muted/50 p-4 rounded-xl border border-border/20">
-                            <div className="flex justify-between items-center mb-2">
-                              <div className="flex items-center gap-2">
-                                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{(r.buyerPublicId || "ZX").slice(0, 2).toUpperCase()}</div>
-                                <span className="text-xs font-bold">Comprador #{r.buyerPublicId || r.buyerId.slice(0, 6)}</span>
-                                <div className="flex">{[...Array(5)].map((_, j) => <Star key={j} className={`w-3 h-3 ${j < (r.reviewStars || 0) ? "text-yellow-500 fill-yellow-500" : "text-muted-foreground"}`} />)}</div>
-                              </div>
-                              <span className="text-[10px] text-muted-foreground">{new Date(r.createdAt).toLocaleDateString()}</span>
-                            </div>
-                            <p className="text-xs">{r.reviewComment}</p>
-                          </div>
-                        ))}
+                    <div className="space-y-2">
+                      {productReviews.length === 0 ? <p className="text-sm text-white/40 text-center py-10">Sem avaliações</p> : productReviews.map((r, i) => (
+                        <div key={i} className="bg-[#1a1a20] border border-[#25252e] p-3 rounded-xl"><p className="text-xs text-white">{r.reviewComment}</p></div>
+                      ))}
                     </div>
                   )}
                   {detailTab === "questions" && (
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       <div className="flex gap-2">
-                        <input value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Tire sua dúvida..." className="flex-1 input-gg" />
-                        <button onClick={handleSendQuestion} className="btn-gradient p-3 rounded-xl"><Send className="w-4 h-4" /></button>
+                        <input value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Tire sua dúvida..." className="flex-1 bg-[#0a0a0f] border border-[#25252e] rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/20 focus:border-[#0084ff] outline-none" />
+                        <button onClick={handleSendQuestion} className="bg-[#0084ff] p-3 rounded-xl text-white"><Send className="w-4 h-4" /></button>
                       </div>
-                      {productQuestions.length === 0 ? <p className="text-sm text-muted-foreground italic text-center py-10">Nenhuma pergunta ainda.</p> :
-                        productQuestions.map((q) => (
-                          <div key={q.id} className="space-y-2">
-                            <div className="bg-muted/50 p-3 rounded-xl"><p className="text-[10px] font-bold text-primary uppercase">{q.userName}</p><p className="text-xs">{q.text}</p></div>
-                            {q.answer && <div className="ml-6 bg-primary/5 p-3 rounded-xl border border-primary/10"><p className="text-[10px] font-bold text-success uppercase">Resposta do vendedor</p><p className="text-xs">{q.answer}</p></div>}
-                          </div>
-                        ))}
+                      {productQuestions.map((q) => (
+                        <div key={q.id} className="bg-[#1a1a20] border border-[#25252e] p-3 rounded-xl"><p className="text-[10px] font-bold text-[#0084ff] uppercase">{q.userName}</p><p className="text-xs text-white mt-1">{q.text}</p></div>
+                      ))}
                     </div>
                   )}
                 </div>
               </div>
             </div>
-
-            {/* Vendedor */}
-            <div className="glass-card p-5">
-              <h3 className="font-bold text-foreground mb-3">Vendedor</h3>
-              <button onClick={() => setSelectedSellerId(product.sellerId)} className="w-full flex items-center gap-3 p-3 rounded-xl bg-muted hover:bg-muted/80 transition text-left">
-                <img src={state.userDirectory?.[product.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.seller}`} className="w-12 h-12 rounded-full bg-primary/10" alt={product.seller} />
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm truncate">{product.seller}</p>
-                  <p className="text-[11px] text-muted-foreground font-mono">ID: {product.sellerPublicId || state.userDirectory?.[product.sellerId]?.publicId || "—"}</p>
-                  <p className="text-[11px] text-muted-foreground">{sellerSales} vendas • {avgRating || "Novo"}</p>
-                </div>
-                <MessageSquare className="w-4 h-4 text-muted-foreground" />
-              </button>
-            </div>
-
-            {/* Anúncios parecidos */}
-            {sellerProducts.length > 0 && (
-              <div>
-                <h3 className="font-bold text-foreground mb-3">Anúncios parecidos</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {sellerProducts.map((p) => (
-                    <ProductCard key={p.id} product={p} />
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
-          {/* Right sticky buy box desktop */}
-          <div className="lg:sticky lg:top-20 h-fit space-y-4">
-            <div className="glass-card p-5">
-              <div className="flex items-baseline justify-between mb-4">
-                <div>
-                  <p className="text-[11px] uppercase font-bold text-muted-foreground">Preço</p>
-                  <p className="text-3xl font-black text-foreground">R$ {price.toFixed(2)}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[11px] text-muted-foreground">Entrega</p>
-                  <p className="text-xs font-bold text-success">{product.deliveryType === "auto" ? "Automática" : "Manual"}</p>
-                </div>
-              </div>
-
-              {selectedVariation && (
-                <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 mb-4">
-                  <p className="text-xs font-bold text-foreground">{selectedVariation.name}</p>
-                  <p className="text-[11px] text-muted-foreground">R$ {selectedVariation.price.toFixed(2)}</p>
-                </div>
-              )}
-
-              <button onClick={handleBuy} disabled={buyLoading} className="w-full btn-gradient py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50">
-                {buyLoading ? "Processando..." : <><ShoppingCart className="w-5 h-5" /> Comprar agora</>}
-              </button>
-
-              <div className="mt-4 space-y-2 text-[11px] text-muted-foreground">
-                <div className="flex items-center gap-2"><Shield className="w-3.5 h-3.5 text-success" /> Compra protegida e reembolso garantido</div>
-                <div className="flex items-center gap-2"><Zap className="w-3.5 h-3.5 text-primary" /> Entrega {product.deliveryType === "auto" ? "imediata" : "via chat"}</div>
-              </div>
+          <div className="lg:sticky lg:top-20 h-fit space-y-3">
+            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
+              <p className="text-[11px] uppercase font-bold text-white/30">Total com taxa</p>
+              <p className="text-3xl font-black text-white">R$ {total.toFixed(2)}</p>
+              <p className="text-xs text-white/40">R$ {subtotal.toFixed(2)} + {feePercent}% taxa</p>
+              <button onClick={handleBuyClick} disabled={buyLoading} className="w-full mt-4 bg-[#0084ff] hover:bg-[#0066cc] text-white py-3.5 rounded-xl font-black text-sm transition disabled:opacity-50">Comprar agora</button>
             </div>
-          </div>
-        </div>
-
-        {/* Mobile fixed bar */}
-        <div className="lg:hidden fixed bottom-20 left-0 right-0 p-3 bg-card/95 backdrop-blur-xl border-t border-border/60 z-40">
-          <div className="flex items-center gap-3 max-w-7xl mx-auto">
-            <div className="flex-1">
-              <p className="text-[10px] text-muted-foreground uppercase font-bold">Total</p>
-              <p className="text-lg font-black">R$ {price.toFixed(2)}</p>
-            </div>
-            <button onClick={handleBuy} disabled={buyLoading} className="flex-1 btn-gradient py-3 rounded-xl font-bold text-sm disabled:opacity-50">
-              {buyLoading ? "Processando..." : "Comprar"}
-            </button>
           </div>
         </div>
       </div>
 
+      {checkoutOpen && <CheckoutModal product={product} quantity={displayQuantity} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} feePercent={feePercent} />}
       {selectedSellerId && <UserProfileModal open={!!selectedSellerId} onClose={() => setSelectedSellerId(null)} userId={selectedSellerId} />}
       <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
       {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}

@@ -62,6 +62,11 @@ export interface Product {
   deliveryContent?: string;
   variations?: ProductVariation[];
   questions?: ProductQuestion[];
+  stock?: number;
+  minQuantity?: number;
+  deliveryTime?: string;
+  sellerRating?: number;
+  sellerReviews?: number;
 }
 
 export interface PurchaseMessage {

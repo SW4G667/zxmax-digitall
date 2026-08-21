@@ -24,7 +24,7 @@ interface WebhookLog {
 export default function AdminView() {
   const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument, saveGatewaySettings } = useStore();
   const { mfaEnabled, isAdmin } = useAuth();
-  const [tab, setTab] = useState<"products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "verifications" | "disputes" | "config" | "webhooks" | "apis" | "security">("products");
+  const [tab, setTab] = useState<"dashboard" | "products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "verifications" | "disputes" | "config" | "webhooks" | "apis" | "security">("dashboard");
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [expandedLog, setExpandedLog] = useState<number | null>(null);
@@ -188,6 +188,7 @@ export default function AdminView() {
       {/* Tabs */}
       <div className="flex gap-2 overflow-x-auto pb-4 mb-6 scrollbar-hide">
         {[
+          { id: "dashboard", label: "Dashboard", icon: ShieldCheck },
           { id: "security", label: "Segurança 2FA", icon: ShieldCheck },
           { id: "products", label: "Produtos", icon: PackageEmoji, count: pendingProducts.length },
           { id: "withdrawals", label: "Saques", icon: MoneyEmoji, count: pendingWithdrawals.length },
@@ -590,6 +591,49 @@ export default function AdminView() {
 
 
       {tab === "apis" && <IntegrationsPanel />}
+
+      {tab === "dashboard" && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
+              <p className="text-xs text-white/40 uppercase font-bold">Total Produtos</p>
+              <p className="text-2xl font-black text-white mt-1">{state.products.length}</p>
+              <p className="text-xs text-white/30">{pendingProducts.length} pendentes</p>
+            </div>
+            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
+              <p className="text-xs text-white/40 uppercase font-bold">Vendas</p>
+              <p className="text-2xl font-black text-white mt-1">{state.purchases.length}</p>
+              <p className="text-xs text-[#00c950]">{state.purchases.filter(p=>p.status==='paid').length} pagas</p>
+            </div>
+            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
+              <p className="text-xs text-white/40 uppercase font-bold">Saques</p>
+              <p className="text-2xl font-black text-white mt-1">{state.withdrawals.length}</p>
+              <p className="text-xs text-[#ffbd2e]">{pendingWithdrawals.length} pendentes</p>
+            </div>
+            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
+              <p className="text-xs text-white/40 uppercase font-bold">Disputas</p>
+              <p className="text-2xl font-black text-white mt-1">{disputes.length}</p>
+              <p className="text-xs text-red-400">{disputes.length >0 ? 'Atenção!' : 'Tudo ok'}</p>
+            </div>
+          </div>
+
+          <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
+            <h3 className="font-black text-white mb-4">Receita estimada (taxa {state.config.commission}%)</h3>
+            <p className="text-3xl font-black text-[#ffbd2e]">R$ {(state.purchases.reduce((a,p)=>a+Number(p.amount),0) * (state.config.commission/100)).toFixed(2)}</p>
+            <p className="text-xs text-white/40 mt-1">Total vendido: R$ {state.purchases.reduce((a,p)=>a+Number(p.amount),0).toFixed(2)}</p>
+          </div>
+
+          <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
+            <h3 className="font-bold text-white mb-3">Ações rápidas</h3>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={()=>setTab('products' as any)} className="bg-[#0084ff] text-white px-4 py-2 rounded-xl text-xs font-bold">Aprovar Produtos</button>
+              <button onClick={()=>setTab('withdrawals' as any)} className="bg-[#00c950] text-white px-4 py-2 rounded-xl text-xs font-bold">Pagar Saques</button>
+              <button onClick={()=>setTab('disputes' as any)} className="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold">Resolver Disputas</button>
+              <button onClick={()=>setTab('security' as any)} className="bg-[#1a1a20] border border-[#25252e] text-white px-4 py-2 rounded-xl text-xs font-bold">Configurar 2FA</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {tab === "security" && (
         <div className="space-y-6 max-w-2xl">
