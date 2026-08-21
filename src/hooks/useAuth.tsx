@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { User, Session, Factor, AdminFactorType } from "@supabase/supabase-js";
+import type { User, Session, Factor } from "@supabase/supabase-js";
+import { getOrCreateDeviceId, readTrustedDevice, saveTrustedDevice, clearTrustedDevice } from "@/lib/adminGate";
 
 interface Profile {
   id: string;
@@ -45,6 +46,8 @@ interface AuthContextType {
   mfaEnabled: boolean;
   needsMfa: boolean;
   mfaChecked: boolean;
+  adminGateRequired: boolean;
+  adminGateChecked: boolean;
   signUp: (email: string, password: string, displayName: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   verifyMfa: (code: string) => Promise<{ error: string | null }>;
@@ -52,6 +55,11 @@ interface AuthContextType {
   enrollTotpVerify: (factorId: string, code: string) => Promise<{ error: string | null }>;
   unenrollTotp: (factorId: string) => Promise<{ error: string | null }>;
   listFactors: () => Promise<Factor[]>;
+  sendAdminEmailLink: () => Promise<{ error: string | null }>;
+  refreshAdminGate: () => Promise<void>;
+  enrollAdminWebAuthn: (credentialId: string) => Promise<{ error: string | null }>;
+  verifyAdminWebAuthn: (credentialId: string) => Promise<{ error: string | null }>;
+  listAdminWebAuthn: () => Promise<string[]>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   updateProfile: (data: Partial<Pick<Profile, "display_name" | "avatar_url" | "pix_key" | "document_type">>) => Promise<void>;
@@ -85,11 +93,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [needsMfa, setNeedsMfa] = useState(false);
   const [mfaChecked, setMfaChecked] = useState(false);
   const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [adminGateRequired, setAdminGateRequired] = useState(false);
+  const [adminGateChecked, setAdminGateChecked] = useState(false);
 
   const fetchProfile = async (userId: string) => {
     try {
       const { data } = await withTimeout(
-        supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
+        Promise.resolve(supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle()) as Promise<any>,
         2500,
         { data: null, error: null } as any
       );
@@ -103,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkBan = async (userId: string) => {
     try {
       const { data } = await withTimeout(
-        supabase.from("bans").select("reason, created_at").eq("user_id", userId).eq("active", true).limit(1).maybeSingle(),
+        Promise.resolve(supabase.from("bans").select("reason, created_at").eq("user_id", userId).eq("active", true).limit(1).maybeSingle()) as Promise<any>,
         2000,
         { data: null } as any
       );
@@ -122,15 +132,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkAdmin = async (userId: string) => {
     try {
       const { data } = await withTimeout(
-        supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle(),
+        Promise.resolve(supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle()) as Promise<any>,
         2000,
         { data: null } as any
       );
       setIsAdmin(!!data);
+      return !!data;
     } catch {
       setIsAdmin(false);
+      return false;
     }
   };
+
+  const evaluateAdminGate = useCallback(async (sess: Session | null, adminFlag: boolean) => {
+    if (!sess || !adminFlag) {
+      setAdminGateRequired(false);
+      setAdminGateChecked(true);
+      return;
+    }
+    try {
+      const deviceId = getOrCreateDeviceId();
+      const trusted = readTrustedDevice();
+      const { data, error } = await withTimeout(
+        supabase.functions.invoke("admin-login", {
+          body: { action: "check", deviceId, deviceToken: trusted?.deviceToken || "" },
+        }),
+        4000,
+        { data: { trusted: false, isAdmin: true }, error: null } as any,
+      );
+      if (error) {
+        setAdminGateRequired(!trusted);
+        setAdminGateChecked(true);
+        return;
+      }
+      const ok = !!data?.trusted;
+      if (!ok && trusted) clearTrustedDevice();
+      setAdminGateRequired(!ok);
+    } catch {
+      setAdminGateRequired(!readTrustedDevice());
+    } finally {
+      setAdminGateChecked(true);
+    }
+  }, []);
 
   const evaluateMfa = useCallback(async (sess: Session | null) => {
     if (!sess) {
@@ -141,59 +184,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      // Admin-only MFA: only check MFA if user is admin (prevents regular users from seeing 2FA prompt)
-      // isAdmin state might be stale, so we also check via DB if needed, but we use current isAdmin
-      // If not admin, skip MFA requirement
-      if (!isAdmin) {
-        // Still detect if user has MFA enabled for display purposes, but don't require it
-        const { data } = await withTimeout(
-          supabase.auth.mfa.listFactors(),
-          2000,
-          { data: { totp: [] }, error: null } as any
-        );
-        const verifiedTotp = (data?.totp || []).filter((f) => f.status === "verified");
-        setMfaEnabled(verifiedTotp.length > 0);
-        setNeedsMfa(false);
-        setMfaChecked(true);
-        return;
-      }
-
-      const { data, error } = await withTimeout(
+      // TOTP remains optional. Admin access is gated by email/device (adminGateRequired).
+      const { data } = await withTimeout(
         supabase.auth.mfa.listFactors(),
         2000,
         { data: { totp: [] }, error: null } as any
       );
-      if (error) throw error;
       const verifiedTotp = (data?.totp || []).filter((f) => f.status === "verified");
       setMfaEnabled(verifiedTotp.length > 0);
-
-      // Check if MFA was already verified in this session (avoid asking every time)
-      const verifiedFlag = sessionStorage.getItem("zxmax_admin_mfa_verified");
-      if (verifiedFlag && Date.now() - Number(verifiedFlag) < 12 * 60 * 60 * 1000) {
-        setNeedsMfa(false);
-        setMfaChecked(true);
-        return;
-      }
-
-      const aal: string = (sess as any)?.aal || sess.user?.aal || sess.user?.app_metadata?.aal || "aal1";
-      if (verifiedTotp.length > 0 && aal !== "aal2" && verifiedTotp[0]) {
-        if (!challengeId) {
-          const { data: chal, error: chalErr } = await supabase.auth.mfa.challenge({
-            factorId: verifiedTotp[0].id,
-          });
-          if (!chalErr && chal?.id) setChallengeId(chal.id);
-        }
-        setNeedsMfa(true);
-      } else {
-        setNeedsMfa(false);
-      }
+      setNeedsMfa(false);
     } catch {
       setMfaEnabled(false);
       setNeedsMfa(false);
     } finally {
       setMfaChecked(true);
     }
-  }, [challengeId, isAdmin]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -217,14 +223,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(sess);
         setUser(sess?.user ?? null);
         if (sess?.user) {
+          const admin = await checkAdmin(sess.user.id).catch(() => false);
           await Promise.all([
             fetchProfile(sess.user.id).catch(() => null),
             checkBan(sess.user.id).catch(() => null),
-            checkAdmin(sess.user.id).catch(() => null),
             evaluateMfa(sess).catch(() => null),
+            evaluateAdminGate(sess, !!admin).catch(() => null),
           ]);
         } else {
           setMfaChecked(true);
+          setAdminGateChecked(true);
+          setAdminGateRequired(false);
         }
       } catch (e) {
         console.error("Auth init error", e);
@@ -248,11 +257,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (sess?.user) {
         setLoading(true);
         try {
+          const admin = await checkAdmin(sess.user.id).catch(() => false);
           await Promise.all([
             fetchProfile(sess.user.id).catch(() => null),
             checkBan(sess.user.id).catch(() => null),
-            checkAdmin(sess.user.id).catch(() => null),
             evaluateMfa(sess).catch(() => null),
+            evaluateAdminGate(sess, !!admin).catch(() => null),
           ]);
         } finally {
           if (mounted) setLoading(false);
@@ -265,6 +275,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setNeedsMfa(false);
         setChallengeId(null);
         setMfaChecked(true);
+        setAdminGateRequired(false);
+        setAdminGateChecked(true);
         setLoading(false);
       }
     });
@@ -274,7 +286,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (initTimeout) clearTimeout(initTimeout);
       subscription.unsubscribe();
     };
-  }, [evaluateMfa]);
+  }, [evaluateMfa, evaluateAdminGate]);
 
   const signUp = async (email: string, password: string, displayName: string) => {
     const last = localStorage.getItem("zxmax_last_signup");
@@ -309,7 +321,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     localStorage.removeItem(key);
     setMfaChecked(false);
-    if (data.session) void evaluateMfa(data.session);
+    setAdminGateChecked(false);
+    if (data.session) {
+      const admin = await checkAdmin(data.session.user.id);
+      void evaluateMfa(data.session);
+      void evaluateAdminGate(data.session, admin);
+    }
     return { error: null };
   };
 
@@ -321,9 +338,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         code,
       });
       if (error) return { error: error.message };
-      if (data?.session) {
-        setSession(data.session);
-        setUser(data.session.user);
+      if ((data as any)?.session) {
+        setSession((data as any).session);
+        setUser((data as any).session.user);
       }
       setNeedsMfa(false);
       setChallengeId(null);
@@ -362,7 +379,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const uniqueName = `ZXMAX Authenticator ${Date.now().toString().slice(-4)}`;
     const { data, error } = await supabase.auth.mfa.enroll({
-      factorType: "totp" as AdminFactorType,
+      factorType: "totp" as any,
       friendlyName: uniqueName,
       issuer: "ZXMAX",
     } as any);
@@ -376,7 +393,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           }
           const retry = await supabase.auth.mfa.enroll({
-            factorType: "totp" as AdminFactorType,
+            factorType: "totp" as any,
             friendlyName: `ZXMAX ${Math.random().toString(36).slice(2, 6)}`,
             issuer: "ZXMAX",
           } as any);
@@ -403,9 +420,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMfaEnabled(true);
     setNeedsMfa(false);
     setMfaChecked(true);
-    if (verify.data?.session) {
-      setSession(verify.data.session);
-      setUser(verify.data.session.user);
+    if ((verify.data as any)?.session) {
+      setSession((verify.data as any).session);
+      setUser((verify.data as any).session.user);
     }
     return { error: null };
   };
@@ -423,6 +440,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data?.totp || [];
   };
 
+  const sendAdminEmailLink = async () => {
+    const { data, error } = await supabase.functions.invoke("admin-login", {
+      body: { action: "send_email", deviceId: getOrCreateDeviceId() },
+    });
+    if (error || data?.error) return { error: data?.error || error?.message || "Não foi possível enviar o e-mail." };
+    return { error: null };
+  };
+
+  const refreshAdminGate = async () => {
+    await evaluateAdminGate(session, isAdmin);
+  };
+
+  const enrollAdminWebAuthn = async (credentialId: string) => {
+    const { data, error } = await supabase.functions.invoke("admin-login", {
+      body: { action: "enroll_webauthn", deviceId: getOrCreateDeviceId(), credentialId },
+    });
+    if (error || data?.error) return { error: data?.error || error?.message || "Falha ao cadastrar." };
+    if (data?.deviceToken) saveTrustedDevice(data.deviceToken, data.expiresAt);
+    setAdminGateRequired(false);
+    setAdminGateChecked(true);
+    return { error: null };
+  };
+
+  const verifyAdminWebAuthn = async (credentialId: string) => {
+    const { data, error } = await supabase.functions.invoke("admin-login", {
+      body: { action: "verify_webauthn", deviceId: getOrCreateDeviceId(), credentialId },
+    });
+    if (error || data?.error) return { error: data?.error || error?.message || "Falha na confirmação." };
+    if (data?.deviceToken) saveTrustedDevice(data.deviceToken, data.expiresAt);
+    setAdminGateRequired(false);
+    setAdminGateChecked(true);
+    return { error: null };
+  };
+
+  const listAdminWebAuthn = async (): Promise<string[]> => {
+    const { data } = await supabase.functions.invoke("admin-login", { body: { action: "webauthn_status" } });
+    return ((data?.credentials || []) as { credential_id: string }[]).map((c) => c.credential_id);
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setProfile(null);
@@ -431,6 +487,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMfaEnabled(false);
     setNeedsMfa(false);
     setMfaChecked(true);
+    setAdminGateRequired(false);
+    setAdminGateChecked(true);
     setChallengeId(null);
     try {
       sessionStorage.removeItem("zxmax_admin_mfa_verified");
@@ -452,8 +510,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider value={{
       user, profile, session, loading, banned, isAdmin,
       mfaEnabled, needsMfa, mfaChecked,
+      adminGateRequired, adminGateChecked,
       signUp, signIn, verifyMfa,
       enrollTotpStart, enrollTotpVerify, unenrollTotp, listFactors,
+      sendAdminEmailLink, refreshAdminGate, enrollAdminWebAuthn, verifyAdminWebAuthn, listAdminWebAuthn,
       signOut, refreshProfile, updateProfile: updateProfileFn,
     }}>
       {children}

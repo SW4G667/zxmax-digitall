@@ -192,8 +192,8 @@ export default function TwoFactorPanel() {
           </h4>
           <p className="text-xs text-white/50 mt-1 leading-relaxed">
             {mfaEnabled
-              ? "Protegido. Só pede código quando sai da conta e volta. QR Code já sumiu por segurança."
-              : "Proteja o painel admin contra hackers. Use Google Authenticator. QR fica salvo mesmo se atualizar a página, só some depois que ativar."}
+              ? "Authenticator extra ativo. O login admin principal agora confirma por e-mail (jnpereiraalves@gmail.com) ou senha do celular, válido 30 dias."
+              : "Opcional. O login admin já pede senha do celular ou link no e-mail jnpereiraalves@gmail.com (30 dias). Este autenticador é um extra."}
           </p>
         </div>
       </div>

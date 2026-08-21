@@ -8,6 +8,7 @@ import IntegrationsPanel from "@/components/IntegrationsPanel";
 import TwoFactorPanel from "@/components/TwoFactorPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { AdminCategoriesPanel, AdminAllProductsPanel, AdminPurchasesPanel, AdminTicketsPanel, AdminTagsPanel, AdminPlatformPanel } from "@/components/AdminMorePanels";
 
 interface WebhookLog {
   id: number;
@@ -24,7 +25,7 @@ interface WebhookLog {
 export default function AdminView() {
   const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument, saveGatewaySettings } = useStore();
   const { mfaEnabled, isAdmin } = useAuth();
-  const [tab, setTab] = useState<"dashboard" | "products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "verifications" | "disputes" | "config" | "webhooks" | "apis" | "security" | "roles">("dashboard");
+  const [tab, setTab] = useState<"dashboard" | "products" | "catalog" | "purchases" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "verifications" | "disputes" | "config" | "webhooks" | "apis" | "security" | "roles" | "categories" | "tickets" | "platform">("dashboard");
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [expandedLog, setExpandedLog] = useState<number | null>(null);
@@ -150,6 +151,14 @@ export default function AdminView() {
 
   const loadKyc = async () => {
     setKycLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "get_kyc" } });
+      if (!error && data?.kyc) {
+        setKyc(data.kyc);
+        setKycLoading(false);
+        return;
+      }
+    } catch {}
     const { data, error } = await (supabase as any)
       .from("profiles")
       .select("user_id, public_id, email, display_name, full_name, cpf, birth_date, phone, city, state, verification_selfie_path, verification_status, verification_notes, verification_submitted_at, is_verified_seller")
@@ -258,16 +267,22 @@ export default function AdminView() {
           { id: "dashboard", label: "Dashboard", icon: ShieldCheck },
           { id: "roles", label: "Cargos", icon: Users },
           { id: "security", label: "Segurança 2FA", icon: ShieldCheck },
-          { id: "products", label: "Produtos", icon: PackageEmoji, count: pendingProducts.length },
+          { id: "products", label: "Pendentes", icon: PackageEmoji, count: pendingProducts.length },
+          { id: "catalog", label: "Catálogo", icon: PackageEmoji },
+          { id: "purchases", label: "Compras", icon: FileText },
+          { id: "categories", label: "Categorias", icon: Tag },
           { id: "withdrawals", label: "Saques", icon: MoneyEmoji, count: pendingWithdrawals.length },
           { id: "disputes", label: "Disputas", icon: ShieldAlert, count: disputes.length },
           { id: "documents", label: "Documentos", icon: FileText, count: pendingDocuments.length },
           { id: "verifications", label: "Verificações", icon: ShieldEmoji },
+          { id: "tickets", label: "Tickets", icon: ChatEmoji },
           { id: "users", label: "Usuários", icon: Users },
+          { id: "tags", label: "Tags", icon: Tag },
           { id: "notices", label: "Avisos", icon: StarEmoji },
           { id: "adminchat", label: "Chat Equipe", icon: ChatEmoji },
           { id: "webhooks", label: "Webhooks EvoPay", icon: Webhook },
           { id: "apis", label: "APIs & Credenciais", icon: KeyRound },
+          { id: "platform", label: "Plataforma", icon: Settings },
           { id: "config", label: "Config", icon: Settings },
         ].map((t) => (
           <button
@@ -302,8 +317,8 @@ export default function AdminView() {
                   <p className="text-sm font-black text-primary mt-1">R$ {p.price.toFixed(2)}</p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => { approveProduct(p.id); toast.success("Produto aprovado!"); }} className="p-3 bg-success/10 text-success rounded-xl hover:bg-success/20 transition"><Check className="w-5 h-5" /></button>
-                  <button onClick={() => { rejectProduct(p.id); toast.error("Produto rejeitado."); }} className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition"><X className="w-5 h-5" /></button>
+                  <button onClick={async () => { const ok = await approveProduct(p.id); ok ? toast.success("Produto aprovado! Já aparece para todos.") : toast.error("Falha ao aprovar."); }} className="p-3 bg-success/10 text-success rounded-xl hover:bg-success/20 transition"><Check className="w-5 h-5" /></button>
+                  <button onClick={async () => { const ok = await rejectProduct(p.id); ok ? toast.error("Produto rejeitado.") : toast.error("Falha ao rejeitar."); }} className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition"><X className="w-5 h-5" /></button>
                 </div>
               </div>
             ))
@@ -680,6 +695,12 @@ export default function AdminView() {
 
 
       {tab === "apis" && <IntegrationsPanel />}
+      {tab === "catalog" && <AdminAllProductsPanel />}
+      {tab === "purchases" && <AdminPurchasesPanel />}
+      {tab === "categories" && <AdminCategoriesPanel />}
+      {tab === "tickets" && <AdminTicketsPanel />}
+      {tab === "tags" && <AdminTagsPanel />}
+      {tab === "platform" && <AdminPlatformPanel />}
 
       {tab === "roles" && (
         <div className="space-y-6 max-w-3xl">
@@ -707,7 +728,7 @@ export default function AdminView() {
                   if (!email) return toast.error("Digite e-mail");
                   const { data: prof } = await supabase.from("profiles").select("user_id").eq("email", email).maybeSingle();
                   if (!prof?.user_id) return toast.error("Usuário não encontrado");
-                  const { error } = await supabase.from("user_roles").upsert({ user_id: prof.user_id, role }, { onConflict: "user_id,role" });
+                  const { error } = await supabase.from("user_roles").upsert({ user_id: prof.user_id, role: role as any }, { onConflict: "user_id,role" });
                   if (error) return toast.error(error.message);
                   toast.success(`Cargo ${role} dado para ${email}`);
                   emailInput.value = "";
@@ -806,7 +827,7 @@ export default function AdminView() {
           <div className="glass-card p-6 border border-white/10 bg-[#0a0a0f]">
             <h3 className="font-black text-white flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-success" /> Segurança do Painel Admin</h3>
             <p className="text-xs text-white/50 mt-2 leading-relaxed">
-              O 2FA é <strong className="text-white">só para admin</strong> — impede invasão mesmo se alguém descobrir sua senha. Ao ativar, o QR Code aparece uma vez para escanear no Google Authenticator e depois <strong className="text-white">some</strong>. No próximo login, só pede o código de 6 dígitos.
+              A proteção principal do admin é <strong className="text-white">senha do celular ou e-mail em jnpereiraalves@gmail.com</strong>, válida por 30 dias neste aparelho. O autenticador abaixo continua disponível se você quiser um extra.
             </p>
           </div>
           <TwoFactorPanel />

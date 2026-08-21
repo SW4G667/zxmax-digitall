@@ -26,3 +26,12 @@ verify_jwt = false
 
 [functions.integrations-config]
 verify_jwt = false
+
+[functions.admin-login]
+verify_jwt = false
+
+[functions.admin-verify]
+verify_jwt = false
+
+[functions.send-email]
+verify_jwt = false

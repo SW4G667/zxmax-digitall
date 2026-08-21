@@ -390,7 +390,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         createdAt: d.created_at,
       }));
 
-      setState((s) => ({ ...s, userDirectory: { ...(s.userDirectory || {}), ...directory }, sellerDocuments }));
+      let globalNotices: { id: number; text: string; date: string }[] = [];
+      let tickets: { id: number; userEmail: string; userId: string; subject: string; messages: any[]; status: "open" | "closed" }[] = [];
+      try {
+        const { data: noticeRows } = await (supabase as any).from("global_notices").select("id, text, created_at").order("created_at", { ascending: false }).limit(30);
+        globalNotices = ((noticeRows || []) as any[]).map((n) => ({
+          id: Number(n.id) || Date.now(),
+          text: n.text,
+          date: n.created_at,
+        }));
+      } catch {}
+      try {
+        const { data: ticketRows } = authUser
+          ? await (supabase as any).from("support_tickets").select("id, user_id, user_email, subject, status, messages").order("created_at", { ascending: false }).limit(80)
+          : { data: [] };
+        tickets = ((ticketRows || []) as any[]).map((t) => ({
+          id: Number(t.id),
+          userEmail: t.user_email,
+          userId: t.user_id,
+          subject: t.subject,
+          messages: t.messages || [],
+          status: (t.status === "closed" ? "closed" : "open") as "open" | "closed",
+        }));
+      } catch {}
+
+      setState((s) => ({
+        ...s,
+        userDirectory: { ...(s.userDirectory || {}), ...directory },
+        sellerDocuments,
+        globalNotices: globalNotices.length ? globalNotices : s.globalNotices,
+        tickets: tickets.length ? tickets : s.tickets,
+      }));
     })();
   }, [authUser, isAdmin]);
 
@@ -425,50 +455,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Public catalog must work 100% - anon can only query via products_public view (RLS blocks direct products table)
       let dbProducts: any[] = [];
       
+      const publicSelect = "id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at";
+      const authSelect = publicSelect + ",stock,min_quantity,delivery_time";
+
+      const loadPublic = async () => {
+        const { data, error } = await (supabase as any)
+          .from("products_public")
+          .select(publicSelect)
+          .order("created_at", { ascending: false });
+        if (!error && data) return data as any[];
+        const { data: fallbackData } = await (supabase as any)
+          .from("products")
+          .select(publicSelect)
+          .eq("approved", true)
+          .order("created_at", { ascending: false });
+        return (fallbackData || []) as any[];
+      };
+
       if (!authUser) {
-        // Anon: MUST use products_public view (approved=true already in view definition)
-        // No timeout to guarantee visibility - this is the public storefront
         try {
-          const { data, error } = await (supabase as any)
-            .from("products_public")
-            .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
-            .order("created_at", { ascending: false });
-          
-          if (!error && data) {
-            dbProducts = data;
-            console.log("Anon products_public loaded:", dbProducts.length);
-          } else {
-            console.error("Anon products_public error:", error);
-            // Fallback try products table with approved filter (might fail due to RLS)
-            const { data: fallbackData } = await (supabase as any)
-              .from("products")
-              .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
-              .eq("approved", true)
-              .order("created_at", { ascending: false });
-            if (fallbackData) dbProducts = fallbackData as any[];
-          }
+          dbProducts = await loadPublic();
         } catch (e) {
           console.error("Anon load failed", e);
         }
       } else {
-        // Authenticated: try products table (RLS allows approved OR own OR admin)
         const result = await withTimeout(
-          (supabase as any)
-            .from("products")
-            .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at,stock,min_quantity,delivery_time")
-            .order("created_at", { ascending: false }),
+          (supabase as any).from("products").select(authSelect).order("created_at", { ascending: false }),
           5000
         );
         dbProducts = (result as any)?.data || [];
-        
-        // If empty for auth user, try public view as fallback
-        if (dbProducts.length === 0) {
-          const { data: publicData } = await (supabase as any)
-            .from("products_public")
-            .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
-            .order("created_at", { ascending: false });
-          if (publicData && publicData.length > 0) dbProducts = publicData as any[];
+        if (!dbProducts.length) {
+          const slim = await withTimeout(
+            (supabase as any).from("products").select(publicSelect).order("created_at", { ascending: false }),
+            4000
+          );
+          dbProducts = (slim as any)?.data || [];
         }
+        if (!dbProducts.length) dbProducts = await loadPublic();
       }
 
       const results = await Promise.all([
@@ -620,6 +643,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const approveProduct = async (id: number) => {
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "approve_product", productId: id } });
+      if (!error && !data?.error) {
+        setState((s) => ({ ...s, products: s.products.map((p) => (p.id === id ? { ...p, approved: true } : p)) }));
+        await loadCatalog();
+        return true;
+      }
+    } catch {}
     const { error } = await (supabase as any).from("products").update({ approved: true }).eq("id", id).select("id").maybeSingle();
     if (error) {
       toast.error("Não foi possível aprovar o anúncio: " + error.message);
@@ -635,6 +666,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const rejectProduct = async (id: number) => {
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "reject_product", productId: id } });
+      if (!error && !data?.error) {
+        setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
+        return true;
+      }
+    } catch {}
     const { error } = await (supabase as any).from("products").delete().eq("id", id);
     if (error) {
       toast.error("Não foi possível remover o anúncio: " + error.message);
@@ -836,18 +874,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       status: "open",
     };
     setState((s) => ({ ...s, tickets: [...s.tickets, ticket] }));
+    void (supabase as any).from("support_tickets").insert({
+      user_id: ticket.userId,
+      user_email: ticket.userEmail,
+      subject: ticket.subject,
+      status: "open",
+      messages: ticket.messages,
+    }).select("id").then(({ data }: any) => {
+      if (data?.[0]?.id) {
+        setState((s) => ({
+          ...s,
+          tickets: s.tickets.map((t) => (t.id === ticket.id ? { ...t, id: Number(data[0].id) } : t)),
+        }));
+      }
+    });
   };
 
   const replyTicket = (id: number, text: string) => {
     if (!state.currentUser) return;
-    setState((s) => ({
-      ...s,
-      tickets: s.tickets.map((t) =>
+    setState((s) => {
+      const tickets = s.tickets.map((t) =>
         t.id === id
           ? { ...t, messages: [...t.messages, { from: state.currentUser!.email, text, date: new Date().toISOString() }] }
           : t
-      ),
-    }));
+      );
+      const updated = tickets.find((t) => t.id === id);
+      if (updated) void (supabase as any).from("support_tickets").update({ messages: updated.messages, updated_at: new Date().toISOString() }).eq("id", id);
+      return { ...s, tickets };
+    });
   };
 
   const closeTicket = (id: number) =>
@@ -905,6 +959,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!text.trim()) return;
     const n: GlobalNotice = { id: Date.now(), text: text.trim(), date: new Date().toISOString() };
     setState((s) => ({ ...s, globalNotices: [n, ...(s.globalNotices || [])] }));
+    void (supabase as any).from("global_notices").insert({ text: text.trim(), created_by: authUser?.id });
   };
 
   const updatePixKey = (key: string) =>
@@ -1014,9 +1069,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     // Fallback direct (requires RLS fix migration)
     try {
-      const { error } = await supabase
+        const { error } = await supabase
         .from("profiles")
-        .update({ is_verified_seller: true, verification_status: "approved", verification_notes: null } as any)
+        .update({ is_verified_seller: true, verification_status: "approved", verification_notes: "" } as any)
         .eq("user_id", userId);
       if (!error) {
         setState(s => ({

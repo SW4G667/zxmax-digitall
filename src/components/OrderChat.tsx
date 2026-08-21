@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useStore } from "@/store/StoreContext";
-import { Send, ImagePlus, Loader2, Clock } from "lucide-react";
+import { Send, ImagePlus, Loader2, Clock, Paperclip } from "lucide-react";
 import { toast } from "sonner";
+import GalleryFileInput from "@/components/GalleryFileInput";
 
 interface OrderMessage {
   id: string;
@@ -26,6 +27,7 @@ export default function OrderChat({ orderId, locked }: Props) {
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const me = state.currentUser?.id;
 
@@ -113,11 +115,11 @@ export default function OrderChat({ orderId, locked }: Props) {
     setSending(false);
   };
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>, kind: "gallery" | "files") => {
     const file = e.target.files?.[0];
     if (!file || !me) return;
-    if (!file.type.startsWith("image/")) {
-      toast.error("Selecione uma imagem válida.");
+    if (kind === "gallery" && !file.type.startsWith("image/")) {
+      toast.error("Selecione uma foto da galeria.");
       e.target.value = "";
       return;
     }
@@ -178,14 +180,23 @@ export default function OrderChat({ orderId, locked }: Props) {
       </div>
 
       <div className="flex gap-2 items-center">
-        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+        <GalleryFileInput ref={galleryRef} mode="gallery" className="hidden" onChange={(e) => handleFile(e, "gallery")} />
+        <GalleryFileInput ref={fileRef} mode="files" className="hidden" onChange={(e) => handleFile(e, "files")} />
+        <button
+          onClick={() => galleryRef.current?.click()}
+          disabled={uploading}
+          className="p-3 rounded-xl bg-muted text-muted-foreground hover:text-foreground transition disabled:opacity-50"
+          title="Enviar foto da galeria"
+        >
+          {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}
+        </button>
         <button
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
           className="p-3 rounded-xl bg-muted text-muted-foreground hover:text-foreground transition disabled:opacity-50"
-          title="Enviar imagem"
+          title="Enviar arquivo"
         >
-          {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}
+          <Paperclip className="w-4 h-4" />
         </button>
         <input
           value={text}
