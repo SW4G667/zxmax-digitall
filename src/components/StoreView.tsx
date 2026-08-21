@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useStore } from "@/store/StoreContext";
-import { Search, Shield, CheckCircle, Zap, Flame } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { Search, Shield, CheckCircle, Zap, Flame, Sparkles } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import AuthScreen from "@/components/AuthScreen";
 import UserProfileModal from "@/components/UserProfileModal";
 
 export default function StoreView() {
   const { state } = useStore();
+  const { isAdmin, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [search, setSearch] = useState("");
@@ -15,11 +17,13 @@ export default function StoreView() {
   const [authOpen, setAuthOpen] = useState(false);
 
   const approved = useMemo(() => {
-    // FIX CRITICO: mostrar todos produtos para todos usuários (anon e logado)
-    // RLS já garante que anon só vê approved via view, mas se não houver approved, mostrar todos pra não ficar vazio
-    // Isso corrige bug onde produtos criados pelo admin só apareciam pra ele
-    return state.products;
-  }, [state.products]);
+    return state.products.filter((p) => {
+      if (p.approved) return true;
+      if (isAdmin) return true;
+      if (user && (p.sellerId === user.id || p.sellerEmail === user.email)) return true;
+      return false;
+    });
+  }, [state.products, isAdmin, user]);
   const categories = useMemo(() => ["Todos", ...state.config.categories], [state.config.categories]);
 
   useEffect(() => {
@@ -77,6 +81,11 @@ export default function StoreView() {
 
   return (
     <div className="space-y-5">
+      {(state.globalNotices || []).slice(0, 2).map((n) => (
+        <div key={n.id} className="bg-[#0084ff]/10 border border-[#0084ff]/20 rounded-2xl px-4 py-3 text-sm text-white">
+          {n.text}
+        </div>
+      ))}
       {/* Top filters - GGMAX style, clean pills, no squares */}
       <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
         <button
@@ -141,6 +150,26 @@ export default function StoreView() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {trending.map((p) => (
               <div key={`trend-${p.id}`} onClick={() => navigate(`/produto/${p.id}`)} className="bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden cursor-pointer hover:border-[#2a2a36] transition group">
+                <div className="aspect-[4/3] bg-[#1a1a20] overflow-hidden"><img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" /></div>
+                <div className="p-3">
+                  <p className="text-xs font-bold text-white truncate">{p.name}</p>
+                  <p className="text-sm font-black text-white mt-1">R$ {p.price.toFixed(2)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {category === "Todos" && !search && approved.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="w-4 h-4 text-[#0084ff]" />
+            <h2 className="text-sm font-black text-white uppercase tracking-wide">Recém chegados</h2>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[...approved].slice(0, 4).map((p) => (
+              <div key={`new-${p.id}`} onClick={() => navigate(`/produto/${p.id}`)} className="bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden cursor-pointer hover:border-[#2a2a36] transition group">
                 <div className="aspect-[4/3] bg-[#1a1a20] overflow-hidden"><img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" /></div>
                 <div className="p-3">
                   <p className="text-xs font-bold text-white truncate">{p.name}</p>

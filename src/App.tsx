@@ -16,6 +16,7 @@ import Perfil from "./pages/Perfil.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import Produto from "./pages/Produto.tsx";
 import Favoritos from "./pages/Favoritos.tsx";
+import ConfirmarLogin from "./pages/ConfirmarLogin.tsx";
 
 const queryClient = new QueryClient();
 

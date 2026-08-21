@@ -6,6 +6,7 @@ import { X, Edit, Upload, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import TwoFactorPanel from "@/components/TwoFactorPanel";
+import GalleryFileInput from "@/components/GalleryFileInput";
 
 interface Props {
   open: boolean;
@@ -137,7 +138,7 @@ export default function ProfileModal({ open, onClose }: Props) {
         <div className="flex items-center gap-5 mb-6 p-5 bg-muted rounded-2xl">
           <div className="relative">
             <img src={profile?.avatar_url || storeUser.avatar} className="w-20 h-20 rounded-2xl object-cover shadow-lg" alt="Avatar" />
-            <input type="file" ref={avatarInputRef} accept="image/*" onChange={handleAvatarUpload} className="hidden" />
+            <GalleryFileInput mode="gallery" ref={avatarInputRef} onChange={handleAvatarUpload} className="hidden" />
             <button onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading} className="absolute -bottom-2 -right-2 bg-card p-1.5 rounded-lg shadow-md border border-border hover:bg-muted transition disabled:opacity-50">
               <CameraEmoji className="w-4 h-4" />
             </button>
@@ -209,10 +210,9 @@ export default function ProfileModal({ open, onClose }: Props) {
             </div>
           </button>
 
-          <input
-            type="file"
+          <GalleryFileInput
+            mode="files"
             ref={fileInputRef}
-            accept="image/*,.pdf"
             onChange={handleDocumentUpload}
             className="hidden"
           />

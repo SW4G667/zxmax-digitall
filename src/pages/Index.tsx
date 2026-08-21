@@ -12,10 +12,9 @@ import MyPurchasesView from "@/components/MyPurchasesView";
 import WithdrawView from "@/components/WithdrawView";
 import AppShell from "@/components/AppShell";
 import LoadingScreen from "@/components/LoadingScreen";
-import TwoFactorPanel from "@/components/TwoFactorPanel";
+import AdminLoginGate from "@/components/AdminLoginGate";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ShieldCheck, Lock } from "lucide-react";
 
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "withdraw";
 const PATHS: Record<View, string> = { store: "/loja", inventory: "/meus-produtos", purchases: "/minhas-compras", support: "/suporte", admin: "/admin", withdraw: "/sacar" };
@@ -24,7 +23,7 @@ const PROTECTED_VIEWS: View[] = ["inventory", "purchases", "support", "withdraw"
 
 function Dashboard({ view }: { view: View }) {
   const { refreshPurchases } = useStore();
-  const { isAdmin, user, needsMfa, mfaEnabled, mfaChecked } = useAuth();
+  const { isAdmin, user, needsMfa, adminGateRequired, adminGateChecked } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [authOpen, setAuthOpen] = useState(false);
@@ -72,31 +71,16 @@ function Dashboard({ view }: { view: View }) {
     }
   }, [user, refreshPurchases, navigate]);
 
-  // Admin MFA enforcement - only admin needs authenticator to prevent hacker invasion
-  // Wait for mfaChecked to avoid flicker/loading stuck
-  if (view === "admin" && user && isAdmin && mfaChecked && !mfaEnabled) {
-    return (
-      <AppShell>
-        <div className="max-w-2xl mx-auto py-10">
-          <div className="rounded-2xl border-2 border-destructive/30 bg-destructive/5 p-8 text-center mb-6">
-            <div className="w-16 h-16 rounded-2xl bg-destructive/15 border border-destructive/20 flex items-center justify-center mx-auto mb-4">
-              <Lock className="w-8 h-8 text-destructive" />
-            </div>
-            <h2 className="text-2xl font-black text-white">Proteção Admin Obrigatória</h2>
-            <p className="text-sm text-white/60 mt-2 leading-relaxed">
-              Para impedir invasão de hackers, o painel admin exige <strong className="text-white">Google Authenticator (2FA)</strong>.<br />
-              Ative agora. O QR Code vai aparecer para escanear e depois <strong className="text-white">some</strong> — só o código de 6 dígitos será pedido no login.
-            </p>
-          </div>
-          <TwoFactorPanel />
-          <p className="text-[11px] text-white/30 text-center mt-4">Após ativar, deslogue e logue novamente: vai pedir o código do autenticador. Você pode gerar novo código quando quiser em "Gerar novo código".</p>
-        </div>
-      </AppShell>
-    );
+  if (view === "admin" && user && isAdmin && !adminGateChecked) {
+    return <LoadingScreen message="Verificando proteção admin..." />;
   }
 
-  if (view === "admin" && user && isAdmin && !mfaChecked) {
-    return <LoadingScreen message="Verificando proteção admin..." />;
+  if (view === "admin" && user && isAdmin && adminGateRequired) {
+    return (
+      <AppShell>
+        <AdminLoginGate />
+      </AppShell>
+    );
   }
 
   return (
@@ -105,7 +89,7 @@ function Dashboard({ view }: { view: View }) {
       {view === "inventory" && user && <InventoryView onOpenChat={handleOpenChat} />}
       {view === "purchases" && user && <MyPurchasesView initialSelectedId={selectedPurchaseId} />}
       {view === "support" && user && <SupportView />}
-      {view === "admin" && user && isAdmin && mfaEnabled && <AdminView />}
+      {view === "admin" && user && isAdmin && !adminGateRequired && adminGateChecked && <AdminView />}
       {view === "withdraw" && user && <WithdrawView />}
       {requiresAuth && !user && (
         <div className="text-center py-20 glass-card">
@@ -121,7 +105,7 @@ function Dashboard({ view }: { view: View }) {
           <p className="text-foreground font-bold">Acesso restrito a administradores.</p>
         </div>
       )}
-      {view === "admin" && user && isAdmin && !mfaEnabled && null}
+      {view === "admin" && user && isAdmin && adminGateRequired && null}
       {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
     </AppShell>
   );
