@@ -202,7 +202,7 @@ export function AdminPlatformPanel() {
   const [maintenance, setMaintenance] = useState(false);
   const [message, setMessage] = useState("");
   const [minPrice, setMinPrice] = useState(2);
-  const [minWithdraw, setMinWithdraw] = useState(3.5);
+  const [minWithdraw, setMinWithdraw] = useState(5.0);
 
   useEffect(() => {
     void (async () => {
@@ -211,7 +211,7 @@ export function AdminPlatformPanel() {
         setMaintenance(!!data.value.maintenance);
         setMessage(data.value.maintenance_message || "");
         setMinPrice(Number(data.value.min_product_price || 2));
-        setMinWithdraw(Number(data.value.min_withdraw || 3.5));
+        setMinWithdraw(Number(data.value.min_withdraw || 5.0));
       }
     })();
   }, []);

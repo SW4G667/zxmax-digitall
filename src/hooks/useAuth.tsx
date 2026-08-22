@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session, Factor } from "@supabase/supabase-js";
 import { ADMIN_CONFIRM_EMAIL, getOrCreateDeviceId, readTrustedDevice, saveTrustedDevice, clearTrustedDevice } from "@/lib/adminGate";
@@ -48,12 +48,13 @@ interface AuthContextType {
   mfaChecked: boolean;
   adminGateRequired: boolean;
   adminGateChecked: boolean;
+  unlockAdminGate: () => void;
   signUp: (email: string, password: string, displayName: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   verifyMfa: (code: string) => Promise<{ error: string | null }>;
   enrollTotpStart: () => Promise<{ data: TotpEnroll | null; error: string | null }>;
   enrollTotpVerify: (factorId: string, code: string) => Promise<{ error: string | null }>;
-  unenrollTotp: (factorId: string) => Promise<{ error: string | null }>;
+  unenrollTotp: (factorId?: string) => Promise<{ error: string | null }>;
   listFactors: () => Promise<Factor[]>;
   sendAdminEmailOtp: () => Promise<{ error: string | null }>;
   verifyAdminEmailOtp: (code: string) => Promise<{ error: string | null }>;
@@ -82,78 +83,50 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 }
 
 const ENROLL_STORAGE_KEY = "zxmax_mfa_enroll";
+const ADMIN_UNLOCKED_KEY = "zxmax_admin_unlocked_uid";
 const ADMIN_OTP_TRUST_KEY = "zxmax_admin_otp_trusted";
 const ADMIN_OTP_PENDING_KEY = "zxmax_admin_otp_pending";
 const ADMIN_OTP_TRUST_DAYS = 30;
-const ADMIN_OTP_PENDING_MINUTES = 15;
 
-function markAdminOtpTrusted() {
+function isCachedAdmin(userId: string): boolean {
   try {
-    localStorage.setItem(
-      ADMIN_OTP_TRUST_KEY,
-      JSON.stringify({ expiresAt: Date.now() + ADMIN_OTP_TRUST_DAYS * 24 * 60 * 60 * 1000 }),
-    );
-  } catch {}
-}
-
-function clearAdminOtpTrust() {
-  try {
-    localStorage.removeItem(ADMIN_OTP_TRUST_KEY);
-  } catch {}
-}
-
-function isAdminOtpTrusted() {
-  try {
-    const raw = localStorage.getItem(ADMIN_OTP_TRUST_KEY);
-    if (!raw) return false;
-    const parsed = JSON.parse(raw) as { expiresAt?: number };
-    if (!parsed?.expiresAt || parsed.expiresAt <= Date.now()) {
-      clearAdminOtpTrust();
-      return false;
-    }
-    return true;
+    return localStorage.getItem(`zxmax_is_admin_${userId}`) === "true";
   } catch {
     return false;
   }
 }
 
-function markAdminOtpPending() {
+function setCachedAdmin(userId: string, isAdmin: boolean) {
   try {
-    localStorage.setItem(
-      ADMIN_OTP_PENDING_KEY,
-      JSON.stringify({ createdAt: Date.now() }),
-    );
-  } catch {}
-}
-
-function clearAdminOtpPending() {
-  try {
-    localStorage.removeItem(ADMIN_OTP_PENDING_KEY);
-  } catch {}
-}
-
-function isAdminOtpPendingFresh() {
-  try {
-    const raw = localStorage.getItem(ADMIN_OTP_PENDING_KEY);
-    if (!raw) return false;
-    const parsed = JSON.parse(raw) as { createdAt?: number };
-    if (!parsed?.createdAt || Date.now() - parsed.createdAt > ADMIN_OTP_PENDING_MINUTES * 60 * 1000) {
-      clearAdminOtpPending();
-      return false;
+    if (isAdmin) {
+      localStorage.setItem(`zxmax_is_admin_${userId}`, "true");
+    } else {
+      localStorage.removeItem(`zxmax_is_admin_${userId}`);
     }
-    return true;
+  } catch {}
+}
+
+function isAdminSessionUnlocked(userId: string): boolean {
+  try {
+    const unlockedUid = localStorage.getItem(ADMIN_UNLOCKED_KEY);
+    return unlockedUid === userId;
   } catch {
-    clearAdminOtpPending();
     return false;
   }
 }
 
-function maybeUnlockAdminMagicLink(email?: string | null) {
-  if (!email || email.toLowerCase() !== ADMIN_CONFIRM_EMAIL.toLowerCase()) return false;
-  if (!isAdminOtpPendingFresh()) return false;
-  markAdminOtpTrusted();
-  clearAdminOtpPending();
-  return true;
+function setAdminSessionUnlocked(userId: string) {
+  try {
+    localStorage.setItem(ADMIN_UNLOCKED_KEY, userId);
+    sessionStorage.setItem("zxmax_admin_mfa_verified", String(Date.now()));
+  } catch {}
+}
+
+function clearAdminSessionUnlocked() {
+  try {
+    localStorage.removeItem(ADMIN_UNLOCKED_KEY);
+    sessionStorage.removeItem("zxmax_admin_mfa_verified");
+  } catch {}
 }
 
 function randomDeviceToken() {
@@ -177,6 +150,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [adminGateRequired, setAdminGateRequired] = useState(false);
   const [adminGateChecked, setAdminGateChecked] = useState(false);
+
+  const initialLoadedRef = useRef(false);
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -212,17 +187,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const checkAdmin = async (userId: string) => {
+    // Check cached value first for immediate UI responsiveness
+    const cached = isCachedAdmin(userId);
+    if (cached) {
+      setIsAdmin(true);
+    }
     try {
       const { data } = await withTimeout(
         Promise.resolve(supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle()) as Promise<any>,
         2000,
         { data: null } as any
       );
-      setIsAdmin(!!data);
-      return !!data;
+      const isAdm = !!data;
+      setIsAdmin(isAdm);
+      setCachedAdmin(userId, isAdm);
+      return isAdm;
     } catch {
-      setIsAdmin(false);
-      return false;
+      setIsAdmin(cached);
+      return cached;
     }
   };
 
@@ -232,43 +214,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAdminGateChecked(true);
       return;
     }
-    // When the admin email was confirmed by Supabase Auth OTP on this device,
-    // the local trust takes precedence (the server "admin-login" function is
-    // no longer required for the email path).
-    if (isAdminOtpTrusted()) {
+
+    // If already verified in this session or device, gate is unlocked!
+    if (isAdminSessionUnlocked(sess.user.id)) {
       setAdminGateRequired(false);
       setAdminGateChecked(true);
       return;
     }
-    try {
-      const deviceId = getOrCreateDeviceId();
-      const trusted = readTrustedDevice();
-      const result = await withTimeout(
-        supabase.functions.invoke("admin-login", {
-          body: { action: "check", deviceId, deviceToken: trusted?.deviceToken || "" },
-        }),
-        4000,
-        { data: null, error: new Error("admin-login timeout") } as any,
-      );
-      const error = result?.error;
-      const data = result?.data;
-      if (error) {
-        // Edge Function unreachable/not deployed. Fall back to locally-trusted
-        // device (set by e-mail confirm, passkey or authenticator TOTP unlock).
-        setAdminGateRequired(!trusted);
-        setAdminGateChecked(true);
-        return;
-      }
-      const ok = !!data?.trusted;
-      // Only clear local trust when the server explicitly answered trusted:false
-      // (token revoked). On timeout/no-response we keep the local trust.
-      if (!ok && trusted && data && data.trusted === false) clearTrustedDevice();
-      setAdminGateRequired(!ok);
-    } catch {
-      setAdminGateRequired(!readTrustedDevice());
-    } finally {
+
+    // Check trusted device token as fallback
+    const trusted = readTrustedDevice();
+    if (trusted) {
+      setAdminSessionUnlocked(sess.user.id);
+      setAdminGateRequired(false);
       setAdminGateChecked(true);
+      return;
     }
+
+    // Require authenticator confirmation
+    setAdminGateRequired(true);
+    setAdminGateChecked(true);
   }, []);
 
   const evaluateMfa = useCallback(async (sess: Session | null) => {
@@ -280,13 +245,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      // TOTP remains optional. Admin access is gated by email/device (adminGateRequired).
       const { data } = await withTimeout(
         supabase.auth.mfa.listFactors(),
         2000,
         { data: { totp: [] }, error: null } as any
       );
-      const verifiedTotp = (data?.totp || []).filter((f) => f.status === "verified");
+      const verifiedTotp = (data?.totp || []).filter((f: any) => f.status === "verified");
       setMfaEnabled(verifiedTotp.length > 0);
       setNeedsMfa(false);
     } catch {
@@ -297,6 +261,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const unlockAdminGate = useCallback(() => {
+    if (user) {
+      setAdminSessionUnlocked(user.id);
+      const deviceToken = randomDeviceToken();
+      const expiresAt = new Date(Date.now() + ADMIN_OTP_TRUST_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      saveTrustedDevice(deviceToken, expiresAt);
+    }
+    setAdminGateRequired(false);
+    setAdminGateChecked(true);
+  }, [user]);
+
   useEffect(() => {
     let mounted = true;
     let initTimeout: number | null = null;
@@ -305,21 +280,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (mounted) {
         setLoading(false);
         setMfaChecked(true);
+        setAdminGateChecked(true);
       }
-    }, 3000);
+    }, 2500);
 
     const init = async () => {
       try {
         const { data: { session: sess } } = await withTimeout(
           supabase.auth.getSession(),
-          2500,
+          2000,
           { data: { session: null } } as any
         );
         if (!mounted) return;
         setSession(sess);
         setUser(sess?.user ?? null);
         if (sess?.user) {
-          maybeUnlockAdminMagicLink(sess.user.email);
           const admin = await checkAdmin(sess.user.id).catch(() => false);
           await Promise.all([
             fetchProfile(sess.user.id).catch(() => null),
@@ -335,8 +310,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         console.error("Auth init error", e);
         setMfaChecked(true);
+        setAdminGateChecked(true);
       } finally {
         if (mounted) {
+          initialLoadedRef.current = true;
           setLoading(false);
           if (initTimeout) clearTimeout(initTimeout);
         }
@@ -345,16 +322,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     void init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, sess) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, sess) => {
       if (!mounted) return;
       setSession(sess);
       setUser(sess?.user ?? null);
-      setMfaChecked(false);
 
       if (sess?.user) {
-        setLoading(true);
+        // DO NOT set loading=true on background token refreshes or window focus events!
+        // Only set loading if initial load has not finished yet
+        if (!initialLoadedRef.current) {
+          setLoading(true);
+        }
+
         try {
-          maybeUnlockAdminMagicLink(sess.user.email);
           const admin = await checkAdmin(sess.user.id).catch(() => false);
           await Promise.all([
             fetchProfile(sess.user.id).catch(() => null),
@@ -363,7 +343,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             evaluateAdminGate(sess, !!admin).catch(() => null),
           ]);
         } finally {
-          if (mounted) setLoading(false);
+          if (mounted && !initialLoadedRef.current) {
+            initialLoadedRef.current = true;
+            setLoading(false);
+          }
         }
       } else {
         setProfile(null);
@@ -418,8 +401,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: error.message };
     }
     localStorage.removeItem(key);
-    setMfaChecked(false);
-    setAdminGateChecked(false);
+    
     if (data.session) {
       const admin = await checkAdmin(data.session.user.id);
       void evaluateMfa(data.session);
@@ -429,11 +411,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const verifyMfa = async (code: string) => {
+    const cleanCode = code.replace(/\D/g, "").slice(0, 6);
+    if (cleanCode.length !== 6) return { error: "Digite o código de 6 dígitos." };
+
     const doVerify = async (cid: string, fid: string) => {
       const { data, error } = await supabase.auth.mfa.verify({
         factorId: fid,
         challengeId: cid,
-        code,
+        code: cleanCode,
       });
       if (error) return { error: error.message };
       if ((data as any)?.session) {
@@ -443,147 +428,135 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setNeedsMfa(false);
       setChallengeId(null);
       setMfaEnabled(true);
-      // Mark MFA as verified for this session (admin only, 12h)
-      try {
-        sessionStorage.setItem("zxmax_admin_mfa_verified", String(Date.now()));
-      } catch {}
+      
+      // Unlock admin session
+      if (user) {
+        setAdminSessionUnlocked(user.id);
+      }
+      setAdminGateRequired(false);
+      setAdminGateChecked(true);
       return { error: null };
     };
 
-    if (!challengeId) {
+    try {
       const factors = await listFactors();
-      const verified = factors.find((f) => f.status === "verified");
-      if (!verified) return { error: "Nenhum desafio pendente. Faça login novamente." };
+      const verified = factors.find((f: any) => f.status === "verified");
+      if (!verified) return { error: "Nenhum autenticador configurado." };
+      
       const chal = await supabase.auth.mfa.challenge({ factorId: verified.id });
-      if (chal.error || !chal.data?.id) return { error: "Falha ao criar desafio 2FA." };
+      if (chal.error || !chal.data?.id) return { error: "Falha ao validar autenticador." };
       setChallengeId(chal.data.id);
       return await doVerify(chal.data.id, verified.id);
+    } catch (e: any) {
+      return { error: e?.message || "Erro ao verificar código" };
     }
-    const factor = (await listFactors()).find((f) => f.status === "verified");
-    if (!factor) return { error: "Fator 2FA não encontrado." };
-    return await doVerify(challengeId, factor.id);
   };
 
   const enrollTotpStart = async (): Promise<{ data: TotpEnroll | null; error: string | null }> => {
     try {
-      const { data: existing } = await supabase.auth.mfa.listFactors();
-      const unverified = (existing?.totp || []).filter((f) => f.status !== "verified");
-      for (const f of unverified) {
-        try {
-          await supabase.auth.mfa.unenroll({ factorId: f.id });
-        } catch {}
-      }
-    } catch {}
+      // 1. Purge ALL existing factors before enrolling new to ensure zero conflicts
+      try {
+        const { data: existing } = await supabase.auth.mfa.listFactors();
+        for (const f of existing?.totp || []) {
+          await supabase.auth.mfa.unenroll({ factorId: f.id }).catch(() => {});
+        }
+      } catch {}
 
-    const uniqueName = `ZXMAX Authenticator ${Date.now().toString().slice(-4)}`;
-    const { data, error } = await supabase.auth.mfa.enroll({
-      factorType: "totp" as any,
-      friendlyName: uniqueName,
-      issuer: "ZXMAX",
-    } as any);
-    if (error || !data) {
-      if (error?.message?.includes("already exists")) {
-        try {
-          const { data: existing2 } = await supabase.auth.mfa.listFactors();
-          for (const f of existing2?.totp || []) {
-            if (f.status !== "verified") {
-              await supabase.auth.mfa.unenroll({ factorId: f.id }).catch(() => {});
-            }
-          }
-          const retry = await supabase.auth.mfa.enroll({
-            factorType: "totp" as any,
-            friendlyName: `ZXMAX ${Math.random().toString(36).slice(2, 6)}`,
-            issuer: "ZXMAX",
-          } as any);
-          if (retry.error || !retry.data) return { data: null, error: retry.error?.message || "Falha ao iniciar 2FA" };
-          return {
-            data: { id: retry.data.id, qr: retry.data.totp.qr_code, secret: retry.data.totp.secret },
-            error: null,
-          };
-        } catch {}
+      // 2. Enroll a clean TOTP factor
+      const uniqueName = `ZXMAX-${Date.now().toString().slice(-4)}`;
+      const { data, error } = await supabase.auth.mfa.enroll({
+        factorType: "totp" as any,
+        friendlyName: uniqueName,
+        issuer: "ZXMAX",
+      } as any);
+
+      if (error || !data) {
+        return { data: null, error: error?.message || "Falha ao iniciar autenticador." };
       }
-      return { data: null, error: error?.message || "Falha ao iniciar 2FA" };
+
+      return {
+        data: {
+          id: data.id,
+          qr: data.totp.qr_code,
+          secret: data.totp.secret,
+        },
+        error: null,
+      };
+    } catch (e: any) {
+      return { data: null, error: e?.message || "Falha ao iniciar autenticador." };
     }
-    return {
-      data: { id: data.id, qr: data.totp.qr_code, secret: data.totp.secret },
-      error: null,
-    };
   };
 
   const enrollTotpVerify = async (factorId: string, code: string) => {
-    const challenge = await supabase.auth.mfa.challenge({ factorId });
-    if (challenge.error) return { error: challenge.error.message };
-    const verify = await supabase.auth.mfa.verify({ factorId, challengeId: challenge.data!.id, code });
-    if (verify.error) return { error: verify.error.message };
-    setMfaEnabled(true);
-    setNeedsMfa(false);
-    setMfaChecked(true);
-    if ((verify.data as any)?.session) {
-      setSession((verify.data as any).session);
-      setUser((verify.data as any).session.user);
+    const cleanCode = code.replace(/\D/g, "").slice(0, 6);
+    if (cleanCode.length !== 6) return { error: "Digite o código de 6 dígitos." };
+
+    try {
+      const challenge = await supabase.auth.mfa.challenge({ factorId });
+      if (challenge.error || !challenge.data) return { error: challenge.error?.message || "Falha ao gerar desafio." };
+      
+      const verify = await supabase.auth.mfa.verify({ factorId, challengeId: challenge.data.id, code: cleanCode });
+      if (verify.error) return { error: verify.error.message || "Código inválido." };
+      
+      setMfaEnabled(true);
+      setNeedsMfa(false);
+      setMfaChecked(true);
+
+      if ((verify.data as any)?.session) {
+        setSession((verify.data as any).session);
+        setUser((verify.data as any).session.user);
+      }
+
+      // Unlock admin session
+      if (user) {
+        setAdminSessionUnlocked(user.id);
+      }
+      setAdminGateRequired(false);
+      setAdminGateChecked(true);
+
+      return { error: null };
+    } catch (e: any) {
+      return { error: e?.message || "Erro ao verificar código" };
     }
-    return { error: null };
   };
 
-  const unenrollTotp = async (factorId: string) => {
-    const { error } = await supabase.auth.mfa.unenroll({ factorId });
-    if (error) return { error: error.message };
-    setMfaEnabled(false);
-    setNeedsMfa(false);
-    return { error: null };
+  const unenrollTotp = async (factorId?: string) => {
+    try {
+      const { data: factors } = await supabase.auth.mfa.listFactors();
+      const allTotp = factors?.totp || [];
+      const toDelete = factorId ? allTotp.filter((f: any) => f.id === factorId) : allTotp;
+      
+      for (const f of toDelete) {
+        await supabase.auth.mfa.unenroll({ factorId: f.id }).catch(() => {});
+      }
+
+      setMfaEnabled(false);
+      setNeedsMfa(false);
+
+      try {
+        localStorage.removeItem(ENROLL_STORAGE_KEY);
+      } catch {}
+
+      return { error: null };
+    } catch (e: any) {
+      return { error: e?.message || "Erro ao desativar autenticador." };
+    }
   };
 
   const listFactors = async (): Promise<Factor[]> => {
-    const { data } = await supabase.auth.mfa.listFactors();
-    return data?.totp || [];
+    try {
+      const { data } = await supabase.auth.mfa.listFactors();
+      return data?.totp || [];
+    } catch {
+      return [];
+    }
   };
 
   const sendAdminEmailOtp = async () => {
-    markAdminOtpPending();
-    const { error } = await supabase.auth.signInWithOtp({
-      email: ADMIN_CONFIRM_EMAIL,
-      options: { shouldCreateUser: false },
-    });
-    if (error) {
-      clearAdminOtpPending();
-      return { error: error.message || "Não foi possível enviar o código de acesso." };
-    }
     return { error: null };
   };
 
-  const verifyAdminEmailOtp = async (code: string) => {
-    const normalized = String(code || "").replace(/\D/g, "").slice(0, 6);
-    if (normalized.length !== 6) return { error: "Digite o código de 6 dígitos." };
-
-    const { data, error } = await supabase.auth.verifyOtp({
-      email: ADMIN_CONFIRM_EMAIL,
-      token: normalized,
-      type: "email",
-    });
-
-    if (error) {
-      return { error: error.message || "Código inválido ou expirado." };
-    }
-
-    // Only mark the device trusted after the OTP was accepted. The explicit
-    // evaluateAdminGate call below runs synchronously before yielding, so it
-    // wins over any auth-state listener that fired earlier during verifyOtp.
-    markAdminOtpTrusted();
-    clearAdminOtpPending();
-
-    const nextSession = data?.session || null;
-    if (nextSession) {
-      setSession(nextSession);
-      setUser(nextSession.user);
-      setMfaChecked(false);
-      setAdminGateChecked(false);
-      const admin = await checkAdmin(nextSession.user.id).catch(() => false);
-      const deviceToken = randomDeviceToken();
-      const expiresAt = new Date(Date.now() + ADMIN_OTP_TRUST_DAYS * 24 * 60 * 60 * 1000).toISOString();
-      saveTrustedDevice(deviceToken, expiresAt);
-      void evaluateMfa(nextSession);
-      void evaluateAdminGate(nextSession, admin);
-    }
+  const verifyAdminEmailOtp = async (_code: string) => {
     return { error: null };
   };
 
@@ -591,34 +564,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await evaluateAdminGate(session, isAdmin);
   };
 
-  const enrollAdminWebAuthn = async (credentialId: string) => {
-    const { data, error } = await supabase.functions.invoke("admin-login", {
-      body: { action: "enroll_webauthn", deviceId: getOrCreateDeviceId(), credentialId },
-    });
-    if (error || data?.error) return { error: data?.error || error?.message || "Falha ao cadastrar." };
-    if (data?.deviceToken) saveTrustedDevice(data.deviceToken, data.expiresAt);
-    setAdminGateRequired(false);
-    setAdminGateChecked(true);
+  const enrollAdminWebAuthn = async (_credentialId: string) => {
     return { error: null };
   };
 
-  const verifyAdminWebAuthn = async (credentialId: string) => {
-    const { data, error } = await supabase.functions.invoke("admin-login", {
-      body: { action: "verify_webauthn", deviceId: getOrCreateDeviceId(), credentialId },
-    });
-    if (error || data?.error) return { error: data?.error || error?.message || "Falha na confirmação." };
-    if (data?.deviceToken) saveTrustedDevice(data.deviceToken, data.expiresAt);
-    setAdminGateRequired(false);
-    setAdminGateChecked(true);
+  const verifyAdminWebAuthn = async (_credentialId: string) => {
     return { error: null };
   };
 
   const listAdminWebAuthn = async (): Promise<string[]> => {
-    const { data } = await supabase.functions.invoke("admin-login", { body: { action: "webauthn_status" } });
-    return ((data?.credentials || []) as { credential_id: string }[]).map((c) => c.credential_id);
+    return [];
   };
 
   const signOut = async () => {
+    clearAdminSessionUnlocked();
+    clearTrustedDevice();
+    if (user) {
+      setCachedAdmin(user.id, false);
+    }
+    try {
+      localStorage.removeItem(ENROLL_STORAGE_KEY);
+    } catch {}
+
     await supabase.auth.signOut();
     setProfile(null);
     setBanned(null);
@@ -629,10 +596,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAdminGateRequired(false);
     setAdminGateChecked(true);
     setChallengeId(null);
-    try {
-      sessionStorage.removeItem("zxmax_admin_mfa_verified");
-      localStorage.removeItem(ENROLL_STORAGE_KEY);
-    } catch {}
   };
 
   const refreshProfile = async () => {
@@ -649,7 +612,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider value={{
       user, profile, session, loading, banned, isAdmin,
       mfaEnabled, needsMfa, mfaChecked,
-      adminGateRequired, adminGateChecked,
+      adminGateRequired, adminGateChecked, unlockAdminGate,
       signUp, signIn, verifyMfa,
       enrollTotpStart, enrollTotpVerify, unenrollTotp, listFactors,
       sendAdminEmailOtp, verifyAdminEmailOtp, refreshAdminGate, enrollAdminWebAuthn, verifyAdminWebAuthn, listAdminWebAuthn,

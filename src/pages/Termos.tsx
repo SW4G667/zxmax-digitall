@@ -22,7 +22,7 @@ export default function Termos() {
         <p>Entregas automáticas são liberadas na confirmação do pagamento; entregas manuais devem ocorrer em até 24 horas pelo chat do pedido. O comprador pode abrir disputa em caso de não entrega ou produto diferente do anunciado. A decisão da equipe, com base nas provas do chat, é final.</p>
       </Section>
       <Section heading="7. Saques">
-        <p>Saques exigem chave Pix cadastrada e documentos aprovados. O valor mínimo é R$ 2,00 e o pagamento ocorre em 5 a 7 dias úteis após aprovação. Saques suspeitos de fraude podem ser bloqueados para análise.</p>
+        <p>Saques exigem chave Pix cadastrada e documentos aprovados. O valor mínimo de saque é R$ 5,00 (com taxa de transferência Pix de R$ 1,20) e o pagamento ocorre em 5 a 7 dias úteis após aprovação. Saques suspeitos de fraude podem ser bloqueados para análise.</p>
       </Section>
       <Section heading="8. Condutas proibidas">
         <p>São proibidos: conteúdo adulto, gore ou infantil, material criminoso, lavagem de dinheiro, chargeback fraudulento, ofensas à moderação e a outros usuários, e não entregar o produto vendido. A punição vai de advertência a suspensão permanente com retenção de saldo em análise.</p>
