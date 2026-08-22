@@ -776,12 +776,75 @@ export default function AdminView() {
               <p className="text-2xl font-black text-white mt-1">{disputes.length}</p>
               <p className="text-xs text-red-400">{disputes.length >0 ? 'Atenção!' : 'Tudo ok'}</p>
             </div>
+            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
+              <p className="text-xs text-white/40 uppercase font-bold">Usuários</p>
+              <p className="text-2xl font-black text-white mt-1">{Object.keys(state.userDirectory || {}).length}</p>
+              <p className="text-xs text-[#0084ff]">cadastrados</p>
+            </div>
+            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
+              <p className="text-xs text-white/40 uppercase font-bold">Avaliação média</p>
+              <p className="text-2xl font-black text-white mt-1">{state.products.length ? (state.products.reduce((a, p) => a + Number(p.rating || 0), 0) / state.products.length).toFixed(1) : "—"}</p>
+              <p className="text-xs text-white/30">{state.products.filter(p => Number(p.sales) > 0).length} com vendas</p>
+            </div>
+            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
+              <p className="text-xs text-white/40 uppercase font-bold">Tickets abertos</p>
+              <p className="text-2xl font-black text-white mt-1">{state.tickets.filter(t => t.status === "open").length}</p>
+              <p className="text-xs text-[#ffbd2e]">{state.tickets.length} no total</p>
+            </div>
           </div>
 
           <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
             <h3 className="font-black text-white mb-4">Receita estimada (taxa {state.config.commission}%)</h3>
             <p className="text-3xl font-black text-[#ffbd2e]">R$ {(state.purchases.reduce((a,p)=>a+Number(p.amount),0) * (state.config.commission/100)).toFixed(2)}</p>
             <p className="text-xs text-white/40 mt-1">Total vendido: R$ {state.purchases.reduce((a,p)=>a+Number(p.amount),0).toFixed(2)}</p>
+            <p className="text-xs text-white/40 mt-0.5">Pedidos entregues: {state.purchases.filter(p=>p.status==='delivered').length} · Pagos: {state.purchases.filter(p=>p.status==='paid').length}</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
+              <h3 className="font-black text-white mb-4">Top categorias</h3>
+              {(() => {
+                const counts = state.products.reduce<Record<string, number>>((acc, p) => {
+                  const c = p.category || "Outras";
+                  acc[c] = (acc[c] || 0) + 1;
+                  return acc;
+                }, {});
+                const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6);
+                const max = top.length ? top[0][1] : 1;
+                if (!top.length) return <p className="text-sm text-white/40">Nenhum produto cadastrado ainda.</p>;
+                return (
+                  <div className="space-y-3">
+                    {top.map(([cat, n]) => (
+                      <div key={cat}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="font-bold text-white">{cat}</span>
+                          <span className="text-white/40">{n} item{n > 1 ? "s" : ""}</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                          <div className="h-full rounded-full bg-[#0084ff]" style={{ width: `${(n / max) * 100}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
+              <h3 className="font-black text-white mb-4">Status geral</h3>
+              {[
+                ["Produtos publicados", state.products.filter(p => p.approved).length],
+                ["Produtos pendentes", pendingProducts.length],
+                ["Vendas concluídas", state.purchases.filter(p => p.status === "delivered").length],
+                ["Pedidos em disputa", disputes.length],
+                ["Documentos a revisar", pendingDocuments.length],
+                ["Saques pendentes", pendingWithdrawals.length],
+              ].map(([label, value]) => (
+                <div key={label as string} className="flex justify-between items-center border-b border-white/5 py-2.5 text-sm">
+                  <span className="text-white/50">{label}</span>
+                  <span className="font-black text-white">{value}</span>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
