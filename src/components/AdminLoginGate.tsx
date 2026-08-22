@@ -18,6 +18,7 @@ export default function AdminLoginGate() {
     enrollTotpStart,
     enrollTotpVerify,
     listFactors,
+    resetMfa,
     unlockAdminGate,
     refreshAdminGate,
   } = useAuth();
@@ -82,6 +83,39 @@ export default function AdminLoginGate() {
       }, 100);
     }
   }, [checkingFactors, totpStage]);
+
+  // Wipes the old (lost) authenticator server-side and starts a fresh
+  // enrollment. Without this the admin was stuck on the same error forever.
+  const handleRecover = useCallback(async () => {
+    setTotpBusy(true);
+    setLastError("");
+    try {
+      const { error } = await resetMfa();
+      if (error) throw new Error(error);
+      const { data, error: enrollError } = await enrollTotpStart();
+      if (enrollError || !data) throw new Error(enrollError || "Não foi possível gerar novo autenticador.");
+      try {
+        localStorage.setItem(
+          ENROLL_STORAGE_KEY,
+          JSON.stringify({ factorId: data.id, qr: data.qr, secret: data.secret, createdAt: Date.now() } as TotpEnrollCache),
+        );
+      } catch {
+        /* storage may be unavailable */
+      }
+      setTotpQr(data.qr);
+      setTotpSecret(data.secret);
+      setTotpFactorId(data.id);
+      setTotpStage("enroll");
+      setTotpCode("");
+      setHasTotp(false);
+      toast.success("Autenticador antigo apagado. Escaneie o novo QR Code.");
+    } catch (e: any) {
+      setLastError(e?.message || "Falha ao resetar autenticador.");
+      toast.error(e?.message || "Falha ao resetar autenticador.");
+    } finally {
+      setTotpBusy(false);
+    }
+  }, [resetMfa, enrollTotpStart]);
 
   const handleStartEnroll = useCallback(async () => {
     setTotpBusy(true);
@@ -254,6 +288,13 @@ export default function AdminLoginGate() {
                 className="w-full flex items-center justify-center gap-2 py-2.5 text-xs text-white/50 hover:text-white transition"
               >
                 <RefreshCw className="w-3.5 h-3.5" /> Reconfigurar / Gerar novo QR Code
+              </button>
+              <button
+                onClick={handleRecover}
+                disabled={totpBusy}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[#0084ff]/25 text-[11px] font-bold text-[#0084ff] hover:bg-[#0084ff]/10 transition disabled:opacity-50"
+              >
+                <KeyRound className="w-3.5 h-3.5" /> Perdi o celular / o app não gera mais o código
               </button>
             </div>
           </div>

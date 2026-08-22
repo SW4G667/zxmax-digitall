@@ -198,6 +198,8 @@ Ao entrar em `/admin`, abra em ordem:
 | Produtos não aparecem para visitantes | `approved=false` ou view `products_public` sem permissão | Clique em "Aprovar TODOS produtos" no admin e aplique as migrações |
 | Foto abre "Arquivos" em vez da galeria | O navegador decide; o input de foto usa MIME de imagem e o de arquivo usa extensões | Os botões de **foto** abrem galeria; os de **documento/arquivo** abrem arquivos |
 | Pagamento Pix não gera QR | `EVOPAY_API_KEY` ausente/modo manual | Configurar em APIs & Credenciais e testar |
+| "Não consigo gerar um novo código / QR" (sempre o mesmo erro) | O Supabase exige sessão **AAL2** para apagar um autenticador já verificado — pelo navegador é impossível quando o app/celular foi perdido | Use o botão **"Perdi o celular / o app não gera mais o código"** na tela de bloqueio do admin (ou "Perdi o acesso ao autenticador" em Segurança). Ele chama a edge function `admin-login` com a ação `reset_mfa`, que apaga o fator antigo com a service role. **É necessário ter feito o redeploy da function `admin-login`** (`./scripts/deploy-supabase.sh`) e ter a secret `SUPABASE_SERVICE_ROLE_KEY` configurada |
+| O site desloga sozinho / fica carregando pra sempre | Timeouts curtos (2s) nas consultas de sessão e chamadas Supabase dentro do callback `onAuthStateChange` (deadlock do client) | Corrigido no código: os timeouts passaram para 8–10s, a sessão nunca é apagada em timeout e o trabalho pesado saiu de dentro do callback |
 
 ---
 

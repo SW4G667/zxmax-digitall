@@ -2,16 +2,34 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+// Fallbacks keep the app usable if an environment variable is missing on the
+// host (a missing VITE_SUPABASE_URL used to throw at import time and left the
+// user staring at a blank/loading page with no explanation).
+const FALLBACK_URL = 'https://dbekdedzgkfgtlytrnyw.supabase.co';
+
+const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined) || FALLBACK_URL;
+const SUPABASE_PUBLISHABLE_KEY = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined) || '';
+
+if (!SUPABASE_PUBLISHABLE_KEY) {
+  // Surface the real cause in the console instead of failing silently.
+  console.error(
+    '[ZXMAX] VITE_SUPABASE_PUBLISHABLE_KEY não está configurada. Defina as variáveis VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY no ambiente (Vercel/.env) e refaça o deploy.'
+  );
+}
+
+// createClient throws when the key is empty, which would leave a blank white
+// page. A placeholder keeps the UI rendering (requests simply fail).
+const SAFE_KEY = SUPABASE_PUBLISHABLE_KEY || 'missing-publishable-key';
+
+const isBrowser = typeof window !== 'undefined';
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+export const supabase = createClient<Database>(SUPABASE_URL, SAFE_KEY, {
   auth: {
-    storage: localStorage,
+    storage: isBrowser ? window.localStorage : undefined,
     persistSession: true,
     autoRefreshToken: true,
-  }
+  },
 });

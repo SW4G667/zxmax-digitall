@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { X, ShieldCheck, Loader2, Lock, Smartphone, Eye, EyeOff, Shield, Zap, AlertTriangle } from "lucide-react";
 
 export default function AuthScreen({ onClose }: { onClose?: () => void }) {
-  const { signUp, signIn, verifyMfa, needsMfa } = useAuth();
+  const { signUp, signIn, verifyMfa, needsMfa, user } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,6 +22,12 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
   useEffect(() => {
     if (needsMfa) setTimeout(() => codeRefs.current[0]?.focus(), 100);
   }, [needsMfa]);
+
+  // Safety net: never keep the auth overlay open once a session exists.
+  useEffect(() => {
+    if (user && !needsMfa) onClose?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, needsMfa]);
 
   useEffect(() => {
     let s = 0;
@@ -83,6 +89,13 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
           if (err.includes("Invalid login")) setError("Email ou senha incorretos.");
           else if (err.includes("Email not confirmed")) setError("Confirme seu e-mail antes.");
           else setError(err);
+        } else {
+          // Login succeeded: close the overlay (it used to stay on top of the
+          // whole site, which looked like the login had frozen).
+          toast.success("Login realizado!");
+          setLoading(false);
+          onClose?.();
+          return;
         }
       }
     } catch {

@@ -33,6 +33,30 @@
           if (isDark) document.documentElement.classList.add("dark");
         } catch (e) {}
       })();
+
+      // Discord OAuth returns ?code=... on the site root. Supabase's own
+      // "detectSessionInUrl" may mistake it for a PKCE callback, fail the
+      // exchange and DESTROY the current session (that is one of the reasons
+      // the site kept logging people out). We stash the Discord code before
+      // the app boots and clean the URL.
+      (function () {
+        try {
+          var params = new URLSearchParams(window.location.search);
+          var code = params.get("code");
+          if (!code) return;
+          var hasVerifier = false;
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i) || "";
+            if (k.indexOf("code-verifier") !== -1) hasVerifier = true;
+          }
+          // Only intercept when it is NOT a genuine Supabase PKCE callback.
+          if (hasVerifier) return;
+          sessionStorage.setItem("zxmax_oauth_code", code);
+          params.delete("code");
+          var qs = params.toString();
+          window.history.replaceState({}, "", window.location.pathname + (qs ? "?" + qs : ""));
+        } catch (e) {}
+      })();
     </script>
 </head>
 

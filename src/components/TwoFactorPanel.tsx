@@ -13,10 +13,12 @@ interface EnrollCache {
 }
 
 export default function TwoFactorPanel() {
-  const { mfaEnabled, enrollTotpStart, enrollTotpVerify, unenrollTotp, listFactors, isAdmin } = useAuth();
+  const { mfaEnabled, enrollTotpStart, enrollTotpVerify, unenrollTotp, listFactors, resetMfa, isAdmin } = useAuth();
 
-  if (!isAdmin) return null;
-
+  // NOTE: hooks must never run conditionally. The early `if (!isAdmin) return null`
+  // used to sit above these hooks and crashed React ("rendered fewer hooks than
+  // expected") the moment the admin role finished loading. The guard now lives
+  // right before the JSX is returned.
   const [stage, setStage] = useState<"idle" | "verify">("idle");
   const [qr, setQr] = useState<string>("");
   const [secret, setSecret] = useState<string>("");
@@ -98,7 +100,7 @@ export default function TwoFactorPanel() {
     const { error } = await enrollTotpVerify(factorId, cleanCode);
     setBusy(false);
     if (error) {
-      toast.error("Código incorreto. Verifique o relógio do seu aparelho e tente novamente.");
+      toast.error(error);
       return;
     }
     toast.success("Google Authenticator ativado com sucesso! 🔒");
@@ -130,7 +132,23 @@ export default function TwoFactorPanel() {
     if (!confirm("Gerar novo QR Code? O código atual no seu app deixará de funcionar e você deverá escanear o novo.")) return;
     setBusy(true);
     clearEnrollCache();
-    await unenrollTotp().catch(() => {});
+    await unenrollTotp().catch(() => null);
+    setBusy(false);
+    await startEnroll();
+  };
+
+  // Escape hatch when the authenticator app / phone was lost: the server wipes
+  // the old factor with the service role and we immediately enroll a new one.
+  const recoverLostAuthenticator = async () => {
+    if (!confirm("Apagar o autenticador antigo desta conta e gerar um novo QR Code agora?")) return;
+    setBusy(true);
+    const { error } = await resetMfa();
+    setBusy(false);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    toast.success("Autenticador antigo removido. Escaneie o novo QR Code.");
     await startEnroll();
   };
 
@@ -153,6 +171,8 @@ export default function TwoFactorPanel() {
       toast.error("Não foi possível copiar.");
     }
   };
+
+  if (!isAdmin) return null;
 
   return (
     <div className="rounded-2xl p-6 border border-white/10 bg-[#111114]">
@@ -206,6 +226,13 @@ export default function TwoFactorPanel() {
                   <Trash2 className="w-4 h-4" /> Desativar
                 </button>
               </div>
+              <button
+                onClick={recoverLostAuthenticator}
+                disabled={busy}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[#0084ff]/25 text-[#0084ff] hover:bg-[#0084ff]/10 text-[11px] font-bold transition disabled:opacity-50"
+              >
+                <AlertCircle className="w-3.5 h-3.5" /> Perdi o acesso ao autenticador (apagar e gerar novo)
+              </button>
             </div>
           ) : (
             <div className="space-y-3">

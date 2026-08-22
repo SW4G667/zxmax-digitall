@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -346,6 +346,8 @@ const inferPixType = (key: string): string => {
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { user: authUser, profile, isAdmin, signOut } = useAuth();
   const [state, setState] = useState<AppState>(loadState);
+  const catalogRetriesRef = useRef(0);
+  const catalogRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isDark, setIsDark] = useState<boolean>(() => {
     const stored = localStorage.getItem("zxmax_dark");
     return stored === null ? true : stored === "true";
@@ -666,14 +668,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }));
     } catch (e) {
       console.error("loadCatalog failed", e);
-      if (authUser) {
-        setTimeout(() => void loadCatalog(), 3000);
+      // Bounded retry: the old code retried forever every 3s, which piled up
+      // requests (and kept the UI in a permanent "loading" feel) when the
+      // backend was unreachable.
+      if (authUser && catalogRetriesRef.current < 3) {
+        catalogRetriesRef.current += 1;
+        const delay = 3000 * catalogRetriesRef.current;
+        if (catalogRetryTimerRef.current) clearTimeout(catalogRetryTimerRef.current);
+        catalogRetryTimerRef.current = setTimeout(() => void loadCatalog(), delay);
       }
+      return;
     }
+    catalogRetriesRef.current = 0;
   }, [authUser, state.config.commission]);
 
   useEffect(() => {
     void loadCatalog();
+    return () => {
+      if (catalogRetryTimerRef.current) clearTimeout(catalogRetryTimerRef.current);
+    };
   }, [loadCatalog]);
 
   useEffect(() => {
