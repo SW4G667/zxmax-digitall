@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session, Factor } from "@supabase/supabase-js";
-import { getOrCreateDeviceId, readTrustedDevice, saveTrustedDevice, clearTrustedDevice } from "@/lib/adminGate";
+import { ADMIN_CONFIRM_EMAIL, getOrCreateDeviceId, readTrustedDevice, saveTrustedDevice, clearTrustedDevice } from "@/lib/adminGate";
 
 interface Profile {
   id: string;
@@ -55,7 +55,8 @@ interface AuthContextType {
   enrollTotpVerify: (factorId: string, code: string) => Promise<{ error: string | null }>;
   unenrollTotp: (factorId: string) => Promise<{ error: string | null }>;
   listFactors: () => Promise<Factor[]>;
-  sendAdminEmailLink: () => Promise<{ error: string | null }>;
+  sendAdminEmailOtp: () => Promise<{ error: string | null }>;
+  verifyAdminEmailOtp: (code: string) => Promise<{ error: string | null }>;
   refreshAdminGate: () => Promise<void>;
   enrollAdminWebAuthn: (credentialId: string) => Promise<{ error: string | null }>;
   verifyAdminWebAuthn: (credentialId: string) => Promise<{ error: string | null }>;
@@ -81,6 +82,46 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 }
 
 const ENROLL_STORAGE_KEY = "zxmax_mfa_enroll";
+const ADMIN_OTP_TRUST_KEY = "zxmax_admin_otp_trusted";
+const ADMIN_OTP_TRUST_DAYS = 30;
+
+function markAdminOtpTrusted() {
+  try {
+    localStorage.setItem(
+      ADMIN_OTP_TRUST_KEY,
+      JSON.stringify({ expiresAt: Date.now() + ADMIN_OTP_TRUST_DAYS * 24 * 60 * 60 * 1000 }),
+    );
+  } catch {}
+}
+
+function clearAdminOtpTrust() {
+  try {
+    localStorage.removeItem(ADMIN_OTP_TRUST_KEY);
+  } catch {}
+}
+
+function isAdminOtpTrusted() {
+  try {
+    const raw = localStorage.getItem(ADMIN_OTP_TRUST_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { expiresAt?: number };
+    if (!parsed?.expiresAt || parsed.expiresAt <= Date.now()) {
+      clearAdminOtpTrust();
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function randomDeviceToken() {
+  try {
+    return (crypto as any).randomUUID ? (crypto as any).randomUUID() : String(Math.random().toString(36).slice(2) + Date.now());
+  } catch {
+    return String(Math.random().toString(36).slice(2) + Date.now());
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -146,6 +187,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const evaluateAdminGate = useCallback(async (sess: Session | null, adminFlag: boolean) => {
     if (!sess || !adminFlag) {
+      setAdminGateRequired(false);
+      setAdminGateChecked(true);
+      return;
+    }
+    // When the admin email was confirmed by Supabase Auth OTP on this device,
+    // the local trust takes precedence (the server "admin-login" function is
+    // no longer required for the email path).
+    if (isAdminOtpTrusted()) {
       setAdminGateRequired(false);
       setAdminGateChecked(true);
       return;
@@ -446,11 +495,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data?.totp || [];
   };
 
-  const sendAdminEmailLink = async () => {
-    const { data, error } = await supabase.functions.invoke("admin-login", {
-      body: { action: "send_email", deviceId: getOrCreateDeviceId() },
+  const sendAdminEmailOtp = async () => {
+    const { error } = await supabase.auth.signInWithOtp({
+      email: ADMIN_CONFIRM_EMAIL,
+      options: { shouldCreateUser: false },
     });
-    if (error || data?.error) return { error: data?.error || error?.message || "Não foi possível enviar o e-mail." };
+    if (error) return { error: error.message || "Não foi possível enviar o código de acesso." };
+    return { error: null };
+  };
+
+  const verifyAdminEmailOtp = async (code: string) => {
+    const normalized = String(code || "").replace(/\D/g, "").slice(0, 6);
+    if (normalized.length !== 6) return { error: "Digite o código de 6 dígitos." };
+
+    // Set the local trust before verifying so the auth-state listener that fires
+    // right after verifyOtp sees this device as confirmed as soon as it succeeds.
+    markAdminOtpTrusted();
+
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: ADMIN_CONFIRM_EMAIL,
+      token: normalized,
+      type: "email",
+    });
+
+    if (error) {
+      clearAdminOtpTrust();
+      return { error: error.message || "Código inválido ou expirado." };
+    }
+
+    const nextSession = data?.session || null;
+    if (nextSession) {
+      setSession(nextSession);
+      setUser(nextSession.user);
+      setMfaChecked(false);
+      setAdminGateChecked(false);
+      const admin = await checkAdmin(nextSession.user.id).catch(() => false);
+      const deviceToken = randomDeviceToken();
+      const expiresAt = new Date(Date.now() + ADMIN_OTP_TRUST_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      saveTrustedDevice(deviceToken, expiresAt);
+      void evaluateMfa(nextSession);
+      void evaluateAdminGate(nextSession, admin);
+    }
     return { error: null };
   };
 
@@ -519,7 +604,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       adminGateRequired, adminGateChecked,
       signUp, signIn, verifyMfa,
       enrollTotpStart, enrollTotpVerify, unenrollTotp, listFactors,
-      sendAdminEmailLink, refreshAdminGate, enrollAdminWebAuthn, verifyAdminWebAuthn, listAdminWebAuthn,
+      sendAdminEmailOtp, verifyAdminEmailOtp, refreshAdminGate, enrollAdminWebAuthn, verifyAdminWebAuthn, listAdminWebAuthn,
       signOut, refreshProfile, updateProfile: updateProfileFn,
     }}>
       {children}

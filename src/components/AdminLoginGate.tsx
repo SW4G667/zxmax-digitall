@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { Fingerprint, Mail, Loader2, ShieldCheck, Smartphone, RefreshCw, Clock, KeyRound, Copy, Check } from "lucide-react";
+import { Fingerprint, Mail, Loader2, ShieldCheck, RefreshCw, Clock, KeyRound, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
-import { webAuthnAvailable, webAuthnAssert, webAuthnEnroll, saveTrustedDevice } from "@/lib/adminGate";
+import { ADMIN_CONFIRM_EMAIL, webAuthnAvailable, webAuthnAssert, webAuthnEnroll, saveTrustedDevice } from "@/lib/adminGate";
 
-const RESEND_COOLDOWN = 30; // seconds before the email can be re-sent
+const OTP_COOLDOWN = 30; // seconds before the email OTP can be re-sent
 const TRUST_DAYS = 30;
 
 interface TotpEnrollCache {
@@ -16,7 +16,8 @@ interface TotpEnrollCache {
 
 export default function AdminLoginGate() {
   const {
-    sendAdminEmailLink,
+    sendAdminEmailOtp,
+    verifyAdminEmailOtp,
     verifyAdminWebAuthn,
     enrollAdminWebAuthn,
     listAdminWebAuthn,
@@ -27,10 +28,12 @@ export default function AdminLoginGate() {
     verifyMfa,
   } = useAuth();
 
-  // email + biometric
+  // email OTP + biometric
   const [sending, setSending] = useState(false);
   const [busyBio, setBusyBio] = useState(false);
   const [sent, setSent] = useState(false);
+  const [emailCode, setEmailCode] = useState("");
+  const [otpBusy, setOtpBusy] = useState(false);
   const [hasPasskey, setHasPasskey] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [lastError, setLastError] = useState("");
@@ -107,7 +110,7 @@ export default function AdminLoginGate() {
       return;
     }
     setSending(true);
-    const { error } = await sendAdminEmailLink();
+    const { error } = await sendAdminEmailOtp();
     setSending(false);
     if (error) {
       setLastError(error);
@@ -115,9 +118,31 @@ export default function AdminLoginGate() {
       return;
     }
     setSent(true);
-    setCooldown(RESEND_COOLDOWN);
-    toast.success(`Link enviado para o e-mail do administrador.`);
-  }, [sendAdminEmailLink, cooldown]);
+    setEmailCode("");
+    setCooldown(OTP_COOLDOWN);
+    toast.success(`Código enviado para ${ADMIN_CONFIRM_EMAIL}.`);
+  }, [sendAdminEmailOtp, cooldown]);
+
+  const handleVerifyOtp = useCallback(async () => {
+    const code = emailCode.replace(/\D/g, "").slice(0, 6);
+    if (code.length !== 6) {
+      toast.error("Digite o código de 6 dígitos.");
+      return;
+    }
+    setOtpBusy(true);
+    setLastError("");
+    const { error } = await verifyAdminEmailOtp(code);
+    if (error) {
+      setLastError(error);
+      toast.error(error);
+      setOtpBusy(false);
+      return;
+    }
+    setSent(false);
+    setEmailCode("");
+    setOtpBusy(false);
+    toast.success("Código confirmado. Aparelho liberado por 30 dias.");
+  }, [emailCode, verifyAdminEmailOtp]);
 
   const handleBio = useCallback(async () => {
     setBusyBio(true);
@@ -225,12 +250,12 @@ export default function AdminLoginGate() {
           <ShieldCheck className="w-7 h-7 text-[#0084ff]" />
         </div>
         <h2 className="text-xl font-black text-white">Confirme que é você</h2>
-        <p className="text-sm text-white/50 mt-2 leading-relaxed">
-          Para entrar no painel admin, confirme com o <strong className="text-white">Google Authenticator</strong> do seu
-          celular, com a <strong className="text-white">senha / biometria do celular</strong> ou pelo{" "}
-          <strong className="text-white">e-mail do administrador</strong>. Depois disso este aparelho fica liberado por{" "}
-          <strong className="text-[#0084ff]">30 dias</strong>.
-        </p>
+          <p className="text-sm text-white/50 mt-2 leading-relaxed">
+            Para entrar no painel admin, confirme com o <strong className="text-white">Google Authenticator</strong> do seu
+            celular, com a <strong className="text-white">senha / biometria do celular</strong> ou pelo código enviado ao{" "}
+            <strong className="text-white">{ADMIN_CONFIRM_EMAIL}</strong>. Depois disso este aparelho fica liberado por{" "}
+            <strong className="text-[#0084ff]">30 dias</strong>.
+          </p>
 
         {/* PRIMARY: Authenticator (works without Edge Function) */}
         <div className="mt-6 space-y-3">
@@ -322,28 +347,59 @@ export default function AdminLoginGate() {
             </button>
           )}
 
-          <button
-            onClick={handleEmail}
-            disabled={sending || cooldown > 0}
-            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[#0084ff] text-white font-black text-sm disabled:opacity-50"
-          >
-            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : cooldown > 0 ? <Clock className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
-            {cooldown > 0 ? `Reenviar em ${cooldown}s` : sent ? "Reenviar link por e-mail" : "Enviar link por e-mail"}
-          </button>
+          {!sent && (
+            <button
+              onClick={handleEmail}
+              disabled={sending || cooldown > 0}
+              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[#0084ff] text-white font-black text-sm disabled:opacity-50"
+            >
+              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : cooldown > 0 ? <Clock className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
+              {cooldown > 0 ? `Reenviar em ${cooldown}s` : "Enviar código por e-mail"}
+            </button>
+          )}
+
+          {sent && (
+            <div className="space-y-3 border border-[#0084ff]/20 bg-[#0084ff]/5 rounded-2xl p-4">
+              <p className="text-xs font-black uppercase tracking-wide text-[#0084ff]">
+                Código enviado para {ADMIN_CONFIRM_EMAIL}
+              </p>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={emailCode}
+                onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="000000"
+                className="w-full px-4 py-3.5 rounded-xl bg-black/40 border border-white/10 text-white text-center text-2xl font-black tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-[#0084ff]/50 placeholder:text-white/20"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleEmail}
+                  disabled={sending || cooldown > 0}
+                  className="flex-1 py-3 rounded-xl text-sm font-bold bg-white/5 border border-white/10 text-white hover:bg-white/10 disabled:opacity-50"
+                >
+                  {cooldown > 0 ? `Reenviar em ${cooldown}s` : "Reenviar código"}
+                </button>
+                <button
+                  onClick={handleVerifyOtp}
+                  disabled={otpBusy || emailCode.length !== 6}
+                  className="flex-1 bg-[#00c950] text-black py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {otpBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                  Confirmar
+                </button>
+              </div>
+              <p className="text-[11px] text-white/40 leading-relaxed">
+                O código chega somente no e-mail do administrador. Esta tela atualiza sozinha quando for confirmado. Após confirmado, este aparelho fica liberado por 30 dias.
+              </p>
+            </div>
+          )}
         </div>
 
         {lastError && (
           <div className="mt-4 rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-[11px] text-red-300 leading-relaxed">
             {lastError}
-          </div>
-        )}
-
-        {sent && (
-          <div className="mt-5 rounded-xl bg-[#0084ff]/10 border border-[#0084ff]/20 p-4 text-xs text-white/70 leading-relaxed">
-            <p className="font-bold text-white flex items-center gap-2 mb-1">
-              <Smartphone className="w-3.5 h-3.5" /> Abra o e-mail e toque em Confirmar login
-            </p>
-            O link chega <strong className="text-white">somente no e-mail do administrador</strong>. Esta tela atualiza sozinha quando for confirmado. Após confirmado, este aparelho fica liberado por 30 dias.
           </div>
         )}
 
