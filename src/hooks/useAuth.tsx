@@ -56,13 +56,10 @@ interface AuthContextType {
   enrollTotpVerify: (factorId: string, code: string) => Promise<{ error: string | null }>;
   unenrollTotp: (factorId?: string) => Promise<{ error: string | null }>;
   resetMfa: () => Promise<{ error: string | null }>;
+  needsCodeToManageMfa: () => Promise<boolean>;
+  elevateWithCode: (code: string) => Promise<{ error: string | null }>;
   listFactors: () => Promise<Factor[]>;
-  sendAdminEmailOtp: () => Promise<{ error: string | null }>;
-  verifyAdminEmailOtp: (code: string) => Promise<{ error: string | null }>;
   refreshAdminGate: () => Promise<void>;
-  enrollAdminWebAuthn: (credentialId: string) => Promise<{ error: string | null }>;
-  verifyAdminWebAuthn: (credentialId: string) => Promise<{ error: string | null }>;
-  listAdminWebAuthn: () => Promise<string[]>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   updateProfile: (data: Partial<Pick<Profile, "display_name" | "avatar_url" | "pix_key" | "document_type">>) => Promise<void>;
@@ -93,9 +90,22 @@ const ADMIN_OTP_TRUST_DAYS = 30;
 // "not an admin" states. 10s + cache fallback is much safer.
 const NET_TIMEOUT = 10_000;
 
+const ADMIN_LAST_KEY = "zxmax_is_admin_last";
+
 function isCachedAdmin(userId: string): boolean {
   try {
     return localStorage.getItem(`zxmax_is_admin_${userId}`) === "true";
+  } catch {
+    return false;
+  }
+}
+
+// Read the last known admin flag *synchronously* at mount. Without this the
+// admin button vanished on every tab focus/re-render until the async role
+// query came back.
+function isCachedAdminAny(): boolean {
+  try {
+    return localStorage.getItem(ADMIN_LAST_KEY) === "true";
   } catch {
     return false;
   }
@@ -105,8 +115,10 @@ function setCachedAdmin(userId: string, isAdmin: boolean) {
   try {
     if (isAdmin) {
       localStorage.setItem(`zxmax_is_admin_${userId}`, "true");
+      localStorage.setItem(ADMIN_LAST_KEY, "true");
     } else {
       localStorage.removeItem(`zxmax_is_admin_${userId}`);
+      localStorage.removeItem(ADMIN_LAST_KEY);
     }
   } catch {}
 }
@@ -166,7 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [banned, setBanned] = useState<BanInfo | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => isCachedAdminAny());
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [needsMfa, setNeedsMfa] = useState(false);
   const [mfaChecked, setMfaChecked] = useState(false);
@@ -382,7 +394,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // client's internal lock — that was the "site fica carregando pra sempre"
       // and "me tira da conta" bug. Heavy work is deferred below.
       setSession(sess);
-      setUser(sess?.user ?? null);
+      // Keep the SAME user object while the id doesn't change. A new object on
+      // every focus/token refresh made every effect keyed on `user` re-run,
+      // which is why the whole page looked like it was reloading by itself.
+      setUser((prev) => (prev && sess?.user && prev.id === sess.user.id ? prev : sess?.user ?? null));
 
       if (sess?.user) {
         // DO NOT set loading=true on background token refreshes or window focus events!
@@ -391,10 +406,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setLoading(true);
         }
 
-        // A plain token refresh for the same user doesn't need a full reload.
-        const sameUser = hydratedUserRef.current === sess.user.id;
-        if (event === "TOKEN_REFRESHED" && sameUser) return;
-        if (event === "INITIAL_SESSION" && sameUser) return;
+        // Any event for a user we already hydrated (TOKEN_REFRESHED, SIGNED_IN
+        // fired on tab focus, INITIAL_SESSION, USER_UPDATED...) must NOT trigger
+        // a full reload — that is what made the page "atualizar sozinha" every
+        // time the browser was reopened.
+        if (hydratedUserRef.current === sess.user.id) return;
 
         hydratedUserRef.current = sess.user.id;
 
@@ -520,6 +536,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // admin. This is the ONLY way out when the authenticator app was lost:
   // Supabase requires an AAL2 session to unenroll a verified factor, so the
   // browser alone can never recover — it just kept returning the same error.
+  // Current assurance level of the session. Deleting / replacing a verified
+  // TOTP factor requires "aal2" — i.e. a code typed in this session.
+  const getAal = useCallback(async (): Promise<string> => {
+    try {
+      const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      return (data?.currentLevel as string) || "aal1";
+    } catch {
+      return "aal1";
+    }
+  }, []);
+
+  const needsCodeToManageMfa = useCallback(async (): Promise<boolean> => {
+    try {
+      const { data } = await supabase.auth.mfa.listFactors();
+      const hasVerified = (data?.totp || []).some((f: any) => f.status === "verified");
+      if (!hasVerified) return false;
+      return (await getAal()) !== "aal2";
+    } catch {
+      return false;
+    }
+  }, [getAal]);
+
+  // Types the 6-digit code from the app to raise the session to aal2, which
+  // unlocks "excluir" and "gerar novo QR Code" without any backend deploy.
+  const elevateWithCode = useCallback(async (code: string): Promise<{ error: string | null }> => {
+    const cleanCode = code.replace(/\D/g, "").slice(0, 6);
+    if (cleanCode.length !== 6) return { error: "Digite o código de 6 dígitos." };
+    try {
+      const { data: factorsData } = await supabase.auth.mfa.listFactors();
+      const verified = (factorsData?.totp || []).find((f: any) => f.status === "verified");
+      if (!verified) return { error: null }; // nothing to elevate against
+      const chal = await supabase.auth.mfa.challenge({ factorId: verified.id });
+      if (chal.error || !chal.data?.id) return { error: friendlyMfaError(chal.error?.message) };
+      const { error } = await supabase.auth.mfa.verify({
+        factorId: verified.id,
+        challengeId: chal.data.id,
+        code: cleanCode,
+      });
+      if (error) return { error: friendlyMfaError(error.message) };
+      return { error: null };
+    } catch (e: any) {
+      return { error: friendlyMfaError(e?.message) };
+    }
+  }, []);
+
   const resetMfaOnServer = async (): Promise<{ error: string | null }> => {
     try {
       const { data, error } = await supabase.functions.invoke("admin-login", {
@@ -533,7 +594,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (msg.toLowerCase().includes("ação inválida")) {
           return {
             error:
-              "A função de reset ainda não foi publicada no Supabase (rode ./scripts/deploy-supabase.sh).",
+              "Digite o código atual do autenticador para liberar a troca (o reset automático pelo servidor ainda não foi publicado no Supabase).",
           };
         }
         return { error: msg };
@@ -705,28 +766,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const sendAdminEmailOtp = async () => {
-    return { error: null };
-  };
-
-  const verifyAdminEmailOtp = async (_code: string) => {
-    return { error: null };
-  };
-
   const refreshAdminGate = async () => {
     await evaluateAdminGate(session, isAdmin);
-  };
-
-  const enrollAdminWebAuthn = async (_credentialId: string) => {
-    return { error: null };
-  };
-
-  const verifyAdminWebAuthn = async (_credentialId: string) => {
-    return { error: null };
-  };
-
-  const listAdminWebAuthn = async (): Promise<string[]> => {
-    return [];
   };
 
   const signOut = async () => {
@@ -763,12 +804,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, profile, session, loading, banned, isAdmin,
+      user, profile, session, loading, banned,
+      // The cached admin flag is only meaningful while somebody is logged in.
+      isAdmin: isAdmin && !!user,
       mfaEnabled, needsMfa, mfaChecked,
       adminGateRequired, adminGateChecked, unlockAdminGate,
       signUp, signIn, verifyMfa,
       enrollTotpStart, enrollTotpVerify, unenrollTotp, listFactors, resetMfa,
-      sendAdminEmailOtp, verifyAdminEmailOtp, refreshAdminGate, enrollAdminWebAuthn, verifyAdminWebAuthn, listAdminWebAuthn,
+      needsCodeToManageMfa, elevateWithCode,
+      refreshAdminGate,
       signOut, refreshProfile, updateProfile: updateProfileFn,
     }}>
       {children}

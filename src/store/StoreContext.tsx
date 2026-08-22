@@ -345,6 +345,10 @@ const inferPixType = (key: string): string => {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { user: authUser, profile, isAdmin, signOut } = useAuth();
+  // Effects below depend on the user *id*, never on the user object: a new
+  // object arrived on every token refresh / tab focus and re-triggered every
+  // fetch, which made the whole page look like it was reloading by itself.
+  const authUserId = authUser?.id ?? null;
   const [state, setState] = useState<AppState>(loadState);
   const catalogRetriesRef = useRef(0);
   const catalogRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -381,7 +385,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } else {
       setState((s) => ({ ...s, currentUser: null }));
     }
-  }, [authUser, profile, isAdmin, state.userBalances, state.userEarnings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUserId, profile, isAdmin, state.userBalances, state.userEarnings]);
 
   // Load profiles & directory
   useEffect(() => {
@@ -460,7 +465,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         tickets: tickets.length ? tickets : s.tickets,
       }));
     })();
-  }, [authUser, isAdmin]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUserId, isAdmin]);
 
   // Load app settings
   useEffect(() => {
@@ -493,7 +499,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       }
     })();
-  }, [authUser, isAdmin]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUserId, isAdmin]);
 
   const loadCatalog = useCallback(async () => {
     const withTimeout = <T,>(p: Promise<T>, ms = 4000): Promise<T | null> =>
@@ -680,7 +687,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return;
     }
     catalogRetriesRef.current = 0;
-  }, [authUser, state.config.commission]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUserId, state.config.commission]);
 
   useEffect(() => {
     void loadCatalog();
@@ -700,7 +708,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [authUser]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUserId]);
 
   useEffect(() => {
     localStorage.setItem("zxmax_dark", String(isDark));

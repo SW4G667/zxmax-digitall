@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ShieldCheck, ShieldOff, Copy, Check, Loader2, Trash2, RefreshCw, Smartphone, KeyRound, Lock, AlertCircle } from "lucide-react";
+import { ShieldCheck, ShieldOff, Copy, Check, Loader2, Trash2, RefreshCw, Smartphone, KeyRound, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -13,13 +13,26 @@ interface EnrollCache {
 }
 
 export default function TwoFactorPanel() {
-  const { mfaEnabled, enrollTotpStart, enrollTotpVerify, unenrollTotp, listFactors, resetMfa, isAdmin } = useAuth();
+  const {
+    mfaEnabled,
+    enrollTotpStart,
+    enrollTotpVerify,
+    unenrollTotp,
+    listFactors,
+    resetMfa,
+    needsCodeToManageMfa,
+    elevateWithCode,
+    isAdmin,
+  } = useAuth();
 
   // NOTE: hooks must never run conditionally. The early `if (!isAdmin) return null`
   // used to sit above these hooks and crashed React ("rendered fewer hooks than
   // expected") the moment the admin role finished loading. The guard now lives
   // right before the JSX is returned.
-  const [stage, setStage] = useState<"idle" | "verify">("idle");
+  const [stage, setStage] = useState<"idle" | "verify" | "confirm">("idle");
+  // Which action is waiting for the current 6-digit code ("excluir" / "trocar").
+  const [pendingAction, setPendingAction] = useState<"remove" | "regenerate" | null>(null);
+  const [confirmCodeValue, setConfirmCodeValue] = useState("");
   const [qr, setQr] = useState<string>("");
   const [secret, setSecret] = useState<string>("");
   const [factorId, setFactorId] = useState<string>("");
@@ -113,43 +126,82 @@ export default function TwoFactorPanel() {
     void loadFactors();
   };
 
-  const remove = async () => {
-    if (!confirm("Deseja realmente desativar o Google Authenticator? Você precisará reconfigurar se quiser reativar.")) return;
-    setBusy(true);
+  // Actually removes the current factor. Falls back to the server-side reset
+  // only if the browser is still not allowed to delete it.
+  const doRemove = async (): Promise<boolean> => {
     const { error } = await unenrollTotp();
-    setBusy(false);
     if (error) {
-      toast.error(error);
-      return;
+      const fallback = await resetMfa();
+      if (fallback.error) {
+        toast.error(error);
+        return false;
+      }
     }
     clearEnrollCache();
-    toast.success("Autenticador removido com sucesso.");
-    setStage("idle");
     void loadFactors();
+    return true;
   };
 
-  const regenerate = async () => {
-    if (!confirm("Gerar novo QR Code? O código atual no seu app deixará de funcionar e você deverá escanear o novo.")) return;
+  // Both "excluir" and "gerar novo QR Code" need an aal2 session. Since your
+  // authenticator still generates codes, we just ask for the current code
+  // instead of failing with the Supabase AAL2 error.
+  const requestAction = async (action: "remove" | "regenerate") => {
+    const question =
+      action === "remove"
+        ? "Deseja realmente desativar o Google Authenticator? Você precisará reconfigurar se quiser reativar."
+        : "Gerar novo QR Code? O código atual no seu app deixará de funcionar e você deverá escanear o novo.";
+    if (!confirm(question)) return;
+
     setBusy(true);
-    clearEnrollCache();
-    await unenrollTotp().catch(() => null);
+    const needsCode = await needsCodeToManageMfa();
     setBusy(false);
+
+    if (needsCode) {
+      setPendingAction(action);
+      setConfirmCodeValue("");
+      setStage("confirm");
+      return;
+    }
+    await runAction(action);
+  };
+
+  const runAction = async (action: "remove" | "regenerate") => {
+    setBusy(true);
+    const ok = await doRemove();
+    setBusy(false);
+    if (!ok) return;
+
+    if (action === "remove") {
+      toast.success("Autenticador removido com sucesso.");
+      setStage("idle");
+      setPendingAction(null);
+      return;
+    }
+    setPendingAction(null);
     await startEnroll();
   };
 
-  // Escape hatch when the authenticator app / phone was lost: the server wipes
-  // the old factor with the service role and we immediately enroll a new one.
-  const recoverLostAuthenticator = async () => {
-    if (!confirm("Apagar o autenticador antigo desta conta e gerar um novo QR Code agora?")) return;
+  // Auto-submits as soon as the 6 digits are typed/pasted.
+  const handleConfirmCode = async (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 6);
+    setConfirmCodeValue(digits);
+    if (digits.length !== 6 || busy) return;
+
     setBusy(true);
-    const { error } = await resetMfa();
+    const { error } = await elevateWithCode(digits);
     setBusy(false);
     if (error) {
       toast.error(error);
+      setConfirmCodeValue("");
       return;
     }
-    toast.success("Autenticador antigo removido. Escaneie o novo QR Code.");
-    await startEnroll();
+    await runAction(pendingAction || "regenerate");
+  };
+
+  const cancelConfirm = () => {
+    setPendingAction(null);
+    setConfirmCodeValue("");
+    setStage("idle");
   };
 
   const cancelEnroll = () => {
@@ -211,14 +263,14 @@ export default function TwoFactorPanel() {
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={regenerate}
+                  onClick={() => void requestAction("regenerate")}
                   disabled={busy}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 text-xs font-bold transition disabled:opacity-50"
                 >
                   <RefreshCw className="w-4 h-4" /> Gerar Novo QR Code / Trocar Celular
                 </button>
                 <button
-                  onClick={remove}
+                  onClick={() => void requestAction("remove")}
                   disabled={busy}
                   className="px-4 py-3 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/10 text-xs font-bold transition disabled:opacity-50 flex items-center gap-1.5"
                   title="Desativar 2FA"
@@ -226,13 +278,10 @@ export default function TwoFactorPanel() {
                   <Trash2 className="w-4 h-4" /> Desativar
                 </button>
               </div>
-              <button
-                onClick={recoverLostAuthenticator}
-                disabled={busy}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[#0084ff]/25 text-[#0084ff] hover:bg-[#0084ff]/10 text-[11px] font-bold transition disabled:opacity-50"
-              >
-                <AlertCircle className="w-3.5 h-3.5" /> Perdi o acesso ao autenticador (apagar e gerar novo)
-              </button>
+              <p className="text-[11px] text-white/40 leading-relaxed text-center">
+                Para excluir ou trocar, o site pede o código atual do seu aplicativo — é só digitar
+                e ele continua sozinho.
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -263,6 +312,41 @@ export default function TwoFactorPanel() {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {stage === "confirm" && (
+        <div className="space-y-4 animate-fade-in-up">
+          <div className="rounded-xl border border-[#0084ff]/25 bg-[#0084ff]/5 p-5">
+            <p className="text-xs font-black uppercase tracking-wide text-[#0084ff] mb-2 flex items-center gap-2">
+              <Lock className="w-4 h-4" />
+              {pendingAction === "remove" ? "Confirmar exclusão" : "Confirmar troca de aparelho"}
+            </p>
+            <p className="text-xs text-white/60 leading-relaxed mb-4">
+              Digite o código de 6 dígitos que o aplicativo está mostrando agora. Assim que os 6
+              números forem preenchidos, o site continua sozinho.
+            </p>
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              autoFocus
+              value={confirmCodeValue}
+              onChange={(e) => void handleConfirmCode(e.target.value)}
+              placeholder="000 000"
+              disabled={busy}
+              className="w-full px-4 py-3.5 rounded-xl bg-black/50 border border-white/10 text-white text-center text-2xl font-black tracking-[0.4em] focus:outline-none focus:ring-2 focus:ring-[#0084ff]/50 focus:border-[#0084ff] transition placeholder:text-white/20 disabled:opacity-60"
+            />
+          </div>
+          <button
+            onClick={cancelConfirm}
+            disabled={busy}
+            className="w-full py-3 rounded-xl text-sm font-bold bg-white/5 border border-white/10 text-white hover:bg-white/10 transition disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            {busy ? "Confirmando..." : "Cancelar"}
+          </button>
         </div>
       )}
 
