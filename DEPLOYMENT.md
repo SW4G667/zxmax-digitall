@@ -6,7 +6,50 @@ some", "o e-mail de confirmação não chega", "produtos não aparecem para todo
 sempre são causados por **falta de variáveis de ambiente / migrações não aplicadas**
 no Supabase — não por bug no front.
 
+> **Diagnóstico confirmado em tempo real (20/08/2026):**
+> - O site publicado `https://zxmax.vercel.app` está **no ar** e a loja **mostra produtos** para visitantes (o "0" era só o HTML antes de carregar o JS).
+> - O projeto Supabase responde: `https://dbekdedzgkfgtlytrnyw.supabase.co`.
+> - ✅ **Deployadas:** `create-purchase`, `evopay-webhook` (respondem "Unauthorized" = existem, pedem auth).
+> - ❌ **NÃO deployadas (respondem "NOT_FOUND"):** `admin-login` e `admin-verify`.
+>
+> **Consequência direta:** como `admin-verify` e `admin-login` não estão no Supabase,
+> a **aprovação de verificação** e o **link de login admin por e-mail** falham. É essa a
+> causa raiz do "não consigo aprovar a verificação" e do "código/e-mail de login que some".
+> Para resolver de vez, rode o script `scripts/deploy-supabase.sh` (abaixo) para subir
+> essas funções e aplicar as migrações.
+
+## 🚀 Deploy rápido (uma única vez)
+
+```sh
+# 1) Gere um token: https://supabase.com/dashboard/account/tokens  (sbp_...)
+# 2) Rode:
+export SUPABASE_ACCESS_TOKEN="sbp_xxx"
+export SUPABASE_PROJECT_REF="dbekdedzgkfgtlytrnyw"
+./scripts/deploy-supabase.sh
+```
+
+O script vincula o projeto, aplica as migrações e faz o deploy de **todas** as 14 Edge
+Functions. Depois configure as secrets no dashboard do Supabase
+(`Supabase → Project Settings → Functions`) e **faça redeploy** do frontend na Vercel.
+
 > O frontend (React) já está corrigido. O que está faltando é configurar o backend.
+
+---
+
+## 0. Sobre as credenciais no repositório (importante)
+
+No repositório **não estão as chaves secretas** (anon key, service role, RESEND, EVOPAY).
+Elas não devem mesmo estar — é o correto do ponto de vista de segurança. O que existe no
+repositório é:
+
+- O **ID do projeto** (`dbekdedzgkfgtlytrnyw`) em `supabase/config.toml`.
+- O código das Edge Functions, que **lêem** as chaves do ambiente do Supabase
+  via `Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")`, etc.
+- `.env.example` com os nomes das variáveis (vazios).
+
+Ou seja, o deploy dos **serviços** (banco, funções, e-mail, pagamento) precisa das keys,
+que ficam no **painel do Supabase** (não no git). O script `scripts/deploy-supabase.sh`
+lhe mostra exatamente quais secrets definir.
 
 ---
 
