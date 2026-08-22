@@ -158,13 +158,22 @@ Confirme que cada função tem as secrets do item 3.
 
 O acesso ao painel admin é protegido por **um** destes métodos (você escolhe na tela):
 
+- **Google Authenticator (código de 6 dígitos):** funciona **sem Edge Function** — usa o
+  Supabase Auth MFA direto do app. É o método que funciona mesmo agora, enquanto as
+  funções `admin-login`/`admin-verify` ainda não estão deployadas. O aparelho fica
+  liberado por **30 dias**.
 - **Senha / biometria do celular** (WebAuthn): cadastra a biometria do aparelho e fica
-  liberado por **30 dias** nesse aparelho.
+  liberado por **30 dias** nesse aparelho. **Requer a função `admin-login` deployada.**
 - **E-mail para `jnpereiraalves@gmail.com`:** chega um link de confirmação. Ao clicar,
-  o aparelho fica liberado por **30 dias**. Ao expirar, o e-mail é reenviado.
+  o aparelho fica liberado por **30 dias**. **Requer a função `admin-login` + `RESEND_API_KEY`.**
 
 O e-mail é enviado **somente** para `jnpereiraalves@gmail.com` (fixo no código da
 função `admin-login`). Não gera e-mail para mais ninguém.
+
+> **Importante (já corrigido no front):** antes, todos os caminhos dependiam da função
+> `admin-login`. Agora o **Authenticator** funciona por conta própria, então você não fica
+> travado mesmo com a função fora do ar. E-mail e biometria voltam a funcionar assim que
+> a função for deployada.
 
 ---
 
