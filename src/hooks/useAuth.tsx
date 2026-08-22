@@ -508,10 +508,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const normalized = String(code || "").replace(/\D/g, "").slice(0, 6);
     if (normalized.length !== 6) return { error: "Digite o código de 6 dígitos." };
 
-    // Set the local trust before verifying so the auth-state listener that fires
-    // right after verifyOtp sees this device as confirmed as soon as it succeeds.
-    markAdminOtpTrusted();
-
     const { data, error } = await supabase.auth.verifyOtp({
       email: ADMIN_CONFIRM_EMAIL,
       token: normalized,
@@ -519,9 +515,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     if (error) {
-      clearAdminOtpTrust();
       return { error: error.message || "Código inválido ou expirado." };
     }
+
+    // Only mark the device trusted after the OTP was accepted. The explicit
+    // evaluateAdminGate call below runs synchronously before yielding, so it
+    // wins over any auth-state listener that fired earlier during verifyOtp.
+    markAdminOtpTrusted();
 
     const nextSession = data?.session || null;
     if (nextSession) {
