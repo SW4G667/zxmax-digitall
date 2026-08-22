@@ -260,6 +260,48 @@ serve(async (req) => {
       return json({ credentials: data || [] });
     }
 
+    // Removes every MFA/TOTP factor of the calling admin using the service role.
+    // Needed because Supabase requires an AAL2 session to unenroll a *verified*
+    // factor: if the authenticator app is lost the admin can never enroll a new
+    // one from the browser (it always failed with the same AAL2 error).
+    if (action === "reset_mfa") {
+      const adminId = await requireAdmin();
+
+      const { data: userRes, error: getErr } = await service.auth.admin.getUserById(adminId);
+      if (getErr) throw getErr;
+
+      const factors = (userRes?.user as any)?.factors || [];
+      let removed = 0;
+      const failures: string[] = [];
+
+      for (const f of factors) {
+        const { error: delErr } = await (service.auth.admin as any).mfa.deleteFactor({
+          id: f.id,
+          userId: adminId,
+        });
+        if (delErr) failures.push(delErr.message || String(delErr));
+        else removed++;
+      }
+
+      if (failures.length && removed === 0) {
+        return json({ error: `Não foi possível remover o autenticador: ${failures[0]}` }, 400);
+      }
+
+      try {
+        await service.from("webhook_logs").insert({
+          source: "admin",
+          event_type: "RESET_MFA",
+          status: "ok",
+          order_id: null,
+          payload: { userId: adminId, removed },
+        });
+      } catch (_e) {
+        // logging is best-effort
+      }
+
+      return json({ ok: true, removed });
+    }
+
     return json({ error: "Ação inválida" }, 400);
   } catch (error: any) {
     console.error("admin-login error", error.message || error);

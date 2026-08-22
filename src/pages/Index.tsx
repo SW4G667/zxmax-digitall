@@ -117,13 +117,34 @@ function AppGate({ view }: { view: View }) {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
+    // index.html moves the Discord ?code= into sessionStorage before boot so
+    // Supabase does not mistake it for a PKCE callback and drop the session.
+    let code = params.get("code");
+    if (!code) {
+      try {
+        code = sessionStorage.getItem("zxmax_oauth_code");
+      } catch {
+        code = null;
+      }
+    }
     if (code && !user) {
+      try {
+        sessionStorage.removeItem("zxmax_oauth_code");
+      } catch {
+        /* ignore */
+      }
       setDiscordLoading(true);
       window.history.replaceState({}, "", "/");
+      // Never let the Discord step hang the whole app on the loading screen.
+      const discordGuard = window.setTimeout(() => {
+        setDiscordLoading(false);
+        toast.error("O login com Discord demorou demais. Tente novamente.");
+      }, 20000);
+      const stopGuard = () => window.clearTimeout(discordGuard);
       supabase.functions.invoke("discord-callback", {
         body: { code, redirectUri: window.location.origin + "/" },
       }).then(({ data, error }) => {
+        stopGuard();
         if (error) {
           toast.error("Erro ao fazer login com Discord: " + error.message);
           setDiscordLoading(false);
@@ -151,6 +172,7 @@ function AppGate({ view }: { view: View }) {
           setDiscordLoading(false);
         }
       }).catch((err) => {
+        stopGuard();
         toast.error("Erro ao conectar com Discord: " + (err.message || "Tente novamente."));
         setDiscordLoading(false);
       });

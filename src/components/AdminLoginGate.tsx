@@ -18,6 +18,7 @@ export default function AdminLoginGate() {
     enrollTotpStart,
     enrollTotpVerify,
     listFactors,
+    needsCodeToManageMfa,
     unlockAdminGate,
     refreshAdminGate,
   } = useAuth();
@@ -37,6 +38,11 @@ export default function AdminLoginGate() {
   // Check whether the admin already has a verified authenticator factor.
   useEffect(() => {
     let mounted = true;
+    // Belt and braces: the code field must appear even if the factor lookup is
+    // slow, so this screen can never stay stuck on "Carregando autenticação...".
+    const guard = window.setTimeout(() => {
+      if (mounted) setCheckingFactors(false);
+    }, 5000);
     const check = async () => {
       try {
         const factors = (await listFactors()) as any[];
@@ -65,12 +71,14 @@ export default function AdminLoginGate() {
         if (mounted) setHasTotp(false);
       } finally {
         if (mounted) setCheckingFactors(false);
+        window.clearTimeout(guard);
       }
     };
 
     void check();
     return () => {
       mounted = false;
+      window.clearTimeout(guard);
     };
   }, [listFactors]);
 
@@ -87,6 +95,17 @@ export default function AdminLoginGate() {
     setTotpBusy(true);
     setLastError("");
     try {
+      // Changing the authenticator requires an aal2 session. Your app still
+      // generates codes, so we simply ask for the current one right here
+      // instead of failing with the Supabase error.
+      if (await needsCodeToManageMfa()) {
+        setTotpBusy(false);
+        const msg = "Digite acima o código que o aplicativo mostra agora. Depois de entrar, use 'Reconfigurar' para gerar o novo QR Code.";
+        setLastError(msg);
+        toast.info(msg);
+        inputRef.current?.focus();
+        return;
+      }
       const { data, error } = await enrollTotpStart();
       if (error || !data) throw new Error(error || "Não foi possível gerar novo autenticador.");
       
@@ -106,7 +125,7 @@ export default function AdminLoginGate() {
     } finally {
       setTotpBusy(false);
     }
-  }, [enrollTotpStart]);
+  }, [enrollTotpStart, needsCodeToManageMfa]);
 
   const confirmCode = useCallback(async (codeToVerify?: string) => {
     const code = (codeToVerify || totpCode).replace(/\D/g, "").slice(0, 6);
