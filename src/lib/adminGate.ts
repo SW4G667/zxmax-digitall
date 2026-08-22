@@ -2,7 +2,7 @@ const DEVICE_ID_KEY = "zxmax_admin_device_id";
 const DEVICE_TOKEN_KEY = "zxmax_admin_device_token";
 const DEVICE_EXPIRES_KEY = "zxmax_admin_device_expires";
 
-export const ADMIN_CONFIRM_EMAIL = "e-mail do administrador"; // real e-mail configurado apenas no servidor (admin-login)
+export const ADMIN_CONFIRM_EMAIL = "jnpereiraalves@gmail.com";
 
 export function getOrCreateDeviceId(): string {
   try {

@@ -19,7 +19,7 @@ export default function Faq() {
         <p>O valor da venda entra no seu saldo já com a comissão da plataforma descontada. Para sacar, cadastre uma chave Pix no perfil, envie seus documentos para verificação e solicite o saque. Após a aprovação da equipe, o Pix é enviado em 5 a 7 dias úteis.</p>
       </Section>
       <Section heading="Qual é o valor mínimo?">
-        <p>O valor mínimo de um produto é R$ 2,00 e o valor mínimo de saque é R$ 2,00.</p>
+        <p>O valor mínimo de um produto é R$ 2,00 e o valor mínimo de saque é R$ 5,00 (com taxa de transferência Pix de R$ 1,20).</p>
       </Section>
       <Section heading="Por que preciso enviar documentos?">
         <p>A verificação (RG ou certidão) protege a plataforma contra fraude e lavagem de dinheiro. Ela é exigida apenas para quem vai <strong>sacar</strong> valores, e os arquivos ficam em armazenamento privado, visíveis somente para a equipe de verificação.</p>
