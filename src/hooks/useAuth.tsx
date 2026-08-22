@@ -83,7 +83,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 
 const ENROLL_STORAGE_KEY = "zxmax_mfa_enroll";
 const ADMIN_OTP_TRUST_KEY = "zxmax_admin_otp_trusted";
+const ADMIN_OTP_PENDING_KEY = "zxmax_admin_otp_pending";
 const ADMIN_OTP_TRUST_DAYS = 30;
+const ADMIN_OTP_PENDING_MINUTES = 15;
 
 function markAdminOtpTrusted() {
   try {
@@ -113,6 +115,45 @@ function isAdminOtpTrusted() {
   } catch {
     return false;
   }
+}
+
+function markAdminOtpPending() {
+  try {
+    localStorage.setItem(
+      ADMIN_OTP_PENDING_KEY,
+      JSON.stringify({ createdAt: Date.now() }),
+    );
+  } catch {}
+}
+
+function clearAdminOtpPending() {
+  try {
+    localStorage.removeItem(ADMIN_OTP_PENDING_KEY);
+  } catch {}
+}
+
+function isAdminOtpPendingFresh() {
+  try {
+    const raw = localStorage.getItem(ADMIN_OTP_PENDING_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { createdAt?: number };
+    if (!parsed?.createdAt || Date.now() - parsed.createdAt > ADMIN_OTP_PENDING_MINUTES * 60 * 1000) {
+      clearAdminOtpPending();
+      return false;
+    }
+    return true;
+  } catch {
+    clearAdminOtpPending();
+    return false;
+  }
+}
+
+function maybeUnlockAdminMagicLink(email?: string | null) {
+  if (!email || email.toLowerCase() !== ADMIN_CONFIRM_EMAIL.toLowerCase()) return false;
+  if (!isAdminOtpPendingFresh()) return false;
+  markAdminOtpTrusted();
+  clearAdminOtpPending();
+  return true;
 }
 
 function randomDeviceToken() {
@@ -278,6 +319,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(sess);
         setUser(sess?.user ?? null);
         if (sess?.user) {
+          maybeUnlockAdminMagicLink(sess.user.email);
           const admin = await checkAdmin(sess.user.id).catch(() => false);
           await Promise.all([
             fetchProfile(sess.user.id).catch(() => null),
@@ -312,6 +354,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (sess?.user) {
         setLoading(true);
         try {
+          maybeUnlockAdminMagicLink(sess.user.email);
           const admin = await checkAdmin(sess.user.id).catch(() => false);
           await Promise.all([
             fetchProfile(sess.user.id).catch(() => null),
@@ -496,11 +539,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const sendAdminEmailOtp = async () => {
+    markAdminOtpPending();
     const { error } = await supabase.auth.signInWithOtp({
       email: ADMIN_CONFIRM_EMAIL,
       options: { shouldCreateUser: false },
     });
-    if (error) return { error: error.message || "Não foi possível enviar o código de acesso." };
+    if (error) {
+      clearAdminOtpPending();
+      return { error: error.message || "Não foi possível enviar o código de acesso." };
+    }
     return { error: null };
   };
 
@@ -522,6 +569,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // evaluateAdminGate call below runs synchronously before yielding, so it
     // wins over any auth-state listener that fired earlier during verifyOtp.
     markAdminOtpTrusted();
+    clearAdminOtpPending();
 
     const nextSession = data?.session || null;
     if (nextSession) {
