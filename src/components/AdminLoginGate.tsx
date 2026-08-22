@@ -391,7 +391,7 @@ export default function AdminLoginGate() {
                 </button>
               </div>
               <p className="text-[11px] text-white/40 leading-relaxed">
-                O código chega somente no e-mail do administrador. Esta tela atualiza sozinha quando for confirmado. Após confirmado, este aparelho fica liberado por 30 dias.
+                O acesso chega somente no e-mail do administrador. Se o e-mail tiver um <strong className="text-white/70">link/botão “Confirmar”</strong>, pode tocar nele; se tiver um <strong className="text-white/70">código de 6 dígitos</strong>, digite abaixo. Após confirmado, este aparelho fica liberado por 30 dias.
               </p>
             </div>
           )}
