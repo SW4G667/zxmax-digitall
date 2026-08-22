@@ -153,20 +153,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const deviceId = getOrCreateDeviceId();
       const trusted = readTrustedDevice();
-      const { data, error } = await withTimeout(
+      const result = await withTimeout(
         supabase.functions.invoke("admin-login", {
           body: { action: "check", deviceId, deviceToken: trusted?.deviceToken || "" },
         }),
         4000,
-        { data: { trusted: false, isAdmin: true }, error: null } as any,
+        { data: null, error: new Error("admin-login timeout") } as any,
       );
+      const error = result?.error;
+      const data = result?.data;
       if (error) {
+        // Edge Function unreachable/not deployed. Fall back to locally-trusted
+        // device (set by e-mail confirm, passkey or authenticator TOTP unlock).
         setAdminGateRequired(!trusted);
         setAdminGateChecked(true);
         return;
       }
       const ok = !!data?.trusted;
-      if (!ok && trusted) clearTrustedDevice();
+      // Only clear local trust when the server explicitly answered trusted:false
+      // (token revoked). On timeout/no-response we keep the local trust.
+      if (!ok && trusted && data && data.trusted === false) clearTrustedDevice();
       setAdminGateRequired(!ok);
     } catch {
       setAdminGateRequired(!readTrustedDevice());
