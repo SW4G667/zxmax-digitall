@@ -38,6 +38,11 @@ export default function AdminLoginGate() {
   // Check whether the admin already has a verified authenticator factor.
   useEffect(() => {
     let mounted = true;
+    // Belt and braces: the code field must appear even if the factor lookup is
+    // slow, so this screen can never stay stuck on "Carregando autenticação...".
+    const guard = window.setTimeout(() => {
+      if (mounted) setCheckingFactors(false);
+    }, 5000);
     const check = async () => {
       try {
         const factors = (await listFactors()) as any[];
@@ -66,12 +71,14 @@ export default function AdminLoginGate() {
         if (mounted) setHasTotp(false);
       } finally {
         if (mounted) setCheckingFactors(false);
+        window.clearTimeout(guard);
       }
     };
 
     void check();
     return () => {
       mounted = false;
+      window.clearTimeout(guard);
     };
   }, [listFactors]);
 

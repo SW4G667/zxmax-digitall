@@ -132,10 +132,7 @@ export default function TwoFactorPanel() {
     const { error } = await unenrollTotp();
     if (error) {
       const fallback = await resetMfa();
-      if (fallback.error) {
-        toast.error(error);
-        return false;
-      }
+      if (fallback.error) return false;
     }
     clearEnrollCache();
     void loadFactors();
@@ -165,11 +162,24 @@ export default function TwoFactorPanel() {
     await runAction(action);
   };
 
-  const runAction = async (action: "remove" | "regenerate") => {
+  const runAction = async (action: "remove" | "regenerate", alreadyConfirmed = false) => {
     setBusy(true);
     const ok = await doRemove();
     setBusy(false);
-    if (!ok) return;
+
+    if (!ok) {
+      // Still blocked: the only thing that unlocks it is the current code from
+      // the app, so ask for it instead of throwing an error at the user.
+      if (!alreadyConfirmed) {
+        setPendingAction(action);
+        setConfirmCodeValue("");
+        setStage("confirm");
+        toast.info("Digite o código que o aplicativo mostra agora para confirmar.");
+        return;
+      }
+      toast.error("Não foi possível remover o autenticador. Tente novamente em alguns segundos.");
+      return;
+    }
 
     if (action === "remove") {
       toast.success("Autenticador removido com sucesso.");
@@ -195,7 +205,7 @@ export default function TwoFactorPanel() {
       setConfirmCodeValue("");
       return;
     }
-    await runAction(pendingAction || "regenerate");
+    await runAction(pendingAction || "regenerate", true);
   };
 
   const cancelConfirm = () => {

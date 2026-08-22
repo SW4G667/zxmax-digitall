@@ -188,6 +188,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const initialLoadedRef = useRef(false);
   const hydratedUserRef = useRef<string | null>(null);
+  // True only while the user really clicked "Sair". Any other SIGNED_OUT is
+  // treated as a glitch (expired/failed token refresh when the browser comes
+  // back from the background) and we try to recover the session silently.
+  const manualSignOutRef = useRef(false);
+  const recoveringRef = useRef(false);
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -389,15 +394,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, sess) => {
       if (!mounted) return;
 
+      // A session drop that the user did not ask for: do NOT touch the UI yet,
+      // we first try to recover silently below (keeps the admin button and the
+      // page exactly where they were).
+      const glitchLogout =
+        !sess?.user && !manualSignOutRef.current && !!hydratedUserRef.current && !recoveringRef.current;
+
       // The callback body must stay synchronous. Calling other supabase
       // methods (and awaiting them) inside this callback can deadlock the
       // client's internal lock — that was the "site fica carregando pra sempre"
       // and "me tira da conta" bug. Heavy work is deferred below.
-      setSession(sess);
-      // Keep the SAME user object while the id doesn't change. A new object on
-      // every focus/token refresh made every effect keyed on `user` re-run,
-      // which is why the whole page looked like it was reloading by itself.
-      setUser((prev) => (prev && sess?.user && prev.id === sess.user.id ? prev : sess?.user ?? null));
+      if (!glitchLogout) {
+        setSession(sess);
+        // Keep the SAME user object while the id doesn't change. A new object on
+        // every focus/token refresh made every effect keyed on `user` re-run,
+        // which is why the whole page looked like it was reloading by itself.
+        setUser((prev) => (prev && sess?.user && prev.id === sess.user.id ? prev : sess?.user ?? null));
+      }
 
       if (sess?.user) {
         // DO NOT set loading=true on background token refreshes or window focus events!
@@ -426,8 +439,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               }
             });
         }, 0);
+      } else if (glitchLogout) {
+        // The user did NOT click "Sair": this is Supabase dropping the session
+        // (usually a token refresh that failed while the tab was in the
+        // background). Try once to get it back before showing the login again.
+        recoveringRef.current = true;
+        setTimeout(() => {
+          void (async () => {
+            try {
+              const { data } = await supabase.auth.refreshSession();
+              if (data?.session) {
+                recoveringRef.current = false;
+                return; // onAuthStateChange fires again with the good session
+              }
+            } catch {
+              /* fall through to a real logout */
+            }
+            recoveringRef.current = false;
+            if (!mounted) return;
+            // Recovery failed: now it really is a logout.
+            hydratedUserRef.current = null;
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+            setBanned(null);
+            setIsAdmin(false);
+            setMfaEnabled(false);
+            setNeedsMfa(false);
+            setChallengeId(null);
+            setMfaChecked(true);
+            setAdminGateRequired(false);
+            setAdminGateChecked(true);
+            setLoading(false);
+          })();
+        }, 0);
       } else {
         // No session (signed out / session expired)
+        manualSignOutRef.current = false;
         hydratedUserRef.current = null;
         setProfile(null);
         setBanned(null);
@@ -759,7 +807,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const listFactors = async (): Promise<Factor[]> => {
     try {
-      const { data } = await supabase.auth.mfa.listFactors();
+      // Hard timeout: without it a stalled request left the admin 2FA screen
+      // spinning on "Carregando autenticação..." forever.
+      const { data } = await withTimeout<any>(
+        supabase.auth.mfa.listFactors() as Promise<any>,
+        NET_TIMEOUT,
+        { data: { totp: [] }, error: null } as any,
+      );
       return data?.totp || [];
     } catch {
       return [];
@@ -771,6 +825,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    manualSignOutRef.current = true;
     clearAdminSessionUnlocked();
     clearTrustedDevice();
     if (user) {
