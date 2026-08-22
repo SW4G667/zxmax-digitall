@@ -6,17 +6,11 @@ some", "o e-mail de confirmação não chega", "produtos não aparecem para todo
 sempre são causados por **falta de variáveis de ambiente / migrações não aplicadas**
 no Supabase — não por bug no front.
 
-> **Diagnóstico confirmado em tempo real (20/08/2026):**
-> - O site publicado `https://zxmax.vercel.app` está **no ar** e a loja **mostra produtos** para visitantes (o "0" era só o HTML antes de carregar o JS).
-> - O projeto Supabase responde: `https://dbekdedzgkfgtlytrnyw.supabase.co`.
-> - ✅ **Deployadas:** `create-purchase`, `evopay-webhook` (respondem "Unauthorized" = existem, pedem auth).
-> - ❌ **NÃO deployadas (respondem "NOT_FOUND"):** `admin-login` e `admin-verify`.
->
-> **Consequência direta:** como `admin-verify` e `admin-login` não estão no Supabase,
-> a **aprovação de verificação** e o **link de login admin por e-mail** falham. É essa a
-> causa raiz do "não consigo aprovar a verificação" e do "código/e-mail de login que some".
-> Para resolver de vez, rode o script `scripts/deploy-supabase.sh` (abaixo) para subir
-> essas funções e aplicar as migrações.
+> **Status esperado após o deploy (22/08/2026):**
+> - Frontend publicado em `https://zxmax.vercel.app`.
+> - Projeto Supabase: `https://dbekdedzgkfgtlytrnyw.supabase.co`.
+> - Deploy do backend feito com `scripts/deploy-supabase.sh` (migrações + Edge Functions).
+> - Login admin por **código OTP do Supabase Auth** (sem `RESEND_API_KEY`).
 
 ## 🚀 Deploy rápido (uma única vez)
 
@@ -57,7 +51,7 @@ lhe mostra exatamente quais secrets definir.
 
 - **Frontend:** React + Vite + TypeScript (deploy na Vercel).
 - **Backend:** Supabase (banco Postgres + Auth + Storage + Edge Functions).
-- **E-mail de confirmação (login admin):** Resend (`RESEND_API_KEY`).
+- **Login admin:** código OTP por e-mail usando o **Supabase Auth** (provedor de e-mail embutido).
 - **Pagamento Pix:** EvoPay (`EVOPAY_API_KEY`).
 - **Notificações/Recuperação de senha:** e-mail via Supabase Auth (configurado no painel do Supabase).
 
@@ -86,15 +80,15 @@ Cada Edge Function precisa das seguintes variáveis. Defina no painel do **Supab
 | `SUPABASE_URL` | mesmo valor da URL do projeto |
 | `SUPABASE_ANON_KEY` | chave anon (pública) |
 | `SUPABASE_SERVICE_ROLE_KEY` | chave **service role** (secret) — usada pelas funções de admin |
-| `RESEND_API_KEY` | chave da conta **Resend** (envio do e-mail admin) |
-| `EMAIL_FROM` | ex.: `ZXMAX <noreply@seudominio.com>` |
+| `RESEND_API_KEY` | **opcional** — só se você usar a função `send-email`/outros e-mails com Resend |
+| `EMAIL_FROM` | ex.: `ZXMAX <noreply@seudominio.com>` (opcional) |
 | `SITE_URL` | ex.: `https://zxmax.vercel.app` |
 | `EVOPAY_API_KEY` | chave da **EvoPay** |
 | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | OAuth do Discord (opcional) |
 
-> **Importante:** sem `RESEND_API_KEY` o e-mail do login admin NÃO é enviado e a
-> tela mostra o erro "E-mail de confirmação não configurado no servidor". Sem
-> `EVOPAY_API_KEY` o checkout Pix não funciona.
+> **Importante:** o login admin usa **código OTP do Supabase Auth**, então **não precisa
+> de `RESEND_API_KEY`** para o e-mail do admin funcionar. Sem `EVOPAY_API_KEY` o checkout
+> Pix não funciona.
 
 ---
 
@@ -142,15 +136,15 @@ Confirme que cada função tem as secrets do item 3.
 
 ---
 
-## 6. Configurar o Supabase Auth (e-mail de confirmação)
+## 6. Configurar o Supabase Auth (código OTP por e-mail)
 
-1. **Project Settings → Auth → Providers → Email:**
-   - Habilite **"Confirm email"** (confirmação de e-mail no cadastro) e defina
-     `http://localhost:3000` / a URL do site como redirect.
-   - Se quiser e-mails de confirmação com aparência, configure **SMTP** ou use o
-     provedor de e-mail padrão.
-
-2. **URLs (Site URL):** aponte para `https://zxmax.vercel.app` (ou seu domínio).
+1. **Authentication → Providers → Email:** ligue o **"Enable Email provider"**. O provedor
+   embutido do Supabase é suficiente para enviar o código de 6 dígitos; **não é preciso**
+   configurar SMTP do Proton (o plano gratuito não libera SMTP).
+2. **Authentication → URL Configuration:** aponte o **Site URL** para
+   `https://zxmax.vercel.app` (ou seu domínio).
+3. Confirme que o e-mail do admin (`jnpereiraalves@gmail.com`) tem uma conta no Auth
+   do mesmo projeto (para `shouldCreateUser: false` não falhar).
 
 ---
 
@@ -158,22 +152,17 @@ Confirme que cada função tem as secrets do item 3.
 
 O acesso ao painel admin é protegido por **um** destes métodos (você escolhe na tela):
 
-- **Google Authenticator (código de 6 dígitos):** funciona **sem Edge Function** — usa o
-  Supabase Auth MFA direto do app. É o método que funciona mesmo agora, enquanto as
-  funções `admin-login`/`admin-verify` ainda não estão deployadas. O aparelho fica
-  liberado por **30 dias**.
+- **E-mail (código OTP de 6 dígitos):** o front chama `signInWithOtp` para
+  `jnpereiraalves@gmail.com` com `shouldCreateUser: false`; o Supabase Auth envia o código
+  usando o **provedor de e-mail embutido** (sem Resend). Ao digitar o código, o front chama
+  `verifyOtp` e o aparelho fica liberado por **30 dias**.
+- **Google Authenticator (código de 6 dígitos):** usa o Supabase Auth MFA direto do app e
+  não depende da função `admin-login`. O aparelho fica liberado por **30 dias**.
 - **Senha / biometria do celular** (WebAuthn): cadastra a biometria do aparelho e fica
   liberado por **30 dias** nesse aparelho. **Requer a função `admin-login` deployada.**
-- **E-mail para `jnpereiraalves@gmail.com`:** chega um link de confirmação. Ao clicar,
-  o aparelho fica liberado por **30 dias**. **Requer a função `admin-login` + `RESEND_API_KEY`.**
 
-O e-mail é enviado **somente** para `jnpereiraalves@gmail.com` (fixo no código da
-função `admin-login`). Não gera e-mail para mais ninguém.
-
-> **Importante (já corrigido no front):** antes, todos os caminhos dependiam da função
-> `admin-login`. Agora o **Authenticator** funciona por conta própria, então você não fica
-> travado mesmo com a função fora do ar. E-mail e biometria voltam a funcionar assim que
-> a função for deployada.
+O código OTP é enviado **somente** para `jnpereiraalves@gmail.com` (fixo em
+`src/lib/adminGate.ts`). Não gera e-mail para mais ninguém.
 
 ---
 
@@ -204,7 +193,7 @@ Ao entrar em `/admin`, abra em ordem:
 | Sintoma | Causa provável | Solução |
 |---|---|---|
 | "Não consigo aprovar a verificação" | Edge `admin-verify` sem `SUPABASE_SERVICE_ROLE_KEY` ou migrações não aplicadas | Aplicar migrações + secrets + redeploy das functions |
-| E-mail de confirmação não chega | `RESEND_API_KEY` ausente na function `admin-login` | Adicionar `RESEND_API_KEY` e redeploy |
+| Código OTP do admin não chega | Provedor de e-mail do Supabase Auth desligado (ou SMTP não suportado) | Authentication → Providers → Email → **Enable Email provider**; usar o provedor embutido (não SMTP Proton gratuito) |
 | Código 2FA some / não valida | Autenticador não está em segundo plano / outro aparelho | Use a biometria do celular ou o link do e-mail; confirme que está no mesmo aparelho (o token é por aparelho) |
 | Produtos não aparecem para visitantes | `approved=false` ou view `products_public` sem permissão | Clique em "Aprovar TODOS produtos" no admin e aplique as migrações |
 | Foto abre "Arquivos" em vez da galeria | O navegador decide; o input de foto usa MIME de imagem e o de arquivo usa extensões | Os botões de **foto** abrem galeria; os de **documento/arquivo** abrem arquivos |
