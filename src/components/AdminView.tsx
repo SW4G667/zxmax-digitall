@@ -827,7 +827,7 @@ export default function AdminView() {
           <div className="glass-card p-6 border border-white/10 bg-[#0a0a0f]">
             <h3 className="font-black text-white flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-success" /> Segurança do Painel Admin</h3>
             <p className="text-xs text-white/50 mt-2 leading-relaxed">
-              A proteção principal do admin é <strong className="text-white">senha do celular ou e-mail em jnpereiraalves@gmail.com</strong>, válida por 30 dias neste aparelho. O autenticador abaixo continua disponível se você quiser um extra.
+              A proteção principal do admin é <strong className="text-white">senha/biometria do celular ou link no e-mail do administrador</strong>, válida por 30 dias neste aparelho. O autenticador abaixo é um extra opcional.
             </p>
           </div>
           <TwoFactorPanel />

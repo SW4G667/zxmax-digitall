@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Fingerprint, Mail, Loader2, ShieldCheck, Smartphone, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
-import { ADMIN_CONFIRM_EMAIL, webAuthnAvailable, webAuthnAssert, webAuthnEnroll } from "@/lib/adminGate";
+import { webAuthnAvailable, webAuthnAssert, webAuthnEnroll } from "@/lib/adminGate";
 
 export default function AdminLoginGate() {
   const { sendAdminEmailLink, verifyAdminWebAuthn, enrollAdminWebAuthn, listAdminWebAuthn, refreshAdminGate } = useAuth();
@@ -32,7 +32,7 @@ export default function AdminLoginGate() {
       return;
     }
     setSent(true);
-    toast.success(`Link enviado para ${ADMIN_CONFIRM_EMAIL}`);
+    toast.success(`Link enviado para o e-mail do administrador`);
   };
 
   const handleBio = async () => {
@@ -65,8 +65,7 @@ export default function AdminLoginGate() {
         </div>
         <h2 className="text-xl font-black text-white">Confirme que é você</h2>
         <p className="text-sm text-white/50 mt-2 leading-relaxed">
-          Para entrar no painel admin, use a senha / biometria do celular ou o link que chega só em{" "}
-          <strong className="text-white">{ADMIN_CONFIRM_EMAIL}</strong>. Depois disso este aparelho fica liberado por 30 dias.
+          Para entrar no painel admin, use a biometria / senha do celular ou o link que chega no e-mail cadastrado como administrador. Depois disso este aparelho fica liberado por 30 dias.
         </p>
 
         <div className="mt-6 space-y-3">

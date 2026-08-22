@@ -14,6 +14,8 @@ interface EnrollCache {
 
 export default function TwoFactorPanel() {
   const { mfaEnabled, enrollTotpStart, enrollTotpVerify, unenrollTotp, listFactors, isAdmin } = useAuth();
+
+  if (!isAdmin) return null;
   const [stage, setStage] = useState<"idle" | "verify">("idle");
   const [qr, setQr] = useState<string>("");
   const [secret, setSecret] = useState<string>("");
@@ -192,8 +194,8 @@ export default function TwoFactorPanel() {
           </h4>
           <p className="text-xs text-white/50 mt-1 leading-relaxed">
             {mfaEnabled
-              ? "Authenticator extra ativo. O login admin principal agora confirma por e-mail (jnpereiraalves@gmail.com) ou senha do celular, válido 30 dias."
-              : "Opcional. O login admin já pede senha do celular ou link no e-mail jnpereiraalves@gmail.com (30 dias). Este autenticador é um extra."}
+              ? "Authenticator extra ativo. O login admin principal confirma por e-mail do administrador ou biometria do celular, válido por 30 dias neste aparelho."
+              : "Opcional. O login admin já confirma por biometria do celular ou link no e-mail do administrador (válido 30 dias). Este autenticador é um extra opcional."}
           </p>
         </div>
       </div>

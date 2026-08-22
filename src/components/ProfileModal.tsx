@@ -15,7 +15,7 @@ interface Props {
 
 export default function ProfileModal({ open, onClose }: Props) {
   const { state, requestWithdraw, logout, updatePixKey, submitSellerDocument } = useStore();
-  const { user: authUser, profile, updateProfile: updateAuthProfile, refreshProfile } = useAuth();
+  const { user: authUser, profile, updateProfile: updateAuthProfile, refreshProfile, isAdmin } = useAuth();
   const storeUser = state.currentUser;
   const [editName, setEditName] = useState(profile?.display_name || storeUser?.name || "");
   const [editing, setEditing] = useState(false);
@@ -228,7 +228,7 @@ export default function ProfileModal({ open, onClose }: Props) {
             <Shield className="w-4 h-4" /> Dados pessoais e verificação
           </a>
 
-          <TwoFactorPanel />
+          {isAdmin && <TwoFactorPanel />}
 
           <button onClick={logout} className="w-full flex items-center justify-center gap-2 p-3 text-destructive font-bold text-sm hover:bg-destructive/5 rounded-xl transition">
             <DoorEmoji className="w-5 h-5" /> Sair da Conta

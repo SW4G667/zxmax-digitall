@@ -27,7 +27,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const inputClass = "w-full p-3 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-sm text-white outline-none focus:border-[#0084ff] focus:ring-1 focus:ring-[#0084ff]/20";
 
 function PerfilInner() {
-  const { user, profile, loading, refreshProfile } = useAuth();
+  const { user, profile, loading, refreshProfile, isAdmin } = useAuth();
 
   const [form, setForm] = useState({
     display_name: "",
@@ -211,9 +211,11 @@ function PerfilInner() {
           </button>
         </div>
 
-        <div className="mb-5">
-          <TwoFactorPanel />
-        </div>
+        {isAdmin && (
+          <div className="mb-5">
+            <TwoFactorPanel />
+          </div>
+        )}
 
         <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
           <h2 className="font-bold text-white mb-1">Verificação de identidade</h2>
