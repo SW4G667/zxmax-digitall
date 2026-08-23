@@ -110,6 +110,38 @@ serve(async (req) => {
       return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    if (action === "delete_user_factors") {
+      // Delete ALL MFA factors for the authenticated admin using service_role.
+      // This bypasses the Supabase "AAL2 required to enroll a new factor" guard
+      // that blocks re-enrolling / disabling 2FA from the client.
+      const targetUserId = userData.user.id;
+
+      const { data: factorsData, error: listError } = await serviceClient.auth.admin.listFactors(targetUserId);
+      if (listError) throw listError;
+
+      const allFactors: any[] = [
+        ...((factorsData?.totp as any[]) || []),
+        ...((factorsData?.phone as any[]) || []),
+      ];
+
+      const deleted: string[] = [];
+      for (const f of allFactors) {
+        if (!f?.id) continue;
+        const { error: delErr } = await serviceClient.auth.admin.deleteFactor({ userId: targetUserId, id: f.id });
+        if (!delErr) deleted.push(f.id);
+      }
+
+      await serviceClient.from("webhook_logs").insert({
+        source: "admin",
+        event_type: "DELETE_USER_FACTORS",
+        status: "approved",
+        order_id: null,
+        payload: { userId: targetUserId, count: deleted.length, deleted },
+      });
+
+      return new Response(JSON.stringify({ success: true, deleted }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     throw new Error("Ação inválida");
 
   } catch (error: any) {

@@ -35,48 +35,24 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
   const handleDiscord = async () => {
     try {
       const { supabase } = await import("@/integrations/supabase/client");
-      
-      // Use custom flow with user's credentials (more reliable than Supabase built-in if provider not enabled)
-      let clientId = "1506929376967790752"; // User's ID
-      let redirectBase = window.location.origin + "/";
-      let scopesValue = "identify email";
-      
-      try {
-        const { data: cfgData } = await supabase.functions.invoke("integrations-config", { body: { action: "get" } });
-        if (cfgData?.integrations?.discord?.clientId) clientId = cfgData.integrations.discord.clientId;
-        if (cfgData?.integrations?.discord?.redirectUri) redirectBase = cfgData.integrations.discord.redirectUri;
-        if (cfgData?.integrations?.discord?.scopes) scopesValue = cfgData.integrations.discord.scopes;
-      } catch (e) {
-        console.log("Failed to get discord config from backend, using fallback", e);
+      // Use Supabase native Discord OAuth provider — secure code exchange, no
+      // red error banners on screen.
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "discord",
+        options: { redirectTo: window.location.origin + "/" },
+      });
+      if (error) {
+        console.warn("Discord OAuth error:", error.message);
+        toast.info("Não foi possível conectar com o Discord agora. Tente novamente.");
       }
-
-      try {
-        const saved = localStorage.getItem("zxmax_state");
-        if (saved) {
-          const cfg = JSON.parse(saved)?.config || {};
-          if (cfg.discordClientId) clientId = cfg.discordClientId;
-          if (cfg.discordRedirectUri) redirectBase = cfg.discordRedirectUri;
-          if (cfg.discordScopes) scopesValue = cfg.discordScopes;
-        }
-      } catch {}
-
-      if (!clientId) {
-        toast.error("Discord não configurado. Configure Client ID em Admin → APIs.");
-        return;
-      }
-
-      const redirectUri = encodeURIComponent(redirectBase);
-      const scopes = encodeURIComponent(scopesValue);
-      const url = `https://discord.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${scopes}`;
-      console.log("Discord OAuth URL:", url);
-      window.location.href = url;
     } catch (e: any) {
-      toast.error("Erro Discord: " + (e?.message || "") + ". Verifique se discord-callback está deployada.");
+      console.warn("Discord OAuth exception:", e?.message || e);
+      toast.info("Não foi possível conectar com o Discord agora. Tente novamente.");
     }
   };
 
   const handleForgot = async () => {
-    toast.info("Recuperação de senha em desenvolvimento. Entre em contato com o suporte no Discord.");
+    toast.info("A recuperação de senha automática estará disponível em breve! Caso precise de suporte, entre em contato com a moderação.");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -102,6 +78,12 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
           if (err.includes("Invalid login")) setError("Email ou senha incorretos.");
           else if (err.includes("Email not confirmed")) setError("Confirme seu e-mail antes.");
           else setError(err);
+        } else {
+          // Login confirmado: fecha o modal na hora e avisa o usuário.
+          // O admin que precisa de 2FA tem o modal reaberto automaticamente em
+          // /admin (Index.tsx) sem travar em "Aguarde...".
+          toast.success("Login realizado!");
+          onClose?.();
         }
       }
     } catch {

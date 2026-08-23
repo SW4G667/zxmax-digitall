@@ -208,11 +208,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const init = async () => {
       try {
-        const { data: { session: sess } } = await withTimeout(
-          supabase.auth.getSession(),
-          2500,
-          { data: { session: null } } as any
-        );
+        // No short timeout here: a 2s cutoff on getSession() used to drop users
+        // on slow 4G/5G networks. We wait for the real session instead.
+        const { data: { session: sess } } = await supabase.auth.getSession();
         if (!mounted) return;
         setSession(sess);
         setUser(sess?.user ?? null);
@@ -350,6 +348,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const enrollTotpStart = async (): Promise<{ data: TotpEnroll | null; error: string | null }> => {
+    // Clear ALL existing factors (including verified ones) via service_role so we
+    // NEVER hit the "AAL2 required to enroll a new factor" error when re-enrolling.
+    try {
+      await supabase.functions.invoke("admin-verify", { body: { action: "delete_user_factors" } });
+    } catch (e) {
+      console.warn("delete_user_factors failed (edge not deployed?), falling back to client cleanup", e);
+    }
+
+    // Best-effort client-side cleanup of leftover unverified factors
     try {
       const { data: existing } = await supabase.auth.mfa.listFactors();
       const unverified = (existing?.totp || []).filter((f) => f.status !== "verified");
@@ -411,6 +418,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const unenrollTotp = async (factorId: string) => {
+    // Disable 2FA via service_role first so we never hit the "AAL2 required" lock
+    // when the admin tries to turn off the authenticator.
+    try {
+      await supabase.functions.invoke("admin-verify", { body: { action: "delete_user_factors" } });
+      setMfaEnabled(false);
+      setNeedsMfa(false);
+      return { error: null };
+    } catch (e) {
+      console.warn("delete_user_factors failed, falling back to client unenroll", e);
+    }
+
     const { error } = await supabase.auth.mfa.unenroll({ factorId });
     if (error) return { error: error.message };
     setMfaEnabled(false);

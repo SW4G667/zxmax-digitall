@@ -53,6 +53,13 @@ function Dashboard({ view }: { view: View }) {
     if (!user && requiresAuth) setAuthOpen(true);
   }, [user, requiresAuth]);
 
+  // Fecha o modal de autenticação assim que o login é confirmado.
+  // O admin com 2FA pendente tem o modal reaberto em /admin pelo effect abaixo
+  // (needsMfa), então o MFA nunca é perdido e nada fica travado em "Aguarde...".
+  useEffect(() => {
+    if (user) setAuthOpen(false);
+  }, [user]);
+
   useEffect(() => {
     // Only auto-open MFA modal on admin view, not on loja (fix for user complaint that auth appears everywhere)
     if (needsMfa && view === "admin") setAuthOpen(true);
@@ -105,50 +112,31 @@ function AppGate({ view }: { view: View }) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
-    if (code && !user) {
-      setDiscordLoading(true);
-      const cleanUrl = window.location.origin + window.location.pathname;
-      window.history.replaceState({}, "", cleanUrl);
+    if (!code) return;
 
-      supabase.functions.invoke("discord-callback", {
-        body: { code, redirectUri: window.location.origin + "/" },
-      }).then(({ data, error }) => {
-        if (error) {
-          console.error("Discord callback error (edge not deployed?):", error);
-          supabase.auth.getSession().then(({ data: { session } }) => {
-            if (session?.user) toast.success("Login com Discord realizado via Supabase!");
-            else toast.error("Discord Auth falhou: Edge Function não deployada. Configure em Supabase Auth → Providers → Discord.");
-            setDiscordLoading(false);
-          });
-          return;
-        }
-        if (!data?.success) {
-          toast.error("Discord: " + (data?.error || "Tente novamente."));
-          setDiscordLoading(false);
-          return;
-        }
-        if (data.access_token && data.token_type === "magiclink") {
-          supabase.auth.verifyOtp({ email: data.user.email, token: data.access_token, type: "magiclink" }).then(({ error: verifyErr }) => {
-            if (verifyErr) toast.error("Erro ao autenticar: " + verifyErr.message);
-            else toast.success("Login com Discord realizado!");
-            setDiscordLoading(false);
-          });
-        } else if (data.password && data.user?.email) {
-          supabase.auth.signInWithPassword({ email: data.user.email, password: data.password }).then(({ error: signInErr }) => {
-            if (signInErr) toast.error("Erro ao autenticar: " + signInErr.message);
-            else toast.success("Conta criada e login realizado com Discord!");
-            setDiscordLoading(false);
-          });
-        } else {
-          toast.error("Resposta inesperada do servidor Discord.");
-          setDiscordLoading(false);
-        }
-      }).catch((err) => {
-        console.error("Discord callback exception", err);
-        toast.error("Discord Auth com problema. Use Supabase Auth Providers.");
+    // Native Supabase OAuth (PKCE / Discord). The code is normally exchanged
+    // automatically by the client (detectSessionInUrl); here we keep a silent,
+    // safe fallback using exchangeCodeForSession. No red error banner is ever
+    // shown — worst case we log a warning and stop the loading spinner.
+    const originalHref = window.location.href;
+    const cleanUrl = window.location.origin + window.location.pathname;
+    window.history.replaceState({}, "", cleanUrl);
+    setDiscordLoading(true);
+
+    (async () => {
+      try {
+        // 1) Prefer the native session (already exchanged on init)
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) return;
+        // 2) Safe fallback: exchange the code for a session (PKCE)
+        const { error } = await supabase.auth.exchangeCodeForSession(originalHref);
+        if (error) console.warn("OAuth exchange fallback warning:", error.message);
+      } catch (e: any) {
+        console.warn("OAuth code exchange warning:", e?.message || e);
+      } finally {
         setDiscordLoading(false);
-      });
-    }
+      }
+    })();
   }, [user]);
 
   if (loading || discordLoading) {
