@@ -34,26 +34,37 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
 
   const handleDiscord = async () => {
     try {
-      // Try to get Discord config from backend first
-      let clientId = "1506929376967790752"; // User's provided ID as fallback
+      const { supabase } = await import("@/integrations/supabase/client");
+      
+      // Try Supabase built-in OAuth first (more reliable, no Edge Function needed)
+      // This uses Supabase's own Discord provider configured in Dashboard
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'discord',
+        options: {
+          redirectTo: window.location.origin + "/",
+          scopes: "identify email",
+        },
+      });
+      
+      if (!error) {
+        // Supabase will redirect automatically
+        return;
+      }
+      
+      console.log("Supabase OAuth failed, trying custom flow:", error?.message);
+      
+      // Fallback to custom flow with user's credentials
+      let clientId = "1506929376967790752";
       let redirectBase = window.location.origin + "/";
       let scopesValue = "identify email";
       
       try {
-        const { supabase } = await import("@/integrations/supabase/client");
-        const { data } = await supabase.functions.invoke("integrations-config", { body: { action: "get" } });
-        if (data?.integrations?.discord?.clientId) {
-          clientId = data.integrations.discord.clientId;
-        }
-        if (data?.integrations?.discord?.redirectUri) {
-          redirectBase = data.integrations.discord.redirectUri;
-        }
-        if (data?.integrations?.discord?.scopes) {
-          scopesValue = data.integrations.discord.scopes;
-        }
+        const { data: cfgData } = await supabase.functions.invoke("integrations-config", { body: { action: "get" } });
+        if (cfgData?.integrations?.discord?.clientId) clientId = cfgData.integrations.discord.clientId;
+        if (cfgData?.integrations?.discord?.redirectUri) redirectBase = cfgData.integrations.discord.redirectUri;
+        if (cfgData?.integrations?.discord?.scopes) scopesValue = cfgData.integrations.discord.scopes;
       } catch {}
 
-      // Fallback to localStorage
       try {
         const saved = localStorage.getItem("zxmax_state");
         if (saved) {
@@ -65,19 +76,16 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
       } catch {}
 
       if (!clientId) {
-        toast.error("Discord não configurado. Configure em Admin → APIs.");
+        toast.error("Discord não configurado. Ative em Supabase Dashboard → Auth → Providers → Discord");
         return;
       }
 
-      // Ensure redirectUri is exactly what's configured in Discord Dev Portal
-      // For Vercel, it must be https://zxmax.vercel.app/ or your preview domain
       const redirectUri = encodeURIComponent(redirectBase);
       const scopes = encodeURIComponent(scopesValue);
       const url = `https://discord.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${scopes}`;
-      console.log("Discord OAuth URL:", url);
       window.location.href = url;
     } catch (e: any) {
-      toast.error("Erro ao iniciar Discord: " + (e?.message || ""));
+      toast.error("Erro Discord: " + (e?.message || "") + ". Configure em Supabase Auth Providers.");
     }
   };
 

@@ -422,33 +422,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ]) as Promise<T | null>;
 
     try {
-      // Public catalog must work 100% - anon can only query via products_public view (RLS blocks direct products table)
+      // Public catalog must work 100% - anon uses public-products edge function (service_role) to bypass RLS issues
       let dbProducts: any[] = [];
       
       if (!authUser) {
-        // Anon: MUST use products_public view (approved=true already in view definition)
-        // No timeout to guarantee visibility - this is the public storefront
+        // Anon: Use public-products edge function first (service_role, always works)
         try {
-          const { data, error } = await (supabase as any)
-            .from("products_public")
-            .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
-            .order("created_at", { ascending: false });
-          
-          if (!error && data) {
-            dbProducts = data;
-            console.log("Anon products_public loaded:", dbProducts.length);
+          const { data, error } = await supabase.functions.invoke("public-products", {});
+          if (!error && data?.products && data.products.length > 0) {
+            dbProducts = data.products;
+            console.log("Anon public-products edge loaded:", dbProducts.length);
           } else {
-            console.error("Anon products_public error:", error);
-            // Fallback try products table with approved filter (might fail due to RLS)
-            const { data: fallbackData } = await (supabase as any)
-              .from("products")
+            console.log("public-products edge empty or error, trying products_public view", error, data);
+            // Fallback to products_public view
+            const { data: viewData, error: viewError } = await (supabase as any)
+              .from("products_public")
               .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
-              .eq("approved", true)
               .order("created_at", { ascending: false });
-            if (fallbackData) dbProducts = fallbackData as any[];
+            
+            if (!viewError && viewData && viewData.length > 0) {
+              dbProducts = viewData;
+              console.log("Anon products_public loaded:", dbProducts.length);
+            } else {
+              console.error("Anon view error:", viewError);
+              // Last fallback: products table with approved filter
+              const { data: fallbackData } = await (supabase as any)
+                .from("products")
+                .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
+                .eq("approved", true)
+                .order("created_at", { ascending: false });
+              if (fallbackData) dbProducts = fallbackData as any[];
+            }
           }
         } catch (e) {
           console.error("Anon load failed", e);
+          // Try direct view as last resort
+          try {
+            const { data: viewData } = await (supabase as any).from("products_public").select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at").order("created_at", { ascending: false });
+            if (viewData) dbProducts = viewData as any[];
+          } catch {}
         }
       } else {
         // Authenticated: try products table (RLS allows approved OR own OR admin)

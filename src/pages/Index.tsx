@@ -134,19 +134,33 @@ function AppGate({ view }: { view: View }) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
+    // Handle custom Discord OAuth code flow (fallback if Supabase built-in not used)
     if (code && !user) {
       setDiscordLoading(true);
-      window.history.replaceState({}, "", "/");
+      // Keep URL clean but preserve code for retry
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, "", cleanUrl);
+
       supabase.functions.invoke("discord-callback", {
         body: { code, redirectUri: window.location.origin + "/" },
       }).then(({ data, error }) => {
         if (error) {
-          toast.error("Erro ao fazer login com Discord: " + error.message);
-          setDiscordLoading(false);
+          console.error("Discord callback error (edge not deployed?):", error);
+          // Don't show error toast if edge function not deployed - Supabase built-in OAuth might have already logged user
+          // Check if user is now logged via Supabase OAuth
+          supabase.auth.getSession().then(({ data: { session } }) => {
+            if (session?.user) {
+              toast.success("Login com Discord realizado via Supabase!");
+            } else {
+              toast.error("Discord Auth falhou: Edge Function não deployada ou credenciais inválidas. Configure em Supabase Dashboard → Auth → Providers → Discord e deploye discord-callback.");
+            }
+            setDiscordLoading(false);
+          });
           return;
         }
         if (!data?.success) {
-          toast.error("Erro ao fazer login com Discord: " + (data?.error || "Tente novamente."));
+          console.error("Discord callback failed:", data);
+          toast.error("Discord: " + (data?.error || "Tente novamente. Verifique Redirect URI no Discord Dev Portal."));
           setDiscordLoading(false);
           return;
         }
@@ -167,7 +181,8 @@ function AppGate({ view }: { view: View }) {
           setDiscordLoading(false);
         }
       }).catch((err) => {
-        toast.error("Erro ao conectar com Discord: " + (err.message || "Tente novamente."));
+        console.error("Discord callback exception", err);
+        toast.error("Discord Auth: Edge Function com problema (non-2xx). Use Supabase Auth → Providers → Discord como alternativa. Erro: " + (err.message || ""));
         setDiscordLoading(false);
       });
     }
