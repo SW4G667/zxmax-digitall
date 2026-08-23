@@ -157,25 +157,30 @@ export default function ProdutoPage() {
   const sellerOffers: SellerOffer[] = useMemo(() => {
     if (!isRobux) return [];
     const robuxProducts = state.products.filter((p) => p.category === "Robux e Gift Cards" && p.approved);
-    const offers: SellerOffer[] = robuxProducts.map((p) => ({
-      id: p.id,
-      product: p,
-      pricePerUnit: p.price,
-      stock: p.stock || Math.floor(p.sales * 137 + 500),
-      minQty: p.minQuantity || 100,
-      delivery: p.deliveryTime || `${Math.floor(Math.random() * 20 + 2)} min - ${Math.floor(Math.random() * 3 + 1)} h`,
-      sellerName: p.seller,
-      sellerId: p.sellerId,
-      rating: p.sellerRating || 99.4,
-      reviews: p.sellerReviews || Math.floor(p.sales * 12 + 100),
-      verified: true,
-    }));
+    const offers: SellerOffer[] = robuxProducts.map((p) => {
+      // Real reviews from purchases, not fake 100
+      const realReviews = state.purchases.filter((pu) => pu.productId === p.id && pu.reviewed);
+      const realRating = realReviews.length > 0 ? realReviews.reduce((a, r) => a + (r.reviewStars || 0), 0) / realReviews.length : 0;
+      return {
+        id: p.id,
+        product: p,
+        pricePerUnit: p.price,
+        stock: p.stock || 500,
+        minQty: p.minQuantity || 100,
+        delivery: p.deliveryTime || "11 min - 1 h",
+        sellerName: p.seller,
+        sellerId: p.sellerId,
+        rating: realReviews.length > 0 ? Number((realRating * 20).toFixed(1)) : 0, // 0 until someone reviews
+        reviews: realReviews.length, // 0 initially, not 100 fake
+        verified: true,
+      };
+    });
     // Sort
     if (sortBy === "barato") offers.sort((a, b) => a.pricePerUnit - b.pricePerUnit);
     else if (sortBy === "min") offers.sort((a, b) => a.minQty - b.minQty);
     else offers.sort((a, b) => b.reviews - a.reviews);
     return offers;
-  }, [state.products, isRobux, sortBy]);
+  }, [state.products, isRobux, sortBy, state.purchases]);
 
   const currentOffer = useMemo(() => {
     if (!isRobux) return null;
@@ -359,8 +364,14 @@ export default function ProdutoPage() {
                     <div>
                       <p className="font-black text-white flex items-center gap-1.5">{currentOffer.sellerName} <BadgeCheck className="w-4 h-4 text-[#0084ff]" /></p>
                       <p className="text-xs flex items-center gap-2">
-                        <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3.5 h-3.5" /> {currentOffer.rating}%</span>
-                        <span className="text-[#0084ff] underline cursor-pointer" onClick={() => setDetailTab("reviews")}>{currentOffer.reviews.toLocaleString()} avaliações</span>
+                        {currentOffer.reviews > 0 ? (
+                          <>
+                            <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3.5 h-3.5" /> {currentOffer.rating}%</span>
+                            <span className="text-[#0084ff] underline cursor-pointer" onClick={() => setDetailTab("reviews")}>{currentOffer.reviews} avaliações</span>
+                          </>
+                        ) : (
+                          <span className="text-white/40">Novo • Nenhuma avaliação ainda</span>
+                        )}
                       </p>
                     </div>
                   </div>
@@ -423,8 +434,14 @@ export default function ProdutoPage() {
                           <div className="min-w-0 flex-1">
                             <p className="font-bold text-white text-sm flex items-center gap-1 truncate">{offer.sellerName} <BadgeCheck className="w-3.5 h-3.5 text-[#0084ff]" /></p>
                             <p className="text-xs flex items-center gap-2">
-                              <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3 h-3" /> {offer.rating}%</span>
-                              <span className="text-[#0084ff] underline">{offer.reviews} avaliações</span>
+                              {offer.reviews > 0 ? (
+                                <>
+                                  <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3 h-3" /> {offer.rating}%</span>
+                                  <span className="text-[#0084ff] underline">{offer.reviews} avaliações</span>
+                                </>
+                              ) : (
+                                <span className="text-white/40">Novo • 0 avaliações</span>
+                              )}
                             </p>
                           </div>
                         </div>
