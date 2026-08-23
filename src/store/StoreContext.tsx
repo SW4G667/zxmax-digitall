@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { mergeCatalog, SAFE_PRODUCT_COLUMNS } from "@/lib/catalog";
+import { mergeCatalog, normalizeProductPrice, SAFE_PRODUCT_COLUMNS } from "@/lib/catalog";
 
 export interface User {
   id: string;
@@ -456,15 +456,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       }
       const unique = [...new Map(rows.map((row) => [Number(row.id), row])).values()];
-      const products = unique.map((p: any) => ({
-        id: Number(p.id), name: p.name, price: Number(p.price), category: p.category,
-        seller: p.seller_name, sellerEmail: p.seller_email || "", sellerId: p.seller_id,
-        sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0),
-        image: p.image, banner: p.banner || undefined, description: p.description, approved: !!p.approved,
-        deliveryType: p.delivery_type, variations: p.variations || [], questions: p.questions || [],
-        stock: Math.floor((p.sales || 0) * 137 + 500), minQuantity: 100, deliveryTime: "11 min - 1 h",
-        sellerRating: 99.4, sellerReviews: Math.floor((p.sales || 0) * 12 + 100),
-      })) as Product[];
+      const products = unique.map((p: any) => {
+        const price = normalizeProductPrice({ price: Number(p.price), category: p.category, variations: p.variations });
+        return {
+          id: Number(p.id), name: p.name, price, category: p.category,
+          seller: p.seller_name, sellerEmail: p.seller_email || "", sellerId: p.seller_id,
+          sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0),
+          image: p.image, banner: p.banner || undefined, description: p.description, approved: !!p.approved,
+          deliveryType: p.delivery_type, variations: p.variations || [], questions: p.questions || [],
+          stock: p.stock ?? Math.floor((p.sales || 0) * 137 + 500),
+          minQuantity: p.min_quantity ?? 100, deliveryTime: p.delivery_time || "11 min - 1 h",
+          sellerRating: 99.4, sellerReviews: Math.floor((p.sales || 0) * 12 + 100),
+        };
+      }) as Product[];
       setState((old) => ({ ...old, products: mergeCatalog(products, old.products, { failed }) }));
     } catch (error) {
       console.error("loadCatalog failed", error);
