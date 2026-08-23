@@ -61,9 +61,11 @@ interface AuthContextType {
   needsCodeToManageMfa: () => Promise<boolean>;
   /** Marks the admin gate as unlocked in this browser (after a valid code). */
   unlockAdminGate: () => void;
+  /** Locks the admin panel in this browser without signing the user out. */
+  lockAdminGate: () => void;
   /** Re-reads the admin gate flag from storage (kept for the gate component). */
   refreshAdminGate: () => void;
-  signOut: () => Promise<void>;
+  signOut: (scope?: "local" | "global" | "others") => Promise<void>;
   refreshProfile: () => Promise<void>;
   updateProfile: (data: Partial<Pick<Profile, "display_name" | "avatar_url" | "pix_key" | "document_type">>) => Promise<void>;
 }
@@ -122,6 +124,24 @@ function clearAdminGate(userId: string) {
   } catch { /* noop */ }
 }
 
+/** Drops persisted Supabase session keys and ZXMAX admin caches so the UI
+ * can log out even if supabase.auth.signOut() is stuck on the auth lock. */
+function wipePersistedAuth(userId?: string | null) {
+  try {
+    if (userId) {
+      localStorage.removeItem(ADMIN_ROLE_CACHE_PREFIX + userId);
+      localStorage.removeItem(ADMIN_GATE_PREFIX + userId);
+    }
+    for (const k of Object.keys(localStorage)) {
+      if (k.startsWith("sb-") && k.includes("auth")) localStorage.removeItem(k);
+      if (k.startsWith(ADMIN_ROLE_CACHE_PREFIX)) localStorage.removeItem(k);
+      if (k.startsWith(ADMIN_GATE_PREFIX)) localStorage.removeItem(k);
+    }
+    sessionStorage.removeItem("zxmax_admin_mfa_verified");
+    localStorage.removeItem(ENROLL_STORAGE_KEY);
+  } catch { /* noop */ }
+}
+
 /** Synchronously peeks the session Supabase persists in localStorage
  * (sb-<project>-auth-token). Lets the app boot already logged in — no
  * "Carregando..." screen — while the real getSession()/refresh runs. */
@@ -165,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const userRef = useRef<User | null>(bootSession?.user ?? null);
   const lastRecoveryAttempt = useRef(0);
+  const ignoreSignedOutRecoveryRef = useRef(false);
 
   const applySession = useCallback((sess: Session | null) => {
     const u = sess?.user ?? null;
@@ -303,6 +324,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const prevId = userRef.current?.id ?? null;
 
       if (!nextUser) {
+        // Intentional logout already wiped the UI — do not try to recover.
+        if (ignoreSignedOutRecoveryRef.current) {
+          ignoreSignedOutRecoveryRef.current = false;
+          userRef.current = null;
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          setBanned(null);
+          setIsAdmin(false);
+          setMfaEnabled(false);
+          setAdminGateUnlocked(false);
+          setLoading(false);
+          return;
+        }
         // A SIGNED_OUT can be spurious (background token refresh failed and
         // Supabase removed the session). Try ONE silent recovery before
         // showing the login screen.
@@ -376,6 +411,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (attempts.count >= 5 && Date.now() - attempts.last < 15 * 60 * 1000) {
       return { error: "Muitas tentativas. Tente novamente em 15 minutos." };
     }
+    ignoreSignedOutRecoveryRef.current = false;
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       const next = { count: attempts.count + 1, last: Date.now() };
@@ -432,6 +468,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!u) return;
     writeAdminGate(u.id);
     setAdminGateUnlocked(true);
+  }, []);
+
+  const lockAdminGate = useCallback(() => {
+    const u = userRef.current;
+    if (u) clearAdminGate(u.id);
+    setAdminGateUnlocked(false);
   }, []);
 
   const refreshAdminGate = useCallback(() => {
@@ -569,6 +611,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         listFactors,
         needsCodeToManageMfa,
         unlockAdminGate,
+        lockAdminGate,
         refreshAdminGate,
         signOut,
         refreshProfile,

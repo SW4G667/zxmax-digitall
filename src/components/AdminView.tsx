@@ -1,11 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { useStore, Product, Withdrawal, Purchase } from "@/store/StoreContext";
 import { MoneyEmoji, PackageEmoji, ChatEmoji, StarEmoji, ShieldEmoji } from "@/components/CustomEmojis";
-import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag, ArrowLeft, ExternalLink, Webhook, RefreshCw, KeyRound, ShieldCheck, Lock } from "lucide-react";
+import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag, ArrowLeft, ExternalLink, Webhook, RefreshCw, KeyRound, ShieldCheck, Lock, BarChart3, ShoppingBag, Ban, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import MyPurchasesView from "@/components/MyPurchasesView";
 import IntegrationsPanel from "@/components/IntegrationsPanel";
 import TwoFactorPanel from "@/components/TwoFactorPanel";
+import {
+  AdminStatsPanel,
+  AdminPurchasesPanel,
+  AdminModerationPanel,
+  AdminToolsPanel,
+  AdminSessionPanel,
+} from "@/components/AdminExtraPanels";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -24,7 +31,7 @@ interface WebhookLog {
 export default function AdminView() {
   const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument, saveGatewaySettings } = useStore();
   const { mfaEnabled, isAdmin } = useAuth();
-  const [tab, setTab] = useState<"dashboard" | "products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "verifications" | "disputes" | "config" | "webhooks" | "apis" | "security" | "roles">("dashboard");
+  const [tab, setTab] = useState<"dashboard" | "stats" | "orders" | "moderation" | "tools" | "products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "verifications" | "disputes" | "config" | "webhooks" | "apis" | "security" | "roles">("dashboard");
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [expandedLog, setExpandedLog] = useState<number | null>(null);
@@ -256,6 +263,10 @@ export default function AdminView() {
       <div className="flex gap-2 overflow-x-auto pb-4 mb-6 scrollbar-hide">
         {[
           { id: "dashboard", label: "Dashboard", icon: ShieldCheck },
+          { id: "stats", label: "Estatísticas", icon: BarChart3 },
+          { id: "orders", label: "Pedidos", icon: ShoppingBag },
+          { id: "moderation", label: "Moderação", icon: Ban },
+          { id: "tools", label: "Ferramentas", icon: Wrench },
           { id: "roles", label: "Cargos", icon: Users },
           { id: "security", label: "Segurança 2FA", icon: ShieldCheck },
           { id: "products", label: "Produtos", icon: PackageEmoji, count: pendingProducts.length },
@@ -801,6 +812,11 @@ export default function AdminView() {
         </div>
       )}
 
+      {tab === "stats" && <AdminStatsPanel />}
+      {tab === "orders" && <AdminPurchasesPanel />}
+      {tab === "moderation" && <AdminModerationPanel />}
+      {tab === "tools" && <AdminToolsPanel />}
+
       {tab === "security" && (
         <div className="space-y-6 max-w-2xl">
           <div className="glass-card p-6 border border-white/10 bg-[#0a0a0f]">
@@ -810,6 +826,7 @@ export default function AdminView() {
             </p>
           </div>
           <TwoFactorPanel />
+          <AdminSessionPanel />
         </div>
       )}
 
