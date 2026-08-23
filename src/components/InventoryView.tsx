@@ -3,6 +3,7 @@ import { useStore, Product } from "@/store/StoreContext";
 import { Plus, X, Trash2, Upload, Users, Clock, MessageSquare, Pencil, Package, Coins } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { MIN_PRODUCT_PRICE, parsePriceInput } from "@/lib/catalog";
 
 interface Variation {
   name: string;
@@ -93,18 +94,20 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     e.preventDefault();
     if (!state.currentUser?.isVerified && !state.currentUser?.isAdmin) return toast.error("Verifique sua conta para anunciar.");
     if (!form.name || !form.price) return toast.error("Preencha nome e preço.");
-    if (parseFloat(form.price) < 2) return toast.error("Mínimo R$ 2,00.");
+    const finalPrice = parsePriceInput(form.price);
+    if (!(finalPrice >= MIN_PRODUCT_PRICE)) return toast.error(`Mínimo R$ ${MIN_PRODUCT_PRICE.toFixed(2).replace(".", ",")}.`);
 
-    // Robux special calculation: price per robuxAmount
-    let finalPrice = parseFloat(form.price);
-    let finalVariations = variations.filter((v) => v.name && v.price).map((v) => ({ name: v.name, price: parseFloat(v.price) }));
-    
+    // The advertised price is always the package price.
+    let finalVariations = variations
+      .filter((v) => v.name && v.price)
+      .map((v) => ({ name: v.name, price: parsePriceInput(v.price) }));
+
     if (isRobuxCategory) {
       const robuxQty = parseInt(form.robuxAmount) || 100;
       if (robuxQty <= 0) return toast.error("Quantidade Robux inválida");
-      // The advertised price is the package price, never a per-Robux unit price.
-      // Storing R$ 2,00 as R$ 0,02 used to violate the platform minimum at checkout.
       finalVariations = [{ name: `${robuxQty} Robux`, price: finalPrice }, ...finalVariations];
+    } else {
+      finalVariations = finalVariations.filter((v) => v.price >= MIN_PRODUCT_PRICE);
     }
 
     if (editingId !== null) {

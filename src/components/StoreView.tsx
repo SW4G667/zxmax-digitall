@@ -4,7 +4,7 @@ import { Search, Shield, CheckCircle, Zap, Flame } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import AuthScreen from "@/components/AuthScreen";
 import UserProfileModal from "@/components/UserProfileModal";
-import { storefrontProducts } from "@/lib/catalog";
+import { normalizeProductPrice, storefrontProducts } from "@/lib/catalog";
 
 export default function StoreView() {
   const { state } = useStore();
@@ -35,7 +35,7 @@ export default function StoreView() {
             setFallbackProducts(data.map((p: any) => ({
               id: Number(p.id),
               name: p.name,
-              price: Number(p.price),
+              price: normalizeProductPrice({ price: Number(p.price), category: p.category, variations: p.variations }),
               category: p.category,
               seller: p.seller_name,
               sellerId: p.seller_id,
@@ -63,7 +63,7 @@ export default function StoreView() {
               setFallbackProducts(data2.map((p: any) => ({
                 id: Number(p.id),
                 name: p.name,
-                price: Number(p.price),
+                price: normalizeProductPrice({ price: Number(p.price), category: p.category, variations: p.variations }),
                 category: p.category,
                 seller: p.seller_name,
                 sellerId: p.seller_id,
