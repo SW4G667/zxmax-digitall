@@ -707,7 +707,7 @@ export default function AdminView() {
                   if (!email) return toast.error("Digite e-mail");
                   const { data: prof } = await supabase.from("profiles").select("user_id").eq("email", email).maybeSingle();
                   if (!prof?.user_id) return toast.error("Usuário não encontrado");
-                  const { error } = await supabase.from("user_roles").upsert({ user_id: prof.user_id, role }, { onConflict: "user_id,role" });
+                  const { error } = await supabase.from("user_roles").upsert({ user_id: prof.user_id, role: role as "admin" | "support" | "user" }, { onConflict: "user_id,role" });
                   if (error) return toast.error(error.message);
                   toast.success(`Cargo ${role} dado para ${email}`);
                   emailInput.value = "";

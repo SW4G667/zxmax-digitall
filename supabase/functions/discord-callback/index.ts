@@ -6,70 +6,97 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { code, redirectUri } = await req.json();
-
-    if (!code || typeof code !== "string") {
-      return new Response(JSON.stringify({ success: false, error: "Missing code parameter" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const adminClient = createClient(supabaseUrl, serviceKey);
 
-    // Try to get Discord credentials from app_settings first (admin panel), fallback to env
-    let clientId = Deno.env.get("DISCORD_CLIENT_ID") || "1485093454517371070";
-    let clientSecret = Deno.env.get("DISCORD_CLIENT_SECRET");
-    
-    try {
-      const { data: discordSetting } = await adminClient.from("app_settings").select("value").eq("key", "discord").maybeSingle();
-      if (discordSetting?.value?.clientId) clientId = discordSetting.value.clientId;
-      if (discordSetting?.value?.clientSecret) clientSecret = discordSetting.value.clientSecret;
-    } catch {}
+    const body = await req.json().catch(() => ({}));
+    const action = body.action as string | undefined;
 
-    if (!clientSecret) {
-      console.error("Discord secret not configured");
-      return new Response(JSON.stringify({ success: false, error: "Discord não configurado no servidor. Configure em Admin → APIs & Credenciais ou secrets." }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Discord credentials come from the admin panel (app_settings.discord) —
+    // environment variables are only a fallback. Nothing is hardcoded here.
+    const readDiscordSettings = async () => {
+      let value: Record<string, any> = {};
+      try {
+        const { data } = await adminClient.from("app_settings").select("value").eq("key", "discord").maybeSingle();
+        value = (data?.value as Record<string, any>) || {};
+      } catch {}
+      return {
+        clientId: String(value.clientId || Deno.env.get("DISCORD_CLIENT_ID") || "").trim(),
+        clientSecret: String(value.clientSecret || Deno.env.get("DISCORD_CLIENT_SECRET") || "").trim(),
+        redirectUri: String(value.redirectUri || "").trim(),
+        scopes: String(value.scopes || "identify email").trim(),
+      };
+    };
+
+    // Public, read-only config for the login button (secret is NEVER returned).
+    if (action === "config") {
+      const cfg = await readDiscordSettings();
+      return json({
+        success: true,
+        config: {
+          clientId: cfg.clientId,
+          redirectUri: cfg.redirectUri,
+          scopes: cfg.scopes,
+          configured: !!cfg.clientId,
+        },
       });
     }
 
-    // Allowlist - include vercel preview domains automatically
-    const defaultAllows = "https://zxmax.vercel.app,https://zxmax-digitall.vercel.app,http://localhost:8080,http://127.0.0.1:8080,http://localhost:5173";
-    const envAllows = Deno.env.get("DISCORD_ALLOWED_REDIRECTS") || defaultAllows;
-    const allowedList = envAllows.split(",").map((s) => s.trim().replace(/\/+$/, "")).filter(Boolean);
+    const { code, redirectUri } = body;
 
-    const requested = (redirectUri || "").replace(/\/+$/, "");
-    
-    // Allow any *.vercel.app subdomain automatically (fix for preview deployments)
-    const isVercelPreview = requested.includes(".vercel.app");
-    let finalRedirectUri = requested;
-
-    if (!isVercelPreview) {
-      const exactMatch = allowedList.find((s) => s === requested);
-      finalRedirectUri = exactMatch || "https://zxmax.vercel.app/";
-      if (requested && finalRedirectUri.replace(/\/+$/, "") !== requested) {
-        console.warn("Redirect URI not in allowlist, using default. Requested:", requested, "Allowed:", allowedList);
-      }
-    } else {
-      console.log("Allowing Vercel preview redirect:", requested);
+    if (!code || typeof code !== "string") {
+      return json({ success: false, error: "Missing code parameter" }, 400);
     }
 
-    console.log("Exchanging Discord code, clientId:", clientId, "redirectUri:", finalRedirectUri);
+    const cfg = await readDiscordSettings();
+
+    // Mensagens claras quando falta credencial (pedido do admin).
+    if (!cfg.clientId) {
+      return json(
+        { success: false, error: "Client ID do Discord não configurado. Cadastre em Admin → APIs & Credenciais (Discord OAuth)." },
+        400
+      );
+    }
+    if (!cfg.clientSecret) {
+      return json(
+        { success: false, error: "Client Secret do Discord não configurado. Cadastre em Admin → APIs & Credenciais (Discord OAuth)." },
+        400
+      );
+    }
+
+    // A redirect_uri da troca TEM que ser exatamente a mesma enviada na
+    // autorização. O client manda a string exata que usou (salva no
+    // sessionStorage); nunca reescrevemos para outro domínio — antes o servidor
+    // trocava para o domínio padrão e o Discord respondia "invalid_grant".
+    const finalRedirectUri = String(redirectUri || cfg.redirectUri || "").trim();
+    if (!finalRedirectUri) {
+      return json(
+        { success: false, error: "Redirect URI do Discord não definida. Salve a Redirect URI em Admin → APIs & Credenciais." },
+        400
+      );
+    }
+
+    console.log("Exchanging Discord code, clientId:", cfg.clientId, "redirectUri:", finalRedirectUri);
 
     const tokenRes = await fetch("https://discord.com/api/v10/oauth2/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
+        client_id: cfg.clientId,
+        client_secret: cfg.clientSecret,
         grant_type: "authorization_code",
         code,
         redirect_uri: finalRedirectUri,
@@ -81,7 +108,11 @@ serve(async (req) => {
 
     if (!tokenRes.ok) {
       console.error("Discord token error", tokenData);
-      throw new Error(`Discord: ${tokenData.error_description || tokenData.error || "Erro ao trocar code por token"} - Verifique se Redirect URI em https://discord.com/developers/applications/${clientId}/oauth2/general está igual a ${finalRedirectUri}`);
+      const hint =
+        tokenData.error === "invalid_grant"
+          ? `Código expirado/já usado OU Redirect URI diferente da autorização. No Discord Developer Portal (oauth2), cadastre exatamente: ${finalRedirectUri}`
+          : "";
+      throw new Error(`Discord: ${tokenData.error_description || tokenData.error || "Erro ao trocar code por token"}${hint ? " — " + hint : ""}`);
     }
 
     if (tokenData.error || !tokenData.access_token) {
@@ -100,8 +131,6 @@ serve(async (req) => {
 
     console.log("Discord user ok", discordUser.id, discordUser.username);
 
-    const supabaseAdmin = createClient(supabaseUrl, serviceKey);
-
     const email = discordUser.email || `discord_${discordUser.id}@zxmax.local`;
     const displayName = discordUser.global_name || discordUser.username || `Discord ${discordUser.id}`;
     const avatarUrl = discordUser.avatar
@@ -109,14 +138,14 @@ serve(async (req) => {
       : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(displayName)}`;
 
     // Find existing user
-    const { data: { users: allUsers }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+    const { data: { users: allUsers }, error: listError } = await adminClient.auth.admin.listUsers();
     if (listError) throw listError;
 
     const existingUser = allUsers?.find((u: any) => u.email === email || u.user_metadata?.discord_id === discordUser.id);
 
     if (existingUser) {
       const password = crypto.randomUUID();
-      const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+      const { error: updErr } = await adminClient.auth.admin.updateUserById(existingUser.id, {
         password,
         email_confirm: true,
         user_metadata: {
@@ -128,14 +157,14 @@ serve(async (req) => {
       });
       if (updErr) throw updErr;
 
-      return new Response(JSON.stringify({
+      return json({
         success: true,
         password,
         user: { id: existingUser.id, email: existingUser.email, display_name: displayName, avatar_url: avatarUrl },
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      });
     } else {
       const password = crypto.randomUUID();
-      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+      const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
@@ -144,18 +173,16 @@ serve(async (req) => {
       if (createError) throw createError;
 
       const userId = newUser.user.id;
-      await supabaseAdmin.from("profiles").update({ display_name: displayName, avatar_url: avatarUrl } as any).eq("user_id", userId);
+      await adminClient.from("profiles").update({ display_name: displayName, avatar_url: avatarUrl } as any).eq("user_id", userId);
 
-      return new Response(JSON.stringify({
+      return json({
         success: true,
         password,
         user: { id: userId, email, display_name: displayName, avatar_url: avatarUrl },
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      });
     }
   } catch (error: any) {
     console.error("Discord callback error:", error.message);
-    return new Response(JSON.stringify({ success: false, error: error.message, details: error.toString() }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400,
-    });
+    return json({ success: false, error: error.message, details: error.toString() }, 400);
   }
 });

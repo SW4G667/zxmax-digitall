@@ -241,7 +241,7 @@ const defaultConfig: AppConfig = {
   categories: ["Robux e Gift Cards", "Bots Discord", "Contas", "Scripts", "Assinaturas", "Designs Digitais", "Serviços Online", "Consultoria Virtual", "Keys de Software", "Arquivos", "Jogos e Itens"],
   globalNotice: "",
   authMode: "automatic",
-  discordClientId: "1485093454517371070",
+  discordClientId: "",
   discordClientSecret: "",
   discordRedirectUri: typeof window !== "undefined" ? window.location.origin + "/" : "",
   discordScopes: "identify email",
@@ -324,8 +324,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return stored === null ? true : stored === "true";
   });
 
+  // Effects key on the user ID (a stable primitive), not on the user object:
+  // a token refresh creates a NEW user object for the SAME person, and that
+  // used to make every effect re-run — the "site fica atualizando quando saio
+  // do navegador e volto" bug.
+  const authUserId = authUser?.id ?? null;
+  const authUserRef = React.useRef(authUser);
+  authUserRef.current = authUser;
+
   // Sync auth user to store state - fixed to avoid admin account switch bug
   useEffect(() => {
+    const authUser = authUserRef.current;
     if (authUser) {
       // If profile exists, use it, otherwise create minimal user from authUser to avoid stuck
       const userPublicId = profile ? publicIdFromProfile(profile, authUser.id) : publicIdFromProfile({ public_id: authUser.id.slice(0, 8) }, authUser.id);
@@ -362,9 +371,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // No auth user, clear currentUser
       setState((s) => ({ ...s, currentUser: null }));
     }
-  }, [authUser, profile, isAdmin, state.userBalances, state.userEarnings]);
+  }, [authUserId, profile, isAdmin, state.userBalances, state.userEarnings]);
 
   useEffect(() => {
+    const authUser = authUserRef.current;
     void (async () => {
       const profileSource = isAdmin ? "profiles" : "profiles_public";
       const profileSelect = isAdmin
@@ -392,11 +402,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       setState((s) => ({ ...s, userDirectory: { ...(s.userDirectory || {}), ...directory }, sellerDocuments }));
     })();
-  }, [authUser, isAdmin]);
+  }, [authUserId, isAdmin]);
 
   // Load admin-configurable gateway settings (only readable by admins via RLS)
   useEffect(() => {
-    if (!authUser || !isAdmin) return;
+    if (!authUserId || !isAdmin) return;
     void (async () => {
       const { data } = await (supabase as any).from("app_settings").select("key, value").eq("key", "evopay").maybeSingle();
       if (data?.value) {
@@ -410,11 +420,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
       }
     })();
-  }, [authUser, isAdmin]);
+  }, [authUserId, isAdmin]);
 
 
 
   const loadCatalog = React.useCallback(async () => {
+    const authUser = authUserRef.current;
     const withTimeout = <T,>(p: Promise<T>, ms = 4000): Promise<T | null> =>
       Promise.race([
         p,
@@ -532,25 +543,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }));
     } catch (e) {
       console.error("loadCatalog failed", e);
-      if (authUser) {
+      if (authUserRef.current) {
         setTimeout(() => void loadCatalog(), 3000);
       }
     }
-  }, [authUser]);
+  }, [authUserId]);
 
   useEffect(() => {
     void loadCatalog();
   }, [loadCatalog]);
 
   useEffect(() => {
-    if (!authUser) return;
-    const channel = supabase.channel(`purchases_${authUser.id}`).on(
+    if (!authUserId) return;
+    const channel = supabase.channel(`purchases_${authUserId}`).on(
       "postgres_changes",
       { event: "*", schema: "public", table: "purchases" },
       () => { void refreshPurchases(); },
     ).subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [authUser]);
+  }, [authUserId]);
 
 
   useEffect(() => {
