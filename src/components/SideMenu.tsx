@@ -150,16 +150,18 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
                 </span>
               </Link>
               <Item icon={Wallet} label="Sacar dinheiro" hint="Pix em 5 a 7 dias úteis" onClick={() => go("withdraw")} />
-              <Link to="/perfil" onClick={onClose} className="w-full flex items-center gap-3 p-3.5 rounded-2xl bg-success/10 border border-success/20 hover:bg-success/15 transition group">
-                <span className="p-2.5 rounded-xl bg-success/20 text-success">
-                  <ShieldCheck className="w-[18px] h-[18px]" />
-                </span>
-                <span className="flex-1">
-                  <span className="block text-[13px] font-bold text-white">Segurança 2FA</span>
-                  <span className="block text-[11px] text-success/70">{mfaEnabled ? "Ativo e protegido" : "Ativar autenticador"}</span>
-                </span>
-                <Sparkles className="w-4 h-4 text-success" />
-              </Link>
+              {isAdmin && (
+                <Link to="/perfil" onClick={onClose} className="w-full flex items-center gap-3 p-3.5 rounded-2xl bg-success/10 border border-success/20 hover:bg-success/15 transition group">
+                  <span className="p-2.5 rounded-xl bg-success/20 text-success">
+                    <ShieldCheck className="w-[18px] h-[18px]" />
+                  </span>
+                  <span className="flex-1">
+                    <span className="block text-[13px] font-bold text-white">Autenticador admin</span>
+                    <span className="block text-[11px] text-success/70">{mfaEnabled ? "2FA do painel ativo" : "Configurar 2FA do admin"}</span>
+                  </span>
+                  <Sparkles className="w-4 h-4 text-success" />
+                </Link>
+              )}
             </div>
           </div>
 

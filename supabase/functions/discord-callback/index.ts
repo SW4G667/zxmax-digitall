@@ -104,10 +104,12 @@ serve(async (req) => {
     });
 
     const tokenData = await tokenRes.json();
-    console.log("Discord token status:", tokenRes.status, "data:", JSON.stringify(tokenData).slice(0, 500));
+    const tokenErrCode = typeof tokenData?.error === "string" ? tokenData.error : null;
+    // Never log the token response body — it may contain access_token.
+    console.log("Discord token status:", tokenRes.status, tokenErrCode || (tokenRes.ok ? "ok" : "error"));
 
     if (!tokenRes.ok) {
-      console.error("Discord token error", tokenData);
+      console.error("Discord token error", tokenRes.status, tokenErrCode);
       const hint =
         tokenData.error === "invalid_grant"
           ? `Código expirado/já usado OU Redirect URI diferente da autorização. No Discord Developer Portal (oauth2), cadastre exatamente: ${finalRedirectUri}`

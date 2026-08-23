@@ -38,7 +38,7 @@ export default function BannedScreen() {
         </div>
 
         <button
-          onClick={signOut}
+          onClick={() => void signOut()}
           className="w-full bg-destructive text-destructive-foreground py-3 rounded-2xl font-bold text-sm hover:opacity-90 transition"
         >
           Sair
