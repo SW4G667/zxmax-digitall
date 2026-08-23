@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
-import { ShieldCheck, ShieldOff, Copy, Check, Loader2, Trash2, RefreshCw, Smartphone, KeyRound, Lock } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { ShieldCheck, ShieldOff, Copy, Check, Loader2, Trash2, RefreshCw, Smartphone, KeyRound, Lock, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 
 const ENROLL_STORAGE_KEY = "zxmax_mfa_enroll";
 
@@ -12,9 +13,11 @@ interface EnrollCache {
   createdAt: number;
 }
 
+type Stage = "idle" | "verify" | "confirm-current";
+
 export default function TwoFactorPanel() {
-  const { mfaEnabled, enrollTotpStart, enrollTotpVerify, unenrollTotp, listFactors, isAdmin } = useAuth();
-  const [stage, setStage] = useState<"idle" | "verify">("idle");
+  const { mfaEnabled, enrollTotpStart, enrollTotpVerify, unenrollTotp, listFactors, verifyMfa, needsCodeToManageMfa, unlockAdminGate } = useAuth();
+  const [stage, setStage] = useState<Stage>("idle");
   const [qr, setQr] = useState<string>("");
   const [secret, setSecret] = useState<string>("");
   const [factorId, setFactorId] = useState<string>("");
@@ -22,6 +25,8 @@ export default function TwoFactorPanel() {
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [factors, setFactors] = useState<any[]>([]);
+  const [pendingAction, setPendingAction] = useState<"remove" | "regenerate" | null>(null);
+  const codeRef = useRef<HTMLInputElement>(null);
 
   const loadFactors = async () => {
     const f = await listFactors();
@@ -45,19 +50,25 @@ export default function TwoFactorPanel() {
           localStorage.removeItem(ENROLL_STORAGE_KEY);
         }
       }
-    } catch {}
+    } catch { /* noop */ }
   }, [mfaEnabled]);
+
+  useEffect(() => {
+    if (stage === "confirm-current") {
+      setTimeout(() => codeRef.current?.focus(), 100);
+    }
+  }, [stage]);
 
   const saveEnrollCache = (data: EnrollCache) => {
     try {
       localStorage.setItem(ENROLL_STORAGE_KEY, JSON.stringify(data));
-    } catch {}
+    } catch { /* noop */ }
   };
 
   const clearEnrollCache = () => {
     try {
       localStorage.removeItem(ENROLL_STORAGE_KEY);
-    } catch {}
+    } catch { /* noop */ }
   };
 
   const startEnroll = async () => {
@@ -65,38 +76,15 @@ export default function TwoFactorPanel() {
     try {
       const { data, error } = await enrollTotpStart();
       if (error || !data) {
-        if (error.includes("already exists")) {
-          toast.error("Já existe um código pendente. Limpando e gerando novo...");
-          const factors = await listFactors();
-          for (const f of factors) {
-            if (f.status !== "verified") {
-              await unenrollTotp(f.id).catch(() => {});
-            }
-          }
-          const retry = await enrollTotpStart();
-          if (retry.error || !retry.data) {
-            toast.error(retry.error || "Não foi possível gerar novo código. Remova o 2FA existente primeiro.");
-            setBusy(false);
-            return;
-          }
-          const cache: EnrollCache = { factorId: retry.data.id, qr: retry.data.qr, secret: retry.data.secret, createdAt: Date.now() };
-          saveEnrollCache(cache);
-          setQr(retry.data.qr);
-          setSecret(retry.data.secret);
-          setFactorId(retry.data.id);
-          setStage("verify");
-          setBusy(false);
-          return;
-        }
         toast.error(error || "Não foi possível iniciar a configuração.");
         setBusy(false);
         return;
       }
-      const cache: EnrollCache = { factorId: data.id, qr: data.qr, secret: data.secret, createdAt: Date.now() };
-      saveEnrollCache(cache);
+      saveEnrollCache({ factorId: data.id, qr: data.qr, secret: data.secret, createdAt: Date.now() });
       setQr(data.qr);
       setSecret(data.secret);
       setFactorId(data.id);
+      setCode("");
       setStage("verify");
     } catch (e: any) {
       toast.error(e?.message || "Erro ao configurar 2FA");
@@ -104,16 +92,18 @@ export default function TwoFactorPanel() {
     setBusy(false);
   };
 
-  const confirmEnroll = async () => {
-    if (code.replace(/\s/g, "").length !== 6) {
+  const confirmEnroll = async (value?: string) => {
+    const typed = (value ?? code).replace(/\s/g, "");
+    if (typed.length !== 6) {
       toast.error("Digite o código de 6 dígitos.");
       return;
     }
     setBusy(true);
-    const { error } = await enrollTotpVerify(factorId, code.replace(/\s/g, ""));
+    const { error } = await enrollTotpVerify(factorId, typed);
     setBusy(false);
     if (error) {
-      toast.error("Código inválido. Tente novamente.");
+      toast.error(error || "Código inválido. Tente novamente.");
+      setCode("");
       return;
     }
     toast.success("2FA ativado com sucesso! QR Code removido por segurança. 🔒");
@@ -123,13 +113,13 @@ export default function TwoFactorPanel() {
     setQr("");
     setSecret("");
     setFactorId("");
+    unlockAdminGate();
     void loadFactors();
   };
 
-  const remove = async () => {
-    const f = factors[0];
+  const doRemove = async () => {
+    const f = factors.find((x) => x.status === "verified") || factors[0];
     if (!f) return;
-    if (!confirm("Desativar o 2FA? Sua conta admin ficará vulnerável a hackers.")) return;
     setBusy(true);
     const { error } = await unenrollTotp(f.id);
     setBusy(false);
@@ -140,11 +130,12 @@ export default function TwoFactorPanel() {
     clearEnrollCache();
     toast.success("2FA desativado.");
     setStage("idle");
+    setCode("");
+    setPendingAction(null);
     void loadFactors();
   };
 
-  const regenerate = async () => {
-    if (!confirm("Gerar novo código? O antigo deixará de funcionar. Você precisará escanear novamente no app.")) return;
+  const doRegenerate = async () => {
     const f = factors.find((x) => x.status === "verified") || factors[0];
     if (f) {
       setBusy(true);
@@ -156,7 +147,70 @@ export default function TwoFactorPanel() {
       }
     }
     clearEnrollCache();
+    setCode("");
+    setPendingAction(null);
     await startEnroll();
+  };
+
+  // "Desativar" / "Gerar novo QR Code": Supabase exige sessão AAL2 para mexer
+  // num fator já verificado. Se a sessão ainda for AAL1, pedimos o código atual
+  // do app (o verify eleva a sessão para AAL2) e aí sim seguimos sozinhos.
+  const requestManage = async (action: "remove" | "regenerate") => {
+    if (action === "remove") {
+      if (!confirm("Desativar o 2FA? Sua conta admin ficará vulnerável a hackers.")) return;
+    } else {
+      if (!confirm("Gerar novo código? O antigo deixará de funcionar. Você precisará escanear novamente no app.")) return;
+    }
+    if (await needsCodeToManageMfa()) {
+      setPendingAction(action);
+      setCode("");
+      setStage("confirm-current");
+      return;
+    }
+    if (action === "remove") await doRemove();
+    else await doRegenerate();
+  };
+
+  const confirmCurrentCode = async (value?: string) => {
+    const typed = (value ?? code).replace(/\D/g, "").slice(0, 6);
+    if (typed.length !== 6 || !pendingAction) return;
+    setBusy(true);
+    const { error } = await verifyMfa(typed);
+    if (error) {
+      setBusy(false);
+      setCode("");
+      toast.error(error);
+      setTimeout(() => codeRef.current?.focus(), 50);
+      return;
+    }
+    setBusy(false);
+    unlockAdminGate();
+    toast.success("Código confirmado!");
+    if (pendingAction === "remove") await doRemove();
+    else await doRegenerate();
+  };
+
+  // Último recurso para quem perdeu o aplicativo: remove o fator via servidor
+  // (service role) já que sem o código não dá para elevar a sessão a AAL2.
+  const resetViaServer = async () => {
+    if (!confirm("Remover o autenticador SEM digitar o código? Use só se perdeu o acesso ao aplicativo.")) return;
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-login", { body: { action: "reset_mfa" } });
+      if (error || data?.error) throw new Error(data?.error || error?.message || "Falha no servidor");
+      clearEnrollCache();
+      toast.success("Autenticador removido pelo servidor.");
+      const action = pendingAction;
+      setPendingAction(null);
+      setCode("");
+      setStage("idle");
+      await loadFactors();
+      if (action === "regenerate") await startEnroll();
+    } catch (e: any) {
+      toast.error("Não foi possível remover pelo servidor (a função admin-login precisa estar deployada). " + (e?.message || ""));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const cancelEnroll = () => {
@@ -166,6 +220,7 @@ export default function TwoFactorPanel() {
     setQr("");
     setSecret("");
     setFactorId("");
+    setPendingAction(null);
   };
 
   const copySecret = async () => {
@@ -176,6 +231,16 @@ export default function TwoFactorPanel() {
       setTimeout(() => setCopied(false), 2500);
     } catch {
       toast.error("Não foi possível copiar.");
+    }
+  };
+
+  const handleCodeInput = (val: string) => {
+    const digits = val.replace(/\D/g, "").slice(0, 6);
+    setCode(digits);
+    if (digits.length === 6 && !busy) {
+      // Segue sozinho quando os 6 dígitos são preenchidos
+      if (stage === "confirm-current") void confirmCurrentCode(digits);
+      else if (stage === "verify") void confirmEnroll(digits);
     }
   };
 
@@ -213,10 +278,10 @@ export default function TwoFactorPanel() {
                 <div className="w-2 h-2 rounded-full bg-[#00c950] animate-pulse" />
               </div>
               <div className="flex gap-2">
-                <button onClick={regenerate} disabled={busy} className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 text-sm font-bold transition disabled:opacity-50">
-                  <RefreshCw className="w-4 h-4" /> Gerar novo para outro app
+                <button onClick={() => void requestManage("regenerate")} disabled={busy} className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 text-sm font-bold transition disabled:opacity-50">
+                  <RefreshCw className="w-4 h-4" /> Gerar Novo QR Code
                 </button>
-                <button onClick={remove} disabled={busy} className="px-4 py-3 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/10 text-sm font-bold transition disabled:opacity-50">
+                <button onClick={() => void requestManage("remove")} disabled={busy} title="Desativar 2FA" className="px-4 py-3 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/10 text-sm font-bold transition disabled:opacity-50">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
@@ -246,6 +311,41 @@ export default function TwoFactorPanel() {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {stage === "confirm-current" && (
+        <div className="space-y-4 animate-fade-in-up">
+          <div className="rounded-xl border border-[#0084ff]/30 bg-[#0084ff]/5 p-4 flex items-start gap-3">
+            <ShieldAlert className="w-5 h-5 text-[#0084ff] shrink-0 mt-0.5" />
+            <p className="text-xs text-white/70 leading-relaxed">
+              Para {pendingAction === "remove" ? "desativar o 2FA" : "gerar um novo QR Code"}, confirme a identidade digitando o <strong className="text-white">código que o aplicativo mostra agora</strong>.
+            </p>
+          </div>
+          <input
+            ref={codeRef}
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            value={code}
+            onChange={(e) => handleCodeInput(e.target.value)}
+            placeholder="000000"
+            disabled={busy}
+            className="w-full px-4 py-4 rounded-xl bg-black/50 border border-white/10 text-white text-center text-2xl font-black tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-[#0084ff]/50 focus:border-[#0084ff] transition placeholder:text-white/20"
+          />
+          <div className="flex gap-2">
+            <button onClick={cancelEnroll} disabled={busy} className="flex-1 py-3 rounded-xl text-sm font-bold bg-white/5 border border-white/10 text-white hover:bg-white/10 transition disabled:opacity-50">
+              Cancelar
+            </button>
+            <button onClick={() => void confirmCurrentCode()} disabled={busy || code.length !== 6} className="flex-1 bg-[#0084ff] hover:bg-[#0066cc] text-white py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-[#0084ff]/20 transition">
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+              Confirmar
+            </button>
+          </div>
+          <button onClick={resetViaServer} disabled={busy} className="w-full text-center text-[11px] text-white/30 hover:text-white/60 transition py-1">
+            Perdi o acesso ao aplicativo
+          </button>
         </div>
       )}
 
@@ -285,8 +385,9 @@ export default function TwoFactorPanel() {
               autoComplete="one-time-code"
               maxLength={6}
               value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              onChange={(e) => handleCodeInput(e.target.value)}
               placeholder="000000"
+              disabled={busy}
               className="w-full px-4 py-4 rounded-xl bg-black/50 border border-white/10 text-white text-center text-2xl font-black tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-[#00c950]/50 focus:border-[#00c950] transition placeholder:text-white/20"
             />
             <p className="text-[11px] text-white/40 mt-2 text-center">Ao confirmar, o QR some. Só pedirá código quando sair e voltar.</p>
@@ -296,7 +397,7 @@ export default function TwoFactorPanel() {
             <button onClick={cancelEnroll} disabled={busy} className="flex-1 py-3 rounded-xl text-sm font-bold bg-white/5 border border-white/10 text-white hover:bg-white/10 transition disabled:opacity-50">
               Cancelar
             </button>
-            <button onClick={confirmEnroll} disabled={busy || code.length !== 6} className="flex-1 bg-[#0084ff] hover:bg-[#0066cc] text-white py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-[#0084ff]/20 transition">
+            <button onClick={() => void confirmEnroll()} disabled={busy || code.length !== 6} className="flex-1 bg-[#0084ff] hover:bg-[#0066cc] text-white py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-[#0084ff]/20 transition">
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
               Ativar
             </button>

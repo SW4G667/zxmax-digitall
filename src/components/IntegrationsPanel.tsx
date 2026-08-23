@@ -40,7 +40,7 @@ const PROVIDERS: { id: string; name: string; hint: string; fields: Field[] }[] =
     name: "Discord OAuth",
     hint: "Login social via Discord. O Redirect URI precisa ser idêntico ao cadastrado no Discord Developer Portal.",
     fields: [
-      { key: "clientId", label: "Client ID", placeholder: "1485093454517371070" },
+      { key: "clientId", label: "Client ID", placeholder: "ID do aplicativo no Discord Developer Portal" },
       { key: "clientSecret", label: "Client Secret", secret: true },
       { key: "redirectUri", label: "Redirect URI", placeholder: window.location.origin + "/" },
       { key: "scopes", label: "Scopes", placeholder: "identify email" },
