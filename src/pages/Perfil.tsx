@@ -4,7 +4,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ArrowLeft, Shield, Upload, Loader2, CheckCircle2, Clock, XCircle } from "lucide-react";
 import TwoFactorPanel from "@/components/TwoFactorPanel";
-import GalleryFileInput from "@/components/GalleryFileInput";
 import LoadingScreen from "@/components/LoadingScreen";
 import AppShell from "@/components/AppShell";
 
@@ -27,7 +26,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const inputClass = "w-full p-3 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-sm text-white outline-none focus:border-[#0084ff] focus:ring-1 focus:ring-[#0084ff]/20";
 
 function PerfilInner() {
-  const { user, profile, loading, refreshProfile, isAdmin } = useAuth();
+  const { user, profile, loading, refreshProfile } = useAuth();
 
   const [form, setForm] = useState({
     display_name: "",
@@ -211,11 +210,9 @@ function PerfilInner() {
           </button>
         </div>
 
-        {isAdmin && (
-          <div className="mb-5">
-            <TwoFactorPanel />
-          </div>
-        )}
+        <div className="mb-5">
+          <TwoFactorPanel />
+        </div>
 
         <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
           <h2 className="font-bold text-white mb-1">Verificação de identidade</h2>
@@ -227,7 +224,7 @@ function PerfilInner() {
             <p className="text-sm text-[#00c950] font-bold flex items-center gap-2"><Shield className="w-4 h-4" /> Conta verificada.</p>
           ) : (
             <>
-              <GalleryFileInput mode="gallery" onChange={(e) => setSelfie(e.target.files?.[0] || null)} className="block w-full text-xs text-white/40 file:mr-3 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#1a1a20] file:text-white file:border file:border-[#25252e]" />
+              <input type="file" accept="image/*" onChange={(e) => setSelfie(e.target.files?.[0] || null)} className="block w-full text-xs text-white/40 file:mr-3 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#1a1a20] file:text-white file:border file:border-[#25252e]" />
               <button onClick={handleSubmitVerification} disabled={sending} className="bg-[#0084ff] hover:bg-[#0066cc] text-white mt-5 px-5 py-3 rounded-xl font-bold text-sm inline-flex items-center gap-2 disabled:opacity-50 transition">
                 {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                 {sending ? "Enviando..." : "Enviar verificação"}

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -102,9 +102,7 @@ export interface Withdrawal {
   userEmail: string;
   userId: string;
   amount: number;
-  fee?: number;
-  netAmount?: number;
-  method: "normal" | "instant" | "admin_fee" | string;
+  method: "normal" | "instant";
   status: "pending" | "approved" | "rejected";
   createdAt: string;
   pixKey?: string;
@@ -125,7 +123,7 @@ export interface SupportTicket {
 export interface UserTag {
   id: number;
   name: string;
-  color: string;
+  color: string; // hex or hsl
 }
 
 export interface SellerDocument {
@@ -151,8 +149,6 @@ export interface UserDirectoryEntry {
 export interface AppConfig {
   commission: number;
   instantFee: number;
-  minWithdraw: number;
-  withdrawFee: number;
   discordLink: string;
   categories: string[];
   globalNotice: string;
@@ -180,13 +176,9 @@ interface AppState {
   globalNotices: GlobalNotice[];
   adminChat: AdminChatMessage[];
   userTags: UserTag[];
-  userTagAssignments: Record<string, number[]>;
+  userTagAssignments: Record<string, number[]>; // email -> tagIds
   userBalances: Record<string, number>;
   userEarnings: Record<string, number>;
-  adminFeeBalance: number;
-  totalPlatformGrossSales: number;
-  totalPlatformCommissionEarned: number;
-  totalSellerCustodyBalance: number;
   sellerDocuments: SellerDocument[];
   userDirectory: Record<string, UserDirectoryEntry>;
 }
@@ -208,7 +200,7 @@ interface StoreContextType {
   markPurchasePaid: (purchaseId: number) => void;
   approvePurchase: (id: number) => void;
   revertPurchase: (id: number) => void;
-  requestWithdraw: (method?: "normal" | "instant" | "admin_fee", options?: { retryOf?: number; amount?: number; pixKey?: string }) => Promise<void>;
+  requestWithdraw: (method: "normal" | "instant", options?: { retryOf?: number }) => Promise<void>;
   approveWithdraw: (id: number) => Promise<void>;
   rejectWithdraw: (id: number, reason?: string) => Promise<void>;
   updateConfig: (c: Partial<AppConfig>) => void;
@@ -245,22 +237,8 @@ interface StoreContextType {
 const defaultConfig: AppConfig = {
   commission: 10,
   instantFee: 7,
-  minWithdraw: 5.00,
-  withdrawFee: 1.20,
   discordLink: "https://discord.gg/zxmax",
-  categories: [
-    "Robux e Gift Cards",
-    "Bots Discord",
-    "Contas",
-    "Scripts",
-    "Assinaturas",
-    "Designs Digitais",
-    "Serviços Online",
-    "Consultoria Virtual",
-    "Keys de Software",
-    "Arquivos",
-    "Jogos e Itens",
-  ],
+  categories: ["Robux e Gift Cards", "Bots Discord", "Contas", "Scripts", "Assinaturas", "Designs Digitais", "Serviços Online", "Consultoria Virtual", "Keys de Software", "Arquivos", "Jogos e Itens"],
   globalNotice: "",
   authMode: "automatic",
   discordClientId: "1485093454517371070",
@@ -272,8 +250,7 @@ const defaultConfig: AppConfig = {
   evopayApiKey: "",
   evopayMode: "automatic",
   evopayWebhookUrl: typeof window !== "undefined" ? `https://dbekdedzgkfgtlytrnyw.supabase.co/functions/v1/evopay-webhook` : "",
-  rules:
-    "1- Proibido estelionato (golpe).\n2- Proibido lavagem de dinheiro no sistema de saque do site.\n3- Proibido venda de conteúdo adulto, cp, gore ou qualquer conteúdo doloso.\n\n**(Toda regra quebrada resultará em suspensão do usuário de 1 semana a permanente sem receber dinheiro de vendas durante a suspensão.)**",
+  rules: "1- Proibido estelionato(golpe).\n2-Proibido lavagem de dinheiro no sistema de saque do site.\n3-Proibido venda de conteúdo adulto, cp, gore ou qualquer conteúdo doloso\n\n**(Toda regra quebrada resultará a suspensão do usuário de 1 semana a permanente sem receber dinheiro de vendas durante a suspensão.)**",
 };
 
 const StoreContext = createContext<StoreContextType | null>(null);
@@ -299,17 +276,12 @@ function loadState(): AppState {
     userTagAssignments: {},
     userBalances: {},
     userEarnings: {},
-    adminFeeBalance: 0,
-    totalPlatformGrossSales: 0,
-    totalPlatformCommissionEarned: 0,
-    totalSellerCustodyBalance: 0,
     sellerDocuments: [],
     userDirectory: {},
   };
 }
 
-const publicIdFromProfile = (profile: any, fallback: string) =>
-  String(profile?.public_id || fallback.replace(/\D/g, "").slice(0, 8) || "100000");
+const publicIdFromProfile = (profile: any, fallback: string) => String(profile?.public_id || fallback.replace(/\D/g, "").slice(0, 8) || "100000");
 
 const mapPurchaseRow = (p: any): Purchase => ({
   id: Number(p.id),
@@ -345,21 +317,17 @@ const inferPixType = (key: string): string => {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { user: authUser, profile, isAdmin, signOut } = useAuth();
-  // Effects below depend on the user *id*, never on the user object: a new
-  // object arrived on every token refresh / tab focus and re-triggered every
-  // fetch, which made the whole page look like it was reloading by itself.
-  const authUserId = authUser?.id ?? null;
   const [state, setState] = useState<AppState>(loadState);
-  const catalogRetriesRef = useRef(0);
-  const catalogRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isDark, setIsDark] = useState<boolean>(() => {
+    // GGMAX-style: dark theme is the default. Only opt OUT via theme toggle.
     const stored = localStorage.getItem("zxmax_dark");
     return stored === null ? true : stored === "true";
   });
 
-  // Sync auth user to store state
+  // Sync auth user to store state - fixed to avoid admin account switch bug
   useEffect(() => {
     if (authUser) {
+      // If profile exists, use it, otherwise create minimal user from authUser to avoid stuck
       const userPublicId = profile ? publicIdFromProfile(profile, authUser.id) : publicIdFromProfile({ public_id: authUser.id.slice(0, 8) }, authUser.id);
       const user: User = {
         id: authUser.id,
@@ -373,22 +341,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         pixKey: profile?.pix_key || "",
         isVerified: profile?.is_verified_seller || false,
       };
-
-      setState((s) => ({
-        ...s,
-        currentUser: user,
-        userDirectory: {
-          ...(s.userDirectory || {}),
-          [authUser.id]: { userId: authUser.id, publicId: userPublicId, email: user.email || "", name: user.name, avatar: user.avatar, isVerified: user.isVerified },
-        },
-      }));
+      setState((s) => {
+        // Avoid switching to admin account randomly - only update if user id matches or currentUser is null
+        if (s.currentUser && s.currentUser.id !== authUser.id) {
+          console.log("Preventing account switch from", s.currentUser.id, "to", authUser.id);
+          // If current user is different, only switch if authUser is actually the logged user
+          // This prevents the bug where profile photo bugs and returns to admin account
+          if (!profile) return s; // Don't switch if profile not loaded yet
+        }
+        return {
+          ...s,
+          currentUser: user,
+          userDirectory: {
+            ...(s.userDirectory || {}),
+            [authUser.id]: { userId: authUser.id, publicId: userPublicId, email: user.email || "", name: user.name, avatar: user.avatar, isVerified: user.isVerified },
+          },
+        };
+      });
     } else {
+      // No auth user, clear currentUser
       setState((s) => ({ ...s, currentUser: null }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUserId, profile, isAdmin, state.userBalances, state.userEarnings]);
+  }, [authUser, profile, isAdmin, state.userBalances, state.userEarnings]);
 
-  // Load profiles & directory
   useEffect(() => {
     void (async () => {
       const profileSource = isAdmin ? "profiles" : "profiles_public";
@@ -397,22 +372,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         : "user_id, public_id, display_name, avatar_url, is_verified_seller";
       const { data: profiles } = await (supabase as any).from(profileSource).select(profileSelect);
       const directory = ((profiles || []) as any[]).reduce((acc, p) => {
-        acc[p.user_id] = {
-          userId: p.user_id,
-          publicId: String(p.public_id || ""),
-          email: p.email || "",
-          name: p.display_name || p.email?.split("@")[0] || "Usuário",
-          avatar: p.avatar_url || undefined,
-          isVerified: !!p.is_verified_seller,
-        };
+        acc[p.user_id] = { userId: p.user_id, publicId: String(p.public_id || ""), email: p.email || "", name: p.display_name || p.email?.split("@")[0] || "Usuário", avatar: p.avatar_url || undefined, isVerified: !!p.is_verified_seller };
         return acc;
       }, {} as Record<string, UserDirectoryEntry>);
 
       const { data: docs } = authUser
-        ? await (supabase as any)
-            .from("seller_documents")
-            .select("id, user_id, file_path, file_name, status, created_at")
-            .order("created_at", { ascending: false })
+        ? await (supabase as any).from("seller_documents").select("id, user_id, file_path, file_name, status, created_at").order("created_at", { ascending: false })
         : { data: [] };
       const sellerDocuments = ((docs || []) as any[]).map((d) => ({
         id: d.id,
@@ -425,84 +390,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         createdAt: d.created_at,
       }));
 
-      let globalNotices: { id: number; text: string; date: string }[] = [];
-      let tickets: { id: number; userEmail: string; userId: string; subject: string; messages: any[]; status: "open" | "closed" }[] = [];
-      try {
-        const { data: noticeRows } = await (supabase as any)
-          .from("global_notices")
-          .select("id, text, created_at")
-          .order("created_at", { ascending: false })
-          .limit(30);
-        globalNotices = ((noticeRows || []) as any[]).map((n) => ({
-          id: Number(n.id) || Date.now(),
-          text: n.text,
-          date: n.created_at,
-        }));
-      } catch {}
-      try {
-        const { data: ticketRows } = authUser
-          ? await (supabase as any)
-              .from("support_tickets")
-              .select("id, user_id, user_email, subject, status, messages")
-              .order("created_at", { ascending: false })
-              .limit(80)
-          : { data: [] };
-        tickets = ((ticketRows || []) as any[]).map((t) => ({
-          id: Number(t.id),
-          userEmail: t.user_email,
-          userId: t.user_id,
-          subject: t.subject,
-          messages: t.messages || [],
-          status: (t.status === "closed" ? "closed" : "open") as "open" | "closed",
-        }));
-      } catch {}
-
-      setState((s) => ({
-        ...s,
-        userDirectory: { ...(s.userDirectory || {}), ...directory },
-        sellerDocuments,
-        globalNotices: globalNotices.length ? globalNotices : s.globalNotices,
-        tickets: tickets.length ? tickets : s.tickets,
-      }));
+      setState((s) => ({ ...s, userDirectory: { ...(s.userDirectory || {}), ...directory }, sellerDocuments }));
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUserId, isAdmin]);
+  }, [authUser, isAdmin]);
 
-  // Load app settings
+  // Load admin-configurable gateway settings (only readable by admins via RLS)
   useEffect(() => {
+    if (!authUser || !isAdmin) return;
     void (async () => {
-      const { data: feeData } = await (supabase as any).from("app_settings").select("key, value").eq("key", "fees").maybeSingle();
-      if (feeData?.value) {
+      const { data } = await (supabase as any).from("app_settings").select("key, value").eq("key", "evopay").maybeSingle();
+      if (data?.value) {
         setState((s) => ({
           ...s,
           config: {
             ...s.config,
-            commission: Number(feeData.value.commission ?? s.config.commission),
-            instantFee: Number(feeData.value.instant_fee ?? s.config.instantFee),
-            minWithdraw: Number(feeData.value.min_withdraw ?? 5.00),
-            withdrawFee: Number(feeData.value.withdraw_fee ?? 1.20),
+            evopayMode: data.value.mode || s.config.evopayMode,
+            evopayApiKey: data.value.apiKey || s.config.evopayApiKey,
           },
         }));
       }
-
-      if (authUser && isAdmin) {
-        const { data: evoData } = await (supabase as any).from("app_settings").select("key, value").eq("key", "evopay").maybeSingle();
-        if (evoData?.value) {
-          setState((s) => ({
-            ...s,
-            config: {
-              ...s.config,
-              evopayMode: evoData.value.mode || s.config.evopayMode,
-              evopayApiKey: evoData.value.apiKey || s.config.evopayApiKey,
-            },
-          }));
-        }
-      }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUserId, isAdmin]);
+  }, [authUser, isAdmin]);
 
-  const loadCatalog = useCallback(async () => {
+
+
+  const loadCatalog = React.useCallback(async () => {
     const withTimeout = <T,>(p: Promise<T>, ms = 4000): Promise<T | null> =>
       Promise.race([
         p,
@@ -510,93 +422,87 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ]) as Promise<T | null>;
 
     try {
+      // Public catalog must work 100% - anon can only query via products_public view (RLS blocks direct products table)
       let dbProducts: any[] = [];
-      const publicSelect =
-        "id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at";
-      const authSelect = publicSelect + ",stock,min_quantity,delivery_time";
-
-      const loadPublic = async () => {
-        const { data, error } = await (supabase as any)
-          .from("products_public")
-          .select(publicSelect)
-          .order("created_at", { ascending: false });
-        if (!error && data) return data as any[];
-        const { data: fallbackData } = await (supabase as any)
-          .from("products")
-          .select(publicSelect)
-          .eq("approved", true)
-          .order("created_at", { ascending: false });
-        return (fallbackData || []) as any[];
-      };
-
+      
       if (!authUser) {
+        // Anon: MUST use products_public view (approved=true already in view definition)
+        // No timeout to guarantee visibility - this is the public storefront
         try {
-          dbProducts = await loadPublic();
+          const { data, error } = await (supabase as any)
+            .from("products_public")
+            .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
+            .order("created_at", { ascending: false });
+          
+          if (!error && data) {
+            dbProducts = data;
+            console.log("Anon products_public loaded:", dbProducts.length);
+          } else {
+            console.error("Anon products_public error:", error);
+            // Fallback try products table with approved filter (might fail due to RLS)
+            const { data: fallbackData } = await (supabase as any)
+              .from("products")
+              .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
+              .eq("approved", true)
+              .order("created_at", { ascending: false });
+            if (fallbackData) dbProducts = fallbackData as any[];
+          }
         } catch (e) {
           console.error("Anon load failed", e);
         }
       } else {
+        // Authenticated: try products table (RLS allows approved OR own OR admin)
         const result = await withTimeout(
-          (supabase as any).from("products").select(authSelect).order("created_at", { ascending: false }),
+          (supabase as any)
+            .from("products")
+            .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at,stock,min_quantity,delivery_time")
+            .order("created_at", { ascending: false }),
           5000
         );
         dbProducts = (result as any)?.data || [];
-        if (!dbProducts.length) {
-          const slim = await withTimeout(
-            (supabase as any).from("products").select(publicSelect).order("created_at", { ascending: false }),
-            4000
-          );
-          dbProducts = (slim as any)?.data || [];
+        
+        // If empty for auth user, try public view as fallback
+        if (dbProducts.length === 0) {
+          const { data: publicData } = await (supabase as any)
+            .from("products_public")
+            .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
+            .order("created_at", { ascending: false });
+          if (publicData && publicData.length > 0) dbProducts = publicData as any[];
         }
-        if (!dbProducts.length) dbProducts = await loadPublic();
       }
 
       const results = await Promise.all([
         Promise.resolve({ data: dbProducts } as any),
         authUser
-          ? withTimeout(
-              (supabase as any)
-                .from("purchases")
-                .select(
-                  "id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at"
-                )
-                .order("created_at", { ascending: false }),
-              5000
-            )
+          ? withTimeout((supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false }), 5000)
           : Promise.resolve({ data: [] } as any),
-        authUser
-          ? withTimeout((supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }), 5000)
-          : Promise.resolve({ data: [] } as any),
-        authUser
-          ? withTimeout((supabase as any).from("product_delivery").select("product_id,delivery_content"), 5000)
-          : Promise.resolve({ data: [] } as any),
+        authUser ? withTimeout((supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }), 5000) : Promise.resolve({ data: [] } as any),
+        authUser ? withTimeout((supabase as any).from("product_delivery").select("product_id,delivery_content"), 5000) : Promise.resolve({ data: [] } as any),
       ]);
 
       const dbPurchases = (results[1] as any)?.data || [];
       const dbWithdrawals = (results[2] as any)?.data || [];
       const deliveryRows = (results[3] as any)?.data || [];
 
-      const deliveryByProduct = new Map(
-        ((deliveryRows || []) as any[]).map((d) => [Number(d.product_id), d.delivery_content || undefined])
-      );
-      const products = ((dbProducts || []) as any[]).map((p) => ({
-        id: Number(p.id),
-        name: p.name,
-        price: Number(p.price),
-        category: p.category,
-        seller: p.seller_name,
-        sellerEmail: "",
-        sellerId: p.seller_id,
-        sellerPublicId: p.seller_public_id,
-        sales: p.sales || 0,
-        rating: Number(p.rating || 0),
-        image: p.image,
-        banner: p.banner || undefined,
-        description: p.description,
-        approved: p.approved,
-        deliveryType: p.delivery_type,
-        deliveryContent: deliveryByProduct.get(Number(p.id)),
-        variations: p.variations || [],
+      const deliveryByProduct = new Map(((deliveryRows || []) as any[]).map((d) => [Number(d.product_id), d.delivery_content || undefined]));
+      const products = ((dbProducts || []) as any[]).map((p) => ({ 
+        id: Number(p.id), 
+        name: p.name, 
+        price: Number(p.price), 
+        category: p.category, 
+        seller: p.seller_name, 
+        sellerEmail: "", 
+        sellerId: p.seller_id, 
+        sellerPublicId: p.seller_public_id, 
+        sales: p.sales || 0, 
+        rating: Number(p.rating || 0), 
+        image: p.image, 
+        banner: p.banner || undefined, 
+        description: p.description, 
+        approved: p.approved, 
+        deliveryType: p.delivery_type, 
+        deliveryContent: deliveryByProduct.get(Number(p.id)), 
+        variations: p.variations || [], 
         questions: p.questions || [],
         stock: p.stock || Math.floor((p.sales || 0) * 137 + 500),
         minQuantity: p.min_quantity || p.minQuantity || 100,
@@ -604,119 +510,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         sellerRating: 99.4,
         sellerReviews: Math.floor((p.sales || 0) * 12 + 100),
       })) as Product[];
-
       const purchases = ((dbPurchases || []) as any[]).map(mapPurchaseRow) as Purchase[];
-      const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({
-        id: Number(w.id),
-        userEmail: w.user_email,
-        userId: w.user_id,
-        amount: Number(w.amount),
-        fee: Number(w.fee ?? 1.20),
-        netAmount: Number(w.net_amount ?? (Number(w.amount) - Number(w.fee ?? 1.20))),
-        method: w.method,
-        status: w.status,
-        createdAt: w.created_at,
-        pixKey: w.pix_key || "",
-        rejectionReason: w.rejection_reason || "",
-        providerTxId: w.provider_tx_id || "",
-        retryOf: w.retry_of ?? null,
-      })) as Withdrawal[];
-
-      // Real-time calculation of balances:
-      const commissionRate = (state.config.commission || 10) / 100;
-      const userBalances: Record<string, number> = {};
-      const userEarnings: Record<string, number> = {};
-
-      // 1. Seller earnings from delivered purchases
-      purchases.forEach((p) => {
-        if (p.sellerId && (p.status === "delivered" || p.status === "paid")) {
-          const amt = Number(p.amount) || 0;
-          const net = amt * (1 - commissionRate);
-          userEarnings[p.sellerId] = (userEarnings[p.sellerId] || 0) + net;
-        }
-      });
-
-      // 2. Subtract pending or approved withdrawals for sellers
-      const allUserIds = new Set([...Object.keys(userEarnings), ...withdrawals.map((w) => w.userId)]);
-      allUserIds.forEach((uid) => {
-        const earned = userEarnings[uid] || 0;
-        const withdrawn = withdrawals
-          .filter((w) => w.userId === uid && w.method !== "admin_fee" && (w.status === "pending" || w.status === "approved"))
-          .reduce((sum, w) => sum + Number(w.amount), 0);
-        userBalances[uid] = Math.max(0, Number((earned - withdrawn).toFixed(2)));
-        userEarnings[uid] = Number(earned.toFixed(2));
-      });
-
-      // 3. Platform / Admin Commission Balance (Taxas da Plataforma Arrecadadas)
-      const deliveredOrPaidPurchases = purchases.filter((p) => p.status === "delivered" || p.status === "paid");
-      const totalPlatformGrossSales = Number(deliveredOrPaidPurchases.reduce((s, p) => s + Number(p.amount), 0).toFixed(2));
-      const totalPlatformCommissionEarned = Number((totalPlatformGrossSales * commissionRate).toFixed(2));
-      const adminWithdrawn = withdrawals
-        .filter((w) => w.method === "admin_fee" && (w.status === "pending" || w.status === "approved"))
-        .reduce((sum, w) => sum + Number(w.amount), 0);
-      const adminFeeBalance = Math.max(0, Number((totalPlatformCommissionEarned - adminWithdrawn).toFixed(2)));
-
-      // 4. Total sellers custody balance
-      const totalSellerCustodyBalance = Number(
-        Object.values(userBalances).reduce((sum, b) => sum + b, 0).toFixed(2)
-      );
-
+      const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "", rejectionReason: w.rejection_reason || "", providerTxId: w.provider_tx_id || "", retryOf: w.retry_of ?? null })) as Withdrawal[];
       setState((s) => ({
         ...s,
         products,
         purchases,
         withdrawals,
-        userBalances,
-        userEarnings,
-        adminFeeBalance,
-        totalPlatformGrossSales,
-        totalPlatformCommissionEarned,
-        totalSellerCustodyBalance,
       }));
     } catch (e) {
       console.error("loadCatalog failed", e);
-      // Bounded retry: the old code retried forever every 3s, which piled up
-      // requests (and kept the UI in a permanent "loading" feel) when the
-      // backend was unreachable.
-      if (authUser && catalogRetriesRef.current < 3) {
-        catalogRetriesRef.current += 1;
-        const delay = 3000 * catalogRetriesRef.current;
-        if (catalogRetryTimerRef.current) clearTimeout(catalogRetryTimerRef.current);
-        catalogRetryTimerRef.current = setTimeout(() => void loadCatalog(), delay);
+      if (authUser) {
+        setTimeout(() => void loadCatalog(), 3000);
       }
-      return;
     }
-    catalogRetriesRef.current = 0;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUserId, state.config.commission]);
+  }, [authUser]);
 
   useEffect(() => {
     void loadCatalog();
-    return () => {
-      if (catalogRetryTimerRef.current) clearTimeout(catalogRetryTimerRef.current);
-    };
   }, [loadCatalog]);
 
   useEffect(() => {
     if (!authUser) return;
-    const channel = supabase
-      .channel(`purchases_${authUser.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "purchases" }, () => {
-        void refreshPurchases();
-      })
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUserId]);
+    const channel = supabase.channel(`purchases_${authUser.id}`).on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "purchases" },
+      () => { void refreshPurchases(); },
+    ).subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [authUser]);
+
 
   useEffect(() => {
     localStorage.setItem("zxmax_dark", String(isDark));
     document.documentElement.classList.toggle("dark", isDark);
   }, [isDark]);
 
-  const login = (_email: string, _name: string) => {};
+  const login = (_email: string, _name: string) => {
+    // No-op: auth is handled by AuthProvider now
+  };
 
   const logout = () => {
     signOut();
@@ -725,49 +557,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const addProduct = (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => {
     if (!state.currentUser) return;
+    // Admin products are always auto-approved, even if state is stale, check isAdmin from auth
     const initialApproved = !!state.currentUser.isAdmin || isAdmin;
-    const newProduct = {
-      ...p,
-      id: Date.now(),
-      sales: 0,
-      rating: 0,
-      approved: initialApproved,
-      sellerId: state.currentUser.id,
-      sellerPublicId: state.currentUser.publicId,
-    };
+    const newProduct = { ...p, id: Date.now(), sales: 0, rating: 0, approved: initialApproved, sellerId: state.currentUser.id, sellerPublicId: state.currentUser.publicId };
     void (async () => {
-      const { data } = await (supabase as any)
-        .from("products")
-        .insert({
-          seller_id: newProduct.sellerId,
-          seller_public_id: newProduct.sellerPublicId,
-          seller_email: newProduct.sellerEmail,
-          seller_name: newProduct.seller,
-          name: newProduct.name,
-          price: newProduct.price,
-          category: newProduct.category,
-          image: newProduct.image,
-          banner: newProduct.banner || null,
-          description: newProduct.description,
-          approved: initialApproved,
-          delivery_type: newProduct.deliveryType,
-          variations: newProduct.variations || [],
-          questions: newProduct.questions || [],
-        })
-        .select("id")
-        .maybeSingle();
+      const { data } = await (supabase as any).from("products").insert({ seller_id: newProduct.sellerId, seller_public_id: newProduct.sellerPublicId, seller_email: newProduct.sellerEmail, seller_name: newProduct.seller, name: newProduct.name, price: newProduct.price, category: newProduct.category, image: newProduct.image, banner: newProduct.banner || null, description: newProduct.description, approved: initialApproved, delivery_type: newProduct.deliveryType, variations: newProduct.variations || [], questions: newProduct.questions || [] }).select("id").maybeSingle();
       if (data?.id) {
-        await (supabase as any)
-          .from("product_delivery")
-          .upsert({
-            product_id: Number(data.id),
-            delivery_type: newProduct.deliveryType,
-            delivery_content: newProduct.deliveryContent || null,
-          });
-        setState((s) => ({
-          ...s,
-          products: s.products.map((pr) => (pr.id === newProduct.id ? { ...pr, id: Number(data.id) } : pr)),
-        }));
+        await (supabase as any).from("product_delivery").upsert({ product_id: Number(data.id), delivery_type: newProduct.deliveryType, delivery_content: newProduct.deliveryContent || null });
+        setState((s) => ({ ...s, products: s.products.map((pr) => (pr.id === newProduct.id ? { ...pr, id: Number(data.id) } : pr)) }));
       }
     })();
     setState((s) => ({
@@ -779,6 +576,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const updateProduct = async (id: number, p: Partial<Omit<Product, "id" | "sellerId">>) => {
     const existing = state.products.find((pr) => pr.id === id);
     if (!existing) return false;
+    // If price or delivery content changed, send back to review - but admin edits stay approved
     const essentialChanged =
       (p.price !== undefined && p.price !== existing.price) ||
       (p.deliveryContent !== undefined && p.deliveryContent !== existing.deliveryContent) ||
@@ -795,9 +593,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (p.stock !== undefined) dbPayload.stock = p.stock;
     if (p.minQuantity !== undefined) dbPayload.min_quantity = p.minQuantity;
     if (p.deliveryTime !== undefined) dbPayload.delivery_time = p.deliveryTime;
+    // Only unapprove if not admin and essential changed
     if (essentialChanged && !isAdmin) dbPayload.approved = false;
     else if (isAdmin) dbPayload.approved = true;
-
+    
     try {
       const { error } = await (supabase as any).from("products").update(dbPayload).eq("id", id);
       if (error) {
@@ -806,19 +605,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return false;
       }
       if (p.deliveryContent !== undefined || p.deliveryType !== undefined) {
-        await (supabase as any)
-          .from("product_delivery")
-          .upsert({
-            product_id: id,
-            delivery_type: p.deliveryType || existing.deliveryType,
-            delivery_content: p.deliveryContent ?? existing.deliveryContent ?? null,
-          });
+        await (supabase as any).from("product_delivery").upsert({ product_id: id, delivery_type: p.deliveryType || existing.deliveryType, delivery_content: p.deliveryContent ?? existing.deliveryContent ?? null });
       }
       setState((s) => ({
         ...s,
-        products: s.products.map((pr) =>
-          pr.id === id ? { ...pr, ...p, approved: isAdmin ? true : essentialChanged ? false : pr.approved } : pr
-        ),
+        products: s.products.map((pr) => (pr.id === id ? { ...pr, ...p, approved: isAdmin ? true : (essentialChanged ? false : pr.approved) } : pr)),
       }));
       return true;
     } catch (e: any) {
@@ -829,14 +620,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const approveProduct = async (id: number) => {
-    try {
-      const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "approve_product", productId: id } });
-      if (!error && !data?.error) {
-        setState((s) => ({ ...s, products: s.products.map((p) => (p.id === id ? { ...p, approved: true } : p)) }));
-        await loadCatalog();
-        return true;
-      }
-    } catch {}
     const { error } = await (supabase as any).from("products").update({ approved: true }).eq("id", id).select("id").maybeSingle();
     if (error) {
       toast.error("Não foi possível aprovar o anúncio: " + error.message);
@@ -852,13 +635,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const rejectProduct = async (id: number) => {
-    try {
-      const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "reject_product", productId: id } });
-      if (!error && !data?.error) {
-        setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
-        return true;
-      }
-    } catch {}
     const { error } = await (supabase as any).from("products").delete().eq("id", id);
     if (error) {
       toast.error("Não foi possível remover o anúncio: " + error.message);
@@ -868,7 +644,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
+
   const deleteProduct = async (id: number): Promise<{ paused: boolean }> => {
+    // If product has orders, pause (unapprove) instead of deleting to preserve history
     const hasOrders = state.purchases.some((pu) => pu.productId === id);
     if (hasOrders) {
       await (supabase as any).from("products").update({ approved: false }).eq("id", id);
@@ -900,24 +678,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState((s) => ({
       ...s,
       purchases: s.purchases.map((p) =>
-        p.id === purchaseId
-          ? { ...p, evopayChargeId: charge.evopayId, pixQrCode: charge.qrCodeText, pixExpiresAt: charge.expiresAt }
-          : p
+        p.id === purchaseId ? { ...p, evopayChargeId: charge.evopayId, pixQrCode: charge.qrCodeText, pixExpiresAt: charge.expiresAt } : p
       ),
     }));
   };
 
   const refreshPurchases = async () => {
-    const { data } = await (supabase as any)
-      .from("purchases")
-      .select(
-        "id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at"
-      )
-      .order("created_at", { ascending: false });
+    const { data } = await (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false });
     if (!data) return;
     const purchases = (data as any[]).map(mapPurchaseRow) as Purchase[];
     setState((s) => ({ ...s, purchases }));
-    void loadCatalog();
   };
 
   const markOrderDelivered = async (orderId: number) => {
@@ -927,11 +697,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ...s,
       purchases: s.purchases.map((p) => (p.id === orderId ? { ...p, status: "delivered" as const } : p)),
     }));
-    void loadCatalog();
     return true;
   };
 
-  const markPurchasePaid = (_id: number) => {
+  const markPurchasePaid = (id: number) => {
     void refreshPurchases();
   };
 
@@ -943,45 +712,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void supabase.functions.invoke("order-action", { body: { orderId: id, action: "revert" } }).then(() => refreshPurchases());
   };
 
-  const requestWithdraw = async (
-    method: "normal" | "instant" | "admin_fee" = "normal",
-    options?: { retryOf?: number; amount?: number; pixKey?: string }
-  ) => {
-    if (!state.currentUser) throw new Error("Usuário não autenticado.");
-    const isAdminFee = method === "admin_fee";
-
-    let availableBalance = 0;
-    if (isAdminFee) {
-      availableBalance = state.adminFeeBalance;
-    } else {
-      availableBalance = state.currentUser.balance || 0;
-    }
-
-    const requestedAmount = options?.amount !== undefined ? Number(options.amount) : availableBalance;
-
-    if (requestedAmount < 5.0) {
-      throw new Error("O saque mínimo é R$ 5,00.");
-    }
-    if (requestedAmount > availableBalance) {
-      throw new Error(`Saldo insuficiente. Disponível para saque: R$ ${availableBalance.toFixed(2)}`);
-    }
-
-    const pixKey = options?.pixKey?.trim() || state.currentUser.pixKey;
-    if (!pixKey) {
-      throw new Error("Cadastre ou informe uma chave Pix para o saque.");
-    }
-
+  const requestWithdraw = async (method: "normal" | "instant", options?: { retryOf?: number }) => {
+    if (!state.currentUser || state.currentUser.balance <= 0) return;
+    const fee = method === "instant" ? (state.currentUser.balance * state.config.instantFee) / 100 : 0;
+    const amount = Number((state.currentUser.balance - fee).toFixed(2));
+    // Idempotency: the same user + amount + method within the same minute never
+    // creates two withdrawals, even if the request is retried on a flaky network.
     const minuteBucket = new Date().toISOString().slice(0, 16);
-    const idempotencyKey = `${state.currentUser.id}:${requestedAmount}:${method}:${options?.retryOf ?? "new"}:${minuteBucket}`;
-
+    const idempotencyKey = `${state.currentUser.id}:${amount}:${method}:${options?.retryOf ?? "new"}:${minuteBucket}`;
     const { error } = await (supabase as any).rpc("request_withdrawal", {
-      _amount: requestedAmount,
+      _amount: amount,
       _method: method,
       _idempotency_key: idempotencyKey,
       _retry_of: options?.retryOf ?? null,
-      _pix_key: pixKey,
     });
-
     if (error) throw new Error(error.message || "Não foi possível solicitar o saque");
     await loadCatalog();
   };
@@ -991,18 +735,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     let providerTx: string | null = null;
     if (withdrawal?.pixKey) {
       const pixType = inferPixType(withdrawal.pixKey);
-      const payoutAmount = withdrawal.netAmount || (withdrawal.amount > 1.20 ? Number((withdrawal.amount - 1.20).toFixed(2)) : withdrawal.amount);
       const { data, error } = await supabase.functions.invoke("evopay-withdraw", {
         body: {
-          amount: payoutAmount,
+          amount: withdrawal.amount,
           pixKey: withdrawal.pixKey,
           pixType,
           description: "Saque ZXMAX",
+          // stable reference => gateway-side idempotency on retries
           clientReference: `withdraw_${id}`,
         },
       });
       if (error || data?.error) {
-        throw new Error(data?.error || error?.message || "Erro ao processar saque no gateway");
+        throw new Error(data?.error || error?.message || "Erro ao processar saque na EvoPay");
       }
       providerTx = data?.id ? String(data.id) : null;
     }
@@ -1092,42 +836,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       status: "open",
     };
     setState((s) => ({ ...s, tickets: [...s.tickets, ticket] }));
-    void (supabase as any)
-      .from("support_tickets")
-      .insert({
-        user_id: ticket.userId,
-        user_email: ticket.userEmail,
-        subject: ticket.subject,
-        status: "open",
-        messages: ticket.messages,
-      })
-      .select("id")
-      .then(({ data }: any) => {
-        if (data?.[0]?.id) {
-          setState((s) => ({
-            ...s,
-            tickets: s.tickets.map((t) => (t.id === ticket.id ? { ...t, id: Number(data[0].id) } : t)),
-          }));
-        }
-      });
   };
 
   const replyTicket = (id: number, text: string) => {
     if (!state.currentUser) return;
-    setState((s) => {
-      const tickets = s.tickets.map((t) =>
+    setState((s) => ({
+      ...s,
+      tickets: s.tickets.map((t) =>
         t.id === id
           ? { ...t, messages: [...t.messages, { from: state.currentUser!.email, text, date: new Date().toISOString() }] }
           : t
-      );
-      const updated = tickets.find((t) => t.id === id);
-      if (updated)
-        void (supabase as any)
-          .from("support_tickets")
-          .update({ messages: updated.messages, updated_at: new Date().toISOString() })
-          .eq("id", id);
-      return { ...s, tickets };
-    });
+      ),
+    }));
   };
 
   const closeTicket = (id: number) =>
@@ -1152,24 +872,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const updated = nextPurchases.find((p) => p.id === purchaseId);
       if (updated) void (supabase as any).from("purchases").update({ messages: updated.messages }).eq("id", purchaseId);
       return {
-        ...s,
-        purchases: nextPurchases,
+      ...s,
+      purchases: nextPurchases,
       };
     });
 
   const confirmDelivery = async (purchaseId: number) => {
-    const { data, error } = await supabase.functions.invoke("order-action", {
-      body: { orderId: purchaseId, action: "confirm_delivery" },
-    });
+    const { data, error } = await supabase.functions.invoke("order-action", { body: { orderId: purchaseId, action: "confirm_delivery" } });
     if (error || data?.error) return false;
     await refreshPurchases();
     return true;
   };
 
   const openDispute = async (purchaseId: number, reason: string) => {
-    const { data, error } = await supabase.functions.invoke("order-action", {
-      body: { orderId: purchaseId, action: "open_dispute", reason },
-    });
+    const { data, error } = await supabase.functions.invoke("order-action", { body: { orderId: purchaseId, action: "open_dispute", reason } });
     if (error || data?.error) return false;
     await refreshPurchases();
     return true;
@@ -1189,7 +905,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!text.trim()) return;
     const n: GlobalNotice = { id: Date.now(), text: text.trim(), date: new Date().toISOString() };
     setState((s) => ({ ...s, globalNotices: [n, ...(s.globalNotices || [])] }));
-    void (supabase as any).from("global_notices").insert({ text: text.trim(), created_by: authUser?.id });
   };
 
   const updatePixKey = (key: string) =>
@@ -1215,7 +930,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
     setState((s) => ({
       ...s,
-      products: s.products.map((p) => (p.id === productId ? { ...p, questions: [...(p.questions || []), q] } : p)),
+      products: s.products.map((p) =>
+        p.id === productId ? { ...p, questions: [...(p.questions || []), q] } : p
+      ),
     }));
   };
 
@@ -1279,10 +996,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
 
   const verifyUser = async (userId: string): Promise<boolean> => {
+    // Try via admin-verify edge function (service_role) first
     try {
       const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "verify_user", userId } });
       if (!error && !data?.error) {
-        setState((s) => ({
+        setState(s => ({
           ...s,
           currentUser: s.currentUser?.id === userId ? { ...s.currentUser, isVerified: true } : s.currentUser,
           userDirectory: {
@@ -1294,13 +1012,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } catch {}
 
+    // Fallback direct (requires RLS fix migration)
     try {
       const { error } = await supabase
         .from("profiles")
-        .update({ is_verified_seller: true, verification_status: "approved", verification_notes: "" } as any)
+        .update({ is_verified_seller: true, verification_status: "approved", verification_notes: null } as any)
         .eq("user_id", userId);
       if (!error) {
-        setState((s) => ({
+        setState(s => ({
           ...s,
           currentUser: s.currentUser?.id === userId ? { ...s.currentUser, isVerified: true } : s.currentUser,
           userDirectory: {
@@ -1319,32 +1038,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const submitSellerDocument = (filePath: string, fileName: string) => {
     if (!state.currentUser) return;
-    const doc: SellerDocument = {
-      id: String(Date.now()),
-      userId: state.currentUser.id,
-      userPublicId: state.currentUser.publicId,
-      userEmail: state.currentUser.email,
-      filePath,
-      fileName,
-      status: "pending",
-      createdAt: new Date().toISOString(),
-    };
-    void (supabase as any).from("seller_documents").insert({
-      user_id: doc.userId,
-      file_path: filePath,
-      file_name: fileName,
-      document_type: "rg_ou_certidao",
-      status: "pending",
-    });
-    setState((s) => ({ ...s, sellerDocuments: [doc, ...(s.sellerDocuments || [])] }));
+    const doc: SellerDocument = { id: String(Date.now()), userId: state.currentUser.id, userPublicId: state.currentUser.publicId, userEmail: state.currentUser.email, filePath, fileName, status: "pending", createdAt: new Date().toISOString() };
+    void (supabase as any).from("seller_documents").insert({ user_id: doc.userId, file_path: filePath, file_name: fileName, document_type: "rg_ou_certidao", status: "pending" });
+    setState(s => ({ ...s, sellerDocuments: [doc, ...(s.sellerDocuments || [])] }));
   };
 
   const reviewSellerDocument = (documentId: string, status: "approved" | "rejected") => {
-    void (supabase as any)
-      .from("seller_documents")
-      .update({ status, reviewed_by: authUser?.id, reviewed_at: new Date().toISOString() })
-      .eq("id", documentId);
-    setState((s) => ({ ...s, sellerDocuments: (s.sellerDocuments || []).map((d) => (d.id === documentId ? { ...d, status } : d)) }));
+    void (supabase as any).from("seller_documents").update({ status, reviewed_by: authUser?.id, reviewed_at: new Date().toISOString() }).eq("id", documentId);
+    setState(s => ({ ...s, sellerDocuments: (s.sellerDocuments || []).map(d => d.id === documentId ? { ...d, status } : d) }));
   };
 
   const saveGatewaySettings = async (settings: { evopayApiKey?: string; evopayMode?: string }): Promise<boolean> => {
@@ -1370,54 +1071,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return (
     <StoreContext.Provider
       value={{
-        state,
-        login,
-        logout,
-        addProduct,
-        updateProduct,
-        approveProduct,
-        rejectProduct,
-        deleteProduct,
+        state, login, logout, addProduct, updateProduct, approveProduct, rejectProduct, deleteProduct,
         refreshProducts: loadCatalog,
-        buyProduct,
-        savePixCharge,
-        refreshPurchases,
-        markOrderDelivered,
-        markPurchasePaid,
-        approvePurchase,
-        revertPurchase,
-        requestWithdraw,
-        approveWithdraw,
-        rejectWithdraw,
-        updateConfig,
-        updateProfile,
-        banUser,
-        unbanUser,
-        addTicket,
-        replyTicket,
-        closeTicket,
-        resolveTicket,
-        setGlobalNotice,
-        publishNotice,
-        updatePixKey,
-        sendAdminChat,
-        sendPurchaseMessage,
-        confirmDelivery,
-        openDispute,
-        reviewPurchase,
-        addProductQuestion,
-        answerProductQuestion,
-        deleteNotice,
-        createUserTag,
-        deleteUserTag,
-        assignUserTag,
-        unassignUserTag,
-        verifyUser,
-        saveGatewaySettings,
-        submitSellerDocument,
-        reviewSellerDocument,
-        isDark,
-        toggleDark,
+        buyProduct, savePixCharge, refreshPurchases, markOrderDelivered, markPurchasePaid, approvePurchase, revertPurchase, requestWithdraw,
+        approveWithdraw, rejectWithdraw, updateConfig, updateProfile,
+        banUser, unbanUser, addTicket, replyTicket, closeTicket, resolveTicket,
+        setGlobalNotice, publishNotice, updatePixKey, sendAdminChat,
+        sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
+        addProductQuestion, answerProductQuestion,
+        deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
+        verifyUser, saveGatewaySettings, submitSellerDocument, reviewSellerDocument, isDark, toggleDark,
       }}
     >
       {children}

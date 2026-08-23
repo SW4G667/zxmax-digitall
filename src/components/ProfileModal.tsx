@@ -6,7 +6,6 @@ import { X, Edit, Upload, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import TwoFactorPanel from "@/components/TwoFactorPanel";
-import GalleryFileInput from "@/components/GalleryFileInput";
 
 interface Props {
   open: boolean;
@@ -15,7 +14,7 @@ interface Props {
 
 export default function ProfileModal({ open, onClose }: Props) {
   const { state, requestWithdraw, logout, updatePixKey, submitSellerDocument } = useStore();
-  const { user: authUser, profile, updateProfile: updateAuthProfile, refreshProfile, isAdmin } = useAuth();
+  const { user: authUser, profile, updateProfile: updateAuthProfile, refreshProfile } = useAuth();
   const storeUser = state.currentUser;
   const [editName, setEditName] = useState(profile?.display_name || storeUser?.name || "");
   const [editing, setEditing] = useState(false);
@@ -47,9 +46,8 @@ export default function ProfileModal({ open, onClose }: Props) {
   };
 
   const handleWithdraw = (method: "normal" | "instant") => {
-    const minW = state.config.minWithdraw || 5.0;
     if (!storeUser.isVerified) return toast.error("Você precisa ter seus documentos aprovados pelo admin para sacar.");
-    if (storeUser.balance < minW) return toast.error(`Saldo mínimo para saque é R$ ${minW.toFixed(2).replace(".", ",")}.`);
+    if (storeUser.balance < 3.50) return toast.error("Saldo mínimo para saque é R$ 3,50.");
     if (!profile?.pix_key && !storeUser.pixKey) return toast.error("Cadastre sua chave Pix antes de solicitar saque.");
     requestWithdraw(method);
     toast.success("Saque solicitado! Após aprovação do admin, o valor cai em 5 a 7 dias úteis.");
@@ -139,7 +137,7 @@ export default function ProfileModal({ open, onClose }: Props) {
         <div className="flex items-center gap-5 mb-6 p-5 bg-muted rounded-2xl">
           <div className="relative">
             <img src={profile?.avatar_url || storeUser.avatar} className="w-20 h-20 rounded-2xl object-cover shadow-lg" alt="Avatar" />
-            <GalleryFileInput mode="gallery" ref={avatarInputRef} onChange={handleAvatarUpload} className="hidden" />
+            <input type="file" ref={avatarInputRef} accept="image/*" onChange={handleAvatarUpload} className="hidden" />
             <button onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading} className="absolute -bottom-2 -right-2 bg-card p-1.5 rounded-lg shadow-md border border-border hover:bg-muted transition disabled:opacity-50">
               <CameraEmoji className="w-4 h-4" />
             </button>
@@ -211,9 +209,10 @@ export default function ProfileModal({ open, onClose }: Props) {
             </div>
           </button>
 
-          <GalleryFileInput
-            mode="files"
+          <input
+            type="file"
             ref={fileInputRef}
+            accept="image/*,.pdf"
             onChange={handleDocumentUpload}
             className="hidden"
           />
@@ -229,7 +228,7 @@ export default function ProfileModal({ open, onClose }: Props) {
             <Shield className="w-4 h-4" /> Dados pessoais e verificação
           </a>
 
-          {isAdmin && <TwoFactorPanel />}
+          <TwoFactorPanel />
 
           <button onClick={logout} className="w-full flex items-center justify-center gap-2 p-3 text-destructive font-bold text-sm hover:bg-destructive/5 rounded-xl transition">
             <DoorEmoji className="w-5 h-5" /> Sair da Conta

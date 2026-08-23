@@ -3,7 +3,6 @@ import { useStore, Product } from "@/store/StoreContext";
 import { Plus, X, Trash2, Upload, Users, Clock, MessageSquare, Pencil, Package, Coins } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import GalleryFileInput from "@/components/GalleryFileInput";
 
 interface Variation {
   name: string;
@@ -210,14 +209,14 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                   <div onClick={() => imageInputRef.current?.click()} className="aspect-square bg-[#0a0a0f] rounded-xl border-2 border-dashed border-[#25252e] flex flex-col items-center justify-center cursor-pointer hover:border-[#0084ff]/50 transition overflow-hidden">
                     {uploading === "image" ? <Clock className="animate-spin text-white/40" /> : form.image ? <img src={form.image} className="w-full h-full object-cover" alt="" /> : <div className="flex flex-col items-center gap-2 text-white/30"><Upload className="w-6 h-6" /><span className="text-xs">Enviar</span></div>}
                   </div>
-                  <GalleryFileInput mode="gallery" ref={imageInputRef} className="hidden" onChange={(e) => handleFileUpload(e, "image")} />
+                  <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, "image")} />
                 </div>
                 <div>
                   <label className="text-[10px] font-bold uppercase text-white/40 mb-1 block">Banner</label>
                   <div onClick={() => bannerInputRef.current?.click()} className="aspect-square bg-[#0a0a0f] rounded-xl border-2 border-dashed border-[#25252e] flex flex-col items-center justify-center cursor-pointer hover:border-[#0084ff]/50 transition overflow-hidden">
                     {uploading === "banner" ? <Clock className="animate-spin text-white/40" /> : form.banner ? <img src={form.banner} className="w-full h-full object-cover" alt="" /> : <div className="flex flex-col items-center gap-2 text-white/30"><Upload className="w-6 h-6" /><span className="text-xs">Enviar</span></div>}
                   </div>
-                  <GalleryFileInput mode="gallery" ref={bannerInputRef} className="hidden" onChange={(e) => handleFileUpload(e, "banner")} />
+                  <input ref={bannerInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, "banner")} />
                 </div>
               </div>
 

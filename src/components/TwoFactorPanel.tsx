@@ -13,26 +13,8 @@ interface EnrollCache {
 }
 
 export default function TwoFactorPanel() {
-  const {
-    mfaEnabled,
-    enrollTotpStart,
-    enrollTotpVerify,
-    unenrollTotp,
-    listFactors,
-    resetMfa,
-    needsCodeToManageMfa,
-    elevateWithCode,
-    isAdmin,
-  } = useAuth();
-
-  // NOTE: hooks must never run conditionally. The early `if (!isAdmin) return null`
-  // used to sit above these hooks and crashed React ("rendered fewer hooks than
-  // expected") the moment the admin role finished loading. The guard now lives
-  // right before the JSX is returned.
-  const [stage, setStage] = useState<"idle" | "verify" | "confirm">("idle");
-  // Which action is waiting for the current 6-digit code ("excluir" / "trocar").
-  const [pendingAction, setPendingAction] = useState<"remove" | "regenerate" | null>(null);
-  const [confirmCodeValue, setConfirmCodeValue] = useState("");
+  const { mfaEnabled, enrollTotpStart, enrollTotpVerify, unenrollTotp, listFactors, isAdmin } = useAuth();
+  const [stage, setStage] = useState<"idle" | "verify">("idle");
   const [qr, setQr] = useState<string>("");
   const [secret, setSecret] = useState<string>("");
   const [factorId, setFactorId] = useState<string>("");
@@ -42,12 +24,8 @@ export default function TwoFactorPanel() {
   const [factors, setFactors] = useState<any[]>([]);
 
   const loadFactors = async () => {
-    try {
-      const f = await listFactors();
-      setFactors(f || []);
-    } catch {
-      setFactors([]);
-    }
+    const f = await listFactors();
+    setFactors(f);
   };
 
   useEffect(() => {
@@ -57,6 +35,7 @@ export default function TwoFactorPanel() {
       const raw = localStorage.getItem(ENROLL_STORAGE_KEY);
       if (raw) {
         const cached = JSON.parse(raw) as EnrollCache;
+        // Expire after 10 minutes
         if (Date.now() - cached.createdAt < 10 * 60 * 1000 && cached.qr && cached.secret && cached.factorId) {
           setQr(cached.qr);
           setSecret(cached.secret);
@@ -86,6 +65,29 @@ export default function TwoFactorPanel() {
     try {
       const { data, error } = await enrollTotpStart();
       if (error || !data) {
+        if (error.includes("already exists")) {
+          toast.error("Já existe um código pendente. Limpando e gerando novo...");
+          const factors = await listFactors();
+          for (const f of factors) {
+            if (f.status !== "verified") {
+              await unenrollTotp(f.id).catch(() => {});
+            }
+          }
+          const retry = await enrollTotpStart();
+          if (retry.error || !retry.data) {
+            toast.error(retry.error || "Não foi possível gerar novo código. Remova o 2FA existente primeiro.");
+            setBusy(false);
+            return;
+          }
+          const cache: EnrollCache = { factorId: retry.data.id, qr: retry.data.qr, secret: retry.data.secret, createdAt: Date.now() };
+          saveEnrollCache(cache);
+          setQr(retry.data.qr);
+          setSecret(retry.data.secret);
+          setFactorId(retry.data.id);
+          setStage("verify");
+          setBusy(false);
+          return;
+        }
         toast.error(error || "Não foi possível iniciar a configuração.");
         setBusy(false);
         return;
@@ -98,25 +100,23 @@ export default function TwoFactorPanel() {
       setStage("verify");
     } catch (e: any) {
       toast.error(e?.message || "Erro ao configurar 2FA");
-    } finally {
-      setBusy(false);
     }
+    setBusy(false);
   };
 
   const confirmEnroll = async () => {
-    const cleanCode = code.replace(/\D/g, "").slice(0, 6);
-    if (cleanCode.length !== 6) {
-      toast.error("Digite o código de 6 dígitos gerado pelo aplicativo.");
+    if (code.replace(/\s/g, "").length !== 6) {
+      toast.error("Digite o código de 6 dígitos.");
       return;
     }
     setBusy(true);
-    const { error } = await enrollTotpVerify(factorId, cleanCode);
+    const { error } = await enrollTotpVerify(factorId, code.replace(/\s/g, ""));
     setBusy(false);
     if (error) {
-      toast.error(error);
+      toast.error("Código inválido. Tente novamente.");
       return;
     }
-    toast.success("Google Authenticator ativado com sucesso! 🔒");
+    toast.success("2FA ativado com sucesso! QR Code removido por segurança. 🔒");
     clearEnrollCache();
     setStage("idle");
     setCode("");
@@ -126,92 +126,37 @@ export default function TwoFactorPanel() {
     void loadFactors();
   };
 
-  // Actually removes the current factor. Falls back to the server-side reset
-  // only if the browser is still not allowed to delete it.
-  const doRemove = async (): Promise<boolean> => {
-    const { error } = await unenrollTotp();
-    if (error) {
-      const fallback = await resetMfa();
-      if (fallback.error) return false;
-    }
-    clearEnrollCache();
-    void loadFactors();
-    return true;
-  };
-
-  // Both "excluir" and "gerar novo QR Code" need an aal2 session. Since your
-  // authenticator still generates codes, we just ask for the current code
-  // instead of failing with the Supabase AAL2 error.
-  const requestAction = async (action: "remove" | "regenerate") => {
-    const question =
-      action === "remove"
-        ? "Deseja realmente desativar o Google Authenticator? Você precisará reconfigurar se quiser reativar."
-        : "Gerar novo QR Code? O código atual no seu app deixará de funcionar e você deverá escanear o novo.";
-    if (!confirm(question)) return;
-
+  const remove = async () => {
+    const f = factors[0];
+    if (!f) return;
+    if (!confirm("Desativar o 2FA? Sua conta admin ficará vulnerável a hackers.")) return;
     setBusy(true);
-    const needsCode = await needsCodeToManageMfa();
-    setBusy(false);
-
-    if (needsCode) {
-      setPendingAction(action);
-      setConfirmCodeValue("");
-      setStage("confirm");
-      return;
-    }
-    await runAction(action);
-  };
-
-  const runAction = async (action: "remove" | "regenerate", alreadyConfirmed = false) => {
-    setBusy(true);
-    const ok = await doRemove();
-    setBusy(false);
-
-    if (!ok) {
-      // Still blocked: the only thing that unlocks it is the current code from
-      // the app, so ask for it instead of throwing an error at the user.
-      if (!alreadyConfirmed) {
-        setPendingAction(action);
-        setConfirmCodeValue("");
-        setStage("confirm");
-        toast.info("Digite o código que o aplicativo mostra agora para confirmar.");
-        return;
-      }
-      toast.error("Não foi possível remover o autenticador. Tente novamente em alguns segundos.");
-      return;
-    }
-
-    if (action === "remove") {
-      toast.success("Autenticador removido com sucesso.");
-      setStage("idle");
-      setPendingAction(null);
-      return;
-    }
-    setPendingAction(null);
-    await startEnroll();
-  };
-
-  // Auto-submits as soon as the 6 digits are typed/pasted.
-  const handleConfirmCode = async (value: string) => {
-    const digits = value.replace(/\D/g, "").slice(0, 6);
-    setConfirmCodeValue(digits);
-    if (digits.length !== 6 || busy) return;
-
-    setBusy(true);
-    const { error } = await elevateWithCode(digits);
+    const { error } = await unenrollTotp(f.id);
     setBusy(false);
     if (error) {
       toast.error(error);
-      setConfirmCodeValue("");
       return;
     }
-    await runAction(pendingAction || "regenerate", true);
+    clearEnrollCache();
+    toast.success("2FA desativado.");
+    setStage("idle");
+    void loadFactors();
   };
 
-  const cancelConfirm = () => {
-    setPendingAction(null);
-    setConfirmCodeValue("");
-    setStage("idle");
+  const regenerate = async () => {
+    if (!confirm("Gerar novo código? O antigo deixará de funcionar. Você precisará escanear novamente no app.")) return;
+    const f = factors.find((x) => x.status === "verified") || factors[0];
+    if (f) {
+      setBusy(true);
+      const { error } = await unenrollTotp(f.id);
+      setBusy(false);
+      if (error) {
+        toast.error("Erro ao remover código antigo: " + error);
+        return;
+      }
+    }
+    clearEnrollCache();
+    await startEnroll();
   };
 
   const cancelEnroll = () => {
@@ -227,14 +172,12 @@ export default function TwoFactorPanel() {
     try {
       await navigator.clipboard.writeText(secret);
       setCopied(true);
-      toast.success("Chave secreta copiada!");
+      toast.success("Chave copiada!");
       setTimeout(() => setCopied(false), 2500);
     } catch {
       toast.error("Não foi possível copiar.");
     }
   };
-
-  if (!isAdmin) return null;
 
   return (
     <div className="rounded-2xl p-6 border border-white/10 bg-[#111114]">
@@ -244,15 +187,13 @@ export default function TwoFactorPanel() {
         </div>
         <div className="flex-1 min-w-0">
           <h4 className="font-black text-white flex items-center gap-2 text-[15px]">
-            Google Authenticator (2FA)
-            <span className={`text-[9px] px-2 py-0.5 rounded-full uppercase font-black ${mfaEnabled ? "bg-[#00c950] text-black" : "bg-[#0084ff] text-white"}`}>
-              {mfaEnabled ? "Ativo" : "Recomendado"}
-            </span>
+            Autenticação Admin (2FA)
+            <span className="text-[9px] bg-[#0084ff] text-white px-2 py-0.5 rounded-full uppercase font-black">Só Admin</span>
           </h4>
           <p className="text-xs text-white/50 mt-1 leading-relaxed">
             {mfaEnabled
-              ? "Autenticação em 2 etapas configurada. O acesso ao painel admin requer o código gerado no seu aplicativo autenticador."
-              : "Proteja seu painel administrativo exigindo o código de 6 dígitos gerado pelo Google Authenticator."}
+              ? "Protegido. Só pede código quando sai da conta e volta. QR Code já sumiu por segurança."
+              : "Proteja o painel admin contra hackers. Use Google Authenticator. QR fica salvo mesmo se atualizar a página, só some depois que ativar."}
           </p>
         </div>
       </div>
@@ -266,97 +207,45 @@ export default function TwoFactorPanel() {
                   <Lock className="w-5 h-5 text-[#00c950]" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-bold text-white">Google Authenticator Ativo</p>
-                  <p className="text-[11px] text-[#00c950]/80">Proteção 2FA ativada na sua conta de administrador.</p>
+                  <p className="text-sm font-bold text-white">2FA Ativo</p>
+                  <p className="text-[11px] text-[#00c950]/70">Só pede código ao fazer login novamente</p>
                 </div>
-                <div className="w-2.5 h-2.5 rounded-full bg-[#00c950] animate-pulse" />
+                <div className="w-2 h-2 rounded-full bg-[#00c950] animate-pulse" />
               </div>
               <div className="flex gap-2">
-                <button
-                  onClick={() => void requestAction("regenerate")}
-                  disabled={busy}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 text-xs font-bold transition disabled:opacity-50"
-                >
-                  <RefreshCw className="w-4 h-4" /> Gerar Novo QR Code / Trocar Celular
+                <button onClick={regenerate} disabled={busy} className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 text-sm font-bold transition disabled:opacity-50">
+                  <RefreshCw className="w-4 h-4" /> Gerar novo para outro app
                 </button>
-                <button
-                  onClick={() => void requestAction("remove")}
-                  disabled={busy}
-                  className="px-4 py-3 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/10 text-xs font-bold transition disabled:opacity-50 flex items-center gap-1.5"
-                  title="Desativar 2FA"
-                >
-                  <Trash2 className="w-4 h-4" /> Desativar
+                <button onClick={remove} disabled={busy} className="px-4 py-3 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/10 text-sm font-bold transition disabled:opacity-50">
+                  <Trash2 className="w-4 h-4" />
                 </button>
               </div>
-              <p className="text-[11px] text-white/40 leading-relaxed text-center">
-                Para excluir ou trocar, o site pede o código atual do seu aplicativo — é só digitar
-                e ele continua sozinho.
-              </p>
             </div>
           ) : (
             <div className="space-y-3">
               <div className="grid grid-cols-3 gap-2 text-[11px]">
                 <div className="bg-white/[0.03] border border-white/10 rounded-xl p-3 text-center">
                   <Smartphone className="w-5 h-5 mx-auto text-[#0084ff] mb-1" />
-                  <p className="font-bold text-white">1. Baixe o App</p>
+                  <p className="font-bold text-white">1. Instale</p>
                   <p className="text-white/40">Authenticator</p>
                 </div>
                 <div className="bg-white/[0.03] border border-white/10 rounded-xl p-3 text-center">
                   <KeyRound className="w-5 h-5 mx-auto text-[#0084ff] mb-1" />
                   <p className="font-bold text-white">2. Escaneie</p>
-                  <p className="text-white/40">QR Code</p>
+                  <p className="text-white/40">QR fixo</p>
                 </div>
                 <div className="bg-white/[0.03] border border-white/10 rounded-xl p-3 text-center">
                   <ShieldCheck className="w-5 h-5 mx-auto text-[#00c950] mb-1" />
-                  <p className="font-bold text-white">3. Ative</p>
-                  <p className="text-white/40">Com o código</p>
+                  <p className="font-bold text-white">3. Protegido</p>
+                  <p className="text-white/40">Só no login</p>
                 </div>
               </div>
-              <button
-                onClick={startEnroll}
-                disabled={busy}
-                className="w-full bg-[#0084ff] hover:bg-[#0066cc] text-white py-3.5 rounded-xl text-sm font-black flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-[#0084ff]/20 transition"
-              >
+              <button onClick={startEnroll} disabled={busy} className="w-full bg-[#0084ff] hover:bg-[#0066cc] text-white py-3.5 rounded-xl text-sm font-black flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-[#0084ff]/20 transition">
                 {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
-                Configurar Google Authenticator
+                Configurar Autenticador
               </button>
             </div>
           )}
-        </div>
-      )}
-
-      {stage === "confirm" && (
-        <div className="space-y-4 animate-fade-in-up">
-          <div className="rounded-xl border border-[#0084ff]/25 bg-[#0084ff]/5 p-5">
-            <p className="text-xs font-black uppercase tracking-wide text-[#0084ff] mb-2 flex items-center gap-2">
-              <Lock className="w-4 h-4" />
-              {pendingAction === "remove" ? "Confirmar exclusão" : "Confirmar troca de aparelho"}
-            </p>
-            <p className="text-xs text-white/60 leading-relaxed mb-4">
-              Digite o código de 6 dígitos que o aplicativo está mostrando agora. Assim que os 6
-              números forem preenchidos, o site continua sozinho.
-            </p>
-            <input
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              autoFocus
-              value={confirmCodeValue}
-              onChange={(e) => void handleConfirmCode(e.target.value)}
-              placeholder="000 000"
-              disabled={busy}
-              className="w-full px-4 py-3.5 rounded-xl bg-black/50 border border-white/10 text-white text-center text-2xl font-black tracking-[0.4em] focus:outline-none focus:ring-2 focus:ring-[#0084ff]/50 focus:border-[#0084ff] transition placeholder:text-white/20 disabled:opacity-60"
-            />
-          </div>
-          <button
-            onClick={cancelConfirm}
-            disabled={busy}
-            className="w-full py-3 rounded-xl text-sm font-bold bg-white/5 border border-white/10 text-white hover:bg-white/10 transition disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            {busy ? "Confirmando..." : "Cancelar"}
-          </button>
         </div>
       )}
 
@@ -364,26 +253,22 @@ export default function TwoFactorPanel() {
         <div className="space-y-4 animate-fade-in-up">
           <div className="rounded-xl border border-[#0084ff]/20 bg-[#0084ff]/5 p-5">
             <p className="text-xs font-black uppercase tracking-wide text-[#0084ff] mb-3 flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-[#0084ff] text-white flex items-center justify-center text-[11px]">1</span>
-              Escaneie o QR Code no seu aplicativo
+              <span className="w-6 h-6 rounded-full bg-[#0084ff] text-white flex items-center justify-center text-[11px]">1</span> QR Code (fica salvo se atualizar)
             </p>
             <div className="flex justify-center">
-              <div className="bg-white p-3.5 rounded-2xl shadow-xl">
-                <img src={qr} alt="QR Code 2FA" className="w-44 h-44" />
+              <div className="bg-white p-4 rounded-2xl shadow-xl">
+                <img src={qr} alt="QR Code 2FA" className="w-48 h-48" />
               </div>
             </div>
+            <p className="text-[11px] text-white/50 mt-3 text-center">Não some ao atualizar. Só expira em 10 min ou quando você ativar. Depois some por segurança.</p>
           </div>
 
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-xs font-bold text-white mb-2 flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-white/10 text-white flex items-center justify-center text-[11px]">2</span>
-                Chave manual
-              </span>
-              <span className="text-[10px] text-white/40">Copie e cole no app</span>
+            <p className="text-xs font-bold text-white mb-2 flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-white/10 text-white flex items-center justify-center text-[11px]">2</span> Chave manual
             </p>
             <div className="flex items-center gap-2">
-              <code className="flex-1 text-xs bg-black/50 border border-white/10 rounded-xl p-3 font-mono break-all text-[#0084ff] font-bold">{secret}</code>
+              <code className="flex-1 text-xs bg-black/50 border border-white/10 rounded-xl p-3 font-mono break-all text-white">{secret}</code>
               <button onClick={copySecret} className="p-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white/60 hover:text-white transition">
                 {copied ? <Check className="w-4 h-4 text-[#00c950]" /> : <Copy className="w-4 h-4" />}
               </button>
@@ -392,8 +277,7 @@ export default function TwoFactorPanel() {
 
           <div className="rounded-xl border border-[#00c950]/20 bg-[#00c950]/5 p-5">
             <label className="text-xs font-black uppercase tracking-wide text-[#00c950] mb-3 block flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-[#00c950] text-white flex items-center justify-center text-[11px]">3</span>
-              Digite o código de 6 dígitos gerado
+              <span className="w-6 h-6 rounded-full bg-[#00c950] text-white flex items-center justify-center text-[11px]">3</span> Código do app (6 dígitos)
             </label>
             <input
               type="text"
@@ -401,22 +285,20 @@ export default function TwoFactorPanel() {
               autoComplete="one-time-code"
               maxLength={6}
               value={code}
-              onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, "").slice(0, 6);
-                setCode(val);
-              }}
-              placeholder="000 000"
-              className="w-full px-4 py-3.5 rounded-xl bg-black/50 border border-white/10 text-white text-center text-2xl font-black tracking-[0.4em] focus:outline-none focus:ring-2 focus:ring-[#00c950]/50 focus:border-[#00c950] transition placeholder:text-white/20"
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000"
+              className="w-full px-4 py-4 rounded-xl bg-black/50 border border-white/10 text-white text-center text-2xl font-black tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-[#00c950]/50 focus:border-[#00c950] transition placeholder:text-white/20"
             />
+            <p className="text-[11px] text-white/40 mt-2 text-center">Ao confirmar, o QR some. Só pedirá código quando sair e voltar.</p>
           </div>
 
           <div className="flex gap-2">
             <button onClick={cancelEnroll} disabled={busy} className="flex-1 py-3 rounded-xl text-sm font-bold bg-white/5 border border-white/10 text-white hover:bg-white/10 transition disabled:opacity-50">
               Cancelar
             </button>
-            <button onClick={confirmEnroll} disabled={busy || code.replace(/\D/g, "").length !== 6} className="flex-1 bg-[#00c950] hover:bg-[#00a843] text-black py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-[#00c950]/20 transition">
+            <button onClick={confirmEnroll} disabled={busy || code.length !== 6} className="flex-1 bg-[#0084ff] hover:bg-[#0066cc] text-white py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-[#0084ff]/20 transition">
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-              Ativar e Salvar
+              Ativar
             </button>
           </div>
         </div>

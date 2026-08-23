@@ -1,7 +1,6 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode, useRef } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { User, Session, Factor } from "@supabase/supabase-js";
-import { ADMIN_CONFIRM_EMAIL, getOrCreateDeviceId, readTrustedDevice, saveTrustedDevice, clearTrustedDevice } from "@/lib/adminGate";
+import type { User, Session, Factor, AdminFactorType } from "@supabase/supabase-js";
 
 interface Profile {
   id: string;
@@ -46,20 +45,13 @@ interface AuthContextType {
   mfaEnabled: boolean;
   needsMfa: boolean;
   mfaChecked: boolean;
-  adminGateRequired: boolean;
-  adminGateChecked: boolean;
-  unlockAdminGate: () => void;
   signUp: (email: string, password: string, displayName: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   verifyMfa: (code: string) => Promise<{ error: string | null }>;
   enrollTotpStart: () => Promise<{ data: TotpEnroll | null; error: string | null }>;
   enrollTotpVerify: (factorId: string, code: string) => Promise<{ error: string | null }>;
-  unenrollTotp: (factorId?: string) => Promise<{ error: string | null }>;
-  resetMfa: () => Promise<{ error: string | null }>;
-  needsCodeToManageMfa: () => Promise<boolean>;
-  elevateWithCode: (code: string) => Promise<{ error: string | null }>;
+  unenrollTotp: (factorId: string) => Promise<{ error: string | null }>;
   listFactors: () => Promise<Factor[]>;
-  refreshAdminGate: () => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   updateProfile: (data: Partial<Pick<Profile, "display_name" | "avatar_url" | "pix_key" | "document_type">>) => Promise<void>;
@@ -81,96 +73,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 }
 
 const ENROLL_STORAGE_KEY = "zxmax_mfa_enroll";
-const ADMIN_UNLOCKED_KEY = "zxmax_admin_unlocked_uid";
-const ADMIN_OTP_TRUST_KEY = "zxmax_admin_otp_trusted";
-const ADMIN_OTP_PENDING_KEY = "zxmax_admin_otp_pending";
-const ADMIN_OTP_TRUST_DAYS = 30;
-// Network timeout used for the auxiliary queries (profile/ban/role/mfa).
-// It used to be 2s, which on mobile/3G silently produced "logged out" and
-// "not an admin" states. 10s + cache fallback is much safer.
-const NET_TIMEOUT = 10_000;
-
-const ADMIN_LAST_KEY = "zxmax_is_admin_last";
-
-function isCachedAdmin(userId: string): boolean {
-  try {
-    return localStorage.getItem(`zxmax_is_admin_${userId}`) === "true";
-  } catch {
-    return false;
-  }
-}
-
-// Read the last known admin flag *synchronously* at mount. Without this the
-// admin button vanished on every tab focus/re-render until the async role
-// query came back.
-function isCachedAdminAny(): boolean {
-  try {
-    return localStorage.getItem(ADMIN_LAST_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
-
-function setCachedAdmin(userId: string, isAdmin: boolean) {
-  try {
-    if (isAdmin) {
-      localStorage.setItem(`zxmax_is_admin_${userId}`, "true");
-      localStorage.setItem(ADMIN_LAST_KEY, "true");
-    } else {
-      localStorage.removeItem(`zxmax_is_admin_${userId}`);
-      localStorage.removeItem(ADMIN_LAST_KEY);
-    }
-  } catch {}
-}
-
-function isAdminSessionUnlocked(userId: string): boolean {
-  try {
-    const unlockedUid = localStorage.getItem(ADMIN_UNLOCKED_KEY);
-    return unlockedUid === userId;
-  } catch {
-    return false;
-  }
-}
-
-function setAdminSessionUnlocked(userId: string) {
-  try {
-    localStorage.setItem(ADMIN_UNLOCKED_KEY, userId);
-    sessionStorage.setItem("zxmax_admin_mfa_verified", String(Date.now()));
-  } catch {}
-}
-
-function clearAdminSessionUnlocked() {
-  try {
-    localStorage.removeItem(ADMIN_UNLOCKED_KEY);
-    sessionStorage.removeItem("zxmax_admin_mfa_verified");
-  } catch {}
-}
-
-function randomDeviceToken() {
-  try {
-    return (crypto as any).randomUUID ? (crypto as any).randomUUID() : String(Math.random().toString(36).slice(2) + Date.now());
-  } catch {
-    return String(Math.random().toString(36).slice(2) + Date.now());
-  }
-}
-
-function friendlyMfaError(msg?: string | null): string {
-  const m = (msg || "").toLowerCase();
-  if (!m) return "Falha ao iniciar autenticador. Tente novamente.";
-  if (m.includes("aal2") || m.includes("insufficient")) {
-    return "Já existe um autenticador ativo nesta conta. Use a opção 'Perdi o acesso ao autenticador' para apagar o antigo e gerar um novo QR Code.";
-  }
-  if (m.includes("exceed") || m.includes("limit")) {
-    return "Limite de autenticadores atingido. Use a opção 'Perdi o acesso ao autenticador' para limpar os antigos.";
-  }
-  if (m.includes("invalid") && m.includes("code")) {
-    return "Código incorreto. Confira o horário automático do celular e tente o próximo código.";
-  }
-  if (m.includes("failed to fetch") || m.includes("network")) {
-    return "Sem conexão com o servidor. Verifique sua internet e tente de novo.";
-  }
-  return msg || "Falha ao iniciar autenticador.";
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -178,27 +80,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [banned, setBanned] = useState<BanInfo | null>(null);
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => isCachedAdminAny());
+  const [isAdmin, setIsAdmin] = useState(false);
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [needsMfa, setNeedsMfa] = useState(false);
   const [mfaChecked, setMfaChecked] = useState(false);
   const [challengeId, setChallengeId] = useState<string | null>(null);
-  const [adminGateRequired, setAdminGateRequired] = useState(false);
-  const [adminGateChecked, setAdminGateChecked] = useState(false);
-
-  const initialLoadedRef = useRef(false);
-  const hydratedUserRef = useRef<string | null>(null);
-  // True only while the user really clicked "Sair". Any other SIGNED_OUT is
-  // treated as a glitch (expired/failed token refresh when the browser comes
-  // back from the background) and we try to recover the session silently.
-  const manualSignOutRef = useRef(false);
-  const recoveringRef = useRef(false);
 
   const fetchProfile = async (userId: string) => {
     try {
       const { data } = await withTimeout(
-        Promise.resolve(supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle()) as Promise<any>,
-        NET_TIMEOUT,
+        supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
+        2500,
         { data: null, error: null } as any
       );
       if (data) setProfile(data as Profile);
@@ -211,8 +103,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkBan = async (userId: string) => {
     try {
       const { data } = await withTimeout(
-        Promise.resolve(supabase.from("bans").select("reason, created_at").eq("user_id", userId).eq("active", true).limit(1).maybeSingle()) as Promise<any>,
-        NET_TIMEOUT,
+        supabase.from("bans").select("reason, created_at").eq("user_id", userId).eq("active", true).limit(1).maybeSingle(),
+        2000,
         { data: null } as any
       );
       if (data) {
@@ -228,62 +120,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const checkAdmin = async (userId: string) => {
-    // Check cached value first for immediate UI responsiveness
-    const cached = isCachedAdmin(userId);
-    if (cached) {
-      setIsAdmin(true);
-    }
     try {
-      // IMPORTANT: use a sentinel so a network timeout is NOT confused with
-      // "this user is not an admin" (that used to kick the admin out of the panel).
-      const TIMED_OUT = Symbol("timeout");
-      const result: any = await withTimeout<any>(
-        Promise.resolve(supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle()) as Promise<any>,
-        NET_TIMEOUT,
-        TIMED_OUT as any
+      const { data } = await withTimeout(
+        supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle(),
+        2000,
+        { data: null } as any
       );
-      if (result === TIMED_OUT || result?.error) {
-        // Network problem: keep whatever we knew before instead of demoting the user.
-        setIsAdmin(cached);
-        return cached;
-      }
-      const isAdm = !!result?.data;
-      setIsAdmin(isAdm);
-      setCachedAdmin(userId, isAdm);
-      return isAdm;
+      setIsAdmin(!!data);
     } catch {
-      setIsAdmin(cached);
-      return cached;
+      setIsAdmin(false);
     }
   };
-
-  const evaluateAdminGate = useCallback(async (sess: Session | null, adminFlag: boolean) => {
-    if (!sess || !adminFlag) {
-      setAdminGateRequired(false);
-      setAdminGateChecked(true);
-      return;
-    }
-
-    // If already verified in this session or device, gate is unlocked!
-    if (isAdminSessionUnlocked(sess.user.id)) {
-      setAdminGateRequired(false);
-      setAdminGateChecked(true);
-      return;
-    }
-
-    // Check trusted device token as fallback
-    const trusted = readTrustedDevice();
-    if (trusted) {
-      setAdminSessionUnlocked(sess.user.id);
-      setAdminGateRequired(false);
-      setAdminGateChecked(true);
-      return;
-    }
-
-    // Require authenticator confirmation
-    setAdminGateRequired(true);
-    setAdminGateChecked(true);
-  }, []);
 
   const evaluateMfa = useCallback(async (sess: Session | null) => {
     if (!sess) {
@@ -294,95 +141,96 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      const { data } = await withTimeout(
+      // Admin-only MFA: only check MFA if user is admin (prevents regular users from seeing 2FA prompt)
+      // isAdmin state might be stale, so we also check via DB if needed, but we use current isAdmin
+      // If not admin, skip MFA requirement
+      if (!isAdmin) {
+        // Still detect if user has MFA enabled for display purposes, but don't require it
+        const { data } = await withTimeout(
+          supabase.auth.mfa.listFactors(),
+          2000,
+          { data: { totp: [] }, error: null } as any
+        );
+        const verifiedTotp = (data?.totp || []).filter((f) => f.status === "verified");
+        setMfaEnabled(verifiedTotp.length > 0);
+        setNeedsMfa(false);
+        setMfaChecked(true);
+        return;
+      }
+
+      const { data, error } = await withTimeout(
         supabase.auth.mfa.listFactors(),
-        NET_TIMEOUT,
+        2000,
         { data: { totp: [] }, error: null } as any
       );
-      const verifiedTotp = (data?.totp || []).filter((f: any) => f.status === "verified");
+      if (error) throw error;
+      const verifiedTotp = (data?.totp || []).filter((f) => f.status === "verified");
       setMfaEnabled(verifiedTotp.length > 0);
-      setNeedsMfa(false);
+
+      // Check if MFA was already verified in this session (avoid asking every time)
+      const verifiedFlag = sessionStorage.getItem("zxmax_admin_mfa_verified");
+      if (verifiedFlag && Date.now() - Number(verifiedFlag) < 12 * 60 * 60 * 1000) {
+        setNeedsMfa(false);
+        setMfaChecked(true);
+        return;
+      }
+
+      const aal: string = (sess as any)?.aal || sess.user?.aal || sess.user?.app_metadata?.aal || "aal1";
+      if (verifiedTotp.length > 0 && aal !== "aal2" && verifiedTotp[0]) {
+        if (!challengeId) {
+          const { data: chal, error: chalErr } = await supabase.auth.mfa.challenge({
+            factorId: verifiedTotp[0].id,
+          });
+          if (!chalErr && chal?.id) setChallengeId(chal.id);
+        }
+        setNeedsMfa(true);
+      } else {
+        setNeedsMfa(false);
+      }
     } catch {
       setMfaEnabled(false);
       setNeedsMfa(false);
     } finally {
       setMfaChecked(true);
     }
-  }, []);
-
-  const unlockAdminGate = useCallback(() => {
-    if (user) {
-      setAdminSessionUnlocked(user.id);
-      const deviceToken = randomDeviceToken();
-      const expiresAt = new Date(Date.now() + ADMIN_OTP_TRUST_DAYS * 24 * 60 * 60 * 1000).toISOString();
-      saveTrustedDevice(deviceToken, expiresAt);
-    }
-    setAdminGateRequired(false);
-    setAdminGateChecked(true);
-  }, [user]);
+  }, [challengeId, isAdmin]);
 
   useEffect(() => {
     let mounted = true;
     let initTimeout: number | null = null;
 
-    // Safety net: never leave the app stuck on the loading screen.
     initTimeout = window.setTimeout(() => {
       if (mounted) {
         setLoading(false);
         setMfaChecked(true);
-        setAdminGateChecked(true);
       }
-    }, 6000);
-
-    // Loads profile/ban/role/mfa for a session. Always resolves.
-    const hydrate = async (sess: Session) => {
-      const admin = await checkAdmin(sess.user.id).catch(() => false);
-      await Promise.all([
-        fetchProfile(sess.user.id).catch(() => null),
-        checkBan(sess.user.id).catch(() => null),
-        evaluateMfa(sess).catch(() => null),
-        evaluateAdminGate(sess, !!admin).catch(() => null),
-      ]);
-    };
+    }, 3000);
 
     const init = async () => {
       try {
-        const TIMED_OUT = Symbol("timeout");
-        const res: any = await withTimeout<any>(
-          supabase.auth.getSession() as Promise<any>,
-          8000,
-          TIMED_OUT as any
+        const { data: { session: sess } } = await withTimeout(
+          supabase.auth.getSession(),
+          2500,
+          { data: { session: null } } as any
         );
         if (!mounted) return;
-
-        // On timeout we must NOT wipe the session — doing that was logging
-        // the user out on slow connections. onAuthStateChange will fill it in.
-        if (res === TIMED_OUT) {
-          console.warn("getSession timed out — keeping current session state");
-          return;
-        }
-
-        const sess: Session | null = res?.data?.session ?? null;
         setSession(sess);
         setUser(sess?.user ?? null);
         if (sess?.user) {
-          // onAuthStateChange (INITIAL_SESSION) may have hydrated already.
-          if (hydratedUserRef.current !== sess.user.id) {
-            hydratedUserRef.current = sess.user.id;
-            await hydrate(sess);
-          }
+          await Promise.all([
+            fetchProfile(sess.user.id).catch(() => null),
+            checkBan(sess.user.id).catch(() => null),
+            checkAdmin(sess.user.id).catch(() => null),
+            evaluateMfa(sess).catch(() => null),
+          ]);
         } else {
           setMfaChecked(true);
-          setAdminGateChecked(true);
-          setAdminGateRequired(false);
         }
       } catch (e) {
         console.error("Auth init error", e);
         setMfaChecked(true);
-        setAdminGateChecked(true);
       } finally {
         if (mounted) {
-          initialLoadedRef.current = true;
           setLoading(false);
           if (initTimeout) clearTimeout(initTimeout);
         }
@@ -391,92 +239,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     void init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, sess) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, sess) => {
       if (!mounted) return;
-
-      // A session drop that the user did not ask for: do NOT touch the UI yet,
-      // we first try to recover silently below (keeps the admin button and the
-      // page exactly where they were).
-      const glitchLogout =
-        !sess?.user && !manualSignOutRef.current && !!hydratedUserRef.current && !recoveringRef.current;
-
-      // The callback body must stay synchronous. Calling other supabase
-      // methods (and awaiting them) inside this callback can deadlock the
-      // client's internal lock — that was the "site fica carregando pra sempre"
-      // and "me tira da conta" bug. Heavy work is deferred below.
-      if (!glitchLogout) {
-        setSession(sess);
-        // Keep the SAME user object while the id doesn't change. A new object on
-        // every focus/token refresh made every effect keyed on `user` re-run,
-        // which is why the whole page looked like it was reloading by itself.
-        setUser((prev) => (prev && sess?.user && prev.id === sess.user.id ? prev : sess?.user ?? null));
-      }
+      setSession(sess);
+      setUser(sess?.user ?? null);
+      setMfaChecked(false);
 
       if (sess?.user) {
-        // DO NOT set loading=true on background token refreshes or window focus events!
-        // Only set loading if initial load has not finished yet
-        if (!initialLoadedRef.current) {
-          setLoading(true);
+        setLoading(true);
+        try {
+          await Promise.all([
+            fetchProfile(sess.user.id).catch(() => null),
+            checkBan(sess.user.id).catch(() => null),
+            checkAdmin(sess.user.id).catch(() => null),
+            evaluateMfa(sess).catch(() => null),
+          ]);
+        } finally {
+          if (mounted) setLoading(false);
         }
-
-        // Any event for a user we already hydrated (TOKEN_REFRESHED, SIGNED_IN
-        // fired on tab focus, INITIAL_SESSION, USER_UPDATED...) must NOT trigger
-        // a full reload — that is what made the page "atualizar sozinha" every
-        // time the browser was reopened.
-        if (hydratedUserRef.current === sess.user.id) return;
-
-        hydratedUserRef.current = sess.user.id;
-
-        setTimeout(() => {
-          if (!mounted) return;
-          void hydrate(sess)
-            .catch(() => null)
-            .finally(() => {
-              if (mounted && !initialLoadedRef.current) {
-                initialLoadedRef.current = true;
-                setLoading(false);
-                if (initTimeout) clearTimeout(initTimeout);
-              }
-            });
-        }, 0);
-      } else if (glitchLogout) {
-        // The user did NOT click "Sair": this is Supabase dropping the session
-        // (usually a token refresh that failed while the tab was in the
-        // background). Try once to get it back before showing the login again.
-        recoveringRef.current = true;
-        setTimeout(() => {
-          void (async () => {
-            try {
-              const { data } = await supabase.auth.refreshSession();
-              if (data?.session) {
-                recoveringRef.current = false;
-                return; // onAuthStateChange fires again with the good session
-              }
-            } catch {
-              /* fall through to a real logout */
-            }
-            recoveringRef.current = false;
-            if (!mounted) return;
-            // Recovery failed: now it really is a logout.
-            hydratedUserRef.current = null;
-            setSession(null);
-            setUser(null);
-            setProfile(null);
-            setBanned(null);
-            setIsAdmin(false);
-            setMfaEnabled(false);
-            setNeedsMfa(false);
-            setChallengeId(null);
-            setMfaChecked(true);
-            setAdminGateRequired(false);
-            setAdminGateChecked(true);
-            setLoading(false);
-          })();
-        }, 0);
       } else {
-        // No session (signed out / session expired)
-        manualSignOutRef.current = false;
-        hydratedUserRef.current = null;
         setProfile(null);
         setBanned(null);
         setIsAdmin(false);
@@ -484,8 +265,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setNeedsMfa(false);
         setChallengeId(null);
         setMfaChecked(true);
-        setAdminGateRequired(false);
-        setAdminGateChecked(true);
         setLoading(false);
       }
     });
@@ -495,7 +274,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (initTimeout) clearTimeout(initTimeout);
       subscription.unsubscribe();
     };
-  }, [evaluateMfa, evaluateAdminGate]);
+  }, [evaluateMfa]);
 
   const signUp = async (email: string, password: string, displayName: string) => {
     const last = localStorage.getItem("zxmax_last_signup");
@@ -529,312 +308,122 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: error.message };
     }
     localStorage.removeItem(key);
-    
-    if (data.session) {
-      const admin = await checkAdmin(data.session.user.id);
-      void evaluateMfa(data.session);
-      void evaluateAdminGate(data.session, admin);
-    }
+    setMfaChecked(false);
+    if (data.session) void evaluateMfa(data.session);
     return { error: null };
   };
 
   const verifyMfa = async (code: string) => {
-    const cleanCode = code.replace(/\D/g, "").slice(0, 6);
-    if (cleanCode.length !== 6) return { error: "Digite o código de 6 dígitos." };
-
     const doVerify = async (cid: string, fid: string) => {
       const { data, error } = await supabase.auth.mfa.verify({
         factorId: fid,
         challengeId: cid,
-        code: cleanCode,
+        code,
       });
-      if (error) return { error: friendlyMfaError(error.message) };
-      if ((data as any)?.session) {
-        setSession((data as any).session);
-        setUser((data as any).session.user);
+      if (error) return { error: error.message };
+      if (data?.session) {
+        setSession(data.session);
+        setUser(data.session.user);
       }
       setNeedsMfa(false);
       setChallengeId(null);
       setMfaEnabled(true);
-      
-      // Unlock admin session
-      if (user) {
-        setAdminSessionUnlocked(user.id);
-      }
-      setAdminGateRequired(false);
-      setAdminGateChecked(true);
+      // Mark MFA as verified for this session (admin only, 12h)
+      try {
+        sessionStorage.setItem("zxmax_admin_mfa_verified", String(Date.now()));
+      } catch {}
       return { error: null };
     };
 
-    try {
+    if (!challengeId) {
       const factors = await listFactors();
-      const verified = factors.find((f: any) => f.status === "verified");
-      if (!verified) return { error: "Nenhum autenticador configurado. Toque em 'Reconfigurar / Gerar novo QR Code' para criar um." };
-      
+      const verified = factors.find((f) => f.status === "verified");
+      if (!verified) return { error: "Nenhum desafio pendente. Faça login novamente." };
       const chal = await supabase.auth.mfa.challenge({ factorId: verified.id });
-      if (chal.error || !chal.data?.id) return { error: friendlyMfaError(chal.error?.message || "Falha ao validar autenticador.") };
+      if (chal.error || !chal.data?.id) return { error: "Falha ao criar desafio 2FA." };
       setChallengeId(chal.data.id);
       return await doVerify(chal.data.id, verified.id);
-    } catch (e: any) {
-      return { error: friendlyMfaError(e?.message) };
     }
-  };
-
-  // Asks the backend (service role) to delete every MFA factor of the current
-  // admin. This is the ONLY way out when the authenticator app was lost:
-  // Supabase requires an AAL2 session to unenroll a verified factor, so the
-  // browser alone can never recover — it just kept returning the same error.
-  // Current assurance level of the session. Deleting / replacing a verified
-  // TOTP factor requires "aal2" — i.e. a code typed in this session.
-  const getAal = useCallback(async (): Promise<string> => {
-    try {
-      const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      return (data?.currentLevel as string) || "aal1";
-    } catch {
-      return "aal1";
-    }
-  }, []);
-
-  const needsCodeToManageMfa = useCallback(async (): Promise<boolean> => {
-    try {
-      const { data } = await supabase.auth.mfa.listFactors();
-      const hasVerified = (data?.totp || []).some((f: any) => f.status === "verified");
-      if (!hasVerified) return false;
-      return (await getAal()) !== "aal2";
-    } catch {
-      return false;
-    }
-  }, [getAal]);
-
-  // Types the 6-digit code from the app to raise the session to aal2, which
-  // unlocks "excluir" and "gerar novo QR Code" without any backend deploy.
-  const elevateWithCode = useCallback(async (code: string): Promise<{ error: string | null }> => {
-    const cleanCode = code.replace(/\D/g, "").slice(0, 6);
-    if (cleanCode.length !== 6) return { error: "Digite o código de 6 dígitos." };
-    try {
-      const { data: factorsData } = await supabase.auth.mfa.listFactors();
-      const verified = (factorsData?.totp || []).find((f: any) => f.status === "verified");
-      if (!verified) return { error: null }; // nothing to elevate against
-      const chal = await supabase.auth.mfa.challenge({ factorId: verified.id });
-      if (chal.error || !chal.data?.id) return { error: friendlyMfaError(chal.error?.message) };
-      const { error } = await supabase.auth.mfa.verify({
-        factorId: verified.id,
-        challengeId: chal.data.id,
-        code: cleanCode,
-      });
-      if (error) return { error: friendlyMfaError(error.message) };
-      return { error: null };
-    } catch (e: any) {
-      return { error: friendlyMfaError(e?.message) };
-    }
-  }, []);
-
-  const resetMfaOnServer = async (): Promise<{ error: string | null }> => {
-    try {
-      const { data, error } = await supabase.functions.invoke("admin-login", {
-        body: { action: "reset_mfa" },
-      });
-      if (error) {
-        return { error: "Servidor indisponível no momento. Tente novamente em instantes." };
-      }
-      if (data?.error) {
-        const msg = String(data.error);
-        if (msg.toLowerCase().includes("ação inválida")) {
-          return {
-            error:
-              "Digite o código atual do autenticador para liberar a troca (o reset automático pelo servidor ainda não foi publicado no Supabase).",
-          };
-        }
-        return { error: msg };
-      }
-      return { error: null };
-    } catch (e: any) {
-      return { error: e?.message || "Não foi possível falar com o servidor." };
-    }
-  };
-
-  const resetMfa = async (): Promise<{ error: string | null }> => {
-    const res = await resetMfaOnServer();
-    if (!res.error) {
-      await supabase.auth.refreshSession().catch(() => null);
-      setMfaEnabled(false);
-      setNeedsMfa(false);
-      try {
-        localStorage.removeItem(ENROLL_STORAGE_KEY);
-      } catch {}
-    }
-    return res;
+    const factor = (await listFactors()).find((f) => f.status === "verified");
+    if (!factor) return { error: "Fator 2FA não encontrado." };
+    return await doVerify(challengeId, factor.id);
   };
 
   const enrollTotpStart = async (): Promise<{ data: TotpEnroll | null; error: string | null }> => {
-    const runEnroll = async () => {
-      const uniqueName = `ZXMAX-${Date.now().toString().slice(-6)}`;
-      return await supabase.auth.mfa.enroll({
-        factorType: "totp" as any,
-        friendlyName: uniqueName,
-        issuer: "ZXMAX",
-      } as any);
-    };
-
-    // Errors that mean "there is already a verified factor and this session is
-    // only AAL1", i.e. the client alone can never fix it — the server must
-    // delete the old factor with the service role.
-    const needsServerReset = (msg: string) => {
-      const m = (msg || "").toLowerCase();
-      return (
-        m.includes("aal2") ||
-        m.includes("insufficient") ||
-        m.includes("exceed") ||
-        m.includes("limit") ||
-        m.includes("already exists") ||
-        m.includes("already enrolled") ||
-        m.includes("factor_name_conflict") ||
-        m.includes("403")
-      );
-    };
-
     try {
-      // 1. Try to purge existing factors client-side (works while the session
-      //    has no *verified* factor, or when it is already AAL2).
-      try {
-        const { data: existing } = await supabase.auth.mfa.listFactors();
-        for (const f of existing?.totp || []) {
-          await supabase.auth.mfa.unenroll({ factorId: f.id }).catch(() => {});
-        }
-      } catch {}
+      const { data: existing } = await supabase.auth.mfa.listFactors();
+      const unverified = (existing?.totp || []).filter((f) => f.status !== "verified");
+      for (const f of unverified) {
+        try {
+          await supabase.auth.mfa.unenroll({ factorId: f.id });
+        } catch {}
+      }
+    } catch {}
 
-      // 2. Enroll a clean TOTP factor
-      let { data, error } = await runEnroll();
-
-      // 3. Blocked by an old/lost authenticator? Ask the server to wipe it and retry.
-      if ((error || !data) && needsServerReset(error?.message || "")) {
-        const reset = await resetMfaOnServer();
-        if (reset.error) {
+    const uniqueName = `ZXMAX Authenticator ${Date.now().toString().slice(-4)}`;
+    const { data, error } = await supabase.auth.mfa.enroll({
+      factorType: "totp" as AdminFactorType,
+      friendlyName: uniqueName,
+      issuer: "ZXMAX",
+    } as any);
+    if (error || !data) {
+      if (error?.message?.includes("already exists")) {
+        try {
+          const { data: existing2 } = await supabase.auth.mfa.listFactors();
+          for (const f of existing2?.totp || []) {
+            if (f.status !== "verified") {
+              await supabase.auth.mfa.unenroll({ factorId: f.id }).catch(() => {});
+            }
+          }
+          const retry = await supabase.auth.mfa.enroll({
+            factorType: "totp" as AdminFactorType,
+            friendlyName: `ZXMAX ${Math.random().toString(36).slice(2, 6)}`,
+            issuer: "ZXMAX",
+          } as any);
+          if (retry.error || !retry.data) return { data: null, error: retry.error?.message || "Falha ao iniciar 2FA" };
           return {
-            data: null,
-            error:
-              "Não foi possível remover o autenticador antigo automaticamente. " +
-              reset.error,
+            data: { id: retry.data.id, qr: retry.data.totp.qr_code, secret: retry.data.totp.secret },
+            error: null,
           };
-        }
-        // Refresh the JWT so it no longer carries the old factor state.
-        await supabase.auth.refreshSession().catch(() => null);
-        ({ data, error } = await runEnroll());
+        } catch {}
       }
-
-      if (error || !data) {
-        return { data: null, error: friendlyMfaError(error?.message) };
-      }
-
-      return {
-        data: {
-          id: data.id,
-          qr: data.totp.qr_code,
-          secret: data.totp.secret,
-        },
-        error: null,
-      };
-    } catch (e: any) {
-      return { data: null, error: friendlyMfaError(e?.message) };
+      return { data: null, error: error?.message || "Falha ao iniciar 2FA" };
     }
+    return {
+      data: { id: data.id, qr: data.totp.qr_code, secret: data.totp.secret },
+      error: null,
+    };
   };
 
   const enrollTotpVerify = async (factorId: string, code: string) => {
-    const cleanCode = code.replace(/\D/g, "").slice(0, 6);
-    if (cleanCode.length !== 6) return { error: "Digite o código de 6 dígitos." };
-
-    try {
-      const challenge = await supabase.auth.mfa.challenge({ factorId });
-      if (challenge.error || !challenge.data) return { error: friendlyMfaError(challenge.error?.message || "Falha ao gerar desafio.") };
-
-      const verify = await supabase.auth.mfa.verify({ factorId, challengeId: challenge.data.id, code: cleanCode });
-      if (verify.error) return { error: friendlyMfaError(verify.error.message || "Código inválido.") };
-      
-      setMfaEnabled(true);
-      setNeedsMfa(false);
-      setMfaChecked(true);
-
-      if ((verify.data as any)?.session) {
-        setSession((verify.data as any).session);
-        setUser((verify.data as any).session.user);
-      }
-
-      // Unlock admin session
-      if (user) {
-        setAdminSessionUnlocked(user.id);
-      }
-      setAdminGateRequired(false);
-      setAdminGateChecked(true);
-
-      return { error: null };
-    } catch (e: any) {
-      return { error: e?.message || "Erro ao verificar código" };
+    const challenge = await supabase.auth.mfa.challenge({ factorId });
+    if (challenge.error) return { error: challenge.error.message };
+    const verify = await supabase.auth.mfa.verify({ factorId, challengeId: challenge.data!.id, code });
+    if (verify.error) return { error: verify.error.message };
+    setMfaEnabled(true);
+    setNeedsMfa(false);
+    setMfaChecked(true);
+    if (verify.data?.session) {
+      setSession(verify.data.session);
+      setUser(verify.data.session.user);
     }
+    return { error: null };
   };
 
-  const unenrollTotp = async (factorId?: string) => {
-    try {
-      const { data: factors } = await supabase.auth.mfa.listFactors();
-      const allTotp = factors?.totp || [];
-      const toDelete = factorId ? allTotp.filter((f: any) => f.id === factorId) : allTotp;
-
-      let blocked = false;
-      for (const f of toDelete) {
-        const { error } = await supabase.auth.mfa.unenroll({ factorId: f.id });
-        if (error) blocked = true;
-      }
-
-      // A verified factor can only be removed by an AAL2 session; fall back to
-      // the server-side reset so the admin is never locked out.
-      if (blocked) {
-        const reset = await resetMfaOnServer();
-        if (reset.error) return { error: reset.error };
-        await supabase.auth.refreshSession().catch(() => null);
-      }
-
-      setMfaEnabled(false);
-      setNeedsMfa(false);
-
-      try {
-        localStorage.removeItem(ENROLL_STORAGE_KEY);
-      } catch {}
-
-      return { error: null };
-    } catch (e: any) {
-      return { error: e?.message || "Erro ao desativar autenticador." };
-    }
+  const unenrollTotp = async (factorId: string) => {
+    const { error } = await supabase.auth.mfa.unenroll({ factorId });
+    if (error) return { error: error.message };
+    setMfaEnabled(false);
+    setNeedsMfa(false);
+    return { error: null };
   };
 
   const listFactors = async (): Promise<Factor[]> => {
-    try {
-      // Hard timeout: without it a stalled request left the admin 2FA screen
-      // spinning on "Carregando autenticação..." forever.
-      const { data } = await withTimeout<any>(
-        supabase.auth.mfa.listFactors() as Promise<any>,
-        NET_TIMEOUT,
-        { data: { totp: [] }, error: null } as any,
-      );
-      return data?.totp || [];
-    } catch {
-      return [];
-    }
-  };
-
-  const refreshAdminGate = async () => {
-    await evaluateAdminGate(session, isAdmin);
+    const { data } = await supabase.auth.mfa.listFactors();
+    return data?.totp || [];
   };
 
   const signOut = async () => {
-    manualSignOutRef.current = true;
-    clearAdminSessionUnlocked();
-    clearTrustedDevice();
-    if (user) {
-      setCachedAdmin(user.id, false);
-    }
-    try {
-      localStorage.removeItem(ENROLL_STORAGE_KEY);
-    } catch {}
-
     await supabase.auth.signOut();
     setProfile(null);
     setBanned(null);
@@ -842,9 +431,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMfaEnabled(false);
     setNeedsMfa(false);
     setMfaChecked(true);
-    setAdminGateRequired(false);
-    setAdminGateChecked(true);
     setChallengeId(null);
+    try {
+      sessionStorage.removeItem("zxmax_admin_mfa_verified");
+      localStorage.removeItem(ENROLL_STORAGE_KEY);
+    } catch {}
   };
 
   const refreshProfile = async () => {
@@ -859,15 +450,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, profile, session, loading, banned,
-      // The cached admin flag is only meaningful while somebody is logged in.
-      isAdmin: isAdmin && !!user,
+      user, profile, session, loading, banned, isAdmin,
       mfaEnabled, needsMfa, mfaChecked,
-      adminGateRequired, adminGateChecked, unlockAdminGate,
       signUp, signIn, verifyMfa,
-      enrollTotpStart, enrollTotpVerify, unenrollTotp, listFactors, resetMfa,
-      needsCodeToManageMfa, elevateWithCode,
-      refreshAdminGate,
+      enrollTotpStart, enrollTotpVerify, unenrollTotp, listFactors,
       signOut, refreshProfile, updateProfile: updateProfileFn,
     }}>
       {children}

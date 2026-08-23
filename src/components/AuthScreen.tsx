@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { X, ShieldCheck, Loader2, Lock, Smartphone, Eye, EyeOff, Shield, Zap, AlertTriangle } from "lucide-react";
 
 export default function AuthScreen({ onClose }: { onClose?: () => void }) {
-  const { signUp, signIn, verifyMfa, needsMfa, user } = useAuth();
+  const { signUp, signIn, verifyMfa, needsMfa } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,12 +23,6 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
     if (needsMfa) setTimeout(() => codeRefs.current[0]?.focus(), 100);
   }, [needsMfa]);
 
-  // Safety net: never keep the auth overlay open once a session exists.
-  useEffect(() => {
-    if (user && !needsMfa) onClose?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, needsMfa]);
-
   useEffect(() => {
     let s = 0;
     if (password.length >= 8) s++;
@@ -38,32 +32,57 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
     setPassStrength(s);
   }, [password]);
 
-  const handleDiscord = () => {
-    let cfg: any = {};
+  const handleDiscord = async () => {
     try {
-      const saved = localStorage.getItem("zxmax_state");
-      if (saved) cfg = JSON.parse(saved)?.config || {};
-    } catch {}
-    const clientId = cfg.discordClientId || "1485093454517371070";
-    const redirectBase = cfg.discordRedirectUri || window.location.origin + "/";
-    const scopesValue = cfg.discordScopes || "identify email";
-    if (!clientId) {
-      toast.error("Client ID do Discord não configurado.");
-      return;
+      // Try to get Discord config from backend first
+      let clientId = "1506929376967790752"; // User's provided ID as fallback
+      let redirectBase = window.location.origin + "/";
+      let scopesValue = "identify email";
+      
+      try {
+        const { supabase } = await import("@/integrations/supabase/client");
+        const { data } = await supabase.functions.invoke("integrations-config", { body: { action: "get" } });
+        if (data?.integrations?.discord?.clientId) {
+          clientId = data.integrations.discord.clientId;
+        }
+        if (data?.integrations?.discord?.redirectUri) {
+          redirectBase = data.integrations.discord.redirectUri;
+        }
+        if (data?.integrations?.discord?.scopes) {
+          scopesValue = data.integrations.discord.scopes;
+        }
+      } catch {}
+
+      // Fallback to localStorage
+      try {
+        const saved = localStorage.getItem("zxmax_state");
+        if (saved) {
+          const cfg = JSON.parse(saved)?.config || {};
+          if (cfg.discordClientId) clientId = cfg.discordClientId;
+          if (cfg.discordRedirectUri) redirectBase = cfg.discordRedirectUri;
+          if (cfg.discordScopes) scopesValue = cfg.discordScopes;
+        }
+      } catch {}
+
+      if (!clientId) {
+        toast.error("Discord não configurado. Configure em Admin → APIs.");
+        return;
+      }
+
+      // Ensure redirectUri is exactly what's configured in Discord Dev Portal
+      // For Vercel, it must be https://zxmax.vercel.app/ or your preview domain
+      const redirectUri = encodeURIComponent(redirectBase);
+      const scopes = encodeURIComponent(scopesValue);
+      const url = `https://discord.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${scopes}`;
+      console.log("Discord OAuth URL:", url);
+      window.location.href = url;
+    } catch (e: any) {
+      toast.error("Erro ao iniciar Discord: " + (e?.message || ""));
     }
-    const redirectUri = encodeURIComponent(redirectBase);
-    const scopes = encodeURIComponent(scopesValue);
-    window.location.href = `https://discord.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${scopes}`;
   };
 
   const handleForgot = async () => {
-    if (!email) { setError("Digite seu e-mail para recuperar a senha."); return; }
-    const { supabase } = await import("@/integrations/supabase/client");
-    const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    if (err) { setError(err.message); return; }
-    toast.success("Enviamos um link de recuperação para o seu e-mail.");
+    toast.info("Recuperação de senha em desenvolvimento. Entre em contato com o suporte no Discord.");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -89,13 +108,6 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
           if (err.includes("Invalid login")) setError("Email ou senha incorretos.");
           else if (err.includes("Email not confirmed")) setError("Confirme seu e-mail antes.");
           else setError(err);
-        } else {
-          // Login succeeded: close the overlay (it used to stay on top of the
-          // whole site, which looked like the login had frozen).
-          toast.success("Login realizado!");
-          setLoading(false);
-          onClose?.();
-          return;
         }
       }
     } catch {
@@ -246,7 +258,7 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
               </button>
             </form>
 
-            {mode === "login" && <button type="button" onClick={handleForgot} className="w-full text-center text-xs font-bold text-[#0084ff] mt-3 hover:underline">Esqueceu sua senha?</button>}
+            {mode === "login" && <button type="button" onClick={handleForgot} className="w-full text-center text-[11px] font-bold text-white/30 mt-3 hover:text-white/50 transition">Esqueceu sua senha? (em breve)</button>}
 
             <div className="mt-5">
               <button onClick={handleDiscord} className="w-full flex items-center justify-center gap-2 p-3 border border-white/10 rounded-xl hover:bg-white/[0.04] transition text-sm font-bold text-white/60 hover:text-white">
