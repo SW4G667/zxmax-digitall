@@ -50,8 +50,8 @@ serve(async (req) => {
     const variations = Array.isArray(product.variations) ? product.variations : [];
     const variation = variationName ? variations.find((v: any) => v?.name === variationName) : null;
     const amount = Number(variation ? variation.price : product.price);
-    if (!amount || Number.isNaN(amount) || amount < 5) {
-      return json({ error: "O preço mínimo de um produto é R$ 5,00" }, 400);
+    if (!amount || Number.isNaN(amount) || amount < 2) {
+      return json({ error: "O preço mínimo de um produto é R$ 2,00" }, 400);
     }
 
     const { data: profile } = await admin

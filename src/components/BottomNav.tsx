@@ -1,42 +1,86 @@
-import React from "react";
-import { FireEmoji, PackageEmoji, HeadsetEmoji, ShieldEmoji, BagCheckEmoji } from "@/components/CustomEmojis";
+import React, { useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Store, Package, ShoppingBag, Headset, Shield } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import AuthScreen from "@/components/AuthScreen";
 
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "withdraw";
 
 interface Props {
-  current: View;
-  onChange: (v: View) => void;
+  current?: View;
+  onChange?: (v: View) => void;
 }
 
-export default function BottomNav({ current, onChange }: Props) {
-  const { isAdmin } = useAuth();
+const PATHS: Record<View, string> = {
+  store: "/loja",
+  inventory: "/meus-produtos",
+  purchases: "/minhas-compras",
+  support: "/suporte",
+  admin: "/admin",
+  withdraw: "/sacar",
+};
 
-  const items: { key: View; label: string; emoji: React.ReactNode }[] = [
-    { key: "store", label: "Loja", emoji: <FireEmoji className="w-6 h-6" /> },
-    { key: "inventory", label: "Anúncios", emoji: <PackageEmoji className="w-6 h-6" /> },
-    { key: "purchases", label: "Compras", emoji: <BagCheckEmoji className="w-6 h-6" /> },
-    { key: "support", label: "Suporte", emoji: <HeadsetEmoji className="w-6 h-6" /> },
+function pathToView(path: string): View {
+  if (path.startsWith("/meus-produtos")) return "inventory";
+  if (path.startsWith("/minhas-compras")) return "purchases";
+  if (path.startsWith("/suporte")) return "support";
+  if (path.startsWith("/admin")) return "admin";
+  if (path.startsWith("/sacar")) return "withdraw";
+  return "store";
+}
+
+export default function BottomNav({ current: propCurrent, onChange: propOnChange }: Props) {
+  const { isAdmin, user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [authOpen, setAuthOpen] = useState(false);
+
+  const derivedCurrent = propCurrent ?? pathToView(location.pathname);
+
+  const handleChange = (v: View) => {
+    if (propOnChange) {
+      propOnChange(v);
+      return;
+    }
+    if (!user && v !== "store") {
+      setAuthOpen(true);
+      return;
+    }
+    navigate(PATHS[v]);
+  };
+
+  const items: { key: View; label: string; icon: any }[] = [
+    { key: "store", label: "Loja", icon: Store },
+    { key: "inventory", label: "Anúncios", icon: Package },
+    { key: "purchases", label: "Compras", icon: ShoppingBag },
+    { key: "support", label: "Suporte", icon: Headset },
   ];
 
   if (isAdmin) {
-    items.push({ key: "admin", label: "Admin", emoji: <ShieldEmoji className="w-6 h-6" /> });
+    items.push({ key: "admin", label: "Admin", icon: Shield });
   }
 
   return (
-      <nav className="nav-bottom-bar fixed bottom-0 left-0 right-0 h-20 px-4 flex items-center justify-around z-50 safe-area-inset-bottom">
-        {items.map((item) => (
-          <button
-            key={item.key}
-            onClick={() => onChange(item.key)}
-            className={`flex flex-col items-center gap-1 py-1 px-3 rounded-2xl transition-all ${
-              current === item.key ? "text-primary" : "text-muted-foreground opacity-60 hover:opacity-100"
-            }`}
-          >
-            {item.emoji}
-            <span className="text-[10px] font-bold uppercase tracking-widest">{item.label}</span>
-          </button>
-        ))}
+    <>
+      <nav className="fixed bottom-0 left-0 right-0 h-[64px] px-2 flex items-center justify-around z-50 bg-[#0f0f14] border-t border-[#1e1e28] safe-area-inset-bottom">
+        {items.map((item) => {
+          const Icon = item.icon;
+          const active = derivedCurrent === item.key;
+          return (
+            <button
+              key={item.key}
+              onClick={() => handleChange(item.key)}
+              className={`flex flex-col items-center gap-1 py-2 px-4 rounded-xl transition-colors ${
+                active ? "text-[#0084ff]" : "text-white/40 hover:text-white/80"
+              }`}
+            >
+              <Icon className={`w-5 h-5 ${active ? "text-[#0084ff]" : "text-white/40"}`} />
+              <span className="text-[10px] font-bold uppercase tracking-wide">{item.label}</span>
+            </button>
+          );
+        })}
       </nav>
+      {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
+    </>
   );
 }

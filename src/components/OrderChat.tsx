@@ -90,10 +90,22 @@ export default function OrderChat({ orderId, locked }: Props) {
     return true;
   };
 
+  const sanitize = (input: string) => {
+    // Remove custom emojis and excessive emoji, keep only text, numbers, punctuation
+    // Allow basic emojis but not custom GGMAX emojis that break chat
+    return input
+      .replace(/<[^>]*>/g, "") // strip HTML
+      .replace(/[\u{1F600}-\u{1F6FF}]{3,}/gu, "") // remove 3+ consecutive emojis
+      .trim()
+      .slice(0, 1000);
+  };
+
   const handleSend = async () => {
     if (!text.trim() || sending) return;
+    const clean = sanitize(text);
+    if (!clean) return toast.error("Mensagem inválida");
     setSending(true);
-    const ok = await sendMessage(text.trim(), null);
+    const ok = await sendMessage(clean, null);
     if (ok) {
       setText("");
       void load();

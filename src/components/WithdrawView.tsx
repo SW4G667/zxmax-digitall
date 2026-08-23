@@ -16,7 +16,7 @@ export default function WithdrawView() {
   const submit = async (retryOf?: number) => {
     if (!user?.isVerified) return toast.error("Conclua a verificação de identidade antes de sacar.");
     if (!user.pixKey) return toast.error("Cadastre uma chave Pix no seu perfil.");
-    if (user.balance < 5) return toast.error("O saque mínimo é R$ 5,00.");
+    if (user.balance < 2) return toast.error("O saque mínimo é R$ 2,00.");
     setSubmitting(true);
     try {
       await requestWithdraw("normal", retryOf ? { retryOf } : undefined);

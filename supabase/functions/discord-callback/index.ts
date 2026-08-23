@@ -3,8 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 serve(async (req) => {
@@ -21,30 +20,50 @@ serve(async (req) => {
       });
     }
 
-    const clientId = Deno.env.get("DISCORD_CLIENT_ID") || "1485093454517371070";
-    const clientSecret = Deno.env.get("DISCORD_CLIENT_SECRET");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const adminClient = createClient(supabaseUrl, serviceKey);
+
+    // Try to get Discord credentials from app_settings first (admin panel), fallback to env
+    let clientId = Deno.env.get("DISCORD_CLIENT_ID") || "1485093454517371070";
+    let clientSecret = Deno.env.get("DISCORD_CLIENT_SECRET");
+    
+    try {
+      const { data: discordSetting } = await adminClient.from("app_settings").select("value").eq("key", "discord").maybeSingle();
+      if (discordSetting?.value?.clientId) clientId = discordSetting.value.clientId;
+      if (discordSetting?.value?.clientSecret) clientSecret = discordSetting.value.clientSecret;
+    } catch {}
+
     if (!clientSecret) {
-      return new Response(JSON.stringify({ success: false, error: "Discord não configurado no servidor." }), {
+      console.error("Discord secret not configured");
+      return new Response(JSON.stringify({ success: false, error: "Discord não configurado no servidor. Configure em Admin → APIs & Credenciais ou secrets." }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // SECURITY: only allow redirect URIs that exactly match known origins.
-    const ALLOWED_REDIRECTS = (Deno.env.get("DISCORD_ALLOWED_REDIRECTS") ||
-      "https://zxmax.vercel.app,https://zxmax-digitall.vercel.app,http://localhost:8080,http://127.0.0.1:8080"
-    ).split(",").map((s) => s.trim()).filter(Boolean);
+    // Allowlist - include vercel preview domains automatically
+    const defaultAllows = "https://zxmax.vercel.app,https://zxmax-digitall.vercel.app,http://localhost:8080,http://127.0.0.1:8080,http://localhost:5173";
+    const envAllows = Deno.env.get("DISCORD_ALLOWED_REDIRECTS") || defaultAllows;
+    const allowedList = envAllows.split(",").map((s) => s.trim().replace(/\/+$/, "")).filter(Boolean);
 
     const requested = (redirectUri || "").replace(/\/+$/, "");
-    const finalRedirectUri =
-      ALLOWED_REDIRECTS.map((s) => s.replace(/\/+$/, "")).find((s) => s === requested) ||
-      "https://zxmax.vercel.app/";
+    
+    // Allow any *.vercel.app subdomain automatically (fix for preview deployments)
+    const isVercelPreview = requested.includes(".vercel.app");
+    let finalRedirectUri = requested;
 
-    if (requested && finalRedirectUri.replace(/\/+$/, "") !== requested) {
-      console.warn("Blocked disallowed Discord redirect URI:", requested);
+    if (!isVercelPreview) {
+      const exactMatch = allowedList.find((s) => s === requested);
+      finalRedirectUri = exactMatch || "https://zxmax.vercel.app/";
+      if (requested && finalRedirectUri.replace(/\/+$/, "") !== requested) {
+        console.warn("Redirect URI not in allowlist, using default. Requested:", requested, "Allowed:", allowedList);
+      }
+    } else {
+      console.log("Allowing Vercel preview redirect:", requested);
     }
 
-    // Exchange code for access token
-    console.log("Exchanging code for Discord access token...");
+    console.log("Exchanging Discord code, clientId:", clientId, "redirectUri:", finalRedirectUri);
+
     const tokenRes = await fetch("https://discord.com/api/v10/oauth2/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -58,80 +77,46 @@ serve(async (req) => {
     });
 
     const tokenData = await tokenRes.json();
-    console.log("Discord token response status:", tokenRes.status);
-    
+    console.log("Discord token status:", tokenRes.status, "data:", JSON.stringify(tokenData).slice(0, 500));
+
     if (!tokenRes.ok) {
-      console.error("Discord token error response:", tokenData);
-      throw new Error(`Discord token error (${tokenRes.status}): ${tokenData.error_description || tokenData.error || "Unknown error"}`);
-    }
-    
-    if (tokenData.error) {
-      console.error("Discord token error:", tokenData);
-      throw new Error(`Discord token error: ${tokenData.error_description || tokenData.error}`);
+      console.error("Discord token error", tokenData);
+      throw new Error(`Discord: ${tokenData.error_description || tokenData.error || "Erro ao trocar code por token"} - Verifique se Redirect URI em https://discord.com/developers/applications/${clientId}/oauth2/general está igual a ${finalRedirectUri}`);
     }
 
-    if (!tokenData.access_token) {
-      console.error("No access token in response:", tokenData);
-      throw new Error("No access token returned from Discord");
+    if (tokenData.error || !tokenData.access_token) {
+      throw new Error(`Discord token error: ${tokenData.error_description || tokenData.error || "sem access_token"}`);
     }
 
-    // Get Discord user profile
-    console.log("Fetching Discord user profile...");
     const userRes = await fetch("https://discord.com/api/v10/users/@me", {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
-    
     const discordUser = await userRes.json();
-    console.log("Discord user response status:", userRes.status);
-    
-    if (!userRes.ok) {
-      console.error("Discord user fetch error:", discordUser);
-      throw new Error(`Failed to fetch Discord user (${userRes.status}): ${discordUser.message || "Unknown error"}`);
+
+    if (!userRes.ok || !discordUser.id) {
+      console.error("Discord user fetch failed", discordUser);
+      throw new Error(`Falha ao buscar usuário Discord: ${discordUser.message || "sem id"}`);
     }
 
-    if (!discordUser.id) {
-      console.error("No Discord user ID in response:", discordUser);
-      throw new Error("Failed to fetch Discord user ID");
-    }
+    console.log("Discord user ok", discordUser.id, discordUser.username);
 
-    console.log("Discord user fetched successfully:", discordUser.id);
-
-    // Use Supabase admin client to create/find user
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.error("Supabase environment variables not configured");
-      throw new Error("Supabase environment variables not configured");
-    }
-
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+    const supabaseAdmin = createClient(supabaseUrl, serviceKey);
 
     const email = discordUser.email || `discord_${discordUser.id}@zxmax.local`;
-    const displayName = discordUser.global_name || discordUser.username || `Discord User ${discordUser.id}`;
+    const displayName = discordUser.global_name || discordUser.username || `Discord ${discordUser.id}`;
     const avatarUrl = discordUser.avatar
       ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
       : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(displayName)}`;
 
-    console.log("Looking up user with email:", email);
-
-    // Try to find existing user by email or Discord ID
+    // Find existing user
     const { data: { users: allUsers }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
-    if (listError) {
-      console.error("Error listing users:", listError);
-      throw listError;
-    }
+    if (listError) throw listError;
 
-    const existingUser = allUsers?.find(
-      (u: any) => u.email === email || u.user_metadata?.discord_id === discordUser.id
-    );
+    const existingUser = allUsers?.find((u: any) => u.email === email || u.user_metadata?.discord_id === discordUser.id);
 
     if (existingUser) {
-      console.log("Existing user found:", existingUser.id);
-      const userId = existingUser.id;
-
       const password = crypto.randomUUID();
-      const { error: updateUserError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
         password,
         email_confirm: true,
         user_metadata: {
@@ -141,77 +126,36 @@ serve(async (req) => {
           discord_id: discordUser.id,
         },
       });
-      if (updateUserError) {
-        console.error("Error updating Discord user:", updateUserError);
-        throw updateUserError;
-      }
+      if (updErr) throw updErr;
 
       return new Response(JSON.stringify({
         success: true,
         password,
-        user: { id: userId, email: existingUser.email, display_name: displayName, avatar_url: avatarUrl },
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
+        user: { id: existingUser.id, email: existingUser.email, display_name: displayName, avatar_url: avatarUrl },
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     } else {
-      // Create new user with Discord info
-      console.log("Creating new user with email:", email);
       const password = crypto.randomUUID();
-      
       const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
-        user_metadata: {
-          display_name: displayName,
-          avatar_url: avatarUrl,
-          discord_id: discordUser.id,
-        },
+        user_metadata: { display_name: displayName, avatar_url: avatarUrl, discord_id: discordUser.id },
       });
-      
-      if (createError) {
-        console.error("Error creating user:", createError);
-        throw createError;
-      }
-      
+      if (createError) throw createError;
+
       const userId = newUser.user.id;
-      console.log("New user created:", userId);
+      await supabaseAdmin.from("profiles").update({ display_name: displayName, avatar_url: avatarUrl } as any).eq("user_id", userId);
 
-      // Update profile with Discord info
-      console.log("Updating profile with Discord info...");
-      const { error: updateError } = await supabaseAdmin.from("profiles").update({
-        display_name: displayName,
-        avatar_url: avatarUrl,
-      }).eq("user_id", userId);
-      
-      if (updateError) {
-        console.error("Error updating profile:", updateError);
-        // Don't throw, continue anyway
-      }
-
-      console.log("New user setup completed successfully");
       return new Response(JSON.stringify({
         success: true,
         password,
         user: { id: userId, email, display_name: displayName, avatar_url: avatarUrl },
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
   } catch (error: any) {
-    console.error("Discord callback error:", error.message || error);
-    return new Response(
-      JSON.stringify({ 
-        success: false,
-        error: error.message || "Unknown error occurred",
-        details: error.toString()
-      }),
-      { 
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, 
-        status: 400 
-      },
-    );
+    console.error("Discord callback error:", error.message);
+    return new Response(JSON.stringify({ success: false, error: error.message, details: error.toString() }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400,
+    });
   }
 });

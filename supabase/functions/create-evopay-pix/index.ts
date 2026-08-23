@@ -84,8 +84,8 @@ serve(async (req) => {
       .maybeSingle();
     const productName = product?.name || `Pedido #${purchase.id}`;
     const buyerEmail = userData.user.email || purchase.buyer_email;
-    if (!productName || !value || value < 5 || !buyerEmail) {
-      throw new Error("Dados incompletos para a cobrança PIX");
+    if (!productName || !value || value < 2 || !buyerEmail) {
+      throw new Error("Dados incompletos para a cobrança PIX (mínimo R$2)");
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
