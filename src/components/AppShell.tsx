@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Header from "@/components/Header";
 import SideMenu from "@/components/SideMenu";
 import BottomNav from "@/components/BottomNav";
@@ -28,6 +28,8 @@ export default function AppShell({ children }: Props) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => { if (!user) { setProfileOpen(false); setMenuOpen(false); } }, [user]);
 
   return (
     <div className="bg-gradient-page min-h-screen pb-24">

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { mergeCatalog, SAFE_PRODUCT_COLUMNS } from "@/lib/catalog";
 
 export interface User {
   id: string;
@@ -187,7 +188,7 @@ interface StoreContextType {
   state: AppState;
   login: (email: string, name: string) => void;
   logout: () => void;
-  addProduct: (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => void;
+  addProduct: (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => Promise<boolean>;
   updateProduct: (id: number, p: Partial<Omit<Product, "id" | "sellerId">>) => Promise<boolean>;
   approveProduct: (id: number) => Promise<boolean>;
   rejectProduct: (id: number) => Promise<boolean>;
@@ -426,128 +427,46 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const loadCatalog = React.useCallback(async () => {
     const authUser = authUserRef.current;
-    const withTimeout = <T,>(p: Promise<T>, ms = 4000): Promise<T | null> =>
-      Promise.race([
-        p,
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
-      ]) as Promise<T | null>;
-
+    let rows: any[] = [];
+    let failed = false;
+    const select = () => (supabase as any).from("products_public").select(SAFE_PRODUCT_COLUMNS).order("created_at", { ascending: false });
     try {
-      // Public catalog must work 100% - anon uses public-products edge function (service_role) to bypass RLS issues
-      let dbProducts: any[] = [];
-      
-      if (!authUser) {
-        // Anon: Use public-products edge function first (service_role, always works)
-        try {
-          const { data, error } = await supabase.functions.invoke("public-products", {});
-          if (!error && data?.products && data.products.length > 0) {
-            dbProducts = data.products;
-            console.log("Anon public-products edge loaded:", dbProducts.length);
-          } else {
-            console.log("public-products edge empty or error, trying products_public view", error, data);
-            // Fallback to products_public view
-            const { data: viewData, error: viewError } = await (supabase as any)
-              .from("products_public")
-              .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
-              .order("created_at", { ascending: false });
-            
-            if (!viewError && viewData && viewData.length > 0) {
-              dbProducts = viewData;
-              console.log("Anon products_public loaded:", dbProducts.length);
-            } else {
-              console.error("Anon view error:", viewError);
-              // Last fallback: products table with approved filter
-              const { data: fallbackData } = await (supabase as any)
-                .from("products")
-                .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
-                .eq("approved", true)
-                .order("created_at", { ascending: false });
-              if (fallbackData) dbProducts = fallbackData as any[];
-            }
-          }
-        } catch (e) {
-          console.error("Anon load failed", e);
-          // Try direct view as last resort
-          try {
-            const { data: viewData } = await (supabase as any).from("products_public").select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at").order("created_at", { ascending: false });
-            if (viewData) dbProducts = viewData as any[];
-          } catch {}
-        }
-      } else {
-        // Authenticated: try products table (RLS allows approved OR own OR admin)
-        const result = await withTimeout(
-          (supabase as any)
-            .from("products")
-            .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at,stock,min_quantity,delivery_time")
-            .order("created_at", { ascending: false }),
-          5000
-        );
-        dbProducts = (result as any)?.data || [];
-        
-        // If empty for auth user, try public view as fallback
-        if (dbProducts.length === 0) {
-          const { data: publicData } = await (supabase as any)
-            .from("products_public")
-            .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
-            .order("created_at", { ascending: false });
-          if (publicData && publicData.length > 0) dbProducts = publicData as any[];
+      const publicResult = await select();
+      if (publicResult.error) failed = true;
+      rows = publicResult.data || [];
+      if (!rows.length) {
+        const edge = await supabase.functions.invoke("public-products", {});
+        if (!edge.error && Array.isArray(edge.data?.products)) rows = edge.data.products;
+        else if (edge.error) failed = true;
+      }
+      if (!rows.length) {
+        const fallback = await (supabase as any).from("products").select(SAFE_PRODUCT_COLUMNS).eq("approved", true).order("created_at", { ascending: false });
+        if (fallback.error) failed = true; else rows = fallback.data || [];
+      }
+      if (authUser) {
+        const own = await (supabase as any).from("products").select(SAFE_PRODUCT_COLUMNS).eq("seller_id", authUser.id).order("created_at", { ascending: false });
+        if (own.error) failed = true; else rows = [...rows, ...(own.data || [])];
+        if (isAdmin) {
+          const all = await (supabase as any).from("products").select(SAFE_PRODUCT_COLUMNS).order("created_at", { ascending: false });
+          if (all.error) failed = true; else rows = [...rows, ...(all.data || [])];
         }
       }
-
-      const results = await Promise.all([
-        Promise.resolve({ data: dbProducts } as any),
-        authUser
-          ? withTimeout((supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false }), 5000)
-          : Promise.resolve({ data: [] } as any),
-        authUser ? withTimeout((supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }), 5000) : Promise.resolve({ data: [] } as any),
-        authUser ? withTimeout((supabase as any).from("product_delivery").select("product_id,delivery_content"), 5000) : Promise.resolve({ data: [] } as any),
-      ]);
-
-      const dbPurchases = (results[1] as any)?.data || [];
-      const dbWithdrawals = (results[2] as any)?.data || [];
-      const deliveryRows = (results[3] as any)?.data || [];
-
-      const deliveryByProduct = new Map(((deliveryRows || []) as any[]).map((d) => [Number(d.product_id), d.delivery_content || undefined]));
-      const products = ((dbProducts || []) as any[]).map((p) => ({ 
-        id: Number(p.id), 
-        name: p.name, 
-        price: Number(p.price), 
-        category: p.category, 
-        seller: p.seller_name, 
-        sellerEmail: "", 
-        sellerId: p.seller_id, 
-        sellerPublicId: p.seller_public_id, 
-        sales: p.sales || 0, 
-        rating: Number(p.rating || 0), 
-        image: p.image, 
-        banner: p.banner || undefined, 
-        description: p.description, 
-        approved: p.approved, 
-        deliveryType: p.delivery_type, 
-        deliveryContent: deliveryByProduct.get(Number(p.id)), 
-        variations: p.variations || [], 
-        questions: p.questions || [],
-        stock: p.stock || Math.floor((p.sales || 0) * 137 + 500),
-        minQuantity: p.min_quantity || p.minQuantity || 100,
-        deliveryTime: p.delivery_time || p.deliveryTime || "11 min - 1 h",
-        sellerRating: 99.4,
-        sellerReviews: Math.floor((p.sales || 0) * 12 + 100),
+      const unique = [...new Map(rows.map((row) => [Number(row.id), row])).values()];
+      const products = unique.map((p: any) => ({
+        id: Number(p.id), name: p.name, price: Number(p.price), category: p.category,
+        seller: p.seller_name, sellerEmail: p.seller_email || "", sellerId: p.seller_id,
+        sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0),
+        image: p.image, banner: p.banner || undefined, description: p.description, approved: !!p.approved,
+        deliveryType: p.delivery_type, variations: p.variations || [], questions: p.questions || [],
+        stock: Math.floor((p.sales || 0) * 137 + 500), minQuantity: 100, deliveryTime: "11 min - 1 h",
+        sellerRating: 99.4, sellerReviews: Math.floor((p.sales || 0) * 12 + 100),
       })) as Product[];
-      const purchases = ((dbPurchases || []) as any[]).map(mapPurchaseRow) as Purchase[];
-      const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "", rejectionReason: w.rejection_reason || "", providerTxId: w.provider_tx_id || "", retryOf: w.retry_of ?? null })) as Withdrawal[];
-      setState((s) => ({
-        ...s,
-        products,
-        purchases,
-        withdrawals,
-      }));
-    } catch (e) {
-      console.error("loadCatalog failed", e);
-      if (authUserRef.current) {
-        setTimeout(() => void loadCatalog(), 3000);
-      }
+      setState((old) => ({ ...old, products: mergeCatalog(products, old.products, { failed }) }));
+    } catch (error) {
+      console.error("loadCatalog failed", error);
+      setState((old) => ({ ...old, products: mergeCatalog([], old.products, { failed: true }) }));
     }
-  }, [authUserId]);
+  }, [authUserId, isAdmin]);
 
   useEffect(() => {
     void loadCatalog();
@@ -578,22 +497,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, currentUser: null }));
   };
 
-  const addProduct = (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => {
-    if (!state.currentUser) return;
-    // Admin products are always auto-approved, even if state is stale, check isAdmin from auth
+  const addProduct = async (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">): Promise<boolean> => {
+    if (!state.currentUser) return false;
     const initialApproved = !!state.currentUser.isAdmin || isAdmin;
-    const newProduct = { ...p, id: Date.now(), sales: 0, rating: 0, approved: initialApproved, sellerId: state.currentUser.id, sellerPublicId: state.currentUser.publicId };
-    void (async () => {
-      const { data } = await (supabase as any).from("products").insert({ seller_id: newProduct.sellerId, seller_public_id: newProduct.sellerPublicId, seller_email: newProduct.sellerEmail, seller_name: newProduct.seller, name: newProduct.name, price: newProduct.price, category: newProduct.category, image: newProduct.image, banner: newProduct.banner || null, description: newProduct.description, approved: initialApproved, delivery_type: newProduct.deliveryType, variations: newProduct.variations || [], questions: newProduct.questions || [] }).select("id").maybeSingle();
-      if (data?.id) {
-        await (supabase as any).from("product_delivery").upsert({ product_id: Number(data.id), delivery_type: newProduct.deliveryType, delivery_content: newProduct.deliveryContent || null });
-        setState((s) => ({ ...s, products: s.products.map((pr) => (pr.id === newProduct.id ? { ...pr, id: Number(data.id) } : pr)) }));
-      }
-    })();
-    setState((s) => ({
-      ...s,
-      products: [...s.products, newProduct],
-    }));
+    const optimistic: Product = { ...p, id: Date.now(), sales: 0, rating: 0, approved: initialApproved, sellerId: state.currentUser.id, sellerPublicId: state.currentUser.publicId };
+    setState((old) => ({ ...old, products: [...old.products, optimistic] }));
+    const base: any = { seller_id: optimistic.sellerId, seller_public_id: optimistic.sellerPublicId, seller_name: optimistic.seller, name: optimistic.name, price: optimistic.price, category: optimistic.category, image: optimistic.image, banner: optimistic.banner || null, description: optimistic.description, delivery_type: optimistic.deliveryType, variations: optimistic.variations || [], questions: optimistic.questions || [] };
+    const attempts = [{ ...base, seller_email: optimistic.sellerEmail, approved: initialApproved }, { ...base, seller_email: optimistic.sellerEmail }, base];
+    let data: any = null; let error: any = null;
+    for (const payload of attempts) {
+      const result = await (supabase as any).from("products").insert(payload).select("id,approved").maybeSingle();
+      data = result.data; error = result.error;
+      if (!error && data?.id) break;
+    }
+    if (!data?.id) {
+      setState((old) => ({ ...old, products: old.products.filter((product) => product.id !== optimistic.id) }));
+      toast.error("Não foi possível criar o produto. Tente novamente.");
+      return false;
+    }
+    if (isAdmin && !data.approved) await (supabase as any).from("products").update({ approved: true }).eq("id", data.id);
+    await (supabase as any).from("product_delivery").upsert({ product_id: Number(data.id), delivery_type: optimistic.deliveryType, delivery_content: optimistic.deliveryContent || null });
+    setState((old) => ({ ...old, products: old.products.map((product) => product.id === optimistic.id ? { ...product, id: Number(data.id), approved: isAdmin || !!data.approved } : product) }));
+    await loadCatalog();
+    return true;
   };
 
   const updateProduct = async (id: number, p: Partial<Omit<Product, "id" | "sellerId">>) => {

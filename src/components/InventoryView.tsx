@@ -126,7 +126,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
       if (ok) toast.success("Produto atualizado!");
       else toast.error("Falha ao atualizar");
     } else {
-      addProduct({
+      const created = await addProduct({
         name: form.name, category: form.category, description: form.description,
         price: finalPrice, image: form.image, banner: form.banner || undefined,
         seller: state.currentUser!.name, sellerEmail: state.currentUser!.email,
@@ -136,7 +136,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
         minQuantity: form.minQuantity ? parseInt(form.minQuantity) : undefined,
         deliveryTime: form.deliveryTime || undefined,
       } as any);
-      toast.success("Produto criado! Aguardando aprovação.");
+      if (created) toast.success("Produto criado! Aguardando aprovação.");
     }
     setShowForm(false);
     resetForm();
