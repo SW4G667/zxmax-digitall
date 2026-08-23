@@ -4,6 +4,7 @@ import { Search, Shield, CheckCircle, Zap, Flame } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import AuthScreen from "@/components/AuthScreen";
 import UserProfileModal from "@/components/UserProfileModal";
+import { storefrontProducts } from "@/lib/catalog";
 
 export default function StoreView() {
   const { state } = useStore();
@@ -85,7 +86,7 @@ export default function StoreView() {
 
   const approved = useMemo(() => {
     const all = state.products.length > 0 ? state.products : fallbackProducts;
-    return all;
+    return storefrontProducts(all, state.currentUser?.id);
   }, [state.products, fallbackProducts]);
   const categories = useMemo(() => ["Todos", ...state.config.categories], [state.config.categories]);
 

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session, Factor } from "@supabase/supabase-js";
+import { clearAdminGate, peekStoredSession, readAdminCache, readAdminGate, wipePersistedAuth, writeAdminCache, writeAdminGate } from "@/lib/authSession";
 
 interface Profile {
   id: string;
@@ -76,87 +77,6 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be inside AuthProvider");
   return ctx;
-}
-
-const ENROLL_STORAGE_KEY = "zxmax_mfa_enroll";
-const ADMIN_ROLE_CACHE_PREFIX = "zxmax_admin_role_";
-const ADMIN_GATE_PREFIX = "zxmax_admin_gate_ok_";
-
-function withTimeout<T>(promise: PromiseLike<T>, ms: number, fallback: T): Promise<T> {
-  return Promise.race([
-    Promise.resolve(promise),
-    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
-  ]);
-}
-
-function readAdminCache(userId: string): boolean {
-  try {
-    return localStorage.getItem(ADMIN_ROLE_CACHE_PREFIX + userId) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeAdminCache(userId: string, isAdmin: boolean) {
-  try {
-    if (isAdmin) localStorage.setItem(ADMIN_ROLE_CACHE_PREFIX + userId, "1");
-    else localStorage.removeItem(ADMIN_ROLE_CACHE_PREFIX + userId);
-  } catch { /* noop */ }
-}
-
-function readAdminGate(userId: string): boolean {
-  try {
-    return !!localStorage.getItem(ADMIN_GATE_PREFIX + userId);
-  } catch {
-    return false;
-  }
-}
-
-function writeAdminGate(userId: string) {
-  try {
-    localStorage.setItem(ADMIN_GATE_PREFIX + userId, String(Date.now()));
-  } catch { /* noop */ }
-}
-
-function clearAdminGate(userId: string) {
-  try {
-    localStorage.removeItem(ADMIN_GATE_PREFIX + userId);
-  } catch { /* noop */ }
-}
-
-/** Drops persisted Supabase session keys and ZXMAX admin caches so the UI
- * can log out even if supabase.auth.signOut() is stuck on the auth lock. */
-function wipePersistedAuth(userId?: string | null) {
-  try {
-    if (userId) {
-      localStorage.removeItem(ADMIN_ROLE_CACHE_PREFIX + userId);
-      localStorage.removeItem(ADMIN_GATE_PREFIX + userId);
-    }
-    for (const k of Object.keys(localStorage)) {
-      if (k.startsWith("sb-") && k.includes("auth")) localStorage.removeItem(k);
-      if (k.startsWith(ADMIN_ROLE_CACHE_PREFIX)) localStorage.removeItem(k);
-      if (k.startsWith(ADMIN_GATE_PREFIX)) localStorage.removeItem(k);
-    }
-    sessionStorage.removeItem("zxmax_admin_mfa_verified");
-    localStorage.removeItem(ENROLL_STORAGE_KEY);
-  } catch { /* noop */ }
-}
-
-/** Synchronously peeks the session Supabase persists in localStorage
- * (sb-<project>-auth-token). Lets the app boot already logged in — no
- * "Carregando..." screen — while the real getSession()/refresh runs. */
-function peekStoredSession(): Session | null {
-  try {
-    const key = Object.keys(localStorage).find((k) => /^sb-.+-auth-token$/.test(k));
-    if (!key) return null;
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (parsed?.user && parsed?.access_token) return parsed as Session;
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 function friendlyMfaError(message: string): string {
@@ -290,13 +210,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // If Supabase dropped the session (e.g. a token refresh that failed
         // while the tab was in the background), try to recover it silently
         // once before falling back to the login screen.
-        if (!sess) {
+        if (!sess && !ignoreSignedOutRecoveryRef.current) {
           try {
             const { data } = await supabase.auth.refreshSession();
             sess = data.session;
           } catch { /* noop */ }
         }
         if (!mounted) return;
+        if (ignoreSignedOutRecoveryRef.current) {
+          setLoading(false);
+          return;
+        }
         applySession(sess);
         if (sess?.user) {
           setLoading(false);
@@ -322,6 +246,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!mounted) return;
       const nextUser = sess?.user ?? null;
       const prevId = userRef.current?.id ?? null;
+
+      if (ignoreSignedOutRecoveryRef.current && nextUser) return;
 
       if (!nextUser) {
         // Intentional logout already wiped the UI — do not try to recover.
@@ -554,26 +480,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   }, []);
 
-  const signOut = useCallback(async () => {
-    const u = userRef.current;
-    // Solicitar o código novamente só depois de sair da conta e clicar em Admin:
-    // o desbloqueio do gate morre aqui.
-    if (u) clearAdminGate(u.id);
-    try {
-      await supabase.auth.signOut();
-    } catch { /* noop */ }
+  const signOut = useCallback(async (scope: "local" | "global" | "others" = "local") => {
+    // Ending other sessions must not affect this device's UI or browser session.
+    if (scope === "others") {
+      try { await supabase.auth.signOut({ scope: "others" }); } catch { /* noop */ }
+      return;
+    }
+    ignoreSignedOutRecoveryRef.current = true;
     userRef.current = null;
-    setSession(null);
-    setUser(null);
-    setProfile(null);
-    setBanned(null);
-    setIsAdmin(false);
-    setMfaEnabled(false);
-    setAdminGateUnlocked(false);
-    try {
-      sessionStorage.removeItem("zxmax_admin_mfa_verified");
-      localStorage.removeItem(ENROLL_STORAGE_KEY);
-    } catch { /* noop */ }
+    setSession(null); setUser(null); setProfile(null); setBanned(null);
+    setIsAdmin(false); setMfaEnabled(false); setAdminGateUnlocked(false); setLoading(false);
+    // The Supabase lock can stall: local logout must never wait for it.
+    await withTimeout(supabase.auth.signOut({ scope: scope === "global" ? "global" : "local" }), 2000, null as any);
+    wipePersistedAuth();
   }, []);
 
   const refreshProfile = useCallback(async () => {
