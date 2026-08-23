@@ -102,15 +102,9 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     if (isRobuxCategory) {
       const robuxQty = parseInt(form.robuxAmount) || 100;
       if (robuxQty <= 0) return toast.error("Quantidade Robux inválida");
-      // Price is per robuxQty, e.g., 100 Robux = R$2 => unit price = 2/100 = 0.02 per Robux
-      // But we store price as per unit for marketplace display like Eldorado: R$0,02 / unidade
-      // For simplicity, store price as per unit, but also keep variation for display
-      const unitPrice = finalPrice / robuxQty;
-      finalPrice = unitPrice;
-      // Add variation that represents the package
-      if (robuxQty !== 100) {
-        finalVariations = [{ name: `${robuxQty} Robux`, price: unitPrice }, ...finalVariations];
-      }
+      // The advertised price is the package price, never a per-Robux unit price.
+      // Storing R$ 2,00 as R$ 0,02 used to violate the platform minimum at checkout.
+      finalVariations = [{ name: `${robuxQty} Robux`, price: finalPrice }, ...finalVariations];
     }
 
     if (editingId !== null) {
@@ -186,7 +180,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                   </div>
                   {form.robuxAmount && form.price && (
                     <p className="text-xs text-white/60 bg-[#0a0a0f] p-2 rounded-lg">
-                      = R$ {(parseFloat(form.price) / (parseInt(form.robuxAmount) || 100)).toFixed(5)} / Robux × {form.robuxAmount} Robux = R$ {form.price}
+                      = pacote de {form.robuxAmount || 100} Robux por R$ {form.price || "0,00"}
                     </p>
                   )}
                   <div className="grid grid-cols-3 gap-2">

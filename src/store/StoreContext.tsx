@@ -547,7 +547,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     else if (isAdmin) dbPayload.approved = true;
     
     try {
-      const { error } = await (supabase as any).from("products").update(dbPayload).eq("id", id);
+      // Older deployments have column-level grants without the optional stock
+      // fields. Retry the core product update instead of rejecting the edit.
+      let { error } = await (supabase as any).from("products").update(dbPayload).eq("id", id);
+      if (error && ("stock" in dbPayload || "min_quantity" in dbPayload || "delivery_time" in dbPayload)) {
+        const { stock, min_quantity, delivery_time, ...safePayload } = dbPayload;
+        ({ error } = await (supabase as any).from("products").update(safePayload).eq("id", id));
+      }
       if (error) {
         console.error("updateProduct error", error);
         toast.error("Erro ao atualizar: " + error.message);
