@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { ShieldCheck, Loader2, KeyRound, Copy, Check, RefreshCw, Clipboard, ArrowRight, ShieldAlert } from "lucide-react";
+import { ShieldCheck, Loader2, KeyRound, Copy, Check, RefreshCw, Clipboard, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -35,6 +35,37 @@ export default function AdminLoginGate() {
   const [lastError, setLastError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const saveEnrollCache = (cache: TotpEnrollCache) => {
+    try {
+      localStorage.setItem(ENROLL_STORAGE_KEY, JSON.stringify(cache));
+    } catch { /* noop */ }
+  };
+
+  /** Creates a fresh factor and shows its QR code. */
+  const startEnrollFlow = useCallback(async (): Promise<boolean> => {
+    setTotpBusy(true);
+    setLastError("");
+    try {
+      const { data, error } = await enrollTotpStart();
+      if (error || !data) throw new Error(error || "Não foi possível gerar novo autenticador.");
+
+      saveEnrollCache({ factorId: data.id, qr: data.qr, secret: data.secret, createdAt: Date.now() });
+
+      setTotpQr(data.qr);
+      setTotpSecret(data.secret);
+      setTotpFactorId(data.id);
+      setTotpStage("enroll");
+      setTotpCode("");
+      return true;
+    } catch (e: any) {
+      setLastError(e?.message || "Falha ao iniciar autenticador.");
+      toast.error(e?.message || "Falha ao iniciar autenticador.");
+      return false;
+    } finally {
+      setTotpBusy(false);
+    }
+  }, [enrollTotpStart]);
+
   // Check whether the admin already has a verified authenticator factor.
   useEffect(() => {
     let mounted = true;
@@ -47,24 +78,32 @@ export default function AdminLoginGate() {
       try {
         const factors = (await listFactors()) as any[];
         const verified = (factors || []).some((x) => x.status === "verified");
-        if (mounted) {
-          setHasTotp(verified);
-          if (!verified) {
-            // If no factor is configured, check if we have an in-progress enrollment cache
-            try {
-              const raw = localStorage.getItem(ENROLL_STORAGE_KEY);
-              if (raw) {
-                const c = JSON.parse(raw) as TotpEnrollCache;
-                if (Date.now() - c.createdAt < 10 * 60 * 1000 && c.qr && c.secret && c.factorId) {
-                  setTotpQr(c.qr);
-                  setTotpSecret(c.secret);
-                  setTotpFactorId(c.factorId);
-                  setTotpStage("enroll");
-                }
+        if (!mounted) return;
+        setHasTotp(verified);
+
+        if (verified) {
+          setTotpStage("code");
+        } else {
+          // No factor yet: restore an in-progress enrollment if one was cached…
+          let restored = false;
+          try {
+            const raw = localStorage.getItem(ENROLL_STORAGE_KEY);
+            if (raw) {
+              const c = JSON.parse(raw) as TotpEnrollCache;
+              if (Date.now() - c.createdAt < 10 * 60 * 1000 && c.qr && c.secret && c.factorId) {
+                setTotpQr(c.qr);
+                setTotpSecret(c.secret);
+                setTotpFactorId(c.factorId);
+                setTotpStage("enroll");
+                restored = true;
               }
-            } catch {}
-          } else {
-            setTotpStage("code");
+            }
+          } catch { /* noop */ }
+          // …otherwise generate the QR Code right away so the admin only needs
+          // to scan it and type the 6 digits.
+          if (!restored) {
+            setCheckingFactors(false);
+            await startEnrollFlow();
           }
         }
       } catch {
@@ -80,7 +119,7 @@ export default function AdminLoginGate() {
       mounted = false;
       window.clearTimeout(guard);
     };
-  }, [listFactors]);
+  }, [listFactors, startEnrollFlow]);
 
   // Autofocus input
   useEffect(() => {
@@ -92,40 +131,18 @@ export default function AdminLoginGate() {
   }, [checkingFactors, totpStage]);
 
   const handleStartEnroll = useCallback(async () => {
-    setTotpBusy(true);
-    setLastError("");
-    try {
-      // Changing the authenticator requires an aal2 session. Your app still
-      // generates codes, so we simply ask for the current one right here
-      // instead of failing with the Supabase error.
-      if (await needsCodeToManageMfa()) {
-        setTotpBusy(false);
-        const msg = "Digite acima o código que o aplicativo mostra agora. Depois de entrar, use 'Reconfigurar' para gerar o novo QR Code.";
-        setLastError(msg);
-        toast.info(msg);
-        inputRef.current?.focus();
-        return;
-      }
-      const { data, error } = await enrollTotpStart();
-      if (error || !data) throw new Error(error || "Não foi possível gerar novo autenticador.");
-      
-      const cache: TotpEnrollCache = { factorId: data.id, qr: data.qr, secret: data.secret, createdAt: Date.now() };
-      try {
-        localStorage.setItem(ENROLL_STORAGE_KEY, JSON.stringify(cache));
-      } catch {}
-
-      setTotpQr(data.qr);
-      setTotpSecret(data.secret);
-      setTotpFactorId(data.id);
-      setTotpStage("enroll");
-      setTotpCode("");
-    } catch (e: any) {
-      setLastError(e?.message || "Falha ao iniciar autenticador.");
-      toast.error(e?.message || "Falha ao iniciar autenticador.");
-    } finally {
-      setTotpBusy(false);
+    // Changing the authenticator requires an aal2 session. The app still
+    // generates codes, so we simply ask for the current one right here
+    // instead of failing with the Supabase error.
+    if (await needsCodeToManageMfa()) {
+      const msg = "Digite acima o código que o aplicativo mostra agora. Depois de entrar, use 'Gerar novo QR Code' no painel para gerar o novo QR Code.";
+      setLastError(msg);
+      toast.info(msg);
+      inputRef.current?.focus();
+      return;
     }
-  }, [enrollTotpStart, needsCodeToManageMfa]);
+    await startEnrollFlow();
+  }, [needsCodeToManageMfa, startEnrollFlow]);
 
   const confirmCode = useCallback(async (codeToVerify?: string) => {
     const code = (codeToVerify || totpCode).replace(/\D/g, "").slice(0, 6);
@@ -143,7 +160,7 @@ export default function AdminLoginGate() {
         if (error) throw new Error(error);
         try {
           localStorage.removeItem(ENROLL_STORAGE_KEY);
-        } catch {}
+        } catch { /* noop */ }
       } else {
         const { error } = await verifyMfa(code);
         if (error) throw new Error(error);
@@ -152,21 +169,26 @@ export default function AdminLoginGate() {
       unlockAdminGate();
       setTotpCode("");
       toast.success("Código confirmado com sucesso! Painel admin liberado.");
-      void refreshAdminGate();
+      refreshAdminGate();
     } catch (e: any) {
       const msg = e?.message || "Código incorreto. Verifique o horário do celular e tente novamente.";
       setLastError(msg);
+      setTotpCode("");
       toast.error(msg);
+      setTimeout(() => inputRef.current?.focus(), 50);
     } finally {
       setTotpBusy(false);
     }
   }, [totpCode, totpStage, totpFactorId, enrollTotpVerify, verifyMfa, unlockAdminGate, refreshAdminGate]);
 
+  const confirmCodeRef = useRef(confirmCode);
+  confirmCodeRef.current = confirmCode;
+
   const handleInputChange = (val: string) => {
     const digits = val.replace(/\D/g, "").slice(0, 6);
     setTotpCode(digits);
     if (digits.length === 6 && !totpBusy) {
-      void confirmCode(digits);
+      void confirmCodeRef.current(digits);
     }
   };
 
@@ -177,7 +199,7 @@ export default function AdminLoginGate() {
       if (digits.length > 0) {
         setTotpCode(digits);
         if (digits.length === 6) {
-          void confirmCode(digits);
+          void confirmCodeRef.current(digits);
         }
       }
     } catch {
@@ -216,7 +238,9 @@ export default function AdminLoginGate() {
           </div>
           <div>
             <h2 className="text-xl font-black text-white">Google Authenticator</h2>
-            <p className="text-xs text-[#0084ff] font-bold">Autenticação em 2 Etapas (2FA)</p>
+            <p className="text-xs text-[#0084ff] font-bold">
+              {totpStage === "enroll" && !hasTotp ? "Configure a proteção do painel (2FA)" : "Autenticação em 2 Etapas (2FA)"}
+            </p>
           </div>
         </div>
 
@@ -251,7 +275,7 @@ export default function AdminLoginGate() {
             </div>
 
             <button
-              onClick={() => confirmCode()}
+              onClick={() => confirmCodeRef.current()}
               disabled={totpBusy || totpCode.length !== 6}
               className="w-full py-4 rounded-xl bg-[#0084ff] hover:bg-[#0066cc] text-white font-black text-sm flex items-center justify-center gap-2 transition disabled:opacity-50 shadow-lg shadow-[#0084ff]/25"
             >
@@ -348,7 +372,7 @@ export default function AdminLoginGate() {
                 </button>
               )}
               <button
-                onClick={() => confirmCode()}
+                onClick={() => confirmCodeRef.current()}
                 disabled={totpBusy || totpCode.length !== 6}
                 className="flex-1 py-3.5 rounded-xl bg-[#00c950] hover:bg-[#00a843] text-black font-black text-sm flex items-center justify-center gap-2 transition disabled:opacity-50 shadow-lg shadow-[#00c950]/20"
               >
@@ -375,7 +399,7 @@ export default function AdminLoginGate() {
 
         <div className="mt-5 text-center">
           <p className="text-[11px] text-white/40 leading-relaxed">
-            Uma vez autenticado, você não precisará digitar o código novamente durante esta sessão do navegador.
+            Uma vez autenticado, você não precisará digitar o código novamente neste navegador.
           </p>
         </div>
       </div>

@@ -8,11 +8,13 @@ import StoreView from "@/components/StoreView";
 import InventoryView from "@/components/InventoryView";
 import SupportView from "@/components/SupportView";
 import AdminView from "@/components/AdminView";
+import AdminLoginGate from "@/components/AdminLoginGate";
 import MyPurchasesView from "@/components/MyPurchasesView";
 import WithdrawView from "@/components/WithdrawView";
 import AppShell from "@/components/AppShell";
 import LoadingScreen from "@/components/LoadingScreen";
 import { supabase } from "@/integrations/supabase/client";
+import { consumeRememberedRedirectUri, DISCORD_REDIRECT_STORAGE_KEY } from "@/lib/discordAuth";
 import { toast } from "sonner";
 
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "withdraw";
@@ -22,7 +24,7 @@ const PROTECTED_VIEWS: View[] = ["inventory", "purchases", "support", "withdraw"
 
 function Dashboard({ view }: { view: View }) {
   const { refreshPurchases } = useStore();
-  const { isAdmin, user, needsMfa } = useAuth();
+  const { isAdmin, user, adminGateUnlocked } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [authOpen, setAuthOpen] = useState(false);
@@ -54,9 +56,9 @@ function Dashboard({ view }: { view: View }) {
   }, [user, requiresAuth]);
 
   useEffect(() => {
-    // Only auto-open MFA modal on admin view, not on loja (fix for user complaint that auth appears everywhere)
-    if (needsMfa && view === "admin") setAuthOpen(true);
-  }, [needsMfa, view]);
+    // Close the auth modal as soon as the login is confirmed.
+    if (user) setAuthOpen(false);
+  }, [user]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -77,7 +79,9 @@ function Dashboard({ view }: { view: View }) {
       {view === "inventory" && user && <InventoryView onOpenChat={handleOpenChat} />}
       {view === "purchases" && user && <MyPurchasesView initialSelectedId={selectedPurchaseId} />}
       {view === "support" && user && <SupportView />}
-      {view === "admin" && user && isAdmin && <AdminView />}
+      {/* O código do autenticador só é pedido aqui, dentro do painel admin.
+          Uma vez confirmado, fica desbloqueado neste navegador até sair da conta. */}
+      {view === "admin" && user && isAdmin && (adminGateUnlocked ? <AdminView /> : <AdminLoginGate />)}
       {view === "withdraw" && user && <WithdrawView />}
       {requiresAuth && !user && (
         <div className="text-center py-20 bg-[#15151a] border border-[#25252e] rounded-2xl p-10">
@@ -103,52 +107,56 @@ function AppGate({ view }: { view: View }) {
   const [discordLoading, setDiscordLoading] = useState(false);
 
   useEffect(() => {
+    if (user) return;
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
-    if (code && !user) {
-      setDiscordLoading(true);
-      const cleanUrl = window.location.origin + window.location.pathname;
-      window.history.replaceState({}, "", cleanUrl);
+    if (!code) return;
 
-      supabase.functions.invoke("discord-callback", {
-        body: { code, redirectUri: window.location.origin + "/" },
-      }).then(({ data, error }) => {
+    // Só tratamos o retorno como Discord se esta aba iniciou o fluxo (marcador
+    // salvo antes do redirect). Um ?code= solto pode ser confirmação de e-mail
+    // do Supabase (PKCE), que o próprio client troca automaticamente.
+    let isDiscordReturn = false;
+    try {
+      isDiscordReturn = !!sessionStorage.getItem(DISCORD_REDIRECT_STORAGE_KEY);
+    } catch { /* noop */ }
+    if (!isDiscordReturn) return;
+
+    // A redirect_uri da troca TEM que ser idêntica à usada na autorização.
+    const redirectUri = consumeRememberedRedirectUri() || window.location.origin + "/";
+    const cleanUrl = window.location.origin + window.location.pathname;
+    window.history.replaceState({}, "", cleanUrl);
+    setDiscordLoading(true);
+
+    supabase.functions
+      .invoke("discord-callback", { body: { code, redirectUri } })
+      .then(({ data, error }) => {
         if (error) {
-          console.error("Discord callback error (edge not deployed?):", error);
-          supabase.auth.getSession().then(({ data: { session } }) => {
-            if (session?.user) toast.success("Login com Discord realizado via Supabase!");
-            else toast.error("Discord Auth falhou: Edge Function não deployada. Configure em Supabase Auth → Providers → Discord.");
-            setDiscordLoading(false);
-          });
-          return;
-        }
-        if (!data?.success) {
-          toast.error("Discord: " + (data?.error || "Tente novamente."));
+          console.error("discord-callback invoke error:", error);
+          toast.error("Discord: não foi possível concluir o login (servidor). Verifique o deploy da função discord-callback.");
           setDiscordLoading(false);
           return;
         }
-        if (data.access_token && data.token_type === "magiclink") {
-          supabase.auth.verifyOtp({ email: data.user.email, token: data.access_token, type: "magiclink" }).then(({ error: verifyErr }) => {
-            if (verifyErr) toast.error("Erro ao autenticar: " + verifyErr.message);
-            else toast.success("Login com Discord realizado!");
-            setDiscordLoading(false);
-          });
-        } else if (data.password && data.user?.email) {
+        if (!data?.success) {
+          toast.error("Discord: " + (data?.error || "Erro desconhecido. Tente novamente."));
+          setDiscordLoading(false);
+          return;
+        }
+        if (data.password && data.user?.email) {
           supabase.auth.signInWithPassword({ email: data.user.email, password: data.password }).then(({ error: signInErr }) => {
             if (signInErr) toast.error("Erro ao autenticar: " + signInErr.message);
-            else toast.success("Conta criada e login realizado com Discord!");
+            else toast.success("Login com Discord realizado!");
             setDiscordLoading(false);
           });
         } else {
           toast.error("Resposta inesperada do servidor Discord.");
           setDiscordLoading(false);
         }
-      }).catch((err) => {
+      })
+      .catch((err) => {
         console.error("Discord callback exception", err);
-        toast.error("Discord Auth com problema. Use Supabase Auth Providers.");
+        toast.error("Discord: falha inesperada ao concluir o login.");
         setDiscordLoading(false);
       });
-    }
   }, [user]);
 
   if (loading || discordLoading) {
