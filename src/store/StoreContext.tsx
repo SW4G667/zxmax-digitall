@@ -808,6 +808,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const { data } = await (supabase as any).from("profiles").select("user_id").eq("public_id", Number(normalized)).maybeSingle();
       return (data as any)?.user_id || null;
     }
+    if (normalized.includes("@")) {
+      const { data } = await (supabase as any).from("profiles").select("user_id").eq("email", normalized.toLowerCase()).maybeSingle();
+      return (data as any)?.user_id || null;
+    }
     return normalized;
   };
 
