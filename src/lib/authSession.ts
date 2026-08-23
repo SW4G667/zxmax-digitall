@@ -1,6 +1,20 @@
 const ADMIN_ROLE_CACHE_PREFIX = "zxmax_admin_role_";
 const ADMIN_GATE_PREFIX = "zxmax_admin_gate_ok_";
 
+/** Race a promise against a timeout, resolving with `fallback` on timeout.
+ * Rejections from `promise` still propagate so callers can handle them. */
+export async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), ms);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export function readAdminCache(userId: string): boolean {
   try { return localStorage.getItem(ADMIN_ROLE_CACHE_PREFIX + userId) === "1"; } catch { return false; }
 }
