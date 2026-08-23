@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session, Factor } from "@supabase/supabase-js";
-import { clearAdminGate, peekStoredSession, readAdminCache, readAdminGate, wipePersistedAuth, writeAdminCache, writeAdminGate } from "@/lib/authSession";
+import { clearAdminGate, peekStoredSession, readAdminCache, readAdminGate, wipePersistedAuth, withTimeout, writeAdminCache, writeAdminGate } from "@/lib/authSession";
 
 interface Profile {
   id: string;
@@ -250,9 +250,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (ignoreSignedOutRecoveryRef.current && nextUser) return;
 
       if (!nextUser) {
-        // Intentional logout already wiped the UI — do not try to recover.
+        // Intentional logout already wiped the UI — do not try to recover and
+        // keep the flag armed until a fresh signIn disarms it (a SIGNED_OUT
+        // event from the SDK must not let a later TOKEN_REFRESHED restore).
         if (ignoreSignedOutRecoveryRef.current) {
-          ignoreSignedOutRecoveryRef.current = false;
           userRef.current = null;
           setSession(null);
           setUser(null);
@@ -486,12 +487,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try { await supabase.auth.signOut({ scope: "others" }); } catch { /* noop */ }
       return;
     }
+    // Intentional logout: arm the recovery guard FIRST so no auth event
+    // (TOKEN_REFRESHED, INITIAL_SESSION, a refreshSession, or onAuthStateChange)
+    // can restore the session while we are logging out.
     ignoreSignedOutRecoveryRef.current = true;
+
+    // Wipe React state immediately — the UI must read as logged out even if
+    // the Supabase SDK lock stalls or the user reloads before it releases.
     userRef.current = null;
-    setSession(null); setUser(null); setProfile(null); setBanned(null);
-    setIsAdmin(false); setMfaEnabled(false); setAdminGateUnlocked(false); setLoading(false);
-    // The Supabase lock can stall: local logout must never wait for it.
-    await withTimeout(supabase.auth.signOut({ scope: scope === "global" ? "global" : "local" }), 2000, null as any);
+    setSession(null);
+    setUser(null);
+    setProfile(null);
+    setBanned(null);
+    setIsAdmin(false);
+    setMfaEnabled(false);
+    setAdminGateUnlocked(false);
+    setLoading(false);
+
+    // Remove persisted credentials BEFORE awaiting the SDK. If the Supabase
+    // storage lock hangs or the user reloads mid-call, there is no sb-*-auth*
+    // token left in localStorage to silently restore the admin session.
+    wipePersistedAuth();
+
+    try {
+      // Best-effort remote sign-out, bounded so a stuck lock can never block
+      // the local logout for more than 2 seconds.
+      await withTimeout(
+        supabase.auth.signOut({ scope: scope === "global" ? "global" : "local" }),
+        2000,
+        null as any,
+      );
+    } catch { /* network/lock failure — local wipe already happened */ }
+
+    // Wipe again: the SDK can recreate sb-*-auth* keys as it tears down its
+    // internal storage during signOut, so a second pass guarantees they are gone.
     wipePersistedAuth();
   }, []);
 

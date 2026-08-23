@@ -346,7 +346,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         name: profile?.display_name || authUser.email?.split("@")[0] || "Usuário",
         balance: state.userBalances[authUser.id] || 0,
         earnings: state.userEarnings[authUser.id] || 0,
-        avatar: profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(profile?.display_name || authUser.email || "")}`,
+        avatar:
+          profile?.avatar_url ||
+          (authUser.user_metadata as { avatar_url?: string; picture?: string } | undefined)?.avatar_url ||
+          (authUser.user_metadata as { avatar_url?: string; picture?: string } | undefined)?.picture ||
+          `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(profile?.display_name || authUser.email || "")}`,
         isAdmin,
         pixKey: profile?.pix_key || "",
         isVerified: profile?.is_verified_seller || false,
