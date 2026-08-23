@@ -36,25 +36,8 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
     try {
       const { supabase } = await import("@/integrations/supabase/client");
       
-      // Try Supabase built-in OAuth first (more reliable, no Edge Function needed)
-      // This uses Supabase's own Discord provider configured in Dashboard
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'discord',
-        options: {
-          redirectTo: window.location.origin + "/",
-          scopes: "identify email",
-        },
-      });
-      
-      if (!error) {
-        // Supabase will redirect automatically
-        return;
-      }
-      
-      console.log("Supabase OAuth failed, trying custom flow:", error?.message);
-      
-      // Fallback to custom flow with user's credentials
-      let clientId = "1506929376967790752";
+      // Use custom flow with user's credentials (more reliable than Supabase built-in if provider not enabled)
+      let clientId = "1506929376967790752"; // User's ID
       let redirectBase = window.location.origin + "/";
       let scopesValue = "identify email";
       
@@ -63,7 +46,9 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
         if (cfgData?.integrations?.discord?.clientId) clientId = cfgData.integrations.discord.clientId;
         if (cfgData?.integrations?.discord?.redirectUri) redirectBase = cfgData.integrations.discord.redirectUri;
         if (cfgData?.integrations?.discord?.scopes) scopesValue = cfgData.integrations.discord.scopes;
-      } catch {}
+      } catch (e) {
+        console.log("Failed to get discord config from backend, using fallback", e);
+      }
 
       try {
         const saved = localStorage.getItem("zxmax_state");
@@ -76,16 +61,17 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
       } catch {}
 
       if (!clientId) {
-        toast.error("Discord não configurado. Ative em Supabase Dashboard → Auth → Providers → Discord");
+        toast.error("Discord não configurado. Configure Client ID em Admin → APIs.");
         return;
       }
 
       const redirectUri = encodeURIComponent(redirectBase);
       const scopes = encodeURIComponent(scopesValue);
       const url = `https://discord.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${scopes}`;
+      console.log("Discord OAuth URL:", url);
       window.location.href = url;
     } catch (e: any) {
-      toast.error("Erro Discord: " + (e?.message || "") + ". Configure em Supabase Auth Providers.");
+      toast.error("Erro Discord: " + (e?.message || "") + ". Verifique se discord-callback está deployada.");
     }
   };
 

@@ -14,12 +14,79 @@ export default function StoreView() {
   const [selectedSellerId, setSelectedSellerId] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
 
+  const [fallbackProducts, setFallbackProducts] = useState<any[]>([]);
+
+  // Fallback: if no products for anon, try direct REST fetch to products_public view
+  useEffect(() => {
+    if (state.products.length === 0) {
+      const fetchPublic = async () => {
+        try {
+          const url = import.meta.env.VITE_SUPABASE_URL;
+          const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+          if (!url || !key) return;
+          // Try products_public view via REST
+          const resp = await fetch(`${url}/rest/v1/products_public?select=*&order=created_at.desc&limit=100`, {
+            headers: { apikey: key, Authorization: `Bearer ${key}` },
+          });
+          const data = await resp.json();
+          if (Array.isArray(data) && data.length > 0) {
+            console.log("Fallback REST products_public loaded:", data.length);
+            setFallbackProducts(data.map((p: any) => ({
+              id: Number(p.id),
+              name: p.name,
+              price: Number(p.price),
+              category: p.category,
+              seller: p.seller_name,
+              sellerId: p.seller_id,
+              sellerPublicId: p.seller_public_id,
+              sales: p.sales || 0,
+              rating: Number(p.rating || 0),
+              image: p.image,
+              banner: p.banner,
+              description: p.description,
+              approved: p.approved,
+              deliveryType: p.delivery_type,
+              variations: p.variations || [],
+              questions: p.questions || [],
+              stock: p.stock || 500,
+              minQuantity: p.min_quantity || 100,
+              deliveryTime: p.delivery_time || "11 min - 1 h",
+            })));
+          } else {
+            // If still empty, try products table with approved=true via REST
+            const resp2 = await fetch(`${url}/rest/v1/products?select=*&approved=eq.true&order=created_at.desc&limit=100`, {
+              headers: { apikey: key, Authorization: `Bearer ${key}` },
+            });
+            const data2 = await resp2.json();
+            if (Array.isArray(data2) && data2.length > 0) {
+              setFallbackProducts(data2.map((p: any) => ({
+                id: Number(p.id),
+                name: p.name,
+                price: Number(p.price),
+                category: p.category,
+                seller: p.seller_name,
+                sellerId: p.seller_id,
+                sales: p.sales || 0,
+                rating: Number(p.rating || 0),
+                image: p.image,
+                description: p.description,
+                approved: p.approved,
+                deliveryType: p.delivery_type,
+              })));
+            }
+          }
+        } catch (e) {
+          console.error("Fallback fetch failed", e);
+        }
+      };
+      void fetchPublic();
+    }
+  }, [state.products.length]);
+
   const approved = useMemo(() => {
-    // FIX CRITICO: mostrar todos produtos para todos usuários (anon e logado)
-    // RLS já garante que anon só vê approved via view, mas se não houver approved, mostrar todos pra não ficar vazio
-    // Isso corrige bug onde produtos criados pelo admin só apareciam pra ele
-    return state.products;
-  }, [state.products]);
+    const all = state.products.length > 0 ? state.products : fallbackProducts;
+    return all;
+  }, [state.products, fallbackProducts]);
   const categories = useMemo(() => ["Todos", ...state.config.categories], [state.config.categories]);
 
   useEffect(() => {

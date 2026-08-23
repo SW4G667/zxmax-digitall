@@ -54,8 +54,9 @@ function Dashboard({ view }: { view: View }) {
   }, [user, requiresAuth]);
 
   useEffect(() => {
-    if (needsMfa) setAuthOpen(true);
-  }, [needsMfa]);
+    // Only auto-open MFA modal on admin view, not on loja (fix for user complaint that auth appears everywhere)
+    if (needsMfa && view === "admin") setAuthOpen(true);
+  }, [needsMfa, view]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
