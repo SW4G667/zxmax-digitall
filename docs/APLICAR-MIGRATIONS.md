@@ -63,6 +63,11 @@ O mínimo indispensável para resolver a falha atual é:
 4. `20260823130000_enforce_minimum_product_price.sql`
 5. `20260823140000_recover_products_and_robux_prices.sql`
 6. **`20260824120000_fix_product_creation_and_visibility.sql`** ← a correção principal
+7. **`20260824130000_product_questions_and_public_seller_signals.sql`** ← perguntas do anúncio (`product_questions` + RPCs)
+
+> `supabase db push` aplica **todas** de uma vez, na ordem — é o caminho
+> recomendado (Opção A). Estado atual da pendência e roteiro de validação:
+> [`PENDENCIA-DEPLOY-SUPABASE.md`](./PENDENCIA-DEPLOY-SUPABASE.md).
 
 O arquivo 6 é idempotente e pode ser reexecutado sem risco.
 
