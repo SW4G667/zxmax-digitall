@@ -15,6 +15,7 @@ import Regras from "./pages/Regras.tsx";
 import Perfil from "./pages/Perfil.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import Produto from "./pages/Produto.tsx";
+import Robux from "./pages/Robux.tsx";
 import Favoritos from "./pages/Favoritos.tsx";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
                 <Route path="/" element={<Index view="store" />} />
                 <Route path="/loja" element={<Index view="store" />} />
                 <Route path="/produto/:id" element={<Produto />} />
+                <Route path="/robux" element={<Robux />} />
                 <Route path="/favoritos" element={<Favoritos />} />
                 <Route path="/meus-produtos" element={<Index view="inventory" />} />
                 <Route path="/minhas-compras" element={<Index view="purchases" />} />

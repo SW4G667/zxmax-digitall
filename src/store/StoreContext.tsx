@@ -75,6 +75,9 @@ export interface Product {
   stock?: number;
   minQuantity?: number;
   deliveryTime?: string;
+  reviewCount?: number;
+  reviewAvg?: number;
+  reviewPositive?: number;
   sellerRating?: number;
   sellerReviews?: number;
   createdAt?: string;
@@ -537,6 +540,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           stock: p.stock ?? undefined,
           minQuantity: p.min_quantity ?? undefined,
           deliveryTime: p.delivery_time || undefined,
+          reviewCount: Number.isFinite(Number(p.review_count)) ? Number(p.review_count) : undefined,
+          reviewAvg: Number.isFinite(Number(p.review_avg)) ? Number(p.review_avg) : undefined,
+          reviewPositive: Number.isFinite(Number(p.review_positive)) ? Number(p.review_positive) : undefined,
           sellerRating: undefined, sellerReviews: undefined, createdAt: p.created_at || undefined,
         };
       }) as Product[];

@@ -28,6 +28,7 @@ interface SellerOffer {
   sellerId: string;
   rating: number;
   reviews: number;
+  positivePct: number;
   verified: boolean;
 }
 
@@ -217,9 +218,11 @@ export default function ProdutoPage() {
     if (!isRobux) return [];
     const robuxProducts = state.products.filter((p) => p.category === ROBUX_CATEGORY && p.approved);
     const offers: SellerOffer[] = robuxProducts.map((p) => {
-      // Real reviews from purchases, not fake 100
-      const realReviews = state.purchases.filter((pu) => pu.productId === p.id && pu.reviewed);
-      const realRating = realReviews.length > 0 ? realReviews.reduce((a, r) => a + (r.reviewStars || 0), 0) / realReviews.length : 0;
+      // Real review aggregates persisted on the product row (reviews migration);
+      // before it exists these are undefined and the UI shows "Novo • 0 avaliações".
+      const reviewCount = p.reviewCount ?? 0;
+      const rating = reviewCount > 0 ? Number((p.reviewAvg ?? 0).toFixed(1)) : 0;
+      const positivePct = reviewCount > 0 && p.reviewPositive ? Math.round((p.reviewPositive / reviewCount) * 100) : 0;
       return {
         id: p.id,
         product: p,
@@ -231,8 +234,9 @@ export default function ProdutoPage() {
         delivery: p.deliveryTime || "Combinado com o vendedor",
         sellerName: p.seller,
         sellerId: p.sellerId,
-        rating: realReviews.length > 0 ? Number((realRating * 20).toFixed(1)) : 0, // 0 until someone reviews
-        reviews: realReviews.length, // 0 initially, not 100 fake
+        rating,
+        reviews: reviewCount,
+        positivePct,
         verified: !!state.userDirectory?.[p.sellerId]?.isVerified,
       };
     });
@@ -509,7 +513,7 @@ export default function ProdutoPage() {
                       <p className="text-xs flex items-center gap-2">
                         {currentOffer.reviews > 0 ? (
                           <>
-                            <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3.5 h-3.5" /> {currentOffer.rating}%</span>
+                            <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3.5 h-3.5" /> {currentOffer.positivePct}%</span>
                             <span className="text-[#0084ff] underline cursor-pointer" onClick={() => setDetailTab("reviews")}>{currentOffer.reviews} avaliações</span>
                           </>
                         ) : (
@@ -579,7 +583,7 @@ export default function ProdutoPage() {
                             <p className="text-xs flex items-center gap-2">
                               {offer.reviews > 0 ? (
                                 <>
-                                  <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3 h-3" /> {offer.rating}%</span>
+                                  <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3 h-3" /> {offer.positivePct}%</span>
                                   <span className="text-[#0084ff] underline">{offer.reviews} avaliações</span>
                                 </>
                               ) : (
