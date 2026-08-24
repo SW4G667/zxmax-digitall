@@ -106,3 +106,33 @@ FROM public.products;
 \echo '--- 11. Tabela de auditoria ---'
 SELECT CASE WHEN to_regclass('public.admin_audit_log') IS NULL
             THEN 'FALHOU (ausente)' ELSE 'OK' END AS admin_audit_log;
+
+\echo '--- 12. Perguntas de anuncio (migration 20260824130000) ---'
+SELECT CASE WHEN to_regclass('public.product_questions') IS NULL
+            THEN 'FALHOU (tabela ausente — migration 20260824130000 nao aplicada)'
+            ELSE 'OK' END AS tabela_product_questions;
+
+SELECT CASE WHEN to_regprocedure('public.ask_product_question(bigint, text)') IS NULL
+            THEN 'FALHOU (ask_product_question ausente)'
+            ELSE 'OK' END AS rpc_ask_product_question;
+
+SELECT CASE WHEN to_regprocedure('public.answer_product_question(bigint, text)') IS NULL
+            THEN 'FALHOU (answer_product_question ausente)'
+            ELSE 'OK' END AS rpc_answer_product_question;
+
+SELECT CASE WHEN pg_get_functiondef('public.reject_external_contact(text)'::regprocedure) LIKE '%whats%'
+            THEN 'OK (bloqueio de contato externo no banco)'
+            ELSE 'FALHOU (validacao de contato externo ausente)' END AS validacao_contato;
+
+-- RLS + grants: leitura publica, escrita apenas via RPC.
+SELECT count(*) AS policies_produto_perguntas
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'product_questions';
+-- Esperado: >= 1 (Anyone can read product questions).
+
+SELECT grantee, privilege_type
+FROM information_schema.role_table_privileges
+WHERE table_schema = 'public' AND table_name = 'product_questions'
+  AND grantee IN ('anon','authenticated')
+ORDER BY grantee, privilege_type;
+-- Esperado: apenas SELECT para anon/authenticated (INSERT/UPDATE/DELETE revogados).

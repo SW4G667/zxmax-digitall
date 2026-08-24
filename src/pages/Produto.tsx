@@ -11,6 +11,8 @@ import useFavorites from "@/hooks/useFavorites";
 import { supabase } from "@/integrations/supabase/client";
 import { formatBRL, ROBUX_CATEGORY, robuxPackageUnits, unitPriceFromPackage } from "@/lib/catalog";
 import { unwrapEdgeCall } from "@/lib/edgeErrors";
+import { classifyPaymentMethods, paymentMethodsNotice, PaymentMethodsState } from "@/lib/paymentMethods";
+import { friendlyQuestionError, isSchemaMissing, QUESTIONS_UPDATE_MESSAGE } from "@/lib/questionErrors";
 
 // Eldorado-style seller row
 interface SellerOffer {
@@ -29,47 +31,56 @@ interface SellerOffer {
   verified: boolean;
 }
 
+type CheckoutMethod = "pix" | "crypto" | "card" | "boleto";
+
+const METHOD_ORDER: CheckoutMethod[] = ["pix", "card", "crypto", "boleto"];
+
 function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConfirm, loading, feePercent }: { product: Product; quantity: number; unitPrice: number; subtotal: number; onClose: () => void; onConfirm: (method: string, cpf: string) => void; loading: boolean; feePercent: number }) {
-  const [method, setMethod] = useState<"pix" | "crypto" | "card" | "boleto">("pix");
+  // Sem método selecionado até sabermos o que está ativo: nunca deixamos PIX
+  // "escolhido" visualmente quando ele não está disponível.
+  const [method, setMethod] = useState<CheckoutMethod | null>(null);
   const [cpf, setCpf] = useState("");
-  const [available, setAvailable] = useState<Record<string, boolean> | null>(null);
+  const [methodsState, setMethodsState] = useState<PaymentMethodsState>({ status: "loading" });
+  const [methodsRetry, setMethodsRetry] = useState(0);
   const fee = subtotal * (feePercent / 100);
   const total = subtotal + fee;
 
-  // Pergunta ao servidor quais meios estão REALMENTE configurados. Antes isto
-  // era `stripeOk || true`, ou seja, sempre verdadeiro: a tela oferecia cartão
-  // mesmo sem credencial e o comprador só descobria depois de criar o pedido.
+  // Pergunta ao servidor quais meios estão REALMENTE configurados. Falhas de
+  // consulta (função antiga publicada, settings ilegíveis, rede) NÃO viram
+  // "tudo indisponível": cada causa tem estado e mensagem próprios.
   useEffect(() => {
     let active = true;
     void (async () => {
-      const result = await unwrapEdgeCall<{ methods: Record<string, boolean> }>(
+      const result = await unwrapEdgeCall<{ methods?: Record<string, boolean>; v?: number }>(
         await supabase.functions.invoke("integrations-config", { body: { action: "payment_methods" } }),
         "Não foi possível consultar as formas de pagamento.",
       );
       if (!active) return;
-      setAvailable(result.data?.methods ?? { pix: false, crypto: false, card: false, boleto: false });
+      setMethodsState(classifyPaymentMethods(result));
     })();
     return () => { active = false; };
-  }, []);
+  }, [methodsRetry]);
 
-  const loadingMethods = available === null;
-  const isAvailable = (id: string) => !!available?.[id];
+  const loadingMethods = methodsState.status === "loading";
+  const available = methodsState.status === "ok" ? methodsState.methods : null;
+  const isAvailable = (id: CheckoutMethod) => !!available?.[id];
+  const anyMethod = !!available && Object.values(available).some(Boolean);
+  const notice = paymentMethodsNotice(methodsState);
 
-  // Se o método escolhido não está disponível, cai para o primeiro que estiver.
+  // Só escolhe automaticamente quando existe algo realmente ativo.
   useEffect(() => {
     if (!available) return;
-    if (!available[method]) {
-      const first = (["pix", "card", "crypto", "boleto"] as const).find((m) => available[m]);
-      if (first) setMethod(first);
-    }
+    if (method && available[method]) return;
+    const first = METHOD_ORDER.find((m) => available[m]);
+    setMethod(first ?? null);
   }, [available, method]);
 
   const handleConfirm = () => {
-    const cleanCpf = cpf.replace(/\D/g, "");
-    if (!isAvailable(method)) {
-      toast.error("Esta forma de pagamento não está disponível agora. Escolha outra.");
+    if (!method || !isAvailable(method)) {
+      toast.error("Nenhuma forma de pagamento disponível para este pedido agora.");
       return;
     }
+    const cleanCpf = cpf.replace(/\D/g, "");
     if (method === "pix" || method === "crypto") {
       if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
         toast.error("Digite um CPF/CNPJ válido (11 ou 14 dígitos) para PIX/Crypto");
@@ -79,53 +90,67 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
     onConfirm(method, cleanCpf);
   };
 
+  const methodButtons: Array<{ id: CheckoutMethod; label: string; icon: React.ReactNode; selectedClass: string }> = [
+    { id: "pix", label: "PIX", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-[#0084ff] border-[#0084ff] text-white" },
+    { id: "crypto", label: "Crypto", icon: <Bitcoin className="w-5 h-5" />, selectedClass: "bg-[#ffbd2e] border-[#ffbd2e] text-black" },
+    { id: "card", label: "Cartão (Stripe)", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-white border-white text-black" },
+    { id: "boleto", label: "Boleto (Stripe)", icon: <Package className="w-5 h-5" />, selectedClass: "bg-white border-white text-black" },
+  ];
+
   return (
-    <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#15151a] border border-[#25252e] rounded-2xl w-full max-w-md overflow-hidden animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
-        <div className="p-6 border-b border-[#1e1e28]">
+    <div role="dialog" aria-modal="true" aria-label="Checkout ZXMAX" className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-[#15151a] border border-[#25252e] rounded-2xl w-full max-w-md overflow-y-auto overscroll-contain max-h-[calc(100dvh-2rem)] animate-fade-in-up my-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-6 border-b border-[#1e1e28] sticky top-0 bg-[#15151a] z-10">
           <h3 className="font-black text-white text-lg">Checkout ZXMAX</h3>
-          <p className="text-xs text-white/40 mt-1">{product.name} • {quantity.toLocaleString("pt-BR")} {product.category === ROBUX_CATEGORY ? "Robux" : "un."} • {method.toUpperCase()}</p>
+          <p className="text-xs text-white/40 mt-1">{product.name} • {quantity.toLocaleString("pt-BR")} {product.category === ROBUX_CATEGORY ? "Robux" : "un."}{method ? ` • ${method.toUpperCase()}` : ""}</p>
         </div>
-        
+
         <div className="p-6 space-y-5">
           <div>
             <p className="text-xs font-bold uppercase text-white/30 mb-2">Forma de pagamento</p>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setMethod("pix")} disabled={loadingMethods || !isAvailable("pix")} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "pix" ? "bg-[#0084ff] border-[#0084ff] text-white" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${loadingMethods || !isAvailable("pix") ? "opacity-40 cursor-not-allowed" : ""}`}>
-                <CreditCard className="w-5 h-5" />
-                <span className="text-xs font-bold">PIX</span>
-                {!loadingMethods && !isAvailable("pix") && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
-              </button>
-              <button onClick={() => setMethod("crypto")} disabled={loadingMethods || !isAvailable("crypto")} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "crypto" ? "bg-[#ffbd2e] border-[#ffbd2e] text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${loadingMethods || !isAvailable("crypto") ? "opacity-40 cursor-not-allowed" : ""}`}>
-                <Bitcoin className="w-5 h-5" />
-                <span className="text-xs font-bold">Crypto</span>
-                {!loadingMethods && !isAvailable("crypto") && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
-              </button>
-              <button onClick={() => setMethod("card")} disabled={loadingMethods || !isAvailable("card")} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "card" ? "bg-white border-white text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${loadingMethods || !isAvailable("card") ? "opacity-40 cursor-not-allowed" : ""}`}>
-                <CreditCard className="w-5 h-5" />
-                <span className="text-xs font-bold">Cartão (Stripe)</span>
-                {!loadingMethods && !isAvailable("card") && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
-              </button>
-              <button onClick={() => setMethod("boleto")} disabled={loadingMethods || !isAvailable("boleto")} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "boleto" ? "bg-white border-white text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${loadingMethods || !isAvailable("boleto") ? "opacity-40 cursor-not-allowed" : ""}`}>
-                <Package className="w-5 h-5" />
-                <span className="text-xs font-bold">Boleto (Stripe)</span>
-                {!loadingMethods && !isAvailable("boleto") && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
-              </button>
+              {methodButtons.map(({ id, label, icon, selectedClass }) => {
+                const selectable = !loadingMethods && isAvailable(id);
+                const selected = selectable && method === id;
+                return (
+                  <button
+                    key={id}
+                    onClick={() => selectable && setMethod(id)}
+                    disabled={!selectable}
+                    aria-pressed={selected}
+                    className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${selected ? selectedClass : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${selectable ? "" : "opacity-40 cursor-not-allowed"}`}
+                  >
+                    {icon}
+                    <span className="text-xs font-bold">{label}</span>
+                    {!loadingMethods && !isAvailable(id) && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
+                  </button>
+                );
+              })}
             </div>
             {loadingMethods ? (
-              <p className="text-[10px] text-white/30 mt-2">Verificando formas de pagamento disponíveis…</p>
-            ) : available && !Object.values(available).some(Boolean) ? (
-              <p className="text-[11px] text-[#ffbd2e] mt-2">Nenhuma forma de pagamento está configurada no momento. Fale com o suporte.</p>
+              <p className="text-[10px] text-white/30 mt-2" aria-live="polite">Verificando formas de pagamento disponíveis…</p>
+            ) : notice ? (
+              <div className="mt-2 flex items-start justify-between gap-3">
+                <p className="text-[11px] text-[#ffbd2e]" aria-live="polite" role="status">{notice.message}</p>
+                {notice.retryable && (
+                  <button onClick={() => setMethodsRetry((n) => n + 1)} className="shrink-0 text-[11px] font-bold text-[#5aaeff] hover:text-white">Tentar novamente</button>
+                )}
+              </div>
             ) : (
               <p className="text-[10px] text-white/30 mt-2">Só aparecem habilitadas as formas realmente configuradas na plataforma.</p>
             )}
           </div>
 
-          <div>
-            <p className="text-xs font-bold uppercase text-white/30 mb-2">CPF para pagamento{method === "card" || method === "boleto" ? " (opcional)" : ""}</p>
-            <input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />
-            <p className="text-[10px] text-white/30 mt-1">Obrigatório para PIX e Crypto (VexoPay exige documento)</p>
-          </div>
+          {anyMethod && (
+            <div>
+              <p className="text-xs font-bold uppercase text-white/30 mb-2">CPF para pagamento{method === "card" || method === "boleto" ? " (opcional)" : ""}</p>
+              <input value={cpf} onChange={(e) => setCpf(e.target.value)} inputMode="numeric" placeholder="000.000.000-00" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />
+              <p className="text-[10px] text-white/30 mt-1">Obrigatório para PIX e Crypto (VexoPay exige documento)</p>
+            </div>
+          )}
 
           <div className="bg-[#0a0a0f] border border-[#1e1e28] rounded-xl p-4 space-y-2">
             <div className="flex justify-between text-xs"><span className="text-white/40">Preço unitário</span><span className="text-white">{formatBRL(unitPrice * (product.category === ROBUX_CATEGORY ? robuxPackageUnits(product) : 1))} / {product.category === ROBUX_CATEGORY ? `${robuxPackageUnits(product).toLocaleString("pt-BR")} Robux` : "un."}</span></div>
@@ -137,8 +162,9 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
             <p className="text-[10px] text-white/30">A taxa é da plataforma. O vendedor recebe {formatBRL(subtotal)}.</p>
           </div>
 
-          <button onClick={handleConfirm} disabled={loading || loadingMethods || !isAvailable(method)} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 transition">
+          <button onClick={handleConfirm} disabled={loading || loadingMethods || !method || !isAvailable(method)} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
             {loading ? "Processando..."
+              : !anyMethod && !loadingMethods ? "Nenhuma forma disponível"
               : method === "pix" ? "Pagar com PIX"
               : method === "crypto" ? "Pagar com Crypto"
               : method === "boleto" ? "Gerar boleto"
@@ -177,6 +203,9 @@ export default function ProdutoPage() {
   const [remoteQuestions, setRemoteQuestions] = useState<Array<{ id: number; body: string; answer: string | null; created_at: string; answered_at: string | null }>>([]);
   const [questionsStatus, setQuestionsStatus] = useState<"loading" | "ready" | "unavailable">("loading");
   const [questionsShown, setQuestionsShown] = useState(5);
+  const [sendingQuestion, setSendingQuestion] = useState(false);
+  const [answerDrafts, setAnswerDrafts] = useState<Record<number, string>>({});
+  const [sendingAnswer, setSendingAnswer] = useState<number | null>(null);
 
   const productId = Number(id);
   const product = state.products.find((p) => p.id === productId);
@@ -245,7 +274,14 @@ export default function ProdutoPage() {
       .select("id,body,answer,created_at,answered_at")
       .eq("product_id", productId)
       .order("created_at", { ascending: false });
-    if (error) { setQuestionsStatus("unavailable"); return; }
+    if (error) {
+      // Detalhe técnico só no console; a seção entra em estado "unavailable"
+      // honesto (o composer é desabilitado, nada é simulado localmente).
+      friendlyQuestionError(error, "load");
+      setRemoteQuestions([]);
+      setQuestionsStatus("unavailable");
+      return;
+    }
     setRemoteQuestions(data || []);
     setQuestionsStatus("ready");
   }, [productId]);
@@ -406,10 +442,30 @@ export default function ProdutoPage() {
     if (!state.currentUser) { setAuthOpen(true); return; }
     const clean = question.trim();
     if (clean.length < 3) { toast.error("Escreva uma pergunta com pelo menos 3 caracteres."); return; }
+    setSendingQuestion(true);
+    // O erro cru do PostgREST (ex.: função ausente do schema cache) nunca vai
+    // ao toast: é classificado, vai ao console e vira mensagem segura.
     const { error } = await (supabase as any).rpc("ask_product_question", { _product_id: product.id, _body: clean });
-    if (error) { toast.error(error.message || "Não foi possível enviar a pergunta."); return; }
+    setSendingQuestion(false);
+    if (error) {
+      toast.error(friendlyQuestionError(error, "ask"));
+      if (isSchemaMissing(error)) setQuestionsStatus("unavailable");
+      return;
+    }
     toast.success("Pergunta enviada ao vendedor.");
     setQuestion("");
+    await loadQuestions();
+  };
+
+  const handleAnswerQuestion = async (questionId: number) => {
+    const clean = (answerDrafts[questionId] || "").trim();
+    if (clean.length < 1) { toast.error("Escreva a resposta antes de enviar."); return; }
+    setSendingAnswer(questionId);
+    const { error } = await (supabase as any).rpc("answer_product_question", { _question_id: questionId, _answer: clean });
+    setSendingAnswer(null);
+    if (error) { toast.error(friendlyQuestionError(error, "answer")); return; }
+    toast.success("Resposta publicada.");
+    setAnswerDrafts((drafts) => ({ ...drafts, [questionId]: "" }));
     await loadQuestions();
   };
 
@@ -577,6 +633,8 @@ export default function ProdutoPage() {
 
   // Página de anúncio regular. Dados indisponíveis são mostrados como “—”, nunca estimados.
   const seller = state.userDirectory?.[product.sellerId];
+  // Só o dono do anúncio vê o formulário de resposta (o banco revalida via RPC).
+  const isProductSeller = !!state.currentUser && state.currentUser.id === product.sellerId;
   const sellerReviews = state.purchases.filter((purchase) => purchase.sellerId === product.sellerId && purchase.reviewed);
   const sellerPositive = sellerReviews.length ? Math.round((sellerReviews.filter((review) => (review.reviewStars || 0) >= 4).length / sellerReviews.length) * 100) : null;
   const relatedProducts = state.products.filter((item) => item.id !== product.id && item.category === product.category && item.approved).slice(0, 8);
@@ -631,16 +689,70 @@ export default function ProdutoPage() {
               <div className="mt-5 pt-4 border-t border-[#1e1e28] flex flex-wrap items-center gap-3 text-xs text-white/40"><span>Criado em {createdAt ? new Date(createdAt).toLocaleDateString("pt-BR") : "—"}</span><button onClick={handleShare} className="flex items-center gap-1.5 hover:text-white"><Share2 className="w-4 h-4" /> Compartilhar</button><Link to="/suporte" className="flex items-center gap-1.5 hover:text-white"><Flag className="w-4 h-4" /> Denunciar</Link></div>
             </section>
 
-            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5 sm:p-6">
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5 sm:p-6" aria-label="Perguntas sobre o anúncio">
               <div className="flex items-center justify-between"><h2 className="text-sm font-black tracking-wide text-white">PERGUNTAS ({productQuestions.length})</h2></div>
               <div className="mt-5 space-y-3">
                 {questionsStatus === "loading" && <p className="text-sm text-white/40">Carregando perguntas…</p>}
-                {questionsStatus === "unavailable" && <p className="text-sm text-white/40">As perguntas anteriores não estão disponíveis neste momento.</p>}
-                {productQuestions.slice(0, questionsShown).map((item) => <article key={item.id} className="rounded-xl bg-[#1a1a20] border border-[#25252e] p-4"><p className="text-xs font-bold text-[#5aaeff]">{item.userName}</p><p className="text-sm text-white mt-1">{item.text}</p><p className="text-[11px] text-white/35 mt-2">{new Date(item.date).toLocaleDateString("pt-BR")}</p>{item.answer && <div className="mt-3 pl-3 border-l-2 border-[#0084ff]"><p className="text-[11px] font-bold text-[#5aaeff]">Resposta do vendedor</p><p className="text-sm text-white/80 mt-1">{item.answer}</p></div>}</article>)}
+                {questionsStatus === "unavailable" && (
+                  <p className="text-sm text-white/40" role="status">{QUESTIONS_UPDATE_MESSAGE}</p>
+                )}
+                {productQuestions.slice(0, questionsShown).map((item) => (
+                  <article key={item.id} className="rounded-xl bg-[#1a1a20] border border-[#25252e] p-4">
+                    <p className="text-xs font-bold text-[#5aaeff]">{item.userName}</p>
+                    <p className="text-sm text-white mt-1">{item.text}</p>
+                    <p className="text-[11px] text-white/35 mt-2">{new Date(item.date).toLocaleDateString("pt-BR")}</p>
+                    {item.answer
+                      ? <div className="mt-3 pl-3 border-l-2 border-[#0084ff]"><p className="text-[11px] font-bold text-[#5aaeff]">Resposta do vendedor</p><p className="text-sm text-white/80 mt-1">{item.answer}</p></div>
+                      : isProductSeller && questionsStatus === "ready" && (
+                        <div className="mt-3 border-t border-[#25252e] pt-3">
+                          <label className="sr-only" htmlFor={`answer-${item.id}`}>Responder pergunta</label>
+                          <textarea
+                            id={`answer-${item.id}`}
+                            value={answerDrafts[item.id] || ""}
+                            onChange={(event) => setAnswerDrafts((drafts) => ({ ...drafts, [item.id]: event.target.value }))}
+                            maxLength={2000}
+                            placeholder="Responder ao comprador"
+                            className="w-full min-h-16 bg-[#0a0a0f] border border-[#25252e] rounded-xl p-3 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#0084ff]"
+                          />
+                          <button
+                            onClick={() => void handleAnswerQuestion(item.id)}
+                            disabled={sendingAnswer === item.id}
+                            className="mt-2 bg-[#0084ff] hover:bg-[#0066cc] disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-bold"
+                          >
+                            {sendingAnswer === item.id ? "Enviando…" : "Responder"}
+                          </button>
+                        </div>
+                      )}
+                  </article>
+                ))}
                 {!productQuestions.length && questionsStatus === "ready" && <p className="text-sm text-white/40 py-4">Ainda não há perguntas para este anúncio.</p>}
                 {productQuestions.length > questionsShown && <button onClick={() => setQuestionsShown((count) => count + 5)} className="text-sm font-bold text-[#5aaeff]">Carregar mais</button>}
               </div>
-              <div className="mt-5"><textarea value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1000} placeholder="Faça uma pergunta" className="w-full min-h-24 bg-[#0a0a0f] border border-[#25252e] rounded-xl p-3 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#0084ff]" /><p className="text-[11px] text-white/35 mt-2">Não é permitido enviar contatos externos (WhatsApp, Discord, e-mail, links ou telefone).</p><button onClick={() => void handleSendQuestion()} className="mt-3 bg-[#0084ff] hover:bg-[#0066cc] text-white px-5 py-2.5 rounded-xl text-sm font-bold">Enviar pergunta</button></div>
+              {questionsStatus === "unavailable" ? (
+                <p className="mt-5 text-[11px] text-white/35 border border-[#25252e] rounded-xl p-3 bg-[#1a1a20]">
+                  O envio de perguntas está temporariamente desativado nesta tela até a atualização terminar — nada é salvo localmente.
+                </p>
+              ) : (
+                <div className="mt-5">
+                  <label className="sr-only" htmlFor="question-input">Faça uma pergunta</label>
+                  <textarea
+                    id="question-input"
+                    value={question}
+                    onChange={(event) => setQuestion(event.target.value)}
+                    maxLength={1000}
+                    placeholder="Faça uma pergunta"
+                    className="w-full min-h-24 bg-[#0a0a0f] border border-[#25252e] rounded-xl p-3 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#0084ff]"
+                  />
+                  <p className="text-[11px] text-white/35 mt-2">Não é permitido enviar contatos externos (WhatsApp, Discord, e-mail, links ou telefone).</p>
+                  <button
+                    onClick={() => void handleSendQuestion()}
+                    disabled={sendingQuestion}
+                    className="mt-3 bg-[#0084ff] hover:bg-[#0066cc] disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl text-sm font-bold"
+                  >
+                    {sendingQuestion ? "Enviando…" : "Enviar pergunta"}
+                  </button>
+                </div>
+              )}
             </section>
 
             <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5 sm:p-6"><h2 className="text-sm font-black tracking-wide text-white">AVALIAÇÕES ({productReviews.length})</h2><div className="flex items-center gap-3 mt-4"><p className="text-3xl font-black text-white">{avgRating || "—"}</p><div><div className="flex text-[#ffbd2e]">{[1,2,3,4,5].map((star) => <Star key={star} className={`w-4 h-4 ${avgRating && star <= Math.round(Number(avgRating)) ? "fill-current" : "text-white/15"}`} />)}</div><p className="text-xs text-white/40 mt-1">{productReviews.length ? `${productReviews.length} avaliação(ões)` : "Sem avaliações ainda"}</p></div></div><div className="mt-5 space-y-3">{productReviews.map((review) => <article key={review.id} className="border-t border-[#1e1e28] pt-3"><p className="text-sm text-white">{review.reviewComment || "Sem comentário."}</p><p className="text-[11px] text-white/35 mt-1">Comprador · {new Date(review.createdAt).toLocaleDateString("pt-BR")}</p></article>)}</div></section>
