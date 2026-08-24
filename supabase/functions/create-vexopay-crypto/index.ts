@@ -32,17 +32,27 @@ serve(async (req) => {
     if (!purchase || purchase.buyer_id !== userData.user.id) throw new Error("Pedido não encontrado");
     if (purchase.status !== "pending") throw new Error("Pedido não está pendente");
 
-    // VexoPay credentials - uses same pattern as EvoPay but with ci/cs
-    let ci = Deno.env.get("VEXOPAY_CLIENT_ID") || Deno.env.get("EVOPAY_API_KEY");
+    // VexoPay credentials — mesma precedência de integrations-config/payment_methods:
+    // o painel do admin salva em app_settings.vexopay (clientId/clientSecret/baseUrl);
+    // os secrets de ambiente são apenas fallback. Antes este código lia
+    // app_settings.evopay.vexoCi/vexoCs — campos que o painel nunca grava — então a
+    // cobrança falhava mesmo com as credenciais cadastradas.
+    let ci = Deno.env.get("VEXOPAY_CLIENT_ID");
     let cs = Deno.env.get("VEXOPAY_CLIENT_SECRET");
-    
+    let baseUrl = "https://www.vexopay.com.br/api";
+
     try {
-      const { data: setting } = await serviceClient.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
-      if (setting?.value?.vexoCi) ci = setting.value.vexoCi;
-      if (setting?.value?.vexoCs) cs = setting.value.vexoCs;
+      const { data: setting } = await serviceClient.from("app_settings").select("value").eq("key", "vexopay").maybeSingle();
+      if (setting?.value?.clientId) ci = setting.value.clientId;
+      if (setting?.value?.clientSecret) cs = setting.value.clientSecret;
+      if (typeof setting?.value?.baseUrl === "string" && setting.value.baseUrl.trim() !== "") {
+        baseUrl = setting.value.baseUrl.replace(/\/$/, "");
+      }
     } catch {}
 
-    if (!ci || !cs) throw new Error("VexoPay não configurado");
+    if (!ci || !cs) {
+      throw new Error("O pagamento em cripto está temporariamente indisponível: o gateway não está configurado. Avise o suporte.");
+    }
 
     // Create crypto invoice via VexoPay gateway
     // Docs: POST /api/gateway/crypto-create { amount, network, description }
@@ -55,7 +65,7 @@ serve(async (req) => {
 
     console.log("Creating VexoPay crypto invoice", payload);
 
-    const resp = await fetch("https://www.vexopay.com.br/api/gateway/crypto-create", {
+    const resp = await fetch(`${baseUrl}/gateway/crypto-create`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

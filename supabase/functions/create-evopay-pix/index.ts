@@ -7,6 +7,14 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+/** Erro de configuração: mensagem já amigável, sem nomear secrets internos. */
+class PixConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PixConfigError";
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -39,16 +47,29 @@ serve(async (req) => {
       });
     }
 
+    // Resolução de credencial — precisa ser IDÊNTICA à usada por
+    // `integrations-config` (action payment_methods): a chave salva pelo admin
+    // no painel (app_settings) tem precedência; o secret de ambiente é apenas
+    // fallback. Antes a chave do painel só era usada com mode === "manual",
+    // campo que o painel não envia — o checkout anunciava PIX e a cobrança
+    // falhava por "não configurada".
     let apiKey = Deno.env.get("EVOPAY_API_KEY");
     let setting: { value: any } | null = null;
     try {
       const { data } = await serviceClient.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
       setting = data as { value: any } | null;
-      if (setting?.value?.mode === "manual" && setting?.value?.apiKey) {
+      if (setting?.value?.apiKey) {
         apiKey = setting.value.apiKey;
       }
     } catch (_e) { /* fallback to secret */ }
-    if (!apiKey) throw new Error("EVOPAY_API_KEY não configurada");
+    if (setting?.value?.enabled === false) {
+      // Consistente com integrations-config/payment_methods: desativado no
+      // painel não gera cobrança, mesmo existindo secret de ambiente.
+      throw new PixConfigError("O PIX está desativado no momento. Escolha outra forma de pagamento.");
+    }
+    if (!apiKey) {
+      throw new PixConfigError("O PIX está temporariamente indisponível: o gateway não está configurado. Avise o suporte.");
+    }
 
     const body = await req.json();
     const purchaseId = Number(body.purchaseId);
@@ -174,8 +195,12 @@ serve(async (req) => {
     );
   } catch (error: any) {
     console.error("create-evopay-pix error:", error.message || error);
+    const isConfig = error instanceof PixConfigError;
     return new Response(
-      JSON.stringify({ error: error.message || "Erro desconhecido ao criar cobrança" }),
+      JSON.stringify({
+        error: error.message || "Erro desconhecido ao criar cobrança",
+        code: isConfig ? "evopay_not_configured" : "pix_charge_failed",
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
     );
   }

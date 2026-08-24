@@ -101,23 +101,52 @@ serve(async (req) => {
     // checkout não oferecer um meio de pagamento que não está configurado
     // (antes a tela marcava tudo como disponível e o erro só aparecia depois
     // de o comprador já ter criado o pedido).
+    //
+    // Regras de honestidade (não mascarar falha como "indisponível"):
+    // - `v: 2` marca a versão da ação: respostas sem ele são de uma versão
+    //   antiga ainda publicada, e o frontend trata como serviço em atualização;
+    // - falha ao ler `app_settings` devolve 500 + `code`, nunca `{ all false }`;
+    // - a disponibilidade espelha EXATAMENTE a resolução de credenciais que
+    //   as funções de cobrança usam (banco `app_settings` primeiro, secret de
+    //   ambiente como fallback). Só anunciamos o que pode realmente cobrar.
     // ------------------------------------------------------------------
     if (action === "payment_methods") {
-      const { data: rows } = await admin
+      const { data: rows, error: settingsError } = await admin
         .from("app_settings").select("key, value").in("key", ["evopay", "vexopay", "stripe"]);
-      const cfg = (key: string) => (rows || []).find((r: any) => r.key === key)?.value || {};
+      if (settingsError) {
+        console.error("payment_methods: falha ao ler app_settings:", settingsError.message);
+        return json(
+          {
+            error: "Não foi possível verificar as formas de pagamento agora. Tente novamente em instantes.",
+            code: "payment_settings_unavailable",
+          },
+          503,
+        );
+      }
+      const cfg = (key: string): Record<string, any> =>
+        (rows || []).find((r: any) => r.key === key)?.value || {};
+
+      // Mesma precedência de create-evopay-pix: chave salva no painel vence;
+      // secret de ambiente é fallback.
       const evopay = cfg("evopay");
       const vexopay = cfg("vexopay");
       const stripe = cfg("stripe");
 
-      const stripeReady = !!stripe.secretKey && stripe.enabled !== false;
+      const pixReady = !!(evopay.apiKey || Deno.env.get("EVOPAY_API_KEY"));
+      const cryptoReady = !!(
+        (vexopay.clientId && vexopay.clientSecret) ||
+        (Deno.env.get("VEXOPAY_CLIENT_ID") && Deno.env.get("VEXOPAY_CLIENT_SECRET"))
+      );
+      const cardReady = !!(stripe.secretKey || Deno.env.get("STRIPE_SECRET_KEY"));
+
       return json({
+        v: 2,
         methods: {
-          pix: (!!evopay.apiKey || !!Deno.env.get("EVOPAY_API_KEY")) && evopay.enabled !== false,
-          crypto: !!vexopay.clientId && !!vexopay.clientSecret && vexopay.enabled !== false,
-          card: stripeReady,
+          pix: pixReady && evopay.enabled !== false,
+          crypto: cryptoReady && vexopay.enabled !== false,
+          card: cardReady && stripe.enabled !== false,
           // Boleto exige Stripe ativa E o método habilitado no painel da Stripe.
-          boleto: stripeReady && stripe.boletoEnabled !== false,
+          boleto: cardReady && stripe.enabled !== false && stripe.boletoEnabled !== false,
         },
       });
     }
