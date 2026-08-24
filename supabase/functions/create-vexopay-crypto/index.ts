@@ -32,11 +32,7 @@ serve(async (req) => {
     if (!purchase || purchase.buyer_id !== userData.user.id) throw new Error("Pedido não encontrado");
     if (purchase.status !== "pending") throw new Error("Pedido não está pendente");
 
-    // VexoPay credentials — mesma precedência de integrations-config/payment_methods:
-    // o painel do admin salva em app_settings.vexopay (clientId/clientSecret/baseUrl);
-    // os secrets de ambiente são apenas fallback. Antes este código lia
-    // app_settings.evopay.vexoCi/vexoCs — campos que o painel nunca grava — então a
-    // cobrança falhava mesmo com as credenciais cadastradas.
+    // VexoPay credentials: app_settings.vexopay (clientId/clientSecret/baseUrl)
     let ci = Deno.env.get("VEXOPAY_CLIENT_ID");
     let cs = Deno.env.get("VEXOPAY_CLIENT_SECRET");
     let baseUrl = "https://www.vexopay.com.br/api";
@@ -54,59 +50,67 @@ serve(async (req) => {
       throw new Error("O pagamento em cripto está temporariamente indisponível: o gateway não está configurado. Avise o suporte.");
     }
 
-    // Create crypto invoice via VexoPay gateway
-    // Docs: POST /api/gateway/crypto-create { amount, network, description }
+    // Docs: POST /gateway/crypto-create ou POST /crypto-create
     const payload = {
       amount,
       network,
       description: description.slice(0, 120),
-      clientReference: String(purchaseId),
     };
 
-    console.log("Creating VexoPay crypto invoice", payload);
+    const candidates = ["/gateway/crypto-create", "/crypto-create"];
+    let lastError = "";
+    let dataRes: any = null;
 
-    const resp = await fetch(`${baseUrl}/gateway/crypto-create`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "ci": ci,
-        "cs": cs,
-      },
-      body: JSON.stringify(payload),
-    });
+    for (const path of candidates) {
+      const resp = await fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ci: ci, cs: cs },
+        body: JSON.stringify(payload),
+      });
+      const resBody = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        lastError = resBody?.message || resBody?.error || `HTTP ${resp.status} em ${path}`;
+        continue;
+      }
+      dataRes = resBody;
+      break;
+    }
 
-    const data = await resp.json().catch(() => ({}));
-    console.log("VexoPay crypto response", resp.status, JSON.stringify(data));
+    if (!dataRes) throw new Error(lastError || "Erro ao criar cobrança Crypto na VexoPay");
 
-    if (!resp.ok) throw new Error(data?.message || data?.error || "Erro ao criar cobrança Crypto");
+    const invoiceNode = dataRes?.invoice || dataRes?.data || dataRes;
+    const chargeId = invoiceNode?.id || dataRes?.id;
+    const address = invoiceNode?.address || dataRes?.address;
+    const qrPayload = invoiceNode?.qr_payload || dataRes?.qr_payload || invoiceNode?.qrCode || dataRes?.qrCode;
+    const expiresAt = invoiceNode?.expires_at || dataRes?.expires_at || new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
-    // Save charge id if returned
-    if (data?.data?.id || data?.id) {
-      const chargeId = data?.data?.id || data?.id;
+    if (chargeId) {
       await serviceClient.from("purchases").update({
-        evopay_charge_id: String(chargeId),
+        evopay_charge_id: `vexo:${chargeId}`,
         updated_at: new Date().toISOString(),
       }).eq("id", purchaseId);
     }
 
-    await serviceClient.from("webhook_logs").insert({
-      source: "vexopay",
-      event_type: "CREATE_CRYPTO",
-      status: "created",
-      order_id: purchaseId,
-      charge_id: data?.data?.id || data?.id || null,
-      payload: data,
-      error: null,
-    });
+    try {
+      await serviceClient.from("webhook_logs").insert({
+        source: "vexopay",
+        event_type: "CREATE_CRYPTO",
+        status: "created",
+        order_id: purchaseId,
+        charge_id: chargeId ? String(chargeId) : null,
+        payload: dataRes,
+        error: null,
+      });
+    } catch {}
 
     return new Response(JSON.stringify({
       success: true,
-      id: data?.data?.id || data?.id,
-      address: data?.data?.address || data?.address,
-      amount: data?.data?.amount || amount,
-      qrCode: data?.data?.qr_payload || data?.qr_payload || data?.data?.qrCode || null,
-      network: network,
-      expiresAt: data?.data?.expires_at || new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      id: chargeId ? `vexo:${chargeId}` : null,
+      address,
+      amount: invoiceNode?.amount || amount,
+      qrCode: qrPayload,
+      network,
+      expiresAt,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error: any) {
