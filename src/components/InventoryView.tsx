@@ -3,7 +3,7 @@ import { useStore, Product } from "@/store/StoreContext";
 import { Plus, X, Trash2, Upload, Users, Clock, MessageSquare, Pencil, Package, Coins } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { MIN_PRODUCT_PRICE, parsePriceInput } from "@/lib/catalog";
+import { formatBRL, isValidProductPrice, MIN_PRODUCT_PRICE, parsePriceInput, robuxPackageUnits, ROBUX_CATEGORY } from "@/lib/catalog";
 
 interface Variation {
   name: string;
@@ -27,7 +27,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const imageInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
-  const isRobuxCategory = form.category === "Robux e Gift Cards";
+  const isRobuxCategory = form.category === ROBUX_CATEGORY;
 
   const resetForm = () => {
     setForm({ name: "", category: state.config.categories[0] || "", description: "", price: "", image: "", banner: "", deliveryType: "manual", deliveryContent: "", stock: "", minQuantity: "", deliveryTime: "", robuxAmount: "" });
@@ -93,9 +93,9 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!state.currentUser?.isVerified && !state.currentUser?.isAdmin) return toast.error("Verifique sua conta para anunciar.");
-    if (!form.name || !form.price) return toast.error("Preencha nome e preço.");
+    if (!form.name.trim() || !form.price) return toast.error("Preencha nome e preço.");
     const finalPrice = parsePriceInput(form.price);
-    if (!(finalPrice >= MIN_PRODUCT_PRICE)) return toast.error(`Mínimo R$ ${MIN_PRODUCT_PRICE.toFixed(2).replace(".", ",")}.`);
+    if (!isValidProductPrice(finalPrice)) return toast.error(`Informe um preço válido a partir de ${formatBRL(MIN_PRODUCT_PRICE)}.`);
 
     // The advertised price is always the package price.
     let finalVariations = variations
@@ -103,11 +103,14 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
       .map((v) => ({ name: v.name, price: parsePriceInput(v.price) }));
 
     if (isRobuxCategory) {
-      const robuxQty = parseInt(form.robuxAmount) || 100;
-      if (robuxQty <= 0) return toast.error("Quantidade Robux inválida");
+      const robuxQty = Number.parseInt(form.robuxAmount, 10);
+      if (!Number.isFinite(robuxQty) || robuxQty <= 0) return toast.error("Informe quantos Robux o pacote entrega.");
+      // The advertised price is the PACKAGE price. We never store price/unit.
       finalVariations = [{ name: `${robuxQty} Robux`, price: finalPrice }, ...finalVariations];
-    } else {
-      finalVariations = finalVariations.filter((v) => v.price >= MIN_PRODUCT_PRICE);
+    }
+    finalVariations = finalVariations.filter((v) => isValidProductPrice(v.price));
+    if (variations.some((v) => v.name && v.price && !isValidProductPrice(parsePriceInput(v.price)))) {
+      return toast.error(`Toda variação precisa custar pelo menos ${formatBRL(MIN_PRODUCT_PRICE)}.`);
     }
 
     if (editingId !== null) {
@@ -120,8 +123,8 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
         minQuantity: form.minQuantity ? parseInt(form.minQuantity) : undefined,
         deliveryTime: form.deliveryTime || undefined,
       });
-      if (ok) toast.success("Produto atualizado!");
-      else toast.error("Falha ao atualizar");
+      if (!ok) return;
+      toast.success("Produto atualizado!");
     } else {
       const created = await addProduct({
         name: form.name, category: form.category, description: form.description,
@@ -133,7 +136,9 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
         minQuantity: form.minQuantity ? parseInt(form.minQuantity) : undefined,
         deliveryTime: form.deliveryTime || undefined,
       } as any);
-      if (created) toast.success("Produto criado! Aguardando aprovação.");
+      // addProduct owns the success/failure toast: it knows whether the server
+      // published the listing immediately or queued it for moderation.
+      if (!created) return;
     }
     setShowForm(false);
     resetForm();
@@ -280,7 +285,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                 <div className="flex-1 min-w-0">
                   <h4 className="font-bold text-white truncate text-sm">{p.name}</h4>
                   <p className="text-xs text-white/40">{p.category} • {p.sales} vendas</p>
-                  <p className="text-sm font-black text-white mt-1">R$ {p.price.toFixed(5)} {p.category === "Robux e Gift Cards" ? "/ un" : ""}</p>
+                  <p className="text-sm font-black text-white mt-1">{formatBRL(p.price)}{p.category === ROBUX_CATEGORY && robuxPackageUnits(p) > 1 ? <span className="text-white/40 font-normal"> / pacote de {robuxPackageUnits(p).toLocaleString("pt-BR")} Robux</span> : null}</p>
                 </div>
                 <div className="flex flex-col gap-2">
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full text-center ${p.approved ? "bg-[#00c950]/10 text-[#00c950] border border-[#00c950]/20" : "bg-[#ffbd2e]/10 text-[#ffbd2e] border border-[#ffbd2e]/20"}`}>{p.approved ? "Aprovado" : "Pendente"}</span>

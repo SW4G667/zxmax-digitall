@@ -2,8 +2,9 @@ const ADMIN_ROLE_CACHE_PREFIX = "zxmax_admin_role_";
 const ADMIN_GATE_PREFIX = "zxmax_admin_gate_ok_";
 
 /** Race a promise against a timeout, resolving with `fallback` on timeout.
+ * Accepts any thenable so Supabase's PostgrestBuilder can be passed directly.
  * Rejections from `promise` still propagate so callers can handle them. */
-export async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+export async function withTimeout<T>(promise: PromiseLike<T>, ms: number, fallback: T): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<T>((resolve) => {
     timer = setTimeout(() => resolve(fallback), ms);

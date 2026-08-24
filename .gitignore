@@ -28,3 +28,9 @@ supabase/.temp
 .env
 .env.*
 !.env.example
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Audit output
+audit-report.json
