@@ -77,6 +77,7 @@ export interface Product {
   deliveryTime?: string;
   sellerRating?: number;
   sellerReviews?: number;
+  createdAt?: string;
 }
 
 export interface PurchaseMessage {
@@ -521,7 +522,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           stock: p.stock ?? undefined,
           minQuantity: p.min_quantity ?? undefined,
           deliveryTime: p.delivery_time || undefined,
-          sellerRating: undefined, sellerReviews: undefined,
+          sellerRating: undefined, sellerReviews: undefined, createdAt: p.created_at || undefined,
         };
       }) as Product[];
       setState((old) => ({ ...old, products: mergeCatalog(products, old.products, { failed }) }));

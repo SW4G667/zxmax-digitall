@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useStore, ProductVariation, Product } from "@/store/StoreContext";
-import { Shield, CheckCircle, Zap, Star, MessageSquare, Share2, Flag, Heart, ShoppingCart, Send, Eye, Minus, Plus, ThumbsUp, BadgeCheck, Clock, Package, CreditCard, Bitcoin } from "lucide-react";
+import { Shield, CheckCircle, Zap, Star, MessageSquare, Share2, Flag, Heart, Send, Eye, Minus, Plus, ThumbsUp, BadgeCheck, Clock, Package, CreditCard, Bitcoin, Expand, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
 import AuthScreen from "@/components/AuthScreen";
@@ -159,7 +159,7 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
 export default function ProdutoPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { state, addProductQuestion, buyProduct, refreshPurchases, savePixCharge, catalogStatus, refreshProducts } = useStore();
+  const { state, buyProduct, refreshPurchases, savePixCharge, catalogStatus, refreshProducts } = useStore();
   const { isFavorite, toggle } = useFavorites();
   const [selectedVariation, setSelectedVariation] = useState<ProductVariation | null>(null);
   const [detailTab, setDetailTab] = useState<"info" | "reviews" | "questions">("info");
@@ -171,6 +171,12 @@ export default function ProdutoPage() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [sortBy, setSortBy] = useState<"recomendado" | "barato" | "min">("barato");
+  const [variationOpen, setVariationOpen] = useState(false);
+  const [variationSearch, setVariationSearch] = useState("");
+  const [imageOpen, setImageOpen] = useState(false);
+  const [remoteQuestions, setRemoteQuestions] = useState<Array<{ id: number; body: string; answer: string | null; created_at: string; answered_at: string | null }>>([]);
+  const [questionsStatus, setQuestionsStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [questionsShown, setQuestionsShown] = useState(5);
 
   const productId = Number(id);
   const product = state.products.find((p) => p.id === productId);
@@ -219,7 +225,10 @@ export default function ProdutoPage() {
   }, [product, state.purchases]);
 
   const avgRating = productReviews.length > 0 ? (productReviews.reduce((a, r) => a + (r.reviewStars || 0), 0) / productReviews.length).toFixed(1) : null;
-  const productQuestions = product?.questions || [];
+  const legacyQuestions = product?.questions || [];
+  const productQuestions = remoteQuestions.length > 0
+    ? remoteQuestions.map((q) => ({ id: q.id, userEmail: "", userName: "Comprador", text: q.body, date: q.created_at, answer: q.answer || undefined, answerDate: q.answered_at || undefined }))
+    : legacyQuestions;
 
   useEffect(() => {
     if (product) {
@@ -227,6 +236,21 @@ export default function ProdutoPage() {
       if (isRobux) setQuantity(product.minQuantity ?? robuxPackageUnits(product));
     }
   }, [product?.id, isRobux]);
+
+  const loadQuestions = React.useCallback(async () => {
+    if (!productId) return;
+    setQuestionsStatus("loading");
+    const { data, error } = await (supabase as any)
+      .from("product_questions")
+      .select("id,body,answer,created_at,answered_at")
+      .eq("product_id", productId)
+      .order("created_at", { ascending: false });
+    if (error) { setQuestionsStatus("unavailable"); return; }
+    setRemoteQuestions(data || []);
+    setQuestionsStatus("ready");
+  }, [productId]);
+
+  useEffect(() => { void loadQuestions(); }, [loadQuestions]);
 
   if (!product) {
     if (catalogStatus === "loading") {
@@ -378,14 +402,15 @@ export default function ProdutoPage() {
     } catch {}
   };
 
-  const handleSendQuestion = () => {
-    if (!question.trim()) return;
-    // Sanitize: remove emojis that shouldn't appear in chat
-    const clean = question.trim().replace(/[^\p{L}\p{N}\p{P}\p{Z}\n]/gu, "");
-    if (!clean) return toast.error("Pergunta inválida");
-    addProductQuestion(product.id, clean);
-    toast.success("Pergunta enviada!");
+  const handleSendQuestion = async () => {
+    if (!state.currentUser) { setAuthOpen(true); return; }
+    const clean = question.trim();
+    if (clean.length < 3) { toast.error("Escreva uma pergunta com pelo menos 3 caracteres."); return; }
+    const { error } = await (supabase as any).rpc("ask_product_question", { _product_id: product.id, _body: clean });
+    if (error) { toast.error(error.message || "Não foi possível enviar a pergunta."); return; }
+    toast.success("Pergunta enviada ao vendedor.");
     setQuestion("");
+    await loadQuestions();
   };
 
   const handleShare = async () => {
@@ -550,101 +575,87 @@ export default function ProdutoPage() {
     );
   }
 
-  // Regular product view (non-Robux) - GGMAX solid style
+  // Página de anúncio regular. Dados indisponíveis são mostrados como “—”, nunca estimados.
+  const seller = state.userDirectory?.[product.sellerId];
+  const sellerReviews = state.purchases.filter((purchase) => purchase.sellerId === product.sellerId && purchase.reviewed);
+  const sellerPositive = sellerReviews.length ? Math.round((sellerReviews.filter((review) => (review.reviewStars || 0) >= 4).length / sellerReviews.length) * 100) : null;
+  const relatedProducts = state.products.filter((item) => item.id !== product.id && item.category === product.category && item.approved).slice(0, 8);
+  const variationRequired = (product.variations?.length || 0) > 0;
+  const filteredVariations = (product.variations || []).filter((variation) => variation.name.toLowerCase().includes(variationSearch.toLowerCase()));
+  const createdAt = product.createdAt;
+
   return (
     <AppShell>
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-center gap-2 text-xs text-white/40 mb-4">
-          <Link to="/loja" className="hover:text-white">Loja</Link>
-          <span>/</span>
-          <button onClick={() => navigate(`/loja?cat=${encodeURIComponent(product.category)}`)} className="hover:text-white">{product.category}</button>
-          <span>/</span>
-          <span className="text-white font-bold truncate">{product.name}</span>
-        </div>
+        <nav aria-label="Navegação estrutural" className="flex items-center gap-2 text-xs text-white/45 mb-5 overflow-hidden">
+          <Link to="/" className="hover:text-white">Início</Link><span>›</span>
+          <button onClick={() => navigate(`/loja?cat=${encodeURIComponent(product.category)}`)} className="hover:text-white truncate">{product.category}</button><span>›</span>
+          <span className="text-white truncate">{product.name}</span>
+        </nav>
 
-        <div className="grid lg:grid-cols-[1fr_360px] gap-6">
-          <div className="space-y-4">
-            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl overflow-hidden">
-              <div className="relative aspect-[16/10] bg-[#0a0a0f]">
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
+          <main className="space-y-5">
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl overflow-hidden">
+              <div className="relative aspect-[16/9] bg-[#0a0a0f]">
                 <img src={product.banner || product.image} alt={product.name} className="w-full h-full object-cover" />
-                <button onClick={() => toggle(product.id)} className={`absolute top-3 right-3 p-2.5 rounded-full transition ${isFavorite(product.id) ? "bg-[#0084ff] text-white" : "bg-black/60 text-white/60 hover:text-white"}`}>
-                  <Heart className={`w-5 h-5 ${isFavorite(product.id) ? "fill-current" : ""}`} />
-                </button>
+                <button onClick={() => setImageOpen(true)} aria-label="Ampliar imagem" className="absolute bottom-4 left-4 p-3 rounded-xl bg-black/70 hover:bg-black text-white"><Expand className="w-5 h-5" /></button>
+                <button onClick={() => toggle(product.id)} aria-label="Favoritar" className={`absolute top-4 right-4 p-3 rounded-full ${fav ? "bg-[#0084ff] text-white" : "bg-black/70 text-white"}`}><Heart className={`w-5 h-5 ${fav ? "fill-current" : ""}`} /></button>
               </div>
-              <div className="p-5">
-                <h1 className="text-xl font-black text-white leading-tight">{product.name}</h1>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-xs bg-[#1a1a20] border border-[#25252e] px-2.5 py-1 rounded-full font-bold text-white/60">{product.category}</span>
-                  <span className="flex items-center gap-1 text-xs text-white/40"><Eye className="w-3.5 h-3.5" /> {product.sales} vendas</span>
+              <div className="p-5 sm:p-6">
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <span className="rounded-full px-3 py-1 text-[11px] font-bold bg-[#1a1a20] border border-[#25252e] text-white/70">{product.category}</span>
+                  <span className="rounded-full px-3 py-1 text-[11px] font-bold bg-[#0084ff]/15 border border-[#0084ff]/30 text-[#5aaeff]"><Zap className="inline w-3.5 h-3.5 mr-1" />{product.deliveryType === "auto" ? "Entrega automática" : "Entrega manual"}</span>
+                  <span className="rounded-full px-3 py-1 text-[11px] font-bold bg-[#1a1a20] border border-[#25252e] text-white/70">Anúncio digital</span>
                 </div>
-
-                <div className="flex gap-1 border-b border-[#1e1e28] mt-6">
-                  {[
-                    { id: "info", label: "Informações" },
-                    { id: "reviews", label: `Avaliações (${productReviews.length})` },
-                    { id: "questions", label: `Dúvidas (${productQuestions.length})` },
-                  ].map((t) => (
-                    <button key={t.id} onClick={() => setDetailTab(t.id as any)} className={`px-4 py-2.5 text-xs font-bold border-b-2 transition ${detailTab === t.id ? "border-[#0084ff] text-[#0084ff]" : "border-transparent text-white/40 hover:text-white"}`}>{t.label}</button>
-                  ))}
-                </div>
-
-                <div className="pt-5">
-                  {detailTab === "info" && (
-                    <div className="space-y-4">
-                      <p className="text-sm text-white/80 whitespace-pre-wrap leading-relaxed">{product.description}</p>
-                      {product.variations && product.variations.length > 0 && (
-                        <div>
-                          <p className="text-xs font-bold uppercase text-white/30 mb-2">Variações</p>
-                          <div className="grid gap-2">
-                            {product.variations.map((v, i) => (
-                              <button key={i} onClick={() => setSelectedVariation(v)} className={`p-3 rounded-xl border text-left transition ${selectedVariation?.name === v.name ? "bg-[#0084ff]/10 border-[#0084ff] text-white" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"}`}>
-                                <div className="flex justify-between"><span className="font-bold">{v.name}</span><span className="font-black text-[#0084ff]">{formatBRL(v.price)}</span></div>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="bg-[#00c950]/10 border border-[#00c950]/20 rounded-xl p-3"><Shield className="w-4 h-4 text-[#00c950] mb-1" /><p className="text-xs font-bold text-white">Protegido</p><p className="text-[10px] text-white/40">Reembolso</p></div>
-                        <div className="bg-[#0084ff]/10 border border-[#0084ff]/20 rounded-xl p-3"><Zap className="w-4 h-4 text-[#0084ff] mb-1" /><p className="text-xs font-bold text-white">Entrega</p><p className="text-[10px] text-white/40">{product.deliveryType === "auto" ? "Auto" : "Manual"}</p></div>
-                        <div className="bg-[#1a1a20] border border-[#25252e] rounded-xl p-3"><Clock className="w-4 h-4 text-white/60 mb-1" /><p className="text-xs font-bold text-white">Suporte</p><p className="text-[10px] text-white/40">24h</p></div>
-                      </div>
-                    </div>
-                  )}
-                  {detailTab === "reviews" && (
-                    <div className="space-y-2">
-                      {productReviews.length === 0 ? <p className="text-sm text-white/40 text-center py-10">Sem avaliações</p> : productReviews.map((r, i) => (
-                        <div key={i} className="bg-[#1a1a20] border border-[#25252e] p-3 rounded-xl"><p className="text-xs text-white">{r.reviewComment}</p></div>
-                      ))}
-                    </div>
-                  )}
-                  {detailTab === "questions" && (
-                    <div className="space-y-3">
-                      <div className="flex gap-2">
-                        <input value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Tire sua dúvida..." className="flex-1 bg-[#0a0a0f] border border-[#25252e] rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/20 focus:border-[#0084ff] outline-none" />
-                        <button onClick={handleSendQuestion} className="bg-[#0084ff] p-3 rounded-xl text-white"><Send className="w-4 h-4" /></button>
-                      </div>
-                      {productQuestions.map((q) => (
-                        <div key={q.id} className="bg-[#1a1a20] border border-[#25252e] p-3 rounded-xl"><p className="text-[10px] font-bold text-[#0084ff] uppercase">{q.userName}</p><p className="text-xs text-white mt-1">{q.text}</p></div>
-                      ))}
-                    </div>
-                  )}
+                <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight">{product.name}</h1>
+                <div className="grid grid-cols-3 mt-6 border-y border-[#1e1e28] divide-x divide-[#1e1e28]">
+                  <div className="py-3"><p className="text-[10px] text-white/35 uppercase font-bold">Disponíveis</p><p className="font-black text-white mt-1">{product.stock ?? "—"}</p></div>
+                  <div className="py-3 px-3"><p className="text-[10px] text-white/35 uppercase font-bold">Vendidos</p><p className="font-black text-white mt-1">{product.sales || "—"}</p></div>
+                  <div className="py-3 px-3"><p className="text-[10px] text-white/35 uppercase font-bold">Vendas</p><p className="font-black text-white mt-1">{product.sales || "—"}</p></div>
                 </div>
               </div>
-            </div>
-          </div>
+            </section>
 
-          <div className="lg:sticky lg:top-20 h-fit space-y-3">
-            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
-              <p className="text-[11px] uppercase font-bold text-white/30">Total com taxa</p>
-              <p className="text-3xl font-black text-white">{formatBRL(total)}</p>
-              <p className="text-xs text-white/40">{formatBRL(subtotal)} + {feePercent}% de taxa</p>
-              <button onClick={handleBuyClick} disabled={buyLoading} className="w-full mt-4 bg-[#0084ff] hover:bg-[#0066cc] text-white py-3.5 rounded-xl font-black text-sm transition disabled:opacity-50">Comprar agora</button>
-            </div>
-          </div>
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5 sm:p-6">
+              <h2 className="text-sm font-black tracking-wide text-white">CARACTERÍSTICAS</h2>
+              <dl className="mt-4 divide-y divide-[#1e1e28] text-sm">
+                <div className="flex justify-between py-3 gap-6"><dt className="text-white/45">Tipo do anúncio</dt><dd className="font-bold text-white text-right">{product.deliveryType === "auto" ? "Entrega automática" : "Entrega manual"}</dd></div>
+                <div className="flex justify-between py-3 gap-6"><dt className="text-white/45">Procedência</dt><dd className="font-bold text-white text-right">Não informada</dd></div>
+                <div className="flex justify-between py-3 gap-6"><dt className="text-white/45">Prazo de entrega</dt><dd className="font-bold text-white text-right">{product.deliveryTime || "Não informado"}</dd></div>
+              </dl>
+            </section>
+
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5 sm:p-6">
+              <h2 className="text-sm font-black tracking-wide text-white">DESCRIÇÃO</h2>
+              <p className="mt-4 text-sm leading-relaxed whitespace-pre-wrap text-white/75">{product.description || "O vendedor não adicionou uma descrição."}</p>
+              <div className="mt-5 pt-4 border-t border-[#1e1e28] flex flex-wrap items-center gap-3 text-xs text-white/40"><span>Criado em {createdAt ? new Date(createdAt).toLocaleDateString("pt-BR") : "—"}</span><button onClick={handleShare} className="flex items-center gap-1.5 hover:text-white"><Share2 className="w-4 h-4" /> Compartilhar</button><Link to="/suporte" className="flex items-center gap-1.5 hover:text-white"><Flag className="w-4 h-4" /> Denunciar</Link></div>
+            </section>
+
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5 sm:p-6">
+              <div className="flex items-center justify-between"><h2 className="text-sm font-black tracking-wide text-white">PERGUNTAS ({productQuestions.length})</h2></div>
+              <div className="mt-5 space-y-3">
+                {questionsStatus === "loading" && <p className="text-sm text-white/40">Carregando perguntas…</p>}
+                {questionsStatus === "unavailable" && <p className="text-sm text-white/40">As perguntas anteriores não estão disponíveis neste momento.</p>}
+                {productQuestions.slice(0, questionsShown).map((item) => <article key={item.id} className="rounded-xl bg-[#1a1a20] border border-[#25252e] p-4"><p className="text-xs font-bold text-[#5aaeff]">{item.userName}</p><p className="text-sm text-white mt-1">{item.text}</p><p className="text-[11px] text-white/35 mt-2">{new Date(item.date).toLocaleDateString("pt-BR")}</p>{item.answer && <div className="mt-3 pl-3 border-l-2 border-[#0084ff]"><p className="text-[11px] font-bold text-[#5aaeff]">Resposta do vendedor</p><p className="text-sm text-white/80 mt-1">{item.answer}</p></div>}</article>)}
+                {!productQuestions.length && questionsStatus === "ready" && <p className="text-sm text-white/40 py-4">Ainda não há perguntas para este anúncio.</p>}
+                {productQuestions.length > questionsShown && <button onClick={() => setQuestionsShown((count) => count + 5)} className="text-sm font-bold text-[#5aaeff]">Carregar mais</button>}
+              </div>
+              <div className="mt-5"><textarea value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1000} placeholder="Faça uma pergunta" className="w-full min-h-24 bg-[#0a0a0f] border border-[#25252e] rounded-xl p-3 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#0084ff]" /><p className="text-[11px] text-white/35 mt-2">Não é permitido enviar contatos externos (WhatsApp, Discord, e-mail, links ou telefone).</p><button onClick={() => void handleSendQuestion()} className="mt-3 bg-[#0084ff] hover:bg-[#0066cc] text-white px-5 py-2.5 rounded-xl text-sm font-bold">Enviar pergunta</button></div>
+            </section>
+
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5 sm:p-6"><h2 className="text-sm font-black tracking-wide text-white">AVALIAÇÕES ({productReviews.length})</h2><div className="flex items-center gap-3 mt-4"><p className="text-3xl font-black text-white">{avgRating || "—"}</p><div><div className="flex text-[#ffbd2e]">{[1,2,3,4,5].map((star) => <Star key={star} className={`w-4 h-4 ${avgRating && star <= Math.round(Number(avgRating)) ? "fill-current" : "text-white/15"}`} />)}</div><p className="text-xs text-white/40 mt-1">{productReviews.length ? `${productReviews.length} avaliação(ões)` : "Sem avaliações ainda"}</p></div></div><div className="mt-5 space-y-3">{productReviews.map((review) => <article key={review.id} className="border-t border-[#1e1e28] pt-3"><p className="text-sm text-white">{review.reviewComment || "Sem comentário."}</p><p className="text-[11px] text-white/35 mt-1">Comprador · {new Date(review.createdAt).toLocaleDateString("pt-BR")}</p></article>)}</div></section>
+          </main>
+
+          <aside className="lg:sticky lg:top-20 space-y-4">
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5"><p className="text-[11px] uppercase font-bold text-white/35">Preço</p><p className="text-3xl font-black text-white mt-1">{formatBRL(selectedVariation?.price ?? product.price)}</p>{variationRequired && <div className="relative mt-4"><button onClick={() => setVariationOpen((open) => !open)} className="w-full flex justify-between items-center rounded-xl bg-[#0a0a0f] border border-[#25252e] px-3 py-3 text-sm text-left text-white"><span>{selectedVariation?.name || "Escolha uma variação"}</span><span className="text-white/40">⌄</span></button>{variationOpen && <div className="absolute z-20 mt-2 w-full rounded-xl overflow-hidden bg-[#111114] border border-[#25252e] shadow-2xl"><div className="p-2 border-b border-[#25252e]"><label className="sr-only" htmlFor="variation-search">Buscar variação</label><div className="flex items-center gap-2 px-2"><Search className="w-4 h-4 text-white/40"/><input id="variation-search" autoFocus value={variationSearch} onChange={(event) => setVariationSearch(event.target.value)} placeholder="Buscar variação" className="w-full bg-transparent py-2 text-sm text-white outline-none"/></div></div><div className="max-h-56 overflow-auto">{filteredVariations.map((variation) => <button key={variation.name} onClick={() => { setSelectedVariation(variation); setVariationOpen(false); setVariationSearch(""); }} className="w-full p-3 text-left hover:bg-white/5 border-b border-[#1e1e28]"><span className="block font-bold text-white">{variation.name}</span><span className="text-xs text-[#5aaeff]">{formatBRL(variation.price)} · estoque: não informado</span></button>)}{!filteredVariations.length && <p className="p-3 text-sm text-white/40">Nenhuma variação encontrada.</p>}</div></div>}</div>}<p className="text-xs text-white/40 mt-2">{variationRequired && !selectedVariation ? "Escolha uma variação para comprar." : "Taxas e total serão detalhados no checkout."}</p><button onClick={handleBuyClick} disabled={buyLoading || (variationRequired && !selectedVariation)} className="w-full mt-4 bg-[#0084ff] hover:bg-[#0066cc] disabled:opacity-40 disabled:cursor-not-allowed text-white py-3.5 rounded-xl font-black text-sm">COMPRAR</button></section>
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5"><h2 className="font-black text-white">Vendedor</h2><button onClick={() => setSelectedSellerId(product.sellerId)} className="w-full text-left flex gap-3 mt-4"><img src={seller?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(product.seller)}`} alt="" className="w-12 h-12 rounded-full bg-[#1a1a20]"/><div><p className="font-bold text-white">{product.seller}</p><p className="text-xs text-white/40 mt-1">{sellerReviews.length ? `${sellerReviews.length} avaliações` : "Novo"}</p></div></button><dl className="mt-4 text-xs divide-y divide-[#1e1e28]"><div className="flex justify-between py-2"><dt className="text-white/40">Membro desde</dt><dd className="text-white">—</dd></div><div className="flex justify-between py-2"><dt className="text-white/40">Avaliações positivas</dt><dd className="text-white">{sellerPositive === null ? "—" : `${sellerPositive}%`}</dd></div><div className="flex justify-between py-2"><dt className="text-white/40">Último acesso</dt><dd className="text-white">—</dd></div></dl></section>
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5"><h2 className="font-black text-white">Verificações</h2><div className="mt-3 space-y-2 text-sm">{[["E-mail", null], ["Telefone", null], ["Documentos", seller?.isVerified ? true : null]].map(([label, verified]) => <div key={String(label)} className="flex justify-between"><span className="text-white/55">{String(label)}</span><span className={verified === true ? "text-[#00c950]" : "text-white/40"}>{verified === true ? "Verificado" : "—"}</span></div>)}</div></section>
+            <section className="bg-[#0084ff]/10 border border-[#0084ff]/30 rounded-2xl p-5 flex gap-3"><Shield className="w-6 h-6 text-[#5aaeff] shrink-0"/><div><h2 className="font-black text-white text-sm">Entrega garantida</h2><p className="text-xs text-white/55 mt-1">Pagamento e entrega acompanham o pedido dentro da ZXMAX.</p></div></section>
+          </aside>
         </div>
+        <section className="mt-8"><h2 className="text-lg font-black text-white">Anúncios parecidos</h2>{relatedProducts.length ? <div className="mt-4 flex gap-4 overflow-x-auto pb-2">{relatedProducts.map((item) => <Link key={item.id} to={`/produto/${item.id}`} className="shrink-0 w-52 rounded-2xl overflow-hidden bg-[#15151a] border border-[#25252e] hover:border-[#0084ff]"><img src={item.image} alt={item.name} className="w-full aspect-video object-cover"/><div className="p-3"><p className="text-sm font-bold text-white line-clamp-2">{item.name}</p><p className="text-sm font-black text-[#5aaeff] mt-2">{formatBRL(item.price)}</p></div></Link>)}</div> : <p className="mt-3 text-sm text-white/40">Não há outros anúncios desta categoria no momento.</p>}</section>
       </div>
-
+      {imageOpen && <div role="dialog" aria-modal="true" aria-label="Imagem ampliada" className="fixed inset-0 z-[100] bg-black/90 p-4 flex items-center justify-center" onClick={() => setImageOpen(false)}><button onClick={() => setImageOpen(false)} className="absolute top-5 right-5 text-white p-3"><X /></button><img onClick={(event) => event.stopPropagation()} src={product.banner || product.image} alt={product.name} className="max-w-full max-h-full object-contain" /></div>}
       {checkoutOpen && <CheckoutModal product={product} quantity={displayQuantity} unitPrice={unitPrice} subtotal={subtotal} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} feePercent={feePercent} />}
       {selectedSellerId && <UserProfileModal open={!!selectedSellerId} onClose={() => setSelectedSellerId(null)} userId={selectedSellerId} />}
       <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
