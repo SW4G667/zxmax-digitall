@@ -9,13 +9,17 @@ import UserProfileModal from "@/components/UserProfileModal";
 import AppShell from "@/components/AppShell";
 import useFavorites from "@/hooks/useFavorites";
 import { supabase } from "@/integrations/supabase/client";
+import { formatBRL, ROBUX_CATEGORY, robuxPackageUnits, unitPriceFromPackage } from "@/lib/catalog";
+import { unwrapEdgeCall } from "@/lib/edgeErrors";
 
 // Eldorado-style seller row
 interface SellerOffer {
   id: number;
   product: Product;
   pricePerUnit: number;
-  stock: number;
+  packageUnits: number;
+  packagePrice: number;
+  stock: number | null;
   minQty: number;
   delivery: string;
   sellerName: string;
@@ -25,37 +29,47 @@ interface SellerOffer {
   verified: boolean;
 }
 
-function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePercent }: { product: Product; quantity: number; onClose: () => void; onConfirm: (method: string, cpf: string) => void; loading: boolean; feePercent: number }) {
+function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConfirm, loading, feePercent }: { product: Product; quantity: number; unitPrice: number; subtotal: number; onClose: () => void; onConfirm: (method: string, cpf: string) => void; loading: boolean; feePercent: number }) {
   const [method, setMethod] = useState<"pix" | "crypto" | "card" | "boleto">("pix");
   const [cpf, setCpf] = useState("");
-  const [available, setAvailable] = useState<Record<string, boolean>>({ pix: true, crypto: true, card: true, boleto: true });
-  const unitPrice = product.price;
-  const subtotal = unitPrice * quantity;
+  const [available, setAvailable] = useState<Record<string, boolean> | null>(null);
   const fee = subtotal * (feePercent / 100);
   const total = subtotal + fee;
 
+  // Pergunta ao servidor quais meios estão REALMENTE configurados. Antes isto
+  // era `stripeOk || true`, ou seja, sempre verdadeiro: a tela oferecia cartão
+  // mesmo sem credencial e o comprador só descobria depois de criar o pedido.
   useEffect(() => {
-    // Check gateway health - if fails, mark as unavailable
-    const checkHealth = async () => {
-      try {
-        const { data } = await supabase.functions.invoke("integrations-config", { body: { action: "get" } });
-        const evopayOk = !!data?.integrations?.evopay?.apiKey_masked || !!data?.integrations?.vexopay?.clientId;
-        const stripeOk = !!data?.integrations?.stripe?.secretKey_masked;
-        setAvailable({
-          pix: evopayOk || true, // PIX fallback true, will show error if fails
-          crypto: !!data?.integrations?.vexopay?.clientId || !!data?.integrations?.vexopay?.clientId_masked || true,
-          card: stripeOk || true,
-          boleto: stripeOk || true,
-        });
-      } catch {
-        // Keep all available, will handle error on confirm
-      }
-    };
-    void checkHealth();
+    let active = true;
+    void (async () => {
+      const result = await unwrapEdgeCall<{ methods: Record<string, boolean> }>(
+        await supabase.functions.invoke("integrations-config", { body: { action: "payment_methods" } }),
+        "Não foi possível consultar as formas de pagamento.",
+      );
+      if (!active) return;
+      setAvailable(result.data?.methods ?? { pix: false, crypto: false, card: false, boleto: false });
+    })();
+    return () => { active = false; };
   }, []);
+
+  const loadingMethods = available === null;
+  const isAvailable = (id: string) => !!available?.[id];
+
+  // Se o método escolhido não está disponível, cai para o primeiro que estiver.
+  useEffect(() => {
+    if (!available) return;
+    if (!available[method]) {
+      const first = (["pix", "card", "crypto", "boleto"] as const).find((m) => available[m]);
+      if (first) setMethod(first);
+    }
+  }, [available, method]);
 
   const handleConfirm = () => {
     const cleanCpf = cpf.replace(/\D/g, "");
+    if (!isAvailable(method)) {
+      toast.error("Esta forma de pagamento não está disponível agora. Escolha outra.");
+      return;
+    }
     if (method === "pix" || method === "crypto") {
       if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
         toast.error("Digite um CPF/CNPJ válido (11 ou 14 dígitos) para PIX/Crypto");
@@ -70,55 +84,65 @@ function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePerc
       <div className="bg-[#15151a] border border-[#25252e] rounded-2xl w-full max-w-md overflow-hidden animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
         <div className="p-6 border-b border-[#1e1e28]">
           <h3 className="font-black text-white text-lg">Checkout ZXMAX</h3>
-          <p className="text-xs text-white/40 mt-1">{product.name} • {quantity} unidades • {method.toUpperCase()}</p>
+          <p className="text-xs text-white/40 mt-1">{product.name} • {quantity.toLocaleString("pt-BR")} {product.category === ROBUX_CATEGORY ? "Robux" : "un."} • {method.toUpperCase()}</p>
         </div>
         
         <div className="p-6 space-y-5">
           <div>
             <p className="text-xs font-bold uppercase text-white/30 mb-2">Forma de pagamento</p>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setMethod("pix")} disabled={!available.pix} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "pix" ? "bg-[#0084ff] border-[#0084ff] text-white" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${!available.pix ? "opacity-40 cursor-not-allowed" : ""}`}>
+              <button onClick={() => setMethod("pix")} disabled={loadingMethods || !isAvailable("pix")} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "pix" ? "bg-[#0084ff] border-[#0084ff] text-white" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${loadingMethods || !isAvailable("pix") ? "opacity-40 cursor-not-allowed" : ""}`}>
                 <CreditCard className="w-5 h-5" />
                 <span className="text-xs font-bold">PIX</span>
-                {!available.pix && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
+                {!loadingMethods && !isAvailable("pix") && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
               </button>
-              <button onClick={() => setMethod("crypto")} disabled={!available.crypto} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "crypto" ? "bg-[#ffbd2e] border-[#ffbd2e] text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${!available.crypto ? "opacity-40 cursor-not-allowed" : ""}`}>
+              <button onClick={() => setMethod("crypto")} disabled={loadingMethods || !isAvailable("crypto")} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "crypto" ? "bg-[#ffbd2e] border-[#ffbd2e] text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${loadingMethods || !isAvailable("crypto") ? "opacity-40 cursor-not-allowed" : ""}`}>
                 <Bitcoin className="w-5 h-5" />
                 <span className="text-xs font-bold">Crypto</span>
-                {!available.crypto && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
+                {!loadingMethods && !isAvailable("crypto") && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
               </button>
-              <button onClick={() => setMethod("card")} disabled={!available.card} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "card" ? "bg-white border-white text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${!available.card ? "opacity-40 cursor-not-allowed" : ""}`}>
+              <button onClick={() => setMethod("card")} disabled={loadingMethods || !isAvailable("card")} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "card" ? "bg-white border-white text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${loadingMethods || !isAvailable("card") ? "opacity-40 cursor-not-allowed" : ""}`}>
                 <CreditCard className="w-5 h-5" />
                 <span className="text-xs font-bold">Cartão (Stripe)</span>
-                {!available.card && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
+                {!loadingMethods && !isAvailable("card") && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
               </button>
-              <button onClick={() => setMethod("boleto")} disabled={!available.boleto} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "boleto" ? "bg-white border-white text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${!available.boleto ? "opacity-40 cursor-not-allowed" : ""}`}>
+              <button onClick={() => setMethod("boleto")} disabled={loadingMethods || !isAvailable("boleto")} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "boleto" ? "bg-white border-white text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${loadingMethods || !isAvailable("boleto") ? "opacity-40 cursor-not-allowed" : ""}`}>
                 <Package className="w-5 h-5" />
                 <span className="text-xs font-bold">Boleto (Stripe)</span>
-                {!available.boleto && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
+                {!loadingMethods && !isAvailable("boleto") && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
               </button>
             </div>
-            <p className="text-[10px] text-white/30 mt-2">Se alguma forma estiver com problemas, fica indisponível automaticamente. Configure credenciais Stripe em Admin → APIs.</p>
+            {loadingMethods ? (
+              <p className="text-[10px] text-white/30 mt-2">Verificando formas de pagamento disponíveis…</p>
+            ) : available && !Object.values(available).some(Boolean) ? (
+              <p className="text-[11px] text-[#ffbd2e] mt-2">Nenhuma forma de pagamento está configurada no momento. Fale com o suporte.</p>
+            ) : (
+              <p className="text-[10px] text-white/30 mt-2">Só aparecem habilitadas as formas realmente configuradas na plataforma.</p>
+            )}
           </div>
 
           <div>
-            <p className="text-xs font-bold uppercase text-white/30 mb-2">CPF para pagamento</p>
+            <p className="text-xs font-bold uppercase text-white/30 mb-2">CPF para pagamento{method === "card" || method === "boleto" ? " (opcional)" : ""}</p>
             <input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />
             <p className="text-[10px] text-white/30 mt-1">Obrigatório para PIX e Crypto (VexoPay exige documento)</p>
           </div>
 
           <div className="bg-[#0a0a0f] border border-[#1e1e28] rounded-xl p-4 space-y-2">
-            <div className="flex justify-between text-xs"><span className="text-white/40">Preço unitário</span><span className="text-white">R$ {unitPrice.toFixed(5)} / un</span></div>
+            <div className="flex justify-between text-xs"><span className="text-white/40">Preço unitário</span><span className="text-white">{formatBRL(unitPrice * (product.category === ROBUX_CATEGORY ? robuxPackageUnits(product) : 1))} / {product.category === ROBUX_CATEGORY ? `${robuxPackageUnits(product).toLocaleString("pt-BR")} Robux` : "un."}</span></div>
             <div className="flex justify-between text-xs"><span className="text-white/40">Quantidade</span><span className="text-white">{quantity}</span></div>
-            <div className="flex justify-between text-xs"><span className="text-white/40">Subtotal</span><span className="text-white">R$ {subtotal.toFixed(2)}</span></div>
-            <div className="flex justify-between text-xs"><span className="text-white/40">Taxa plataforma ({feePercent}%)</span><span className="text-[#ffbd2e]">+ R$ {fee.toFixed(2)}</span></div>
+            <div className="flex justify-between text-xs"><span className="text-white/40">Subtotal</span><span className="text-white">{formatBRL(subtotal)}</span></div>
+            <div className="flex justify-between text-xs"><span className="text-white/40">Taxa plataforma ({feePercent}%)</span><span className="text-[#ffbd2e]">+ {formatBRL(fee)}</span></div>
             <div className="h-px bg-[#1e1e28] my-2" />
-            <div className="flex justify-between font-black"><span className="text-white">Total</span><span className="text-white text-lg">R$ {total.toFixed(2)}</span></div>
-            <p className="text-[10px] text-white/30">Taxa vai para o admin. Produto continua R$ {subtotal.toFixed(2)} para o vendedor.</p>
+            <div className="flex justify-between font-black"><span className="text-white">Total</span><span className="text-white text-lg">{formatBRL(total)}</span></div>
+            <p className="text-[10px] text-white/30">A taxa é da plataforma. O vendedor recebe {formatBRL(subtotal)}.</p>
           </div>
 
-          <button onClick={handleConfirm} disabled={loading} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 transition">
-            {loading ? "Processando..." : method === "pix" ? "Pagar com PIX" : "Pagar com Crypto"}
+          <button onClick={handleConfirm} disabled={loading || loadingMethods || !isAvailable(method)} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 transition">
+            {loading ? "Processando..."
+              : method === "pix" ? "Pagar com PIX"
+              : method === "crypto" ? "Pagar com Crypto"
+              : method === "boleto" ? "Gerar boleto"
+              : "Pagar com cartão"}
           </button>
 
           <div className="flex items-center justify-center gap-4 text-[11px] text-white/30">
@@ -135,7 +159,7 @@ function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePerc
 export default function ProdutoPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { state, addProductQuestion, buyProduct, refreshPurchases, savePixCharge } = useStore();
+  const { state, addProductQuestion, buyProduct, refreshPurchases, savePixCharge, catalogStatus, refreshProducts } = useStore();
   const { isFavorite, toggle } = useFavorites();
   const [selectedVariation, setSelectedVariation] = useState<ProductVariation | null>(null);
   const [detailTab, setDetailTab] = useState<"info" | "reviews" | "questions">("info");
@@ -145,18 +169,18 @@ export default function ProdutoPage() {
   const [buyLoading, setBuyLoading] = useState(false);
   const [pixCharge, setPixCharge] = useState<PixCharge | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [quantity, setQuantity] = useState(2000);
+  const [quantity, setQuantity] = useState(1);
   const [sortBy, setSortBy] = useState<"recomendado" | "barato" | "min">("barato");
 
   const productId = Number(id);
   const product = state.products.find((p) => p.id === productId);
 
-  const isRobux = product?.category === "Robux e Gift Cards";
+  const isRobux = product?.category === ROBUX_CATEGORY;
 
   // For Robux, aggregate all sellers in same category as offers
   const sellerOffers: SellerOffer[] = useMemo(() => {
     if (!isRobux) return [];
-    const robuxProducts = state.products.filter((p) => p.category === "Robux e Gift Cards" && p.approved);
+    const robuxProducts = state.products.filter((p) => p.category === ROBUX_CATEGORY && p.approved);
     const offers: SellerOffer[] = robuxProducts.map((p) => {
       // Real reviews from purchases, not fake 100
       const realReviews = state.purchases.filter((pu) => pu.productId === p.id && pu.reviewed);
@@ -164,15 +188,17 @@ export default function ProdutoPage() {
       return {
         id: p.id,
         product: p,
-        pricePerUnit: p.price,
-        stock: p.stock || 500,
-        minQty: p.minQuantity || 100,
-        delivery: p.deliveryTime || "11 min - 1 h",
+        pricePerUnit: unitPriceFromPackage(p),
+        packageUnits: robuxPackageUnits(p),
+        packagePrice: p.price,
+        stock: p.stock ?? null,
+        minQty: p.minQuantity ?? robuxPackageUnits(p),
+        delivery: p.deliveryTime || "Combinado com o vendedor",
         sellerName: p.seller,
         sellerId: p.sellerId,
         rating: realReviews.length > 0 ? Number((realRating * 20).toFixed(1)) : 0, // 0 until someone reviews
         reviews: realReviews.length, // 0 initially, not 100 fake
-        verified: true,
+        verified: !!state.userDirectory?.[p.sellerId]?.isVerified,
       };
     });
     // Sort
@@ -198,34 +224,70 @@ export default function ProdutoPage() {
   useEffect(() => {
     if (product) {
       setSelectedVariation(null);
-      if (isRobux) setQuantity(product.minQuantity || 2000);
+      if (isRobux) setQuantity(product.minQuantity ?? robuxPackageUnits(product));
     }
   }, [product?.id, isRobux]);
 
   if (!product) {
+    if (catalogStatus === "loading") {
+      return (
+        <AppShell>
+          <div className="max-w-7xl mx-auto grid lg:grid-cols-[1fr_360px] gap-6" aria-busy="true" aria-live="polite">
+            <div className="space-y-4">
+              <div className="h-72 rounded-2xl bg-white/5 animate-pulse" />
+              <div className="h-40 rounded-2xl bg-white/5 animate-pulse" />
+            </div>
+            <div className="h-48 rounded-2xl bg-white/5 animate-pulse" />
+            <span className="sr-only">Carregando produto…</span>
+          </div>
+        </AppShell>
+      );
+    }
     return (
       <AppShell>
         <div className="text-center py-20">
-          <p className="text-white font-bold">Produto não encontrado</p>
-          <button onClick={() => navigate("/loja")} className="bg-[#0084ff] text-white px-6 py-3 rounded-xl font-bold text-sm mt-4">Voltar para a loja</button>
+          <p className="text-white font-bold">
+            {catalogStatus === "error" ? "Não conseguimos carregar este produto agora." : "Produto não encontrado"}
+          </p>
+          <p className="text-white/40 text-sm mt-1">
+            {catalogStatus === "error"
+              ? "Verifique sua conexão e tente novamente."
+              : "Ele pode ter sido removido ou ainda estar em análise."}
+          </p>
+          <div className="flex gap-2 justify-center mt-4">
+            {catalogStatus === "error" && (
+              <button onClick={() => void refreshProducts()} className="bg-white/10 hover:bg-white/15 text-white px-6 py-3 rounded-xl font-bold text-sm">Tentar novamente</button>
+            )}
+            <button onClick={() => navigate("/loja")} className="bg-[#0084ff] text-white px-6 py-3 rounded-xl font-bold text-sm">Voltar para a loja</button>
+          </div>
         </div>
       </AppShell>
     );
   }
 
-  const unitPrice = selectedVariation ? selectedVariation.price : product.price;
+  // For Robux the advertised price is the PACKAGE price. The per-unit value is
+  // derived for display and for quantity maths, and is never written back.
+  const packageUnits = robuxPackageUnits(product);
+  const unitPrice = selectedVariation
+    ? selectedVariation.price
+    : (isRobux ? unitPriceFromPackage(product) : product.price);
   const displayQuantity = isRobux ? quantity : 1;
-  const subtotal = unitPrice * displayQuantity;
+  const subtotal = Math.round(unitPrice * displayQuantity * 100) / 100;
   const feePercent = state.config.commission || 10;
-  const total = subtotal * (1 + feePercent / 100);
+  const total = Math.round(subtotal * (1 + feePercent / 100) * 100) / 100;
 
   const handleBuyClick = () => {
     if (!state.currentUser) {
       setAuthOpen(true);
       return;
     }
-    if (isRobux && quantity < (currentOffer?.minQty || 100)) {
-      toast.error(`Quantidade mínima: ${currentOffer?.minQty || 100}`);
+    const minQty = currentOffer?.minQty ?? packageUnits;
+    if (isRobux && quantity < minQty) {
+      toast.error(`Quantidade mínima: ${minQty.toLocaleString("pt-BR")}`);
+      return;
+    }
+    if (isRobux && currentOffer?.stock != null && quantity > currentOffer.stock) {
+      toast.error(`Estoque disponível: ${currentOffer.stock.toLocaleString("pt-BR")}`);
       return;
     }
     if (subtotal < 2) {
@@ -237,69 +299,69 @@ export default function ProdutoPage() {
 
   const handleCheckoutConfirm = async (method: string, cpf: string) => {
     setBuyLoading(true);
+    let purchaseId: number | null = null;
     try {
-      // Save CPF to profile
-      if (state.currentUser) {
-        await supabase.from("profiles").update({ cpf } as any).eq("user_id", state.currentUser.id);
+      if (cpf && state.currentUser) {
+        const { error: cpfError } = await supabase.from("profiles").update({ cpf } as any).eq("user_id", state.currentUser.id);
+        if (cpfError) console.error("[zxmax:cpf]", cpfError);
       }
 
-      const purchaseId = await buyProduct(product.id, selectedVariation || undefined);
-      if (!purchaseId) throw new Error("Falha ao criar pedido");
+      purchaseId = await buyProduct(product.id, selectedVariation || undefined);
+      if (!purchaseId) return; // buyProduct já explicou o motivo
 
       if (method === "pix") {
-        const { data, error } = await supabase.functions.invoke("create-evopay-pix", {
-          body: {
-            purchaseId,
-            productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name,
-            amount: subtotal,
-            buyerName: state.currentUser?.name,
-          },
-        });
-        if (error) throw error;
-        if (data?.qrCodeText) {
-          savePixCharge(purchaseId, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
-          setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: total, qrCodeUrl: data.qrCodeUrl, purchaseId });
-          setCheckoutOpen(false);
-        } else {
-          toast.error("Erro ao gerar PIX: " + (data?.error || "tente novamente"));
+        const res = await unwrapEdgeCall<{ id: string; qrCodeText: string; qrCodeUrl?: string; expiresAt?: string }>(
+          await supabase.functions.invoke("create-evopay-pix", {
+            body: { purchaseId, productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name, amount: subtotal, buyerName: state.currentUser?.name },
+          }),
+          "Não foi possível gerar o PIX. Tente novamente.",
+        );
+        if (res.errorMessage || !res.data?.qrCodeText) {
+          toast.error(res.errorMessage ?? "O provedor de PIX não devolveu o código. Tente novamente.");
+          return;
         }
-      } else if (method === "crypto") {
-        const { data, error } = await supabase.functions.invoke("create-vexopay-crypto", {
-          body: {
-            purchaseId,
-            amount: total,
-            network: "TRC20",
-            description: product.name,
-          },
-        });
-        if (error) throw error;
-        if (data?.address || data?.qrCode) {
-          toast.success("Crypto criada! Envie exatamente R$ " + total.toFixed(2) + " para o endereço.");
-          setCheckoutOpen(false);
-          if (data.qrCode) window.open(data.qrCode, "_blank");
-        } else {
-          toast.error("Erro Crypto: " + (data?.error || "tente novamente"));
-        }
-      } else {
-        // Stripe card/boleto
-        const { data, error } = await supabase.functions.invoke("create-stripe-checkout", {
-          body: {
-            purchaseId,
-            amount: total,
-            productName: product.name,
-            paymentMethod: method,
-          },
-        });
-        if (error) throw error;
-        if (data?.url) {
-          toast.success("Redirecionando para Stripe...");
-          window.location.href = data.url;
-        } else {
-          toast.error("Erro Stripe: " + (data?.error || "configure credenciais em Admin → APIs"));
-        }
+        savePixCharge(purchaseId, { evopayId: res.data.id, qrCodeText: res.data.qrCodeText, expiresAt: res.data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
+        setPixCharge({ evopayId: res.data.id, qrCodeText: res.data.qrCodeText, amount: total, qrCodeUrl: res.data.qrCodeUrl, purchaseId });
+        setCheckoutOpen(false);
+        return;
       }
+
+      if (method === "crypto") {
+        const res = await unwrapEdgeCall<{ address?: string; qrCode?: string }>(
+          await supabase.functions.invoke("create-vexopay-crypto", {
+            body: { purchaseId, amount: total, network: "TRC20", description: product.name },
+          }),
+          "Não foi possível gerar a cobrança em cripto.",
+        );
+        if (res.errorMessage || !(res.data?.address || res.data?.qrCode)) {
+          toast.error(res.errorMessage ?? "O provedor de cripto não devolveu o endereço.");
+          return;
+        }
+        toast.success(`Cobrança criada! Envie exatamente ${formatBRL(total)} para o endereço.`);
+        setCheckoutOpen(false);
+        if (res.data.qrCode) window.open(res.data.qrCode, "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      // Cartão e boleto (Stripe). O valor cobrado é revalidado no servidor a
+      // partir do pedido — o que enviamos aqui é só o nome do produto.
+      const res = await unwrapEdgeCall<{ url: string }>(
+        await supabase.functions.invoke("create-stripe-checkout", {
+          body: { purchaseId, productName: product.name, paymentMethod: method },
+        }),
+        "Não foi possível iniciar o pagamento com cartão.",
+      );
+      if (res.errorMessage || !res.data?.url) {
+        // Agora a mensagem é a real da Stripe/servidor, e não mais
+        // "Edge Function returned a non-2xx status code".
+        toast.error(res.errorMessage ?? "A Stripe não devolveu o link de pagamento.");
+        return;
+      }
+      toast.success("Redirecionando para o pagamento seguro...");
+      window.location.href = res.data.url;
     } catch (err: any) {
-      toast.error(err.message || "Erro ao processar compra");
+      console.error("[zxmax:checkout]", err);
+      toast.error("Erro inesperado ao processar a compra. Tente novamente.");
     } finally {
       setBuyLoading(false);
     }
@@ -362,7 +424,7 @@ export default function ProdutoPage() {
                   <div className="flex items-center gap-3">
                     <img src={state.userDirectory?.[currentOffer.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentOffer.sellerName}`} className="w-12 h-12 rounded-full bg-[#1a1a20] border border-[#25252e]" alt="" />
                     <div>
-                      <p className="font-black text-white flex items-center gap-1.5">{currentOffer.sellerName} <BadgeCheck className="w-4 h-4 text-[#0084ff]" /></p>
+                      <p className="font-black text-white flex items-center gap-1.5">{currentOffer.sellerName} {currentOffer.verified && <BadgeCheck className="w-4 h-4 text-[#0084ff]" aria-label="Vendedor verificado" />}</p>
                       <p className="text-xs flex items-center gap-2">
                         {currentOffer.reviews > 0 ? (
                           <>
@@ -377,26 +439,26 @@ export default function ProdutoPage() {
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-white/40">Valor</p>
-                    <p className="font-black text-white text-lg">R$ {currentOffer.pricePerUnit.toFixed(5)} <span className="text-sm font-normal text-white/40">/ unidade</span></p>
+                    <p className="font-black text-white text-lg">{formatBRL(currentOffer.packagePrice)} <span className="text-sm font-normal text-white/40">/ {currentOffer.packageUnits.toLocaleString("pt-BR")} Robux</span></p>
                   </div>
                 </div>
 
                 {/* Quantity selector like Eldorado */}
                 <div className="mt-6 bg-[#1a1a20] border border-[#25252e] rounded-xl p-4">
                   <div className="flex items-center gap-3">
-                    <button onClick={() => setQuantity(Math.max(currentOffer.minQty, quantity - 100))} className="w-12 h-12 rounded-xl bg-[#25252e] hover:bg-[#2a2a36] text-white flex items-center justify-center transition"><Minus className="w-4 h-4" /></button>
+                    <button onClick={() => setQuantity(Math.max(currentOffer.minQty, quantity - currentOffer.packageUnits))} className="w-12 h-12 rounded-xl bg-[#25252e] hover:bg-[#2a2a36] text-white flex items-center justify-center transition"><Minus className="w-4 h-4" /></button>
                     <div className="flex-1 bg-[#0a0a0f] border border-[#1e1e28] rounded-xl h-12 flex items-center justify-center font-black text-white text-lg">{quantity.toLocaleString()}</div>
-                    <button onClick={() => setQuantity(Math.min(currentOffer.stock, quantity + 100))} className="w-12 h-12 rounded-xl bg-[#25252e] hover:bg-[#2a2a36] text-white flex items-center justify-center transition"><Plus className="w-4 h-4" /></button>
+                    <button onClick={() => setQuantity(currentOffer.stock != null ? Math.min(currentOffer.stock, quantity + currentOffer.packageUnits) : quantity + currentOffer.packageUnits)} className="w-12 h-12 rounded-xl bg-[#25252e] hover:bg-[#2a2a36] text-white flex items-center justify-center transition"><Plus className="w-4 h-4" /></button>
                   </div>
                   <div className="flex justify-between text-xs mt-3 text-white/40">
-                    <span>Qtd. mín.: {currentOffer.minQty} unidade</span>
-                    <span>Em estoque: {currentOffer.stock.toLocaleString()} unidade</span>
+                    <span>Qtd. mín.: {currentOffer.minQty.toLocaleString("pt-BR")}</span>
+                    <span>{currentOffer.stock != null ? `Em estoque: ${currentOffer.stock.toLocaleString("pt-BR")}` : "Estoque informado pelo vendedor"}</span>
                   </div>
                 </div>
 
                 <div className="mt-4 space-y-3 text-sm">
                   <div className="flex justify-between"><span className="text-white/60">Prazo de entrega</span><span className="font-bold text-white">{currentOffer.delivery}</span></div>
-                  <div className="border-t border-[#1e1e28] pt-3 flex justify-between text-lg font-black"><span className="text-white">Total: R$ {total.toFixed(2)}</span><span className="text-white/40 text-xs font-normal">taxa {feePercent}% inclusa</span></div>
+                  <div className="border-t border-[#1e1e28] pt-3 flex justify-between text-lg font-black"><span className="text-white">Total: {formatBRL(total)}</span><span className="text-white/40 text-xs font-normal">taxa {feePercent}% inclusa</span></div>
                 </div>
 
                 <button onClick={handleBuyClick} disabled={buyLoading} className="w-full mt-5 bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-base transition disabled:opacity-50">Comprar agora</button>
@@ -432,7 +494,7 @@ export default function ProdutoPage() {
                         <div className="flex gap-3 min-w-0 flex-1">
                           <img src={state.userDirectory?.[offer.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${offer.sellerName}`} className="w-10 h-10 rounded-full bg-[#1a1a20] border border-[#25252e] shrink-0" alt="" />
                           <div className="min-w-0 flex-1">
-                            <p className="font-bold text-white text-sm flex items-center gap-1 truncate">{offer.sellerName} <BadgeCheck className="w-3.5 h-3.5 text-[#0084ff]" /></p>
+                            <p className="font-bold text-white text-sm flex items-center gap-1 truncate">{offer.sellerName} {offer.verified && <BadgeCheck className="w-3.5 h-3.5 text-[#0084ff]" aria-label="Vendedor verificado" />}</p>
                             <p className="text-xs flex items-center gap-2">
                               {offer.reviews > 0 ? (
                                 <>
@@ -446,12 +508,12 @@ export default function ProdutoPage() {
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="font-black text-white">R$ {offer.pricePerUnit.toFixed(5)} <span className="text-xs font-normal text-white/40">/ un</span></p>
+                          <p className="font-black text-white">{formatBRL(offer.packagePrice)} <span className="text-xs font-normal text-white/40">/ {offer.packageUnits.toLocaleString("pt-BR")}</span></p>
                           {offer.id === productId && <span className="text-[10px] bg-[#ffbd2e] text-black px-2 py-0.5 rounded-full font-bold">Oferta atual</span>}
                         </div>
                       </div>
                       <div className="grid grid-cols-3 gap-4 mt-3 text-xs">
-                        <div><p className="text-white/40">Estoque</p><p className="font-bold text-white">{offer.stock.toLocaleString()}</p></div>
+                        <div><p className="text-white/40">Estoque</p><p className="font-bold text-white">{offer.stock != null ? offer.stock.toLocaleString("pt-BR") : "—"}</p></div>
                         <div><p className="text-white/40">Qtd. mín.</p><p className="font-bold text-white">{offer.minQty}</p></div>
                         <div><p className="text-white/40">Entrega</p><p className="font-bold text-white">{offer.delivery}</p></div>
                       </div>
@@ -464,8 +526,8 @@ export default function ProdutoPage() {
             <div className="space-y-4">
               <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
                 <p className="text-xs uppercase font-bold text-white/30 mb-1">Preço</p>
-                <p className="text-3xl font-black text-white">R$ {total.toFixed(2)}</p>
-                <p className="text-xs text-white/40 mt-1">R$ {unitPrice.toFixed(5)} / unidade × {quantity} + taxa {feePercent}%</p>
+                <p className="text-3xl font-black text-white">{formatBRL(total)}</p>
+                <p className="text-xs text-white/40 mt-1">{quantity.toLocaleString("pt-BR")} Robux · {formatBRL(subtotal)} + taxa {feePercent}%</p>
                 <button onClick={handleBuyClick} className="w-full mt-4 bg-[#ffbd2e] text-black py-3.5 rounded-xl font-black">Comprar agora</button>
               </div>
 
@@ -480,7 +542,7 @@ export default function ProdutoPage() {
           </div>
         </div>
 
-        {checkoutOpen && <CheckoutModal product={product} quantity={quantity} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} feePercent={feePercent} />}
+        {checkoutOpen && <CheckoutModal product={product} quantity={quantity} unitPrice={unitPrice} subtotal={subtotal} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} feePercent={feePercent} />}
         {selectedSellerId && <UserProfileModal open={!!selectedSellerId} onClose={() => setSelectedSellerId(null)} userId={selectedSellerId} />}
         <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
         {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
@@ -536,7 +598,7 @@ export default function ProdutoPage() {
                           <div className="grid gap-2">
                             {product.variations.map((v, i) => (
                               <button key={i} onClick={() => setSelectedVariation(v)} className={`p-3 rounded-xl border text-left transition ${selectedVariation?.name === v.name ? "bg-[#0084ff]/10 border-[#0084ff] text-white" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"}`}>
-                                <div className="flex justify-between"><span className="font-bold">{v.name}</span><span className="font-black text-[#0084ff]">R$ {v.price.toFixed(2)}</span></div>
+                                <div className="flex justify-between"><span className="font-bold">{v.name}</span><span className="font-black text-[#0084ff]">{formatBRL(v.price)}</span></div>
                               </button>
                             ))}
                           </div>
@@ -575,15 +637,15 @@ export default function ProdutoPage() {
           <div className="lg:sticky lg:top-20 h-fit space-y-3">
             <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
               <p className="text-[11px] uppercase font-bold text-white/30">Total com taxa</p>
-              <p className="text-3xl font-black text-white">R$ {total.toFixed(2)}</p>
-              <p className="text-xs text-white/40">R$ {subtotal.toFixed(2)} + {feePercent}% taxa</p>
+              <p className="text-3xl font-black text-white">{formatBRL(total)}</p>
+              <p className="text-xs text-white/40">{formatBRL(subtotal)} + {feePercent}% de taxa</p>
               <button onClick={handleBuyClick} disabled={buyLoading} className="w-full mt-4 bg-[#0084ff] hover:bg-[#0066cc] text-white py-3.5 rounded-xl font-black text-sm transition disabled:opacity-50">Comprar agora</button>
             </div>
           </div>
         </div>
       </div>
 
-      {checkoutOpen && <CheckoutModal product={product} quantity={displayQuantity} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} feePercent={feePercent} />}
+      {checkoutOpen && <CheckoutModal product={product} quantity={displayQuantity} unitPrice={unitPrice} subtotal={subtotal} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} feePercent={feePercent} />}
       {selectedSellerId && <UserProfileModal open={!!selectedSellerId} onClose={() => setSelectedSellerId(null)} userId={selectedSellerId} />}
       <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
       {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}

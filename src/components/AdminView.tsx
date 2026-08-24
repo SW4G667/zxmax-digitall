@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useStore, Product, Withdrawal, Purchase } from "@/store/StoreContext";
 import { MoneyEmoji, PackageEmoji, ChatEmoji, StarEmoji, ShieldEmoji } from "@/components/CustomEmojis";
-import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag, ArrowLeft, ExternalLink, Webhook, RefreshCw, KeyRound, ShieldCheck, Lock, BarChart3, ShoppingBag, Ban, Wrench } from "lucide-react";
+import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag, ArrowLeft, ExternalLink, Eye, Webhook, RefreshCw, KeyRound, ShieldCheck, Lock, BarChart3, ShoppingBag, Ban, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import MyPurchasesView from "@/components/MyPurchasesView";
 import IntegrationsPanel from "@/components/IntegrationsPanel";
@@ -15,6 +15,8 @@ import {
 } from "@/components/AdminExtraPanels";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useSearchParams } from "react-router-dom";
+import { formatBRL } from "@/lib/catalog";
 
 interface WebhookLog {
   id: number;
@@ -28,10 +30,27 @@ interface WebhookLog {
   created_at: string;
 }
 
+export const ADMIN_TABS = [
+  "dashboard", "stats", "orders", "moderation", "tools", "products", "withdrawals",
+  "notices", "users", "tags", "adminchat", "documents", "verifications", "disputes",
+  "config", "webhooks", "apis", "security", "roles",
+] as const;
+export type AdminTab = (typeof ADMIN_TABS)[number];
+
 export default function AdminView() {
   const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument, saveGatewaySettings } = useStore();
   const { mfaEnabled, isAdmin } = useAuth();
-  const [tab, setTab] = useState<"dashboard" | "stats" | "orders" | "moderation" | "tools" | "products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "verifications" | "disputes" | "config" | "webhooks" | "apis" | "security" | "roles">("dashboard");
+  // The active section lives in the URL so the side menu can deep-link to a
+  // real admin area (?tab=products) and the browser back button works.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = (ADMIN_TABS.includes(searchParams.get("tab") as AdminTab) ? searchParams.get("tab") : "dashboard") as AdminTab;
+  const setTab = React.useCallback((next: AdminTab) => {
+    setSearchParams((current) => {
+      const params = new URLSearchParams(current);
+      if (next === "dashboard") params.delete("tab"); else params.set("tab", next);
+      return params;
+    }, { replace: true });
+  }, [setSearchParams]);
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [expandedLog, setExpandedLog] = useState<number | null>(null);
@@ -296,31 +315,7 @@ export default function AdminView() {
       </div>
 
       {/* Products Tab */}
-      {tab === "products" && (
-        <div className="space-y-4">
-          <h3 className="font-bold text-foreground">Produtos Pendentes ({pendingProducts.length})</h3>
-          {pendingProducts.length === 0 ? (
-            <div className="bg-card rounded-3xl p-10 text-center border-2 border-dashed border-border">
-              <p className="text-muted-foreground">Nenhum produto aguardando aprovação.</p>
-            </div>
-          ) : (
-            pendingProducts.map((p) => (
-              <div key={p.id} className="glass-card p-5 flex items-center gap-5">
-                <img src={p.image} className="w-16 h-16 rounded-xl object-cover" alt="" />
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-bold text-foreground truncate">{p.name}</h4>
-                  <p className="text-xs text-muted-foreground">Vendedor: {p.seller} ({p.sellerEmail})</p>
-                  <p className="text-sm font-black text-primary mt-1">R$ {p.price.toFixed(2)}</p>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => { approveProduct(p.id); toast.success("Produto aprovado!"); }} className="p-3 bg-success/10 text-success rounded-xl hover:bg-success/20 transition"><Check className="w-5 h-5" /></button>
-                  <button onClick={() => { rejectProduct(p.id); toast.error("Produto rejeitado."); }} className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition"><X className="w-5 h-5" /></button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
+      {tab === "products" && <AdminProductModeration />}
 
       {/* Withdrawals Tab */}
       {tab === "withdrawals" && (
@@ -966,6 +961,170 @@ export default function AdminView() {
                   {u} <button onClick={async () => { const ok = await unbanUser(u); ok ? toast.success("Desbanido.") : toast.error("Não foi possível desbanir."); }}><X className="w-3 h-3"/></button>
                 </span>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Fila de moderação: pré-visualização completa, busca, motivo de reprovação e
+ * confirmação para a ação destrutiva. Toda decisão fica em `admin_audit_log`. */
+function AdminProductModeration() {
+  const { state, approveProduct, rejectProduct } = useStore();
+  const [query, setQuery] = useState("");
+  const [preview, setPreview] = useState<Product | null>(null);
+  const [rejecting, setRejecting] = useState<Product | null>(null);
+  const [reason, setReason] = useState("");
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const PAGE = 10;
+  const [shown, setShown] = useState(PAGE);
+
+  const pending = state.products.filter((p) => !p.approved);
+  const filtered = pending.filter((p) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return p.name.toLowerCase().includes(q)
+      || p.category.toLowerCase().includes(q)
+      || (p.seller || "").toLowerCase().includes(q)
+      || String(p.id) === q;
+  });
+
+  const sellerEmail = (p: Product) => state.userDirectory?.[p.sellerId]?.email || p.sellerEmail || "e-mail não disponível";
+
+  const handleApprove = async (p: Product) => {
+    setBusyId(p.id);
+    const ok = await approveProduct(p.id);
+    setBusyId(null);
+    if (ok) toast.success(`"${p.name}" aprovado e publicado.`);
+  };
+
+  const handleReject = async () => {
+    if (!rejecting) return;
+    setBusyId(rejecting.id);
+    const ok = await rejectProduct(rejecting.id, reason);
+    setBusyId(null);
+    if (ok) toast.success("Anúncio reprovado e removido.");
+    setRejecting(null);
+    setReason("");
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="font-bold text-foreground">Produtos pendentes ({pending.length})</h3>
+        <input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setShown(PAGE); }}
+          placeholder="Buscar por nome, categoria, vendedor ou ID"
+          aria-label="Buscar anúncios pendentes"
+          className="w-full sm:w-80 p-2.5 rounded-xl bg-background border border-border text-foreground text-sm outline-none focus:border-primary"
+        />
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="bg-card rounded-3xl p-10 text-center border-2 border-dashed border-border">
+          <p className="text-muted-foreground">
+            {pending.length === 0 ? "Nenhum produto aguardando aprovação." : "Nenhum pendente para essa busca."}
+          </p>
+        </div>
+      ) : (
+        <>
+          {filtered.slice(0, shown).map((p) => (
+            <div key={p.id} className="glass-card p-5 flex flex-col sm:flex-row sm:items-center gap-5">
+              <img src={p.image} className="w-16 h-16 rounded-xl object-cover bg-muted shrink-0" alt="" />
+              <div className="flex-1 min-w-0">
+                <h4 className="font-bold text-foreground truncate">{p.name}</h4>
+                <p className="text-xs text-muted-foreground truncate">
+                  #{p.id} · {p.category} · {p.seller} ({sellerEmail(p)})
+                </p>
+                <p className="text-sm font-black text-primary mt-1">
+                  {formatBRL(p.price)}
+                  {p.variations && p.variations.length > 0 && (
+                    <span className="text-muted-foreground font-normal text-xs"> · {p.variations.length} variação(ões)</span>
+                  )}
+                </p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button onClick={() => setPreview(p)} aria-label={`Revisar ${p.name}`} className="p-3 bg-muted text-foreground rounded-xl hover:bg-muted/70 transition">
+                  <Eye className="w-5 h-5" />
+                </button>
+                <button onClick={() => void handleApprove(p)} disabled={busyId === p.id} aria-label={`Aprovar ${p.name}`} className="p-3 bg-success/10 text-success rounded-xl hover:bg-success/20 transition disabled:opacity-40">
+                  <Check className="w-5 h-5" />
+                </button>
+                <button onClick={() => { setRejecting(p); setReason(""); }} disabled={busyId === p.id} aria-label={`Reprovar ${p.name}`} className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition disabled:opacity-40">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          ))}
+          {shown < filtered.length && (
+            <button onClick={() => setShown((v) => v + PAGE)} className="w-full py-3 rounded-xl bg-card border border-border text-sm font-bold text-foreground">
+              Carregar mais ({filtered.length - shown})
+            </button>
+          )}
+        </>
+      )}
+
+      {preview && (
+        <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPreview(null)}>
+          <div role="dialog" aria-modal="true" aria-label="Revisar anúncio" className="bg-card border border-border rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="text-lg font-black text-foreground">{preview.name}</h3>
+              <button onClick={() => setPreview(null)} aria-label="Fechar" className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+            </div>
+            <img src={preview.banner || preview.image} alt="" className="w-full rounded-xl object-cover max-h-56 bg-muted" />
+            <dl className="grid grid-cols-2 gap-3 text-xs">
+              <div><dt className="text-muted-foreground">Preço</dt><dd className="font-bold text-foreground">{formatBRL(preview.price)}</dd></div>
+              <div><dt className="text-muted-foreground">Categoria</dt><dd className="font-bold text-foreground">{preview.category}</dd></div>
+              <div><dt className="text-muted-foreground">Entrega</dt><dd className="font-bold text-foreground">{preview.deliveryType === "auto" ? "Automática" : "Manual"}</dd></div>
+              <div><dt className="text-muted-foreground">Prazo</dt><dd className="font-bold text-foreground">{preview.deliveryTime || "não informado"}</dd></div>
+              <div><dt className="text-muted-foreground">Estoque</dt><dd className="font-bold text-foreground">{preview.stock ?? "não informado"}</dd></div>
+              <div><dt className="text-muted-foreground">Qtd. mínima</dt><dd className="font-bold text-foreground">{preview.minQuantity ?? "não informada"}</dd></div>
+            </dl>
+            <div>
+              <p className="text-xs font-bold uppercase text-muted-foreground mb-1">Descrição</p>
+              <p className="text-sm text-foreground whitespace-pre-wrap break-words">{preview.description || "—"}</p>
+            </div>
+            {preview.variations && preview.variations.length > 0 && (
+              <div>
+                <p className="text-xs font-bold uppercase text-muted-foreground mb-1">Variações</p>
+                <ul className="space-y-1">
+                  {preview.variations.map((v, i) => (
+                    <li key={i} className="flex justify-between text-sm text-foreground bg-muted/40 rounded-lg px-3 py-1.5">
+                      <span className="truncate">{v.name}</span><span className="font-bold">{formatBRL(v.price)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => { const p = preview; setPreview(null); void handleApprove(p); }} className="flex-1 bg-success text-white py-3 rounded-xl font-bold text-sm">Aprovar</button>
+              <button onClick={() => { setRejecting(preview); setReason(""); setPreview(null); }} className="flex-1 bg-destructive text-white py-3 rounded-xl font-bold text-sm">Reprovar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {rejecting && (
+        <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setRejecting(null)}>
+          <div role="alertdialog" aria-modal="true" aria-label="Confirmar reprovação" className="bg-card border border-border rounded-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-black text-foreground">Reprovar anúncio?</h3>
+            <p className="text-sm text-muted-foreground">
+              <span className="font-bold text-foreground">{rejecting.name}</span> será removido definitivamente. Esta ação não pode ser desfeita e ficará registrada na auditoria.
+            </p>
+            <label htmlFor="reject-reason" className="block text-xs font-bold uppercase text-muted-foreground">Motivo (registrado na auditoria)</label>
+            <textarea
+              id="reject-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={3}
+              placeholder="Ex.: imagem imprópria, preço incoerente, produto proibido pelas regras"
+              className="w-full p-3 rounded-xl bg-background border border-border text-foreground text-sm outline-none focus:border-primary resize-none"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setRejecting(null)} className="flex-1 bg-muted text-foreground py-3 rounded-xl font-bold text-sm">Cancelar</button>
+              <button onClick={() => void handleReject()} disabled={!reason.trim() || busyId === rejecting.id} className="flex-1 bg-destructive text-white py-3 rounded-xl font-bold text-sm disabled:opacity-40">
+                Confirmar reprovação
+              </button>
             </div>
           </div>
         </div>

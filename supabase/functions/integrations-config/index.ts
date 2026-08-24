@@ -92,11 +92,38 @@ serve(async (req) => {
 
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    const { data: isAdmin } = await admin.rpc("has_role", { _user_id: userData.user.id, _role: "admin" });
-    if (!isAdmin) return json({ error: "Apenas administradores." }, 403);
-
     const body = await req.json().catch(() => ({}));
     const action = body.action || "get";
+
+    // ------------------------------------------------------------------
+    // `payment_methods`: disponível para qualquer usuário autenticado.
+    // Devolve SOMENTE booleanos — nenhuma chave, nem mascarada. Serve para o
+    // checkout não oferecer um meio de pagamento que não está configurado
+    // (antes a tela marcava tudo como disponível e o erro só aparecia depois
+    // de o comprador já ter criado o pedido).
+    // ------------------------------------------------------------------
+    if (action === "payment_methods") {
+      const { data: rows } = await admin
+        .from("app_settings").select("key, value").in("key", ["evopay", "vexopay", "stripe"]);
+      const cfg = (key: string) => (rows || []).find((r: any) => r.key === key)?.value || {};
+      const evopay = cfg("evopay");
+      const vexopay = cfg("vexopay");
+      const stripe = cfg("stripe");
+
+      const stripeReady = !!stripe.secretKey && stripe.enabled !== false;
+      return json({
+        methods: {
+          pix: (!!evopay.apiKey || !!Deno.env.get("EVOPAY_API_KEY")) && evopay.enabled !== false,
+          crypto: !!vexopay.clientId && !!vexopay.clientSecret && vexopay.enabled !== false,
+          card: stripeReady,
+          // Boleto exige Stripe ativa E o método habilitado no painel da Stripe.
+          boleto: stripeReady && stripe.boletoEnabled !== false,
+        },
+      });
+    }
+
+    const { data: isAdmin } = await admin.rpc("has_role", { _user_id: userData.user.id, _role: "admin" });
+    if (!isAdmin) return json({ error: "Apenas administradores." }, 403);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 
