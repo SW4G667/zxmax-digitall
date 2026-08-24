@@ -12,38 +12,42 @@ import { supabase } from "@/integrations/supabase/client";
 const statusMap: Record<Purchase["status"], { label: string; cls: string }> = {
   pending: { label: "Aguardando pagamento", cls: "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30" },
   paid: { label: "Pago", cls: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" },
-  delivered: { label: "Entregue", cls: "bg-primary/20 text-primary border-primary/30" },
+  delivered_pending_confirmation: { label: "Entregue (Aguardando comprador)", cls: "bg-primary/20 text-primary border-primary/30" },
+  delivered: { label: "Concluído", cls: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" },
   dispute: { label: "Em disputa", cls: "bg-destructive/20 text-destructive border-destructive/30" },
   cancelled: { label: "Cancelado", cls: "bg-muted text-muted-foreground border-border" },
+  refunded: { label: "Reembolsado", cls: "bg-amber-500/20 text-amber-500 border-amber-500/30" },
 };
 
-const STAGES: { key: Purchase["status"] | "concluded"; label: string }[] = [
-  { key: "pending", label: "Pago" },       // 1) pagamento confirmado
-  { key: "paid", label: "Entregue" },      // 2) produto entregue
-  { key: "delivered", label: "Concluído" },// 3) comprador confirma
-  { key: "concluded", label: "Finalizado" },
-];
-
 function StageStepper({ status }: { status: Purchase["status"] }) {
-  const order: Purchase["status"][] = ["pending", "paid", "delivered", "dispute", "cancelled"];
-  let activeIdx = order.indexOf(status);
-  if (status === "cancelled" || status === "dispute") activeIdx = -1; // show warning state separately
+  if (status === "cancelled" || status === "dispute" || status === "refunded") return null;
+
+  const donePaid = status !== "pending";
+  const doneDelivered = status === "delivered_pending_confirmation" || status === "delivered";
+  const doneConcluded = status === "delivered";
+
   return (
     <div className="flex items-center gap-1 mt-2">
-      {["Pago", "Entregue", "Concluído"].map((label, i) => {
-        const done = activeIdx > i || (status === "delivered" && i <= 2);
-        const current = activeIdx === i;
-        return (
-          <div key={label} className="flex items-center gap-1 flex-1 min-w-0">
-            <div className={`flex items-center justify-center w-5 h-5 rounded-full border text-[10px] font-black shrink-0
-              ${done ? "bg-primary border-primary text-primary-foreground" : current ? "border-primary text-primary animate-pulse-ring" : "border-border text-muted-foreground"}`}>
-              {done ? <CheckCircle2 className="w-3 h-3" /> : i + 1}
-            </div>
-            <span className={`text-[10px] font-bold truncate ${done || current ? "text-foreground" : "text-muted-foreground"}`}>{label}</span>
-            {i < 2 && <div className={`h-[2px] flex-1 rounded-full ${done ? "bg-primary" : "bg-border"}`} />}
-          </div>
-        );
-      })}
+      <div className="flex items-center gap-1 flex-1 min-w-0">
+        <div className={`flex items-center justify-center w-5 h-5 rounded-full border text-[10px] font-black shrink-0 ${donePaid ? "bg-primary border-primary text-primary-foreground" : "border-border text-muted-foreground"}`}>
+          {donePaid ? <CheckCircle2 className="w-3 h-3" /> : "1"}
+        </div>
+        <span className={`text-[10px] font-bold truncate ${donePaid ? "text-foreground" : "text-muted-foreground"}`}>Pago</span>
+        <div className={`h-[2px] flex-1 rounded-full ${doneDelivered ? "bg-primary" : "bg-border"}`} />
+      </div>
+      <div className="flex items-center gap-1 flex-1 min-w-0">
+        <div className={`flex items-center justify-center w-5 h-5 rounded-full border text-[10px] font-black shrink-0 ${doneDelivered ? "bg-primary border-primary text-primary-foreground" : "border-border text-muted-foreground"}`}>
+          {doneDelivered ? <CheckCircle2 className="w-3 h-3" /> : "2"}
+        </div>
+        <span className={`text-[10px] font-bold truncate ${doneDelivered ? "text-foreground" : "text-muted-foreground"}`}>Entregue</span>
+        <div className={`h-[2px] flex-1 rounded-full ${doneConcluded ? "bg-primary" : "bg-border"}`} />
+      </div>
+      <div className="flex items-center gap-1 flex-1 min-w-0">
+        <div className={`flex items-center justify-center w-5 h-5 rounded-full border text-[10px] font-black shrink-0 ${doneConcluded ? "bg-primary border-primary text-primary-foreground" : "border-border text-muted-foreground"}`}>
+          {doneConcluded ? <CheckCircle2 className="w-3 h-3" /> : "3"}
+        </div>
+        <span className={`text-[10px] font-bold truncate ${doneConcluded ? "text-foreground" : "text-muted-foreground"}`}>Concluído</span>
+      </div>
     </div>
   );
 }

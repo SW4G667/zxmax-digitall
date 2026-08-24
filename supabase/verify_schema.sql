@@ -136,3 +136,25 @@ WHERE table_schema = 'public' AND table_name = 'product_questions'
   AND grantee IN ('anon','authenticated')
 ORDER BY grantee, privilege_type;
 -- Esperado: apenas SELECT para anon/authenticated (INSERT/UPDATE/DELETE revogados).
+
+\echo '--- 13. Escrow, Reembolso e Entrega em duas etapas (migration 20260824140000) ---'
+SELECT CASE WHEN to_regprocedure('public.seller_refund_order(bigint, text)') IS NULL
+            THEN 'FALHOU (seller_refund_order ausente)'
+            ELSE 'OK' END AS rpc_seller_refund_order;
+
+SELECT CASE WHEN to_regprocedure('public.mark_order_delivered(bigint)') IS NULL
+            THEN 'FALHOU (mark_order_delivered ausente)'
+            ELSE 'OK' END AS rpc_mark_order_delivered;
+
+SELECT CASE WHEN to_regprocedure('public.confirm_order_receipt(bigint)') IS NULL
+            THEN 'FALHOU (confirm_order_receipt ausente)'
+            ELSE 'OK' END AS rpc_confirm_order_receipt;
+
+SELECT CASE WHEN to_regprocedure('public.process_auto_release_orders()') IS NULL
+            THEN 'FALHOU (process_auto_release_orders ausente)'
+            ELSE 'OK' END AS rpc_process_auto_release_orders;
+
+SELECT CASE WHEN to_regprocedure('public.contains_external_contact(text)') IS NULL
+            THEN 'FALHOU (contains_external_contact ausente)'
+            ELSE 'OK' END AS rpc_contains_external_contact;
+

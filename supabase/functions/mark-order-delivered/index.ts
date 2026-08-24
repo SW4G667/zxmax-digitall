@@ -51,7 +51,7 @@ serve(async (req) => {
 
     const { data: order, error: orderErr } = await admin
       .from("purchases")
-      .select("id, seller_id, status")
+      .select("id, seller_id, status, messages")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -76,17 +76,36 @@ serve(async (req) => {
       });
     }
 
+    const now = new Date().toISOString();
+    const autoReleaseDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    const formattedDate = autoReleaseDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
+      " às " + autoReleaseDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+    const messages = [
+      ...(Array.isArray(order.messages) ? order.messages : []),
+      {
+        from: "System",
+        text: `📦 O vendedor marcou o pedido como entregue! Aguardando confirmação do comprador.\nLiberação automática para o vendedor em ${formattedDate}.`,
+        date: now,
+      },
+    ];
+
     const { error: updErr } = await admin
       .from("purchases")
-      .update({ status: "delivered", updated_at: new Date().toISOString() })
+      .update({
+        status: "delivered_pending_confirmation",
+        delivered_pending_at: now,
+        messages,
+        updated_at: now,
+      })
       .eq("id", orderId);
 
     if (updErr) throw updErr;
 
-    return new Response(JSON.stringify({ success: true, status: "delivered" }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
+    return new Response(
+      JSON.stringify({ success: true, status: "delivered_pending_confirmation", autoReleaseAt: autoReleaseDate.toISOString() }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
+    );
   } catch (error: any) {
     console.error("mark-order-delivered error:", error.message || error);
     return new Response(JSON.stringify({ error: error.message || "Erro desconhecido" }), {
