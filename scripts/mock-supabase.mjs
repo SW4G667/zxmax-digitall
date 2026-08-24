@@ -260,7 +260,8 @@ const server = http.createServer(async (req, res) => {
       if (!user) return json(res, { error: "Unauthorized" }, 401);
       if (body.action === "payment_methods") {
         if (scenario === "legacy") return json(res, { error: "Apenas administradores." }, 403); // função antiga publicada
-        return json(res, { v: 2, methods: { pix: true, crypto: false, card: false, boleto: false } });
+        // VexoPay mock configurada => PIX (primária) e Crypto ativos.
+        return json(res, { v: 2, methods: { pix: true, crypto: true, card: false, boleto: false } });
       }
       return json(res, { error: "Apenas administradores." }, 403);
     }
@@ -280,7 +281,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (fn === "create-evopay-pix") {
       if (!user) return json(res, { error: "Unauthorized" }, 401);
-      const id = `mock-${Date.now()}`;
+      // VexoPay é o gateway primário do PIX: ids ganham o prefixo `vexo:`.
+      const id = `vexo:mock-${Date.now()}`;
       return json(res, { id, status: "PENDING", amount: body.amount, qrCodeText: `00020126580014BR.GOV.BCB.PIX0136${id}520400005303986540${Number(body.amount).toFixed(2)}5802BR5907ZXMAX6009SAO PAULO62070503***6304ABCD`, expiresAt: new Date(Date.now() + 3600e3).toISOString(), qrCodeUrl: null });
     }
     if (fn === "check-evopay-status") return json(res, { status: "PENDING" });

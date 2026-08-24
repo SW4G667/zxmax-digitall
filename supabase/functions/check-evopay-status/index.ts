@@ -32,12 +32,26 @@ serve(async (req) => {
       });
     }
 
+    // Credenciais — mesma resolução de integrations-config/create-evopay-pix:
+    // painel (app_settings) primeiro, secret de ambiente como fallback.
     let apiKey = Deno.env.get("EVOPAY_API_KEY");
+    let evopayEnabled = true;
     try {
       const { data: setting } = await admin.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
-      if (setting?.value?.mode === "manual" && setting?.value?.apiKey) apiKey = setting.value.apiKey;
+      if (setting?.value?.apiKey) apiKey = setting.value.apiKey;
+      evopayEnabled = setting?.value?.enabled !== false;
     } catch (_e) { /* fallback to secret */ }
-    if (!apiKey) throw new Error("EVOPAY_API_KEY não configurada");
+
+    let vexoCi = Deno.env.get("VEXOPAY_CLIENT_ID");
+    let vexoCs = Deno.env.get("VEXOPAY_CLIENT_SECRET");
+    let vexoBaseUrl: string | undefined;
+    try {
+      const { data: vexoRow } = await admin.from("app_settings").select("value").eq("key", "vexopay").maybeSingle();
+      const v = vexoRow?.value || {};
+      if (v.clientId) vexoCi = v.clientId;
+      if (v.clientSecret) vexoCs = v.clientSecret;
+      if (typeof v.baseUrl === "string" && v.baseUrl.trim() !== "") vexoBaseUrl = v.baseUrl.replace(/\/$/, "");
+    } catch (_e) { /* fallback to secrets */ }
 
     const url = new URL(req.url);
     let id = url.searchParams.get("id");
@@ -55,6 +69,53 @@ serve(async (req) => {
     if (!purchase || (purchase.buyer_id !== userData.user.id && purchase.seller_id !== userData.user.id)) {
       return new Response(JSON.stringify({ error: "Transação não encontrada para este usuário" }), {
         status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // Cobranças criadas pela VexoPay usam o prefixo `vexo:` no id — o status
+    // é consultado lá, com os mesmos headers ci/cs da criação.
+    // ------------------------------------------------------------------
+    if (String(id).startsWith("vexo:")) {
+      if (!vexoCi || !vexoCs) {
+        return new Response(JSON.stringify({ error: "Gateway de cripto/PIX não configurado para consulta." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const baseUrl = vexoBaseUrl || "https://www.vexopay.com.br/api";
+      const txid = String(id).slice("vexo:".length);
+      const statusPaths = [`/gateway/status?id=`, `/gateway/transaction-get?id=`, `/transaction?id=`];
+      let lastStatusError = "";
+      for (const p of statusPaths) {
+        const resp = await fetch(`${baseUrl}${p}${encodeURIComponent(txid)}`, {
+          headers: { ci: String(vexoCi), cs: String(vexoCs), Accept: "application/json" },
+        });
+        const body = await resp.json().catch(() => ({} as any));
+        if (!resp.ok) {
+          lastStatusError = `VexoPay ${resp.status} em ${p}`;
+          continue;
+        }
+        const node = body?.data ?? body ?? {};
+        const raw = String(node.status ?? node.situation ?? node.payment_status ?? "PENDING").toUpperCase();
+        const status =
+          /PAID|COMPLETED|CONFIRMED|APPROVED|SUCCESS/.test(raw) ? "COMPLETED"
+          : /EXPIRED/.test(raw) ? "EXPIRED"
+          : /CANCEL/.test(raw) ? "CANCELED"
+          : /FAIL|ERROR/.test(raw) ? "FAILED"
+          : "PENDING";
+        return new Response(
+          JSON.stringify({ id: String(id), status, amount: node.amount ?? null }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
+        );
+      }
+      throw new Error(lastStatusError || "Não foi possível consultar o status agora.");
+    }
+
+    if (!apiKey || !evopayEnabled) {
+      return new Response(JSON.stringify({ error: "Gateway de PIX não configurado para consulta." }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

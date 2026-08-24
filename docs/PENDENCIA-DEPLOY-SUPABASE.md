@@ -17,12 +17,23 @@
    Sintoma atual em produção: toast
    `Could not find the function public.ask_product_question(...) in the schema cache`
    e "As perguntas anteriores não estão disponíveis neste momento."
-2. **Edge Functions** — republicar as 3 corrigidas neste PR:
-   - `integrations-config` (ação `payment_methods` com erros honestos + `v: 2`);
-   - `create-evopay-pix` (usa a API key salva no painel; erro amigável);
-   - `create-vexopay-crypto` (lê `app_settings.vexopay` corretamente).
+2. **Edge Functions** — republicar as 4 alteradas:
+   - `integrations-config` (ação `payment_methods` com erros honestos + `v: 2`
+     + PIX ativo com VexoPay **ou** EvoPay);
+   - `create-evopay-pix` (**VexoPay virou o gateway primário do PIX**; EvoPay é
+     fallback automático; usa a API key salva no painel; erro amigável);
+   - `create-vexopay-crypto` (lê `app_settings.vexopay` corretamente);
+   - `check-evopay-status` (consulta cobranças `vexo:` na VexoPay).
    Enquanto a `integrations-config` antiga estiver publicada, o checkout mostra
    "Estamos atualizando os meios de pagamento" (antes parecia "nada configurado").
+
+> **Sobre a VexoPay gerar PIX:** a doc pública documenta o padrão
+> `/gateway/<recurso>-create` com headers `ci`/`cs` (é assim que o Crypto já
+> funciona em `create-vexopay-crypto`). O PIX tenta
+> `/gateway/pix-create` → `/gateway/pix` → `/pix/create` e normaliza a
+> resposta. Se a sua doc da VexoPay (área logada) indicar outro caminho, é um
+> ajuste de UMA constante em `create-evopay-pix` e `check-evopay-status` — nos
+> mande só o print/caminho do endpoint, **nunca as credenciais**.
 
 ## Como resolver SEM abrir o SQL Editor (recomendado)
 

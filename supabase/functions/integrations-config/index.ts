@@ -126,24 +126,26 @@ serve(async (req) => {
       const cfg = (key: string): Record<string, any> =>
         (rows || []).find((r: any) => r.key === key)?.value || {};
 
-      // Mesma precedência de create-evopay-pix: chave salva no painel vence;
-      // secret de ambiente é fallback.
+      // Mesma precedência das funções de cobrança: chave salva no painel vence;
+      // secret de ambiente é fallback. O PIX é gerado pela VexoPay quando
+      // configurada (gateway primário) e pela EvoPay caso contrário — por isso
+      // basta UM deles estar pronto para o PIX ficar ativo.
       const evopay = cfg("evopay");
       const vexopay = cfg("vexopay");
       const stripe = cfg("stripe");
 
-      const pixReady = !!(evopay.apiKey || Deno.env.get("EVOPAY_API_KEY"));
-      const cryptoReady = !!(
+      const evopayReady = !!(evopay.apiKey || Deno.env.get("EVOPAY_API_KEY")) && evopay.enabled !== false;
+      const vexopayReady = !!(
         (vexopay.clientId && vexopay.clientSecret) ||
         (Deno.env.get("VEXOPAY_CLIENT_ID") && Deno.env.get("VEXOPAY_CLIENT_SECRET"))
-      );
+      ) && vexopay.enabled !== false;
       const cardReady = !!(stripe.secretKey || Deno.env.get("STRIPE_SECRET_KEY"));
 
       return json({
         v: 2,
         methods: {
-          pix: pixReady && evopay.enabled !== false,
-          crypto: cryptoReady && vexopay.enabled !== false,
+          pix: evopayReady || vexopayReady,
+          crypto: vexopayReady,
           card: cardReady && stripe.enabled !== false,
           // Boleto exige Stripe ativa E o método habilitado no painel da Stripe.
           boleto: cardReady && stripe.enabled !== false && stripe.boletoEnabled !== false,
