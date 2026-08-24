@@ -32,8 +32,7 @@ serve(async (req) => {
       });
     }
 
-    // Credenciais — mesma resolução de integrations-config/create-evopay-pix:
-    // painel (app_settings) primeiro, secret de ambiente como fallback.
+    // Credenciais
     let apiKey = Deno.env.get("EVOPAY_API_KEY");
     let evopayEnabled = true;
     try {
@@ -74,8 +73,9 @@ serve(async (req) => {
     }
 
     // ------------------------------------------------------------------
-    // Cobranças criadas pela VexoPay usam o prefixo `vexo:` no id — o status
-    // é consultado lá, com os mesmos headers ci/cs da criação.
+    // VexoPay Status — usa as URLs e query params oficiais das docs:
+    // PIX: GET /gateway/pix-status?transactionId=vxp_xxx ou GET /pix-status?transactionId=vxp_xxx
+    // Cripto: GET /gateway/crypto-status?id=5b3e... ou GET /crypto-status?id=5b3e...
     // ------------------------------------------------------------------
     if (String(id).startsWith("vexo:")) {
       if (!vexoCi || !vexoCs) {
@@ -86,31 +86,39 @@ serve(async (req) => {
       }
       const baseUrl = vexoBaseUrl || "https://www.vexopay.com.br/api";
       const txid = String(id).slice("vexo:".length);
-      const statusPaths = [`/gateway/status?id=`, `/gateway/transaction-get?id=`, `/transaction?id=`];
+
+      const statusPaths = [
+        `/gateway/pix-status?transactionId=${encodeURIComponent(txid)}`,
+        `/pix-status?transactionId=${encodeURIComponent(txid)}`,
+        `/gateway/crypto-status?id=${encodeURIComponent(txid)}`,
+        `/crypto-status?id=${encodeURIComponent(txid)}`,
+        `/gateway/status?id=${encodeURIComponent(txid)}`,
+      ];
+
       let lastStatusError = "";
       for (const p of statusPaths) {
-        const resp = await fetch(`${baseUrl}${p}${encodeURIComponent(txid)}`, {
+        const resp = await fetch(`${baseUrl}${p}`, {
           headers: { ci: String(vexoCi), cs: String(vexoCs), Accept: "application/json" },
         });
-        const body = await resp.json().catch(() => ({} as any));
+        const bodyRes = await resp.json().catch(() => ({} as any));
         if (!resp.ok) {
-          lastStatusError = `VexoPay ${resp.status} em ${p}`;
+          lastStatusError = bodyRes?.message || bodyRes?.error || `VexoPay ${resp.status} em ${p}`;
           continue;
         }
-        const node = body?.data ?? body ?? {};
-        const raw = String(node.status ?? node.situation ?? node.payment_status ?? "PENDING").toUpperCase();
+        const node = bodyRes?.data ?? bodyRes?.invoice ?? bodyRes ?? {};
+        const raw = String(node.status ?? node.situation ?? node.payment_status ?? "PENDING").toLowerCase();
         const status =
-          /PAID|COMPLETED|CONFIRMED|APPROVED|SUCCESS/.test(raw) ? "COMPLETED"
-          : /EXPIRED/.test(raw) ? "EXPIRED"
-          : /CANCEL/.test(raw) ? "CANCELED"
-          : /FAIL|ERROR/.test(raw) ? "FAILED"
+          ["paid", "completed", "confirmed", "approved", "success"].includes(raw) ? "COMPLETED"
+          : ["expired"].includes(raw) ? "EXPIRED"
+          : ["failed", "canceled", "error"].includes(raw) ? "FAILED"
           : "PENDING";
+
         return new Response(
-          JSON.stringify({ id: String(id), status, amount: node.amount ?? null }),
+          JSON.stringify({ id: String(id), status, amount: node.amount ?? node.amount_brl ?? null }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
         );
       }
-      throw new Error(lastStatusError || "Não foi possível consultar o status agora.");
+      throw new Error(lastStatusError || "Não foi possível consultar o status agora na VexoPay.");
     }
 
     if (!apiKey || !evopayEnabled) {

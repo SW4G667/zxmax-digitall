@@ -95,8 +95,9 @@ export interface Purchase {
   sellerEmail: string;
   sellerId: string;
   sellerPublicId?: string;
-  status: "pending" | "paid" | "delivered" | "dispute" | "cancelled";
+  status: "pending" | "paid" | "delivered_pending_confirmation" | "delivered" | "dispute" | "cancelled" | "refunded";
   createdAt: string;
+  updatedAt?: string;
   amount: number;
   messages: PurchaseMessage[];
   reviewed?: boolean;
@@ -106,6 +107,11 @@ export interface Purchase {
   evopayChargeId?: string;
   pixQrCode?: string;
   pixExpiresAt?: string;
+  deliveredPendingAt?: string;
+  refundReason?: string;
+  refundedAt?: string;
+  sellerReleased?: boolean;
+  releasedAt?: string;
 }
 
 export interface Withdrawal {
@@ -231,6 +237,9 @@ interface StoreContextType {
   sendAdminChat: (from: string, text: string) => void;
   sendPurchaseMessage: (purchaseId: number, from: string, text: string) => void;
   confirmDelivery: (purchaseId: number) => Promise<boolean>;
+  confirmOrderReceipt: (purchaseId: number) => Promise<boolean>;
+  sellerRefundOrder: (purchaseId: number, reason: string) => Promise<{ success: boolean; error?: string }>;
+  checkAutoReleaseOrders: () => Promise<void>;
   openDispute: (purchaseId: number, reason: string) => Promise<boolean>;
   reviewPurchase: (purchaseId: number, stars: number, comment: string) => void;
   addProductQuestion: (productId: number, text: string) => void;
@@ -310,6 +319,7 @@ const mapPurchaseRow = (p: any): Purchase => ({
   sellerPublicId: p.seller_public_id,
   status: p.status,
   createdAt: p.created_at,
+  updatedAt: p.updated_at || undefined,
   amount: Number(p.amount),
   messages: p.messages || [],
   reviewed: p.reviewed,
@@ -319,6 +329,11 @@ const mapPurchaseRow = (p: any): Purchase => ({
   evopayChargeId: p.evopay_charge_id || undefined,
   pixQrCode: p.pix_qr_code || undefined,
   pixExpiresAt: p.pix_expires_at || undefined,
+  deliveredPendingAt: p.delivered_pending_at || undefined,
+  refundReason: p.refund_reason || undefined,
+  refundedAt: p.refunded_at || undefined,
+  sellerReleased: !!p.seller_released,
+  releasedAt: p.released_at || undefined,
 });
 
 const inferPixType = (key: string): string => {
@@ -807,9 +822,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshPurchases = async () => {
-    const { data } = await (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false });
+    const { data } = await (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at,delivered_pending_at,refund_reason,refunded_at,seller_released,released_at").order("created_at", { ascending: false });
     if (!data) return;
     const purchases = (data as any[]).map(mapPurchaseRow) as Purchase[];
+    // Check if any delivered_pending_confirmation order is > 3 days old and auto-release
+    const hasPendingAutoRelease = purchases.some(
+      (p) => p.status === "delivered_pending_confirmation" && p.deliveredPendingAt && (Date.now() - new Date(p.deliveredPendingAt).getTime() >= 3 * 24 * 60 * 60 * 1000)
+    );
+    if (hasPendingAutoRelease) {
+      await checkAutoReleaseOrders();
+    }
     setState((s) => ({ ...s, purchases }));
   };
 
@@ -1011,6 +1033,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
+  const confirmOrderReceipt = async (purchaseId: number) => {
+    const { data, error } = await supabase.functions.invoke("order-action", { body: { orderId: purchaseId, action: "confirm_receipt" } });
+    if (error || data?.error) return false;
+    await refreshPurchases();
+    return true;
+  };
+
+  const sellerRefundOrder = async (purchaseId: number, reason: string): Promise<{ success: boolean; error?: string }> => {
+    const res = await unwrapEdgeCall<{ success: boolean; error?: string; status?: string }>(
+      await supabase.functions.invoke("order-action", {
+        body: { orderId: purchaseId, action: "seller_refund", reason },
+      }),
+      "Não foi possível processar o reembolso. Tente novamente.",
+    );
+    if (res.errorMessage) {
+      return { success: false, error: res.errorMessage };
+    }
+    await refreshPurchases();
+    return { success: true };
+  };
+
+  const checkAutoReleaseOrders = async () => {
+    try {
+      await supabase.functions.invoke("order-action", { body: { orderId: 1, action: "check_auto_release" } });
+    } catch {}
+  };
+
   const openDispute = async (purchaseId: number, reason: string) => {
     const { data, error } = await supabase.functions.invoke("order-action", { body: { orderId: purchaseId, action: "open_dispute", reason } });
     if (error || data?.error) return false;
@@ -1205,7 +1254,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         approveWithdraw, rejectWithdraw, updateConfig, updateProfile,
         banUser, unbanUser, addTicket, replyTicket, closeTicket, resolveTicket,
         setGlobalNotice, publishNotice, updatePixKey, sendAdminChat,
-        sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
+        sendPurchaseMessage, confirmDelivery, confirmOrderReceipt, sellerRefundOrder, checkAutoReleaseOrders, openDispute, reviewPurchase,
         addProductQuestion, answerProductQuestion,
         deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
         verifyUser, saveGatewaySettings, submitSellerDocument, reviewSellerDocument, isDark, toggleDark,

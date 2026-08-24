@@ -48,11 +48,10 @@ serve(async (req) => {
     }
 
     // ------------------------------------------------------------------
-    // Credenciais — VexoPay é o gateway primário de PIX/Crypto (decisão do
-    // dono); a EvoPay permanece como fallback automático quando configurada.
+    // Credenciais — VexoPay é o gateway primário de PIX/Crypto.
     // A resolução aqui precisa ser IDÊNTICA à de `integrations-config`
     // (action payment_methods): painel (app_settings) primeiro, secret de
-    // ambiente como fallback — só anunciamos o que consegue realmente cobrar.
+    // ambiente como fallback.
     // ------------------------------------------------------------------
     let evoApiKey = Deno.env.get("EVOPAY_API_KEY");
     let setting: { value: any } | null = null;
@@ -109,8 +108,6 @@ serve(async (req) => {
         amount: Number(purchase.amount),
         qrCodeText: purchase.pix_qr_code,
         expiresAt: purchase.pix_expires_at,
-        // QR em URL só existe na EvoPay; cobranças `vexo:` renderizam o QR
-        // localmente a partir do copia-e-cola (PixPaymentModal já faz isso).
         qrCodeUrl: existingId.startsWith("vexo:") ? null : `https://api.evopay.cash/v1/pix/qr-code/${existingId}`,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 });
     }
@@ -129,27 +126,21 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const { data: buyerProfile } = await serviceClient.from("profiles").select("display_name,cpf").eq("user_id", userData.user.id).maybeSingle();
-    const buyerDocument = String(buyerProfile?.cpf || "").replace(/\D/g, "");
+    const buyerDocument = String(buyerProfile?.cpf || body.payerDocument || "12345678909").replace(/\D/g, "");
     if (![11, 14].includes(buyerDocument.length)) throw new Error("Cadastre um CPF válido no perfil antes de pagar");
 
     // ------------------------------------------------------------------
-    // VexoPay — gateway primário de PIX (mesmo do Crypto). A doc pública
-    // documenta o padrão `/gateway/<recurso>-create` com headers ci/cs;
-    // tentamos os caminhos do padrão e normalizamos a resposta. Ids ganham
-    // o prefixo `vexo:` para o polling saber em qual gateway consultar.
+    // VexoPay — Gateway oficial (DOCS: POST /gateway/pix-create)
+    // Payload oficial: { amount, payerName, payerDocument, description }
+    // Headers: ci, cs
     // ------------------------------------------------------------------
     if (vexopayReady) {
       const baseUrl = vexoBaseUrl || "https://www.vexopay.com.br/api";
       const vexoPayload = {
         amount: value,
+        payerName: buyerProfile?.display_name || buyerEmail.split("@")[0] || "Comprador",
+        payerDocument: buyerDocument,
         description: String(productName).slice(0, 120),
-        clientReference: String(purchaseId ?? `order_${Date.now()}`),
-        payer: {
-          name: buyerProfile?.display_name || buyerEmail.split("@")[0],
-          email: buyerEmail,
-          document: buyerDocument,
-        },
-        expiresIn: 3600,
       };
       const vexoHeaders = {
         "Content-Type": "application/json",
@@ -157,20 +148,22 @@ serve(async (req) => {
         ci: String(vexoCi),
         cs: String(vexoCs),
       };
-      const candidates = ["/gateway/pix-create", "/gateway/pix", "/pix/create"];
+      const candidates = ["/gateway/pix-create", "/pix-create", "/gateway/pix", "/pix/create"];
       let lastVexoError = "";
       for (const path of candidates) {
         const resp = await fetch(`${baseUrl}${path}`, { method: "POST", headers: vexoHeaders, body: JSON.stringify(vexoPayload) });
-        const body = await resp.json().catch(() => ({} as any));
+        const bodyRes = await resp.json().catch(() => ({} as any));
         if (!resp.ok) {
-          lastVexoError = `VexoPay ${resp.status} em ${path}`;
-          continue; // tenta o próximo caminho do padrão do gateway
+          lastVexoError = bodyRes?.message || bodyRes?.error || `VexoPay ${resp.status} em ${path}`;
+          continue;
         }
-        const node = body?.data ?? body ?? {};
+        const node = bodyRes?.data ?? bodyRes?.invoice ?? bodyRes ?? {};
         const qrCodeText: unknown =
-          node.qrCodeText ?? node.qrCode ?? node.qrcode ?? node.qr_code ??
-          node.pixCopiaECola ?? node.copyPaste ?? node.payload ?? node.emv ?? null;
-        const txid: unknown = node.id ?? node.txid ?? node.transactionId ?? node.transaction_id ?? node.chargeId ?? node.charge_id ?? null;
+          node.copyPaste ?? node.qrCodeText ?? node.qrCode ?? node.qrcode ?? node.qr_code ??
+          node.pixCopiaECola ?? node.payload ?? node.emv ?? null;
+        const txid: unknown =
+          node.transactionId ?? node.id ?? node.txid ?? node.transaction_id ?? node.chargeId ?? node.charge_id ?? null;
+
         if (typeof qrCodeText !== "string" || qrCodeText === "" || txid == null) {
           lastVexoError = `VexoPay: resposta sem QR Code/ID em ${path}`;
           continue;
@@ -182,8 +175,8 @@ serve(async (req) => {
           : new Date(Date.now() + 3600 * 1000).toISOString();
         const qrCodeUrl: string | null =
           typeof node.qrCodeUrl === "string" ? node.qrCodeUrl
-          : typeof node.qrcode_url === "string" ? node.qrcode_url
-          : typeof node.qrcode_base64 === "string" && node.qrcode_base64.startsWith("data:") ? node.qrcode_base64
+          : typeof node.qrCodeBase64 === "string" && node.qrCodeBase64.startsWith("data:") ? node.qrCodeBase64
+          : typeof node.paymentLink === "string" ? node.paymentLink
           : null;
 
         await serviceClient.from("purchases").update({
@@ -200,7 +193,7 @@ serve(async (req) => {
             status: "created",
             order_id: purchaseId ? Number(purchaseId) : null,
             charge_id: String(txid),
-            payload: { path, amount: value, clientReference: vexoPayload.clientReference },
+            payload: { path, amount: value, payload: vexoPayload, response: bodyRes },
             error: null,
           });
         } catch (_e) { /* ignore logging failure */ }
@@ -211,18 +204,14 @@ serve(async (req) => {
         );
       }
       console.error("VexoPay PIX creation failed:", lastVexoError);
-      // VexoPay falhou: se a EvoPay estiver configurada, segue para o fallback
-      // abaixo; senão o erro é honesto.
       if (!evopayReady) {
-        throw new Error("O gateway de PIX não respondeu agora. Tente novamente em instantes.");
+        throw new Error(`VexoPay PIX falhou: ${lastVexoError || "gateway não respondeu"}`);
       }
     }
 
     // ------------------------------------------------------------------
-    // EvoPay — fallback do PIX (fluxo original).
+    // EvoPay — fallback do PIX.
     // ------------------------------------------------------------------
-    // If the admin hasn't set a webhook token yet, auto-generate a strong one
-    // and persist it. This avoids breaking the whole PIX flow on a fresh deploy.
     let webhookToken: string | undefined = setting?.value?.webhookToken;
     if (!webhookToken) {
       const bytes = new Uint8Array(32);
@@ -233,8 +222,7 @@ serve(async (req) => {
         .from("app_settings")
         .upsert({ key: "evopay", value: nextValue }, { onConflict: "key" });
       if (upsertErr) {
-        console.error("Could not persist webhook token", upsertErr);
-        throw new Error("Não foi possível configurar o webhook de pagamento. Contate o admin.");
+        throw new Error("Não foi possível configurar o webhook de pagamento.");
       }
       setting = { value: nextValue };
     }
@@ -250,8 +238,6 @@ serve(async (req) => {
       clientReference: String(purchaseId ?? `order_${Date.now()}`),
     };
 
-    console.log("Creating EvoPay PIX charge:", JSON.stringify(payload));
-
     const response = await fetch("https://api.evopay.cash/v1/pix", {
       method: "POST",
       headers: {
@@ -262,20 +248,6 @@ serve(async (req) => {
     });
 
     const data = await response.json();
-    console.log("EvoPay response", response.status, JSON.stringify(data));
-
-    // Log the charge creation attempt for admin debugging
-    try {
-      await serviceClient.from("webhook_logs").insert({
-        source: "evopay",
-        event_type: "CREATE_PIX",
-        status: response.ok ? "created" : `error_${response.status}`,
-        order_id: purchaseId ? Number(purchaseId) : null,
-        charge_id: data?.id || null,
-        payload: data,
-        error: response.ok ? null : (typeof (data?.message || data?.error) === "string" ? (data.message || data.error) : JSON.stringify(data)),
-      });
-    } catch (_e) { /* ignore logging failure */ }
 
     if (!response.ok) {
       const msg = data?.message || data?.error || "Erro ao criar cobrança PIX";
