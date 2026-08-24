@@ -533,10 +533,10 @@ export default function ProdutoPage() {
 
               <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
                 <h4 className="font-bold text-white mb-3">Vendedor</h4>
-                <button onClick={() => setSelectedSellerId(product.sellerId)} className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#1a1a20] border border-[#25252e] hover:border-[#2a2a36] transition text-left">
+                <Link to={`/vendedor/${product.sellerId}`} className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#1a1a20] border border-[#25252e] hover:border-[#2a2a36] transition text-left">
                   <img src={state.userDirectory?.[product.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.seller}`} className="w-10 h-10 rounded-full" alt="" />
                   <div className="flex-1 min-w-0"><p className="font-bold text-white text-sm truncate">{product.seller}</p><p className="text-[11px] text-white/40">ID: {product.sellerPublicId || "—"}</p></div>
-                </button>
+                </Link>
               </div>
             </div>
           </div>

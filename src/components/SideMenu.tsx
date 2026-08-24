@@ -118,7 +118,7 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
       icon: TrendingUp,
       entries: [
         { key: "store", icon: Store, label: "Início / Loja", hint: "Todos os anúncios", to: "/loja", view: "store" },
-        { key: "cats", icon: LayoutGrid, label: "Categorias", hint: "Navegar por tipo de produto", to: "/loja?cat=" },
+        { key: "cats", icon: LayoutGrid, label: "Categorias", hint: "Navegar por tipo de produto", to: "/categorias" },
         { key: "favs", icon: Heart, label: "Favoritos", hint: "Seus produtos salvos", to: "/favoritos", badge: count },
       ],
     };

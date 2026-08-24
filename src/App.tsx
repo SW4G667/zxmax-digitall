@@ -16,6 +16,8 @@ import Perfil from "./pages/Perfil.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import Produto from "./pages/Produto.tsx";
 import Favoritos from "./pages/Favoritos.tsx";
+import Vendedor from "./pages/Vendedor.tsx";
+import Categorias from "./pages/Categorias.tsx";
 
 const queryClient = new QueryClient();
 
@@ -33,6 +35,8 @@ const App = () => (
                 <Route path="/loja" element={<Index view="store" />} />
                 <Route path="/produto/:id" element={<Produto />} />
                 <Route path="/favoritos" element={<Favoritos />} />
+                <Route path="/categorias" element={<Categorias />} />
+                <Route path="/vendedor/:id" element={<Vendedor />} />
                 <Route path="/meus-produtos" element={<Index view="inventory" />} />
                 <Route path="/minhas-compras" element={<Index view="purchases" />} />
                 <Route path="/suporte" element={<Index view="support" />} />
