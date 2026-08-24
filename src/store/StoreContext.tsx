@@ -11,6 +11,7 @@ import {
   SAFE_PRODUCT_COLUMNS,
 } from "@/lib/catalog";
 import { logProductError, productErrorMessage } from "@/lib/productErrors";
+import { unwrapEdgeCall } from "@/lib/edgeErrors";
 
 export interface User {
   id: string;
@@ -778,15 +779,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const buyProduct = async (id: number, variation?: ProductVariation) => {
     const product = state.products.find((p) => p.id === id);
     if (!product || !state.currentUser) return null;
-    const { data, error } = await supabase.functions.invoke("create-purchase", {
-      body: { productId: id, variationName: variation?.name || null },
-    });
-    if (error || data?.error || !data?.purchase) {
-      const message = data?.error || error?.message || "Não foi possível registrar a compra.";
-      toast.error(message);
+    // unwrapEdgeCall lê o corpo real da resposta: sem isso toda falha virava
+    // "Edge Function returned a non-2xx status code" na tela do comprador.
+    const res = await unwrapEdgeCall<{ purchase: any }>(
+      await supabase.functions.invoke("create-purchase", {
+        body: { productId: id, variationName: variation?.name || null },
+      }),
+      "Não foi possível registrar a compra. Tente novamente.",
+    );
+    if (res.errorMessage || !res.data?.purchase) {
+      toast.error(res.errorMessage ?? "Não foi possível registrar a compra. Tente novamente.");
       return null;
     }
-    const finalPurchase = mapPurchaseRow(data.purchase);
+    const finalPurchase = mapPurchaseRow(res.data.purchase);
     setState((s) => ({ ...s, purchases: [...s.purchases, finalPurchase] }));
     return finalPurchase.id;
   };

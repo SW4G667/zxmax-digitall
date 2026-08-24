@@ -10,6 +10,7 @@ import AppShell from "@/components/AppShell";
 import useFavorites from "@/hooks/useFavorites";
 import { supabase } from "@/integrations/supabase/client";
 import { formatBRL, ROBUX_CATEGORY, robuxPackageUnits, unitPriceFromPackage } from "@/lib/catalog";
+import { unwrapEdgeCall } from "@/lib/edgeErrors";
 
 // Eldorado-style seller row
 interface SellerOffer {
@@ -31,32 +32,44 @@ interface SellerOffer {
 function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConfirm, loading, feePercent }: { product: Product; quantity: number; unitPrice: number; subtotal: number; onClose: () => void; onConfirm: (method: string, cpf: string) => void; loading: boolean; feePercent: number }) {
   const [method, setMethod] = useState<"pix" | "crypto" | "card" | "boleto">("pix");
   const [cpf, setCpf] = useState("");
-  const [available, setAvailable] = useState<Record<string, boolean>>({ pix: true, crypto: true, card: true, boleto: true });
+  const [available, setAvailable] = useState<Record<string, boolean> | null>(null);
   const fee = subtotal * (feePercent / 100);
   const total = subtotal + fee;
 
+  // Pergunta ao servidor quais meios estão REALMENTE configurados. Antes isto
+  // era `stripeOk || true`, ou seja, sempre verdadeiro: a tela oferecia cartão
+  // mesmo sem credencial e o comprador só descobria depois de criar o pedido.
   useEffect(() => {
-    // Check gateway health - if fails, mark as unavailable
-    const checkHealth = async () => {
-      try {
-        const { data } = await supabase.functions.invoke("integrations-config", { body: { action: "get" } });
-        const evopayOk = !!data?.integrations?.evopay?.apiKey_masked || !!data?.integrations?.vexopay?.clientId;
-        const stripeOk = !!data?.integrations?.stripe?.secretKey_masked;
-        setAvailable({
-          pix: evopayOk || true, // PIX fallback true, will show error if fails
-          crypto: !!data?.integrations?.vexopay?.clientId || !!data?.integrations?.vexopay?.clientId_masked || true,
-          card: stripeOk || true,
-          boleto: stripeOk || true,
-        });
-      } catch {
-        // Keep all available, will handle error on confirm
-      }
-    };
-    void checkHealth();
+    let active = true;
+    void (async () => {
+      const result = await unwrapEdgeCall<{ methods: Record<string, boolean> }>(
+        await supabase.functions.invoke("integrations-config", { body: { action: "payment_methods" } }),
+        "Não foi possível consultar as formas de pagamento.",
+      );
+      if (!active) return;
+      setAvailable(result.data?.methods ?? { pix: false, crypto: false, card: false, boleto: false });
+    })();
+    return () => { active = false; };
   }, []);
+
+  const loadingMethods = available === null;
+  const isAvailable = (id: string) => !!available?.[id];
+
+  // Se o método escolhido não está disponível, cai para o primeiro que estiver.
+  useEffect(() => {
+    if (!available) return;
+    if (!available[method]) {
+      const first = (["pix", "card", "crypto", "boleto"] as const).find((m) => available[m]);
+      if (first) setMethod(first);
+    }
+  }, [available, method]);
 
   const handleConfirm = () => {
     const cleanCpf = cpf.replace(/\D/g, "");
+    if (!isAvailable(method)) {
+      toast.error("Esta forma de pagamento não está disponível agora. Escolha outra.");
+      return;
+    }
     if (method === "pix" || method === "crypto") {
       if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
         toast.error("Digite um CPF/CNPJ válido (11 ou 14 dígitos) para PIX/Crypto");
@@ -78,32 +91,38 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
           <div>
             <p className="text-xs font-bold uppercase text-white/30 mb-2">Forma de pagamento</p>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setMethod("pix")} disabled={!available.pix} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "pix" ? "bg-[#0084ff] border-[#0084ff] text-white" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${!available.pix ? "opacity-40 cursor-not-allowed" : ""}`}>
+              <button onClick={() => setMethod("pix")} disabled={loadingMethods || !isAvailable("pix")} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "pix" ? "bg-[#0084ff] border-[#0084ff] text-white" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${loadingMethods || !isAvailable("pix") ? "opacity-40 cursor-not-allowed" : ""}`}>
                 <CreditCard className="w-5 h-5" />
                 <span className="text-xs font-bold">PIX</span>
-                {!available.pix && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
+                {!loadingMethods && !isAvailable("pix") && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
               </button>
-              <button onClick={() => setMethod("crypto")} disabled={!available.crypto} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "crypto" ? "bg-[#ffbd2e] border-[#ffbd2e] text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${!available.crypto ? "opacity-40 cursor-not-allowed" : ""}`}>
+              <button onClick={() => setMethod("crypto")} disabled={loadingMethods || !isAvailable("crypto")} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "crypto" ? "bg-[#ffbd2e] border-[#ffbd2e] text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${loadingMethods || !isAvailable("crypto") ? "opacity-40 cursor-not-allowed" : ""}`}>
                 <Bitcoin className="w-5 h-5" />
                 <span className="text-xs font-bold">Crypto</span>
-                {!available.crypto && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
+                {!loadingMethods && !isAvailable("crypto") && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
               </button>
-              <button onClick={() => setMethod("card")} disabled={!available.card} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "card" ? "bg-white border-white text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${!available.card ? "opacity-40 cursor-not-allowed" : ""}`}>
+              <button onClick={() => setMethod("card")} disabled={loadingMethods || !isAvailable("card")} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "card" ? "bg-white border-white text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${loadingMethods || !isAvailable("card") ? "opacity-40 cursor-not-allowed" : ""}`}>
                 <CreditCard className="w-5 h-5" />
                 <span className="text-xs font-bold">Cartão (Stripe)</span>
-                {!available.card && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
+                {!loadingMethods && !isAvailable("card") && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
               </button>
-              <button onClick={() => setMethod("boleto")} disabled={!available.boleto} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "boleto" ? "bg-white border-white text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${!available.boleto ? "opacity-40 cursor-not-allowed" : ""}`}>
+              <button onClick={() => setMethod("boleto")} disabled={loadingMethods || !isAvailable("boleto")} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "boleto" ? "bg-white border-white text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${loadingMethods || !isAvailable("boleto") ? "opacity-40 cursor-not-allowed" : ""}`}>
                 <Package className="w-5 h-5" />
                 <span className="text-xs font-bold">Boleto (Stripe)</span>
-                {!available.boleto && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
+                {!loadingMethods && !isAvailable("boleto") && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
               </button>
             </div>
-            <p className="text-[10px] text-white/30 mt-2">Se alguma forma estiver com problemas, fica indisponível automaticamente. Configure credenciais Stripe em Admin → APIs.</p>
+            {loadingMethods ? (
+              <p className="text-[10px] text-white/30 mt-2">Verificando formas de pagamento disponíveis…</p>
+            ) : available && !Object.values(available).some(Boolean) ? (
+              <p className="text-[11px] text-[#ffbd2e] mt-2">Nenhuma forma de pagamento está configurada no momento. Fale com o suporte.</p>
+            ) : (
+              <p className="text-[10px] text-white/30 mt-2">Só aparecem habilitadas as formas realmente configuradas na plataforma.</p>
+            )}
           </div>
 
           <div>
-            <p className="text-xs font-bold uppercase text-white/30 mb-2">CPF para pagamento</p>
+            <p className="text-xs font-bold uppercase text-white/30 mb-2">CPF para pagamento{method === "card" || method === "boleto" ? " (opcional)" : ""}</p>
             <input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />
             <p className="text-[10px] text-white/30 mt-1">Obrigatório para PIX e Crypto (VexoPay exige documento)</p>
           </div>
@@ -118,8 +137,12 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
             <p className="text-[10px] text-white/30">A taxa é da plataforma. O vendedor recebe {formatBRL(subtotal)}.</p>
           </div>
 
-          <button onClick={handleConfirm} disabled={loading} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 transition">
-            {loading ? "Processando..." : method === "pix" ? "Pagar com PIX" : "Pagar com Crypto"}
+          <button onClick={handleConfirm} disabled={loading || loadingMethods || !isAvailable(method)} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 transition">
+            {loading ? "Processando..."
+              : method === "pix" ? "Pagar com PIX"
+              : method === "crypto" ? "Pagar com Crypto"
+              : method === "boleto" ? "Gerar boleto"
+              : "Pagar com cartão"}
           </button>
 
           <div className="flex items-center justify-center gap-4 text-[11px] text-white/30">
@@ -276,69 +299,69 @@ export default function ProdutoPage() {
 
   const handleCheckoutConfirm = async (method: string, cpf: string) => {
     setBuyLoading(true);
+    let purchaseId: number | null = null;
     try {
-      // Save CPF to profile
-      if (state.currentUser) {
-        await supabase.from("profiles").update({ cpf } as any).eq("user_id", state.currentUser.id);
+      if (cpf && state.currentUser) {
+        const { error: cpfError } = await supabase.from("profiles").update({ cpf } as any).eq("user_id", state.currentUser.id);
+        if (cpfError) console.error("[zxmax:cpf]", cpfError);
       }
 
-      const purchaseId = await buyProduct(product.id, selectedVariation || undefined);
-      if (!purchaseId) throw new Error("Falha ao criar pedido");
+      purchaseId = await buyProduct(product.id, selectedVariation || undefined);
+      if (!purchaseId) return; // buyProduct já explicou o motivo
 
       if (method === "pix") {
-        const { data, error } = await supabase.functions.invoke("create-evopay-pix", {
-          body: {
-            purchaseId,
-            productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name,
-            amount: subtotal,
-            buyerName: state.currentUser?.name,
-          },
-        });
-        if (error) throw error;
-        if (data?.qrCodeText) {
-          savePixCharge(purchaseId, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
-          setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: total, qrCodeUrl: data.qrCodeUrl, purchaseId });
-          setCheckoutOpen(false);
-        } else {
-          toast.error("Erro ao gerar PIX: " + (data?.error || "tente novamente"));
+        const res = await unwrapEdgeCall<{ id: string; qrCodeText: string; qrCodeUrl?: string; expiresAt?: string }>(
+          await supabase.functions.invoke("create-evopay-pix", {
+            body: { purchaseId, productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name, amount: subtotal, buyerName: state.currentUser?.name },
+          }),
+          "Não foi possível gerar o PIX. Tente novamente.",
+        );
+        if (res.errorMessage || !res.data?.qrCodeText) {
+          toast.error(res.errorMessage ?? "O provedor de PIX não devolveu o código. Tente novamente.");
+          return;
         }
-      } else if (method === "crypto") {
-        const { data, error } = await supabase.functions.invoke("create-vexopay-crypto", {
-          body: {
-            purchaseId,
-            amount: total,
-            network: "TRC20",
-            description: product.name,
-          },
-        });
-        if (error) throw error;
-        if (data?.address || data?.qrCode) {
-          toast.success(`Crypto criada! Envie exatamente ${formatBRL(total)} para o endereço.`);
-          setCheckoutOpen(false);
-          if (data.qrCode) window.open(data.qrCode, "_blank");
-        } else {
-          toast.error("Erro Crypto: " + (data?.error || "tente novamente"));
-        }
-      } else {
-        // Stripe card/boleto
-        const { data, error } = await supabase.functions.invoke("create-stripe-checkout", {
-          body: {
-            purchaseId,
-            amount: total,
-            productName: product.name,
-            paymentMethod: method,
-          },
-        });
-        if (error) throw error;
-        if (data?.url) {
-          toast.success("Redirecionando para Stripe...");
-          window.location.href = data.url;
-        } else {
-          toast.error("Erro Stripe: " + (data?.error || "configure credenciais em Admin → APIs"));
-        }
+        savePixCharge(purchaseId, { evopayId: res.data.id, qrCodeText: res.data.qrCodeText, expiresAt: res.data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
+        setPixCharge({ evopayId: res.data.id, qrCodeText: res.data.qrCodeText, amount: total, qrCodeUrl: res.data.qrCodeUrl, purchaseId });
+        setCheckoutOpen(false);
+        return;
       }
+
+      if (method === "crypto") {
+        const res = await unwrapEdgeCall<{ address?: string; qrCode?: string }>(
+          await supabase.functions.invoke("create-vexopay-crypto", {
+            body: { purchaseId, amount: total, network: "TRC20", description: product.name },
+          }),
+          "Não foi possível gerar a cobrança em cripto.",
+        );
+        if (res.errorMessage || !(res.data?.address || res.data?.qrCode)) {
+          toast.error(res.errorMessage ?? "O provedor de cripto não devolveu o endereço.");
+          return;
+        }
+        toast.success(`Cobrança criada! Envie exatamente ${formatBRL(total)} para o endereço.`);
+        setCheckoutOpen(false);
+        if (res.data.qrCode) window.open(res.data.qrCode, "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      // Cartão e boleto (Stripe). O valor cobrado é revalidado no servidor a
+      // partir do pedido — o que enviamos aqui é só o nome do produto.
+      const res = await unwrapEdgeCall<{ url: string }>(
+        await supabase.functions.invoke("create-stripe-checkout", {
+          body: { purchaseId, productName: product.name, paymentMethod: method },
+        }),
+        "Não foi possível iniciar o pagamento com cartão.",
+      );
+      if (res.errorMessage || !res.data?.url) {
+        // Agora a mensagem é a real da Stripe/servidor, e não mais
+        // "Edge Function returned a non-2xx status code".
+        toast.error(res.errorMessage ?? "A Stripe não devolveu o link de pagamento.");
+        return;
+      }
+      toast.success("Redirecionando para o pagamento seguro...");
+      window.location.href = res.data.url;
     } catch (err: any) {
-      toast.error(err.message || "Erro ao processar compra");
+      console.error("[zxmax:checkout]", err);
+      toast.error("Erro inesperado ao processar a compra. Tente novamente.");
     } finally {
       setBuyLoading(false);
     }
