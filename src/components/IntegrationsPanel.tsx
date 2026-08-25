@@ -5,6 +5,7 @@ import { KeyRound, Plug, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { unwrapEdgeCall } from "@/lib/edgeErrors";
 
 const ZENNITH_WEBHOOK = "https://dbekdedzgkfgtlytrnyw.supabase.co/functions/v1/zennith-webhook";
+const EVOPAY_WEBHOOK = "https://dbekdedzgkfgtlytrnyw.supabase.co/functions/v1/evopay-webhook";
 
 type Field = { key: string; label: string; secret?: boolean; placeholder?: string; readOnly?: boolean };
 
@@ -68,7 +69,7 @@ export default function IntegrationsPanel() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string }>>({});
-  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState(EVOPAY_WEBHOOK);
   const [zennithWebhookUrl, setZennithWebhookUrl] = useState(ZENNITH_WEBHOOK);
   const [gateways, setGateways] = useState({ pix: true, crypto: true, card: false, boleto: false });
 
@@ -103,7 +104,7 @@ export default function IntegrationsPanel() {
       };
     }
 
-    setWebhookUrl(res.data?.webhookUrl || "");
+    setWebhookUrl(res.data?.webhookUrl || EVOPAY_WEBHOOK);
     setZennithWebhookUrl(res.data?.zennithWebhookUrl || ZENNITH_WEBHOOK);
     setValues(next);
     setMasks(nextMasks);
@@ -131,6 +132,19 @@ export default function IntegrationsPanel() {
   const copyWebhook = async (url: string) => {
     try {
       await navigator.clipboard.writeText(url);
+      toast.success("Webhook copiado.");
+      return;
+    } catch { /* fallback abaixo — clipboard some em WebView */ }
+    try {
+      const el = document.createElement("textarea");
+      el.value = url;
+      el.setAttribute("readonly", "");
+      el.style.position = "fixed";
+      el.style.left = "-9999px";
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      el.remove();
       toast.success("Webhook copiado.");
     } catch {
       toast.error("Não foi possível copiar.");

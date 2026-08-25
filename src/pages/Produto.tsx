@@ -60,7 +60,24 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
         "Não foi possível consultar as formas de pagamento.",
       );
       if (!active) return;
-      setMethodsState(classifyPaymentMethods(result));
+      let next = classifyPaymentMethods(result);
+      if (next.status !== "ok") {
+        const { data } = await (supabase as any).from("app_settings").select("value").eq("key", "checkout_gateways").maybeSingle();
+        const saved = data?.value as Record<string, unknown> | undefined;
+        if (saved && typeof saved.pix === "boolean") {
+          next = {
+            status: "ok",
+            methods: {
+              pix: !!saved.pix,
+              crypto: !!saved.crypto,
+              card: !!saved.card,
+              boleto: !!saved.boleto,
+            },
+          };
+        }
+      }
+      if (!active) return;
+      setMethodsState(next);
     })();
     return () => { active = false; };
   }, [methodsRetry]);
