@@ -18,6 +18,17 @@ const SORT_OPTIONS: { id: SortKey; label: string }[] = [
   { id: "vendidos", label: "Mais vendidos" },
 ];
 
+const CATEGORY_COVERS: { id: string; label: string; image: string; to: string }[] = [
+  { id: "robux", label: "Robux", image: "/categories/robux.jpg", to: "/robux" },
+  { id: "contas", label: "Contas", image: "/categories/contas.jpg", to: "/loja?cat=Contas" },
+  { id: "bots", label: "Bots Discord", image: "/categories/bots.jpg", to: "/loja?cat=Bots%20Discord" },
+  { id: "scripts", label: "Scripts", image: "/categories/scripts.jpg", to: "/loja?cat=Scripts" },
+  { id: "assinaturas", label: "Assinaturas", image: "/categories/assinaturas.jpg", to: "/loja?cat=Assinaturas" },
+  { id: "jogos", label: "Jogos e Itens", image: "/categories/jogos.jpg", to: "/loja?cat=Jogos%20e%20Itens" },
+  { id: "keys", label: "Keys", image: "/categories/keys.jpg", to: "/loja?cat=Keys%20de%20Software" },
+  { id: "servicos", label: "Serviços", image: "/categories/servicos.jpg", to: "/loja?cat=Servi%C3%A7os%20Online" },
+];
+
 function ProductSkeleton() {
   return (
     <div className="bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden">

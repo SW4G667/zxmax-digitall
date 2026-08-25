@@ -2,6 +2,9 @@ import React, { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { KeyRound, Plug, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { unwrapEdgeCall } from "@/lib/edgeErrors";
+
+const ZENNITH_WEBHOOK = "https://dbekdedzgkfgtlytrnyw.supabase.co/functions/v1/zennith-webhook";
 
 type Field = { key: string; label: string; secret?: boolean; placeholder?: string; readOnly?: boolean };
 
@@ -66,20 +69,18 @@ export default function IntegrationsPanel() {
   const [busy, setBusy] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string }>>({});
   const [webhookUrl, setWebhookUrl] = useState("");
-  const [zennithWebhookUrl, setZennithWebhookUrl] = useState("");
+  const [zennithWebhookUrl, setZennithWebhookUrl] = useState(ZENNITH_WEBHOOK);
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase.functions.invoke("integrations-config", { body: { action: "get" } });
-    if (error || data?.error) {
-      toast.error("Não foi possível carregar as integrações.");
-      setLoading(false);
-      return;
-    }
+    const res = await unwrapEdgeCall<{ integrations?: Record<string, Record<string, string>>; webhookUrl?: string; zennithWebhookUrl?: string }>(
+      await supabase.functions.invoke("integrations-config", { body: { action: "get" } }),
+      "Não foi possível carregar as integrações.",
+    );
     const next: Record<string, Record<string, string>> = {};
     const nextMasks: Record<string, Record<string, string>> = {};
     for (const p of PROVIDERS) {
-      const cfg = data.integrations?.[p.id] || {};
+      const cfg = res.data?.integrations?.[p.id] || {};
       next[p.id] = {};
       nextMasks[p.id] = {};
       for (const f of p.fields) {
@@ -87,8 +88,22 @@ export default function IntegrationsPanel() {
         else next[p.id][f.key] = cfg[f.key] || "";
       }
     }
-    setWebhookUrl(data.webhookUrl || data.zennithWebhookUrl || "");
-    setZennithWebhookUrl(data.zennithWebhookUrl || data.webhookUrl || "");
+
+    // Função antiga publicada não conhece Zennith: lê direto do banco (admin RLS).
+    if (!res.data?.integrations?.zennithpay) {
+      const { data: row } = await (supabase as any).from("app_settings").select("value").eq("key", "zennithpay").maybeSingle();
+      const cfg = (row?.value || {}) as Record<string, string>;
+      next.zennithpay = {
+        baseUrl: cfg.baseUrl || next.zennithpay?.baseUrl || "https://zennithpay.online/api/v1",
+      };
+      nextMasks.zennithpay = {
+        apiKey: cfg.apiKey ? "••••••••" : "",
+        webhookSecret: cfg.webhookSecret ? "••••••••" : "",
+      };
+    }
+
+    setWebhookUrl(res.data?.webhookUrl || "");
+    setZennithWebhookUrl(res.data?.zennithWebhookUrl || ZENNITH_WEBHOOK);
     setValues(next);
     setMasks(nextMasks);
     setLoading(false);
@@ -99,24 +114,60 @@ export default function IntegrationsPanel() {
   const setField = (provider: string, key: string, val: string) =>
     setValues((v) => ({ ...v, [provider]: { ...(v[provider] || {}), [key]: val } }));
 
+  const saveDirect = async (provider: string) => {
+    const incoming = values[provider] || {};
+    const { data: existing, error: readError } = await (supabase as any)
+      .from("app_settings")
+      .select("value")
+      .eq("key", provider)
+      .maybeSingle();
+    if (readError) throw new Error(readError.message);
+    const current: Record<string, unknown> = { ...(existing?.value || {}) };
+    for (const [k, v] of Object.entries(incoming)) {
+      if (typeof v === "string" && v.trim() !== "") current[k] = v.trim();
+    }
+    current.enabled = true;
+    const { error } = await (supabase as any)
+      .from("app_settings")
+      .upsert({ key: provider, value: current }, { onConflict: "key" });
+    if (error) throw new Error(error.message);
+  };
+
   const run = async (provider: string, action: "save" | "test" | "simulate") => {
     setBusy(`${provider}:${action}`);
-    const { data, error } = await supabase.functions.invoke("integrations-config", {
-      body: { action, provider, values: values[provider] || {}, test: action === "save" },
-    });
-    setBusy(null);
-    if (error || data?.error) {
-      toast.error(data?.error || "Falha ao comunicar com o servidor.");
+    const res = await unwrapEdgeCall<{ ok?: boolean; message?: string; test?: { ok: boolean; message: string }; saved?: boolean }>(
+      await supabase.functions.invoke("integrations-config", {
+        body: { action, provider, values: values[provider] || {}, test: false },
+      }),
+      action === "save" ? "Não foi possível salvar as credenciais." : "Falha ao comunicar com o servidor.",
+    );
+
+    if (action === "save") {
+      if (res.errorMessage) {
+        try {
+          await saveDirect(provider);
+          toast.success("Credenciais salvas no servidor.");
+          void load();
+        } catch (e: any) {
+          toast.error(res.errorMessage || e?.message || "Falha ao salvar. Confira se você está logado como admin.");
+        }
+        setBusy(null);
+        return;
+      }
+      toast.success("Credenciais salvas com segurança no servidor.");
+      if (res.data?.test) setResults((r) => ({ ...r, [provider]: res.data!.test! }));
+      void load();
+      setBusy(null);
       return;
     }
-    if (action === "save") {
-      toast.success("Credenciais salvas com segurança no servidor.");
-      if (data.test) setResults((r) => ({ ...r, [provider]: data.test }));
-      void load();
-    } else {
-      setResults((r) => ({ ...r, [provider]: { ok: !!data.ok, message: data.message } }));
-      data.ok ? toast.success("Conexão bem-sucedida!") : toast.error("Conexão falhou.");
+
+    setBusy(null);
+    if (res.errorMessage) {
+      toast.error(res.errorMessage);
+      return;
     }
+    setResults((r) => ({ ...r, [provider]: { ok: !!res.data?.ok, message: res.data?.message || "" } }));
+    res.data?.ok ? toast.success("Conexão bem-sucedida!") : toast.error(res.data?.message || "Conexão falhou.");
   };
 
   if (loading) {
