@@ -412,15 +412,17 @@ export default function IntegrationsPanel() {
     }
 
     // TEST / SIMULATE: se a edge retornou "Provedor inválido." (versão antiga
-    // publicada) ou 404 (função não existe) ou 400 por provider desconhecido,
-    // usamos o fallback client-side. Nunca mais mostramos "Provedor inválido"
-    // para o usuário — testamos direto no provedor.
+    // publicada), ou 404 (função não existe), ou 403 (gates de admin da
+    // versão antiga), ou não devolveu dados, usamos o fallback client-side.
+    // Nunca mais mostramos "Provedor inválido" para o usuário — testamos
+    // direto no provedor, ou pelo menos dizemos que as credenciais estão
+    // salvas mas a edge está antiga. Erros REAIS vindos da edge nova (ex.:
+    // chave inválida, saldo, rede) continuam sendo exibidos normalmente.
     const edgeInvalid =
-      !!res.errorMessage &&
-      (res.status === 400 || res.status === 404 || res.status === 403) &&
-      (/Provedor inválido/i.test(res.errorMessage) ||
-        /invalid/i.test(res.errorMessage) ||
-        /Apenas administradores/i.test(res.errorMessage));
+      (!!res.errorMessage && /Provedor inválido|Apenas administradores|Função não encontrada|Function not found|Edge Function/i.test(res.errorMessage)) ||
+      res.status === 404 ||
+      res.status === 403 ||
+      !res.data;
 
     if (action === "test") {
       if (edgeInvalid || !res.data) {
