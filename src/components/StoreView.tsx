@@ -18,17 +18,6 @@ const SORT_OPTIONS: { id: SortKey; label: string }[] = [
   { id: "vendidos", label: "Mais vendidos" },
 ];
 
-const CATEGORY_COVERS: { id: string; label: string; image: string; to: string }[] = [
-  { id: "robux", label: "Robux", image: "/categories/robux.jpg", to: "/robux" },
-  { id: "contas", label: "Contas", image: "/categories/contas.jpg", to: "/loja?cat=Contas" },
-  { id: "bots", label: "Bots Discord", image: "/categories/bots.jpg", to: "/loja?cat=Bots%20Discord" },
-  { id: "scripts", label: "Scripts", image: "/categories/scripts.jpg", to: "/loja?cat=Scripts" },
-  { id: "assinaturas", label: "Assinaturas", image: "/categories/assinaturas.jpg", to: "/loja?cat=Assinaturas" },
-  { id: "jogos", label: "Jogos e Itens", image: "/categories/jogos.jpg", to: "/loja?cat=Jogos%20e%20Itens" },
-  { id: "keys", label: "Keys", image: "/categories/keys.jpg", to: "/loja?cat=Keys%20de%20Software" },
-  { id: "servicos", label: "Serviços", image: "/categories/servicos.jpg", to: "/loja?cat=Servi%C3%A7os%20Online" },
-];
-
 function ProductSkeleton() {
   return (
     <div className="bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden">
@@ -237,25 +226,6 @@ export default function StoreView() {
           <span className="flex items-center gap-1.5 text-[11px] text-white/40 bg-[#1a1a20] border border-[#25252e] px-3 py-1.5 rounded-full"><Shield className="w-3.5 h-3.5 text-[#0084ff]" /> Reembolso Garantido</span>
         </div>
       </div>
-
-      {category === "Todos" && !debouncedSearch && (
-        <section>
-          <h2 className="text-sm font-black text-white uppercase tracking-wide mb-3">Categorias populares</h2>
-          <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-1">
-            {CATEGORY_COVERS.map((tile) => (
-              <button
-                key={tile.id}
-                onClick={() => navigate(tile.to)}
-                className="relative shrink-0 w-[148px] sm:w-[168px] aspect-[4/3] rounded-xl overflow-hidden group border border-[#1e1e28] hover:border-[#0084ff]/50 focus:outline-none focus:ring-2 focus:ring-[#0084ff]"
-              >
-                <img src={tile.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
-                <span className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                <span className="absolute bottom-2 left-2 right-2 text-left text-[12px] font-black text-white drop-shadow">{tile.label}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* Filters panel */}
       {showFilters && (

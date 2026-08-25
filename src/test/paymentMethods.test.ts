@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyPaymentMethods, paymentMethodsNotice } from "@/lib/paymentMethods";
+import { checkoutMethods, classifyPaymentMethods, paymentMethodsNotice } from "@/lib/paymentMethods";
 import type { EdgeCallResult } from "@/lib/edgeErrors";
 
 /**
@@ -32,10 +32,11 @@ describe("classifyPaymentMethods", () => {
     });
   });
 
-  it("403 (função antiga: gate de admin) vira 'outdated', nunca 'não configurado'", () => {
+  it("403 (função antiga: gate de admin) vira 'outdated' e o checkout oferece PIX+Crypto", () => {
     const state = classifyPaymentMethods(failed(403));
     expect(state.status).toBe("outdated");
-    expect(paymentMethodsNotice(state)?.message).toMatch(/atualizando os meios de pagamento/i);
+    expect(paymentMethodsNotice(state)).toBeNull();
+    expect(checkoutMethods(state)).toEqual({ pix: true, crypto: true, card: false, boleto: false });
   });
 
   it("200 sem methods (formato antigo) vira 'outdated'", () => {
@@ -48,10 +49,12 @@ describe("classifyPaymentMethods", () => {
     expect(state.status).toBe("outdated");
   });
 
-  it("503/`payment_settings_unavailable` vira falha de consulta com retry", () => {
+  it("503/`payment_settings_unavailable` avisa, mas o checkout ainda oferece PIX+Crypto", () => {
     const state = classifyPaymentMethods(failed(503, "payment_settings_unavailable"));
     expect(state.status).toBe("settingsFailed");
     expect(paymentMethodsNotice(state)?.retryable).toBe(true);
+    expect(checkoutMethods(state)?.pix).toBe(true);
+    expect(checkoutMethods(state)?.crypto).toBe(true);
   });
 
   it("401 vira sessão expirada", () => {

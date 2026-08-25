@@ -70,6 +70,7 @@ export default function IntegrationsPanel() {
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string }>>({});
   const [webhookUrl, setWebhookUrl] = useState("");
   const [zennithWebhookUrl, setZennithWebhookUrl] = useState(ZENNITH_WEBHOOK);
+  const [gateways, setGateways] = useState({ pix: true, crypto: true, card: false, boleto: false });
 
   const load = async () => {
     setLoading(true);
@@ -106,6 +107,19 @@ export default function IntegrationsPanel() {
     setZennithWebhookUrl(res.data?.zennithWebhookUrl || ZENNITH_WEBHOOK);
     setValues(next);
     setMasks(nextMasks);
+
+    const { data: rows } = await (supabase as any)
+      .from("app_settings")
+      .select("key, value")
+      .in("key", ["zennithpay", "vexopay", "stripe", "checkout_gateways"]);
+    const byKey = Object.fromEntries((rows || []).map((r: any) => [r.key, r.value || {}]));
+    const saved = byKey.checkout_gateways || {};
+    setGateways({
+      pix: saved.pix ?? byKey.zennithpay?.enabled !== false,
+      crypto: saved.crypto ?? byKey.vexopay?.enabled !== false,
+      card: saved.card ?? byKey.stripe?.enabled === true,
+      boleto: saved.boleto ?? byKey.stripe?.boletoEnabled === true,
+    });
     setLoading(false);
   };
 
@@ -113,6 +127,37 @@ export default function IntegrationsPanel() {
 
   const setField = (provider: string, key: string, val: string) =>
     setValues((v) => ({ ...v, [provider]: { ...(v[provider] || {}), [key]: val } }));
+
+  const copyWebhook = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Webhook copiado.");
+    } catch {
+      toast.error("Não foi possível copiar.");
+    }
+  };
+
+  const toggleGateway = async (id: "pix" | "crypto" | "card" | "boleto") => {
+    const next = { ...gateways, [id]: !gateways[id] };
+    setGateways(next);
+    try {
+      await (supabase as any).from("app_settings").upsert({ key: "checkout_gateways", value: next }, { onConflict: "key" });
+      const map: Record<string, { provider: string; flag: string }> = {
+        pix: { provider: "zennithpay", flag: "enabled" },
+        crypto: { provider: "vexopay", flag: "enabled" },
+        card: { provider: "stripe", flag: "enabled" },
+        boleto: { provider: "stripe", flag: "boletoEnabled" },
+      };
+      const target = map[id];
+      const { data: existing } = await (supabase as any).from("app_settings").select("value").eq("key", target.provider).maybeSingle();
+      const value = { ...(existing?.value || {}), [target.flag]: next[id] };
+      await (supabase as any).from("app_settings").upsert({ key: target.provider, value }, { onConflict: "key" });
+      toast.success(next[id] ? `${id.toUpperCase()} ativado no checkout.` : `${id.toUpperCase()} desativado no checkout.`);
+    } catch (e: any) {
+      setGateways(gateways);
+      toast.error(e?.message || "Não foi possível alterar o gateway.");
+    }
+  };
 
   const saveDirect = async (provider: string) => {
     const incoming = values[provider] || {};
@@ -191,6 +236,28 @@ export default function IntegrationsPanel() {
         </p>
       </div>
 
+      <div className="glass-card p-5 bg-card space-y-3">
+        <h3 className="font-bold text-foreground text-sm">Gateways ativos no checkout</h3>
+        <p className="text-[11px] text-muted-foreground">Escolha o que o comprador pode usar. PIX = ZennithPay, Crypto = VexoPay.</p>
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            { id: "pix" as const, label: "PIX" },
+            { id: "crypto" as const, label: "Crypto" },
+            { id: "card" as const, label: "Cartão" },
+            { id: "boleto" as const, label: "Boleto" },
+          ]).map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              onClick={() => void toggleGateway(g.id)}
+              className={`p-3 rounded-xl border text-sm font-bold transition ${gateways[g.id] ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-border"}`}
+            >
+              {gateways[g.id] ? `${g.label} ligado` : `${g.label} desligado`}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {PROVIDERS.map((p) => {
         const result = results[p.id];
         return (
@@ -238,9 +305,12 @@ export default function IntegrationsPanel() {
                 <input
                   readOnly
                   value={zennithWebhookUrl}
-                  onClick={(e) => (e.target as HTMLInputElement).select()}
-                  className="w-full p-3 rounded-xl bg-muted text-[11px] text-foreground font-mono select-all"
+                  onClick={() => void copyWebhook(zennithWebhookUrl)}
+                  className="w-full p-3 rounded-xl bg-muted text-[11px] text-foreground font-mono select-all cursor-pointer"
                 />
+                <button type="button" onClick={() => void copyWebhook(zennithWebhookUrl)} className="mt-2 text-[11px] font-bold text-primary">
+                  Copiar webhook
+                </button>
                 <p className="text-[10px] text-muted-foreground mt-1">
                   A ZennithPay assina cada entrega com HMAC-SHA256 (X-Zennith-Signature). Sem o segredo, o webhook é recusado. Todo Pix pago é reconferido na API antes de liberar o pedido.
                 </p>
@@ -254,9 +324,12 @@ export default function IntegrationsPanel() {
                 <input
                   readOnly
                   value={webhookUrl}
-                  onClick={(e) => (e.target as HTMLInputElement).select()}
-                  className="w-full p-3 rounded-xl bg-muted text-[11px] text-foreground font-mono select-all"
+                  onClick={() => void copyWebhook(webhookUrl)}
+                  className="w-full p-3 rounded-xl bg-muted text-[11px] text-foreground font-mono select-all cursor-pointer"
                 />
+                <button type="button" onClick={() => void copyWebhook(webhookUrl)} className="mt-2 text-[11px] font-bold text-primary">
+                  Copiar webhook
+                </button>
               </div>
             )}
 

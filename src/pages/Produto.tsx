@@ -13,8 +13,9 @@ import { formatBRL, formatRobuxPackage, formatStockLabel, productMinQuantity, pr
 import { BUYER_FEE, checkoutTotals } from "@/lib/fees";
 import CryptoPaymentModal, { CryptoCharge } from "@/components/CryptoPaymentModal";
 import { unwrapEdgeCall } from "@/lib/edgeErrors";
-import { classifyPaymentMethods, paymentMethodsNotice, PaymentMethodsState } from "@/lib/paymentMethods";
-import { friendlyQuestionError, isSchemaMissing, QUESTIONS_UPDATE_MESSAGE } from "@/lib/questionErrors";
+import { checkoutMethods, classifyPaymentMethods, paymentMethodsNotice, PaymentMethodsState } from "@/lib/paymentMethods";
+import { friendlyQuestionError, isSchemaMissing } from "@/lib/questionErrors";
+import { containsExternalContact } from "@/lib/externalContact";
 
 // Eldorado-style seller row
 interface SellerOffer {
@@ -65,7 +66,7 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
   }, [methodsRetry]);
 
   const loadingMethods = methodsState.status === "loading";
-  const available = methodsState.status === "ok" ? methodsState.methods : null;
+  const available = checkoutMethods(methodsState);
   const isAvailable = (id: CheckoutMethod) => !!available?.[id];
   const anyMethod = !!available && Object.values(available).some(Boolean);
   const notice = paymentMethodsNotice(methodsState);
@@ -201,7 +202,7 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
 export default function ProdutoPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { state, buyProduct, refreshPurchases, savePixCharge, catalogStatus, refreshProducts, loadProductReviews } = useStore();
+  const { state, buyProduct, refreshPurchases, savePixCharge, catalogStatus, refreshProducts, loadProductReviews, addProductQuestion, answerProductQuestion } = useStore();
   const { isFavorite, toggle } = useFavorites();
   const [selectedVariation, setSelectedVariation] = useState<ProductVariation | null>(null);
   const [detailTab, setDetailTab] = useState<"info" | "reviews" | "questions">("info");
@@ -310,11 +311,10 @@ export default function ProdutoPage() {
       .eq("product_id", productId)
       .order("created_at", { ascending: false });
     if (error) {
-      // Detalhe técnico só no console; a seção entra em estado "unavailable"
-      // honesto (o composer é desabilitado, nada é simulado localmente).
       friendlyQuestionError(error, "load");
       setRemoteQuestions([]);
-      setQuestionsStatus("unavailable");
+      // Tabela nova ainda não publicada: usa o JSON `products.questions` que já existe.
+      setQuestionsStatus("ready");
       return;
     }
     setRemoteQuestions(data || []);
@@ -480,18 +480,46 @@ export default function ProdutoPage() {
     } catch {}
   };
 
+  const persistLegacyQuestions = async (next: Array<{ id: number; userEmail: string; userName: string; text: string; date: string; answer?: string; answerDate?: string }>) => {
+    const { error } = await (supabase as any).from("products").update({ questions: next }).eq("id", product.id);
+    return error;
+  };
+
   const handleSendQuestion = async () => {
     if (!state.currentUser) { setAuthOpen(true); return; }
     const clean = question.trim();
     if (clean.length < 3) { toast.error("Escreva uma pergunta com pelo menos 3 caracteres."); return; }
+    if (containsExternalContact(clean)) {
+      toast.error("Não é permitido enviar contatos externos (WhatsApp, Discord, e-mail, links ou telefone).");
+      return;
+    }
     setSendingQuestion(true);
-    // O erro cru do PostgREST (ex.: função ausente do schema cache) nunca vai
-    // ao toast: é classificado, vai ao console e vira mensagem segura.
     const { error } = await (supabase as any).rpc("ask_product_question", { _product_id: product.id, _body: clean });
+    if (error && isSchemaMissing(error)) {
+      const next = [
+        ...(product.questions || []),
+        {
+          id: Date.now(),
+          userEmail: state.currentUser.email || "",
+          userName: state.currentUser.name || "Comprador",
+          text: clean,
+          date: new Date().toISOString(),
+        },
+      ];
+      const upErr = await persistLegacyQuestions(next);
+      setSendingQuestion(false);
+      if (upErr) {
+        toast.error(friendlyQuestionError(upErr, "ask"));
+        return;
+      }
+      addProductQuestion(product.id, clean);
+      toast.success("Pergunta enviada ao vendedor.");
+      setQuestion("");
+      return;
+    }
     setSendingQuestion(false);
     if (error) {
       toast.error(friendlyQuestionError(error, "ask"));
-      if (isSchemaMissing(error)) setQuestionsStatus("unavailable");
       return;
     }
     toast.success("Pergunta enviada ao vendedor.");
@@ -504,6 +532,21 @@ export default function ProdutoPage() {
     if (clean.length < 1) { toast.error("Escreva a resposta antes de enviar."); return; }
     setSendingAnswer(questionId);
     const { error } = await (supabase as any).rpc("answer_product_question", { _question_id: questionId, _answer: clean });
+    if (error && isSchemaMissing(error)) {
+      const next = (product.questions || []).map((item) =>
+        item.id === questionId ? { ...item, answer: clean, answerDate: new Date().toISOString() } : item,
+      );
+      const upErr = await persistLegacyQuestions(next);
+      setSendingAnswer(null);
+      if (upErr) {
+        toast.error(friendlyQuestionError(upErr, "answer"));
+        return;
+      }
+      answerProductQuestion(product.id, questionId, clean);
+      toast.success("Resposta publicada.");
+      setAnswerDrafts((drafts) => ({ ...drafts, [questionId]: "" }));
+      return;
+    }
     setSendingAnswer(null);
     if (error) { toast.error(friendlyQuestionError(error, "answer")); return; }
     toast.success("Resposta publicada.");
@@ -737,7 +780,7 @@ export default function ProdutoPage() {
               <div className="mt-5 space-y-3">
                 {questionsStatus === "loading" && <p className="text-sm text-white/40">Carregando perguntas…</p>}
                 {questionsStatus === "unavailable" && (
-                  <p className="text-sm text-white/40" role="status">{QUESTIONS_UPDATE_MESSAGE}</p>
+                  <p className="text-sm text-white/40" role="status">Não foi possível carregar as perguntas agora.</p>
                 )}
                 {productQuestions.slice(0, questionsShown).map((item) => (
                   <article key={item.id} className="rounded-xl bg-[#1a1a20] border border-[#25252e] p-4">

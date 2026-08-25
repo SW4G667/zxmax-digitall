@@ -642,7 +642,19 @@ export default function AdminView() {
 
           <div className="glass-card p-4">
             <p className="text-xs font-bold text-muted-foreground uppercase mb-1">URL do Webhook (cole no painel EvoPay)</p>
-            <input readOnly value={state.config.evopayWebhookUrl} onClick={(e) => (e.target as HTMLInputElement).select()} className="w-full p-3 rounded-xl bg-muted text-xs text-foreground font-mono select-all" />
+            <input
+              readOnly
+              value={state.config.evopayWebhookUrl}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(state.config.evopayWebhookUrl);
+                  toast.success("Webhook copiado.");
+                } catch {
+                  toast.error("Não foi possível copiar.");
+                }
+              }}
+              className="w-full p-3 rounded-xl bg-muted text-xs text-foreground font-mono select-all cursor-pointer"
+            />
           </div>
 
           {logsLoading ? (
