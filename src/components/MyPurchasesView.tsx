@@ -144,14 +144,16 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
     setDisputeReason("");
   };
 
-  const handleReview = () => {
+  const handleReview = async () => {
     if (!selectedId || !comment.trim()) {
       toast.error("Por favor, escreva um comentário.");
       return;
     }
-    reviewPurchase(selectedId, rating, comment);
-    toast.success("Avaliação enviada!");
-    setShowReview(false);
+    const ok = await reviewPurchase(selectedId, rating, comment);
+    if (ok) {
+      toast.success("Avaliação enviada!");
+      setShowReview(false);
+    }
   };
 
   const handleConfirm = async () => {

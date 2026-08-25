@@ -1,6 +1,6 @@
 /** Columns the client is allowed to read from `public.products`.
  * Deliberately excludes `seller_email` and `delivery_content`. */
-export const SAFE_PRODUCT_COLUMNS = "id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at,stock,min_quantity,delivery_time";
+export const SAFE_PRODUCT_COLUMNS = "id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at,stock,min_quantity,delivery_time,review_count,review_avg,review_positive";
 
 /** Same list without the columns added by the 2026-08 migrations. Used as a
  * degraded retry so an out-of-date database still returns a catalog instead of

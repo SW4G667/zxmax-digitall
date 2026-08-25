@@ -23,12 +23,13 @@ export default function UserProfileModal({ open, onClose, userEmail, userId }: P
   const isVerified = !!dirEntry?.isVerified;
 
   const sellerProducts = state.products.filter((p) => p.sellerId === sellerUuid && p.approved);
-  const sellerPurchases = state.purchases.filter((p) => p.sellerId === sellerUuid);
-  const sellerReviews = sellerPurchases.filter((p) => p.reviewed);
-  
-  const avgRating = sellerReviews.length > 0
-    ? (sellerReviews.reduce((a, r) => a + (r.reviewStars || 0), 0) / sellerReviews.length).toFixed(1)
-    : "Novo";
+  // Aggregates come from the persisted product review stats (reviews migration), never
+  // invented. Before that exists they are 0 and the UI shows "Novo • 0 avaliações".
+  const totalReviews = sellerProducts.reduce((acc, p) => acc + (p.reviewCount ?? 0), 0);
+  const weightedSum = sellerProducts.reduce((acc, p) => acc + (p.reviewAvg ?? 0) * (p.reviewCount ?? 0), 0);
+  const positiveSum = sellerProducts.reduce((acc, p) => acc + (p.reviewPositive ?? 0), 0);
+  const avgRating = totalReviews > 0 ? (weightedSum / totalReviews).toFixed(1) : "Novo";
+  const positivePct = totalReviews > 0 ? Math.round((positiveSum / totalReviews) * 100) : 0;
 
   if (!open) return null;
 
@@ -54,6 +55,11 @@ export default function UserProfileModal({ open, onClose, userEmail, userId }: P
             )}
           </div>
           <h4 className="text-2xl font-black text-foreground">{sellerName}</h4>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            {totalReviews > 0
+              ? `${positivePct}% positivas · ${totalReviews} avaliação(ões)`
+              : "Novo • 0 avaliações"}
+          </p>
           {isVerified ? (
             <div className="flex items-center gap-1.5 mt-1 bg-success/10 px-3 py-1 rounded-full">
               <Shield className="w-3 h-3 text-success" />
@@ -70,7 +76,7 @@ export default function UserProfileModal({ open, onClose, userEmail, userId }: P
         <div className="grid grid-cols-3 gap-3 mb-8">
           <div className="bg-muted rounded-2xl p-3 text-center">
             <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Vendas</p>
-            <p className="text-lg font-black text-foreground">{sellerPurchases.length}</p>
+            <p className="text-lg font-black text-foreground">{state.purchases.filter((p) => p.sellerId === sellerUuid).length}</p>
           </div>
           <div className="bg-muted rounded-2xl p-3 text-center">
             <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Avaliação</p>
@@ -78,6 +84,7 @@ export default function UserProfileModal({ open, onClose, userEmail, userId }: P
               <StarEmoji className="w-3 h-3" />
               <p className="text-lg font-black text-foreground">{avgRating}</p>
             </div>
+            <p className="text-[10px] text-muted-foreground mt-1">{totalReviews} avaliação(ões)</p>
           </div>
           <div className="bg-muted rounded-2xl p-3 text-center">
             <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Produtos</p>

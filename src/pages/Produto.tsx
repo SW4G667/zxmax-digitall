@@ -28,6 +28,7 @@ interface SellerOffer {
   sellerId: string;
   rating: number;
   reviews: number;
+  positivePct: number;
   verified: boolean;
 }
 
@@ -185,7 +186,7 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
 export default function ProdutoPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { state, buyProduct, refreshPurchases, savePixCharge, catalogStatus, refreshProducts } = useStore();
+  const { state, buyProduct, refreshPurchases, savePixCharge, catalogStatus, refreshProducts, loadProductReviews } = useStore();
   const { isFavorite, toggle } = useFavorites();
   const [selectedVariation, setSelectedVariation] = useState<ProductVariation | null>(null);
   const [detailTab, setDetailTab] = useState<"info" | "reviews" | "questions">("info");
@@ -206,6 +207,8 @@ export default function ProdutoPage() {
   const [sendingQuestion, setSendingQuestion] = useState(false);
   const [answerDrafts, setAnswerDrafts] = useState<Record<number, string>>({});
   const [sendingAnswer, setSendingAnswer] = useState<number | null>(null);
+  const [realReviews, setRealReviews] = useState<Array<{ id: number; stars: number; comment: string; createdAt: string; buyerName: string }>>([]);
+  const [reviewsStatus, setReviewsStatus] = useState<"loading" | "ready" | "unavailable">("loading");
 
   const productId = Number(id);
   const product = state.products.find((p) => p.id === productId);
@@ -217,9 +220,11 @@ export default function ProdutoPage() {
     if (!isRobux) return [];
     const robuxProducts = state.products.filter((p) => p.category === ROBUX_CATEGORY && p.approved);
     const offers: SellerOffer[] = robuxProducts.map((p) => {
-      // Real reviews from purchases, not fake 100
-      const realReviews = state.purchases.filter((pu) => pu.productId === p.id && pu.reviewed);
-      const realRating = realReviews.length > 0 ? realReviews.reduce((a, r) => a + (r.reviewStars || 0), 0) / realReviews.length : 0;
+      // Real review aggregates persisted on the product row (reviews migration);
+      // before it exists these are undefined and the UI shows "Novo • 0 avaliações".
+      const reviewCount = p.reviewCount ?? 0;
+      const rating = reviewCount > 0 ? Number((p.reviewAvg ?? 0).toFixed(1)) : 0;
+      const positivePct = reviewCount > 0 && p.reviewPositive ? Math.round((p.reviewPositive / reviewCount) * 100) : 0;
       return {
         id: p.id,
         product: p,
@@ -231,8 +236,9 @@ export default function ProdutoPage() {
         delivery: p.deliveryTime || "Combinado com o vendedor",
         sellerName: p.seller,
         sellerId: p.sellerId,
-        rating: realReviews.length > 0 ? Number((realRating * 20).toFixed(1)) : 0, // 0 until someone reviews
-        reviews: realReviews.length, // 0 initially, not 100 fake
+        rating,
+        reviews: reviewCount,
+        positivePct,
         verified: !!state.userDirectory?.[p.sellerId]?.isVerified,
       };
     });
@@ -248,12 +254,25 @@ export default function ProdutoPage() {
     return sellerOffers.find((o) => o.id === productId) || sellerOffers[0];
   }, [sellerOffers, productId, isRobux]);
 
-  const productReviews = useMemo(() => {
-    if (!product) return [];
-    return state.purchases.filter((p) => p.productId === product.id && p.reviewed);
-  }, [product, state.purchases]);
+  const productReviews = useMemo(() => realReviews, [realReviews]);
 
-  const avgRating = productReviews.length > 0 ? (productReviews.reduce((a, r) => a + (r.reviewStars || 0), 0) / productReviews.length).toFixed(1) : null;
+  // Aggregate comes from the persisted server stats (reviews migration). Honest
+  // empty state: Product with 0 reviews shows "—" and "Sem avaliações ainda".
+  const reviewCount = product?.reviewCount ?? 0;
+  const avgRating = reviewCount > 0 ? (product?.reviewAvg ?? 0).toFixed(1) : null;
+
+  useEffect(() => {
+    let active = true;
+    if (!productId) return;
+    setReviewsStatus("loading");
+    void (async () => {
+      const reviews = await loadProductReviews(productId);
+      if (!active) return;
+      setRealReviews(reviews);
+      setReviewsStatus(reviews.length > 0 ? "ready" : "ready");
+    })();
+    return () => { active = false; };
+  }, [productId, loadProductReviews]);
   const legacyQuestions = product?.questions || [];
   const productQuestions = remoteQuestions.length > 0
     ? remoteQuestions.map((q) => ({ id: q.id, userEmail: "", userName: "Comprador", text: q.body, date: q.created_at, answer: q.answer || undefined, answerDate: q.answered_at || undefined }))
@@ -509,7 +528,7 @@ export default function ProdutoPage() {
                       <p className="text-xs flex items-center gap-2">
                         {currentOffer.reviews > 0 ? (
                           <>
-                            <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3.5 h-3.5" /> {currentOffer.rating}%</span>
+                            <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3.5 h-3.5" /> {currentOffer.positivePct}%</span>
                             <span className="text-[#0084ff] underline cursor-pointer" onClick={() => setDetailTab("reviews")}>{currentOffer.reviews} avaliações</span>
                           </>
                         ) : (
@@ -579,7 +598,7 @@ export default function ProdutoPage() {
                             <p className="text-xs flex items-center gap-2">
                               {offer.reviews > 0 ? (
                                 <>
-                                  <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3 h-3" /> {offer.rating}%</span>
+                                  <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3 h-3" /> {offer.positivePct}%</span>
                                   <span className="text-[#0084ff] underline">{offer.reviews} avaliações</span>
                                 </>
                               ) : (
@@ -755,7 +774,30 @@ export default function ProdutoPage() {
               )}
             </section>
 
-            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5 sm:p-6"><h2 className="text-sm font-black tracking-wide text-white">AVALIAÇÕES ({productReviews.length})</h2><div className="flex items-center gap-3 mt-4"><p className="text-3xl font-black text-white">{avgRating || "—"}</p><div><div className="flex text-[#ffbd2e]">{[1,2,3,4,5].map((star) => <Star key={star} className={`w-4 h-4 ${avgRating && star <= Math.round(Number(avgRating)) ? "fill-current" : "text-white/15"}`} />)}</div><p className="text-xs text-white/40 mt-1">{productReviews.length ? `${productReviews.length} avaliação(ões)` : "Sem avaliações ainda"}</p></div></div><div className="mt-5 space-y-3">{productReviews.map((review) => <article key={review.id} className="border-t border-[#1e1e28] pt-3"><p className="text-sm text-white">{review.reviewComment || "Sem comentário."}</p><p className="text-[11px] text-white/35 mt-1">Comprador · {new Date(review.createdAt).toLocaleDateString("pt-BR")}</p></article>)}</div></section>
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5 sm:p-6" aria-label="Avaliações do produto">
+              <h2 className="text-sm font-black tracking-wide text-white">AVALIAÇÕES ({reviewCount})</h2>
+              <div className="flex items-center gap-3 mt-4">
+                <p className="text-3xl font-black text-white">{avgRating || "—"}</p>
+                <div>
+                  <div className="flex text-[#ffbd2e]">{[1,2,3,4,5].map((star) => <Star key={star} className={`w-4 h-4 ${avgRating && star <= Math.round(Number(avgRating)) ? "fill-current" : "text-white/15"}`} />)}</div>
+                  <p className="text-xs text-white/40 mt-1">{reviewCount ? `${reviewCount} avaliação(ões)` : "Sem avaliações ainda"}</p>
+                </div>
+              </div>
+              <div className="mt-5 space-y-3">
+                {reviewsStatus === "loading" && reviewCount > 0 && <p className="text-sm text-white/40">Carregando avaliações…</p>}
+                {reviewCount === 0 && <p className="text-sm text-white/40 py-2">Seja o primeiro a avaliar este produto após a compra.</p>}
+                {productReviews.map((review) => (
+                  <article key={review.id} className="border-t border-[#1e1e28] pt-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="flex text-[#ffbd2e]">{[1,2,3,4,5].map((star) => <Star key={star} className={`w-3 h-3 ${star <= (review.stars || 0) ? "fill-current" : "text-white/15"}`} />)}</span>
+                      <span className="text-[11px] font-bold text-white/60">{review.buyerName}</span>
+                    </div>
+                    <p className="text-sm text-white mt-1">{review.comment || "Sem comentário."}</p>
+                    <p className="text-[11px] text-white/35 mt-1">{new Date(review.createdAt).toLocaleDateString("pt-BR")}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
           </main>
 
           <aside className="lg:sticky lg:top-20 space-y-4">

@@ -75,6 +75,9 @@ export interface Product {
   stock?: number;
   minQuantity?: number;
   deliveryTime?: string;
+  reviewCount?: number;
+  reviewAvg?: number;
+  reviewPositive?: number;
   sellerRating?: number;
   sellerReviews?: number;
   createdAt?: string;
@@ -241,7 +244,8 @@ interface StoreContextType {
   sellerRefundOrder: (purchaseId: number, reason: string) => Promise<{ success: boolean; error?: string }>;
   checkAutoReleaseOrders: () => Promise<void>;
   openDispute: (purchaseId: number, reason: string) => Promise<boolean>;
-  reviewPurchase: (purchaseId: number, stars: number, comment: string) => void;
+  reviewPurchase: (purchaseId: number, stars: number, comment: string) => Promise<boolean>;
+  loadProductReviews: (productId: number) => Promise<Array<{ id: number; stars: number; comment: string; createdAt: string; buyerName: string }>>;
   addProductQuestion: (productId: number, text: string) => void;
   answerProductQuestion: (productId: number, questionId: number, answer: string) => void;
   deleteNotice: (id: number) => void;
@@ -537,6 +541,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           stock: p.stock ?? undefined,
           minQuantity: p.min_quantity ?? undefined,
           deliveryTime: p.delivery_time || undefined,
+          reviewCount: Number.isFinite(Number(p.review_count)) ? Number(p.review_count) : undefined,
+          reviewAvg: Number.isFinite(Number(p.review_avg)) ? Number(p.review_avg) : undefined,
+          reviewPositive: Number.isFinite(Number(p.review_positive)) ? Number(p.review_positive) : undefined,
           sellerRating: undefined, sellerReviews: undefined, createdAt: p.created_at || undefined,
         };
       }) as Product[];
@@ -1067,13 +1074,61 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const reviewPurchase = (purchaseId: number, stars: number, comment: string) =>
+  const reviewPurchase = async (purchaseId: number, stars: number, comment: string): Promise<boolean> => {
+    const cleanComment = (comment || "").trim();
+    if (cleanComment.length < 3) {
+      toast.error("Escreva um comentário com pelo menos 3 caracteres.");
+      return false;
+    }
+    const { error } = await (supabase as any).rpc("create_product_review", {
+      _purchase_id: purchaseId,
+      _stars: stars,
+      _comment: cleanComment,
+    });
+    if (error) {
+      // Detalhe técnico só no console; o usuário recebe texto seguro e fixo.
+      console.error("[zxmax:review]", error);
+      const code = String(error?.code ?? "");
+      const msg = code === "42501" ? "Faça login para avaliar."
+        : code === "P0001" ? "Só é possível avaliar após a confirmação do recebimento."
+        : code === "23505" ? "Você já avaliou este pedido."
+        : code === "22023" ? "Avaliação inválida. Confira as estrelas e o comentário."
+        : (error?.message || "Não foi possível enviar a avaliação. Tente novamente.");
+      toast.error(msg);
+      return false;
+    }
+    // Atualiza o estado local imediatamente e re-lê o catálogo para os agregados.
     setState((s) => ({
       ...s,
       purchases: s.purchases.map((p) =>
-        p.id === purchaseId ? { ...p, reviewed: true, reviewStars: stars, reviewComment: comment } : p
+        p.id === purchaseId ? { ...p, reviewed: true, reviewStars: stars, reviewComment: cleanComment } : p
       ),
     }));
+    await loadCatalog();
+    return true;
+  };
+
+  const loadProductReviews = async (productId: number) => {
+    const { data, error } = await (supabase as any)
+      .from("product_reviews")
+      .select("id, stars, comment, created_at, buyer_id")
+      .eq("product_id", productId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error) {
+      console.error("[zxmax:reviews:load]", error);
+      return [];
+    }
+    const reviews = (data || []) as Array<{ id: number; stars: number; comment: string; created_at: string; buyer_id: string }>;
+    // Resolve nomes dos compradores a partir do diretório (sem expor e-mails).
+    return reviews.map((r) => ({
+      id: r.id,
+      stars: r.stars,
+      comment: r.comment,
+      createdAt: r.created_at,
+      buyerName: state.userDirectory?.[r.buyer_id]?.name || "Comprador",
+    }));
+  };
 
   const setGlobalNotice = (notice: string) => updateConfig({ globalNotice: notice });
 
@@ -1254,7 +1309,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         approveWithdraw, rejectWithdraw, updateConfig, updateProfile,
         banUser, unbanUser, addTicket, replyTicket, closeTicket, resolveTicket,
         setGlobalNotice, publishNotice, updatePixKey, sendAdminChat,
-        sendPurchaseMessage, confirmDelivery, confirmOrderReceipt, sellerRefundOrder, checkAutoReleaseOrders, openDispute, reviewPurchase,
+        sendPurchaseMessage, confirmDelivery, confirmOrderReceipt, sellerRefundOrder, checkAutoReleaseOrders, openDispute, reviewPurchase, loadProductReviews,
         addProductQuestion, answerProductQuestion,
         deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
         verifyUser, saveGatewaySettings, submitSellerDocument, reviewSellerDocument, isDark, toggleDark,

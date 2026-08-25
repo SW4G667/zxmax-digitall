@@ -54,7 +54,17 @@ export default function StoreView() {
     () => storefrontProducts(state.products, state.currentUser?.id),
     [state.products, state.currentUser?.id],
   );
-  const categories = useMemo(() => ["Todos", ...state.config.categories], [state.config.categories]);
+  // Robux lives on its own /robux storefront; keep it out of the common grid.
+  const nonRobux = useMemo(
+    () => approved.filter((p) => p.category !== ROBUX_CATEGORY),
+    [approved],
+  );
+  // Robux has its own dedicated storefront at /robux (Eldorado-style); it must
+  // NOT appear in the common store listing.
+  const categories = useMemo(
+    () => ["Todos", ...state.config.categories.filter((c) => c !== ROBUX_CATEGORY)],
+    [state.config.categories],
+  );
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim().toLowerCase()), 300);
@@ -84,9 +94,9 @@ export default function StoreView() {
   useEffect(() => { setVisible(PAGE_SIZE); }, [debouncedSearch, category, sort, maxPrice, deliveryFilter, onlyVerified]);
 
   const priceCeiling = useMemo(() => {
-    const highest = approved.reduce((max, p) => Math.max(max, Number(p.price) || 0), 0);
+    const highest = nonRobux.reduce((max, p) => Math.max(max, Number(p.price) || 0), 0);
     return Math.max(10, Math.ceil(highest));
-  }, [approved]);
+  }, [nonRobux]);
 
   const isVerifiedSeller = useCallback(
     (sellerId: string) => !!state.userDirectory?.[sellerId]?.isVerified,
@@ -95,7 +105,7 @@ export default function StoreView() {
 
   const filtered = useMemo(() => {
     const q = debouncedSearch;
-    const result = approved.filter((p) => {
+    const result = nonRobux.filter((p) => {
       const matchSearch = !q
         || p.name.toLowerCase().includes(q)
         || p.category.toLowerCase().includes(q)
@@ -120,10 +130,10 @@ export default function StoreView() {
         sorted.sort((a, b) => (b.sales * 2 + b.rating) - (a.sales * 2 + a.rating) || b.id - a.id);
     }
     return sorted;
-  }, [approved, debouncedSearch, category, maxPrice, deliveryFilter, onlyVerified, sort, isVerifiedSeller]);
+  }, [nonRobux, debouncedSearch, category, maxPrice, deliveryFilter, onlyVerified, sort, isVerifiedSeller]);
 
   const page = filtered.slice(0, visible);
-  const trending = useMemo(() => [...approved].sort((a, b) => b.sales - a.sales).filter((p) => p.sales > 0).slice(0, 4), [approved]);
+  const trending = useMemo(() => [...nonRobux].sort((a, b) => b.sales - a.sales).filter((p) => p.sales > 0).slice(0, 4), [nonRobux]);
 
   const handleCategorySelect = (cat: string) => {
     setCategory(cat);
@@ -148,7 +158,6 @@ export default function StoreView() {
     setSort("relevancia"); setCategory("Todos"); handleSearch("");
   };
 
-  const isRobuxCategory = category === ROBUX_CATEGORY;
   const isFirstLoad = catalogStatus === "loading" && approved.length === 0;
   const hasActiveFilters = maxPrice !== null || deliveryFilter !== "todos" || onlyVerified || !!debouncedSearch || category !== "Todos";
 
@@ -163,14 +172,11 @@ export default function StoreView() {
       {/* Top filters - clean pills */}
       <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1" role="tablist" aria-label="Categorias">
         <button
-          role="tab"
-          aria-selected={isRobuxCategory}
-          onClick={() => handleCategorySelect(ROBUX_CATEGORY)}
-          className={`shrink-0 px-5 py-2.5 rounded-full text-sm font-black tracking-wide transition-all ${
-            isRobuxCategory ? "bg-[#ffbd2e] text-black" : "bg-[#1a1a20] border border-[#25252e] text-white hover:border-[#ffbd2e]/30"
-          }`}
+          onClick={() => navigate("/robux")}
+          className="shrink-0 px-5 py-2.5 rounded-full text-sm font-black tracking-wide bg-[#ffbd2e] text-black hover:bg-[#e6a829] transition-all flex items-center gap-1.5"
         >
           R$ ROBUX
+          <span className="text-[10px] uppercase bg-black/15 px-1.5 py-0.5 rounded-full">Ver loja</span>
         </button>
         {categories.map((cat) => (
           <button
