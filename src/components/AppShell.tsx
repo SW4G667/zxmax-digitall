@@ -4,6 +4,7 @@ import SideMenu from "@/components/SideMenu";
 import BottomNav from "@/components/BottomNav";
 import ProfileModal from "@/components/ProfileModal";
 import AuthScreen from "@/components/AuthScreen";
+import SiteFooter from "@/components/SiteFooter";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 
@@ -39,6 +40,7 @@ export default function AppShell({ children }: Props) {
         onMenuClick={() => setMenuOpen(true)}
       />
       <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
+      <SiteFooter />
       <BottomNav />
       <SideMenu
         open={menuOpen}

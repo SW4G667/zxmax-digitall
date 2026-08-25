@@ -15,6 +15,7 @@ const json = (body: unknown, status = 200) =>
 
 /** Fields we persist per provider. Secret fields are never returned to the client. */
 const PROVIDERS: Record<string, { secret: string[]; plain: string[] }> = {
+  zennithpay: { secret: ["apiKey", "webhookSecret"], plain: ["mode", "enabled", "baseUrl"] },
   evopay: { secret: ["apiKey"], plain: ["mode", "enabled", "baseUrl"] },
   vexopay: { secret: ["clientSecret", "webhookSecret"], plain: ["mode", "enabled", "baseUrl", "clientId"] },
   stripe: { secret: ["secretKey", "webhookSecret"], plain: ["publishableKey", "mode", "enabled"] },
@@ -25,6 +26,17 @@ const mask = (v: unknown) => (typeof v === "string" && v.length > 0 ? "•••
 
 async function testConnection(provider: string, cfg: Record<string, any>) {
   try {
+    if (provider === "zennithpay") {
+      if (!cfg.apiKey) return { ok: false, message: "API Key (X-API-Key) é obrigatória." };
+      const baseUrl = String(cfg.baseUrl || "https://zennithpay.online/api/v1").replace(/\/$/, "");
+      const r = await fetch(`${baseUrl}/balance`, {
+        headers: { "X-API-Key": String(cfg.apiKey), Accept: "application/json" },
+      });
+      const body = await r.text();
+      return r.ok
+        ? { ok: true, message: `Conexão OK com a ZennithPay. ${body.slice(0, 120)}` }
+        : { ok: false, message: `ZennithPay respondeu ${r.status}: ${body.slice(0, 200)}` };
+    }
     if (provider === "evopay") {
       if (!cfg.apiKey) return { ok: false, message: "API Key é obrigatória." };
       const r = await fetch("https://api.evopay.cash/v1/balance", {
@@ -48,13 +60,15 @@ async function testConnection(provider: string, cfg: Record<string, any>) {
     if (provider === "vexopay") {
       if (!cfg.clientId || !cfg.clientSecret) return { ok: false, message: "Client ID (ci) e Client Secret (cs) são obrigatórios." };
       const baseUrl = String(cfg.baseUrl || "https://www.vexopay.com.br/api").replace(/\/$/, "");
-      const r = await fetch(`${baseUrl}/balance`, {
-        headers: { ci: String(cfg.clientId), cs: String(cfg.clientSecret), Accept: "application/json" },
-      });
-      const body = await r.text();
-      return r.ok
-        ? { ok: true, message: `Conexão OK com a VexoPay. ${body.slice(0, 120)}` }
-        : { ok: false, message: `VexoPay respondeu ${r.status}: ${body.slice(0, 200)}` };
+      const headers = { ci: String(cfg.clientId), cs: String(cfg.clientSecret), Accept: "application/json" };
+      let last = "";
+      for (const path of ["/gateway/balance", "/balance", "/merchant/crypto-fees"]) {
+        const r = await fetch(`${baseUrl}${path}`, { headers });
+        const body = await r.text();
+        if (r.ok) return { ok: true, message: `Conexão OK com a VexoPay. ${body.slice(0, 120)}` };
+        last = `VexoPay respondeu ${r.status} em ${path}: ${body.slice(0, 160)}`;
+      }
+      return { ok: false, message: last || "VexoPay não respondeu." };
     }
     if (provider === "discord") {
       if (!cfg.clientId || !cfg.clientSecret) return { ok: false, message: "Client ID e Client Secret são obrigatórios." };
@@ -112,7 +126,7 @@ serve(async (req) => {
     // ------------------------------------------------------------------
     if (action === "payment_methods") {
       const { data: rows, error: settingsError } = await admin
-        .from("app_settings").select("key, value").in("key", ["evopay", "vexopay", "stripe"]);
+        .from("app_settings").select("key, value").in("key", ["zennithpay", "evopay", "vexopay", "stripe"]);
       if (settingsError) {
         console.error("payment_methods: falha ao ler app_settings:", settingsError.message);
         return json(
@@ -126,15 +140,12 @@ serve(async (req) => {
       const cfg = (key: string): Record<string, any> =>
         (rows || []).find((r: any) => r.key === key)?.value || {};
 
-      // Mesma precedência das funções de cobrança: chave salva no painel vence;
-      // secret de ambiente é fallback. O PIX é gerado pela VexoPay quando
-      // configurada (gateway primário) e pela EvoPay caso contrário — por isso
-      // basta UM deles estar pronto para o PIX ficar ativo.
-      const evopay = cfg("evopay");
+      // PIX = ZennithPay. Crypto = VexoPay. Cartão/boleto = Stripe.
+      const zennith = cfg("zennithpay");
       const vexopay = cfg("vexopay");
       const stripe = cfg("stripe");
 
-      const evopayReady = !!(evopay.apiKey || Deno.env.get("EVOPAY_API_KEY")) && evopay.enabled !== false;
+      const zennithReady = !!(zennith.apiKey || Deno.env.get("ZENNITH_API_KEY")) && zennith.enabled !== false;
       const vexopayReady = !!(
         (vexopay.clientId && vexopay.clientSecret) ||
         (Deno.env.get("VEXOPAY_CLIENT_ID") && Deno.env.get("VEXOPAY_CLIENT_SECRET"))
@@ -144,10 +155,9 @@ serve(async (req) => {
       return json({
         v: 2,
         methods: {
-          pix: evopayReady || vexopayReady,
+          pix: zennithReady,
           crypto: vexopayReady,
           card: cardReady && stripe.enabled !== false,
-          // Boleto exige Stripe ativa E o método habilitado no painel da Stripe.
           boleto: cardReady && stripe.enabled !== false && stripe.boletoEnabled !== false,
         },
       });
@@ -167,6 +177,7 @@ serve(async (req) => {
         await admin.from("app_settings").upsert({ key: "evopay", value: evoValue }, { onConflict: "key" });
       }
       const webhookUrl = `${supabaseUrl}/functions/v1/evopay-webhook?token=${evoValue.webhookToken}`;
+      const zennithWebhookUrl = `${supabaseUrl}/functions/v1/zennith-webhook`;
 
       const { data: rows } = await admin
         .from("app_settings")
@@ -180,7 +191,7 @@ serve(async (req) => {
         for (const f of fields.secret) safe[`${f}_masked`] = mask(value[f]);
         out[provider] = safe;
       }
-      return json({ integrations: out, webhookUrl });
+      return json({ integrations: out, webhookUrl, zennithWebhookUrl });
     }
 
     const provider = String(body.provider || "");

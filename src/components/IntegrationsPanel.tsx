@@ -7,9 +7,19 @@ type Field = { key: string; label: string; secret?: boolean; placeholder?: strin
 
 const PROVIDERS: { id: string; name: string; hint: string; fields: Field[] }[] = [
   {
+    id: "zennithpay",
+    name: "ZennithPay (PIX + Saques)",
+    hint: "Gateway principal de PIX e saques. Cole a chave privada gerada em Credenciais no painel da ZennithPay. A chave nunca volta para o navegador.",
+    fields: [
+      { key: "baseUrl", label: "Base URL", placeholder: "https://zennithpay.online/api/v1" },
+      { key: "apiKey", label: "API Key (X-API-Key)", secret: true, placeholder: "zpk_live_..." },
+      { key: "webhookSecret", label: "Segredo HMAC do webhook", secret: true, placeholder: "usado para validar X-Zennith-Signature" },
+    ],
+  },
+  {
     id: "vexopay",
-    name: "VexoPay (PIX + Crypto)",
-    hint: "Use o Client ID e o Client Secret gerados no painel da VexoPay em API Keys. A base padrão é https://www.vexopay.com.br/api",
+    name: "VexoPay (Crypto)",
+    hint: "Somente cobranças em cripto (USDT / USDC / BTC / TRX). Use o Client ID e o Client Secret gerados em API Keys.",
     fields: [
       { key: "baseUrl", label: "Base URL", placeholder: "https://www.vexopay.com.br/api" },
       { key: "clientId", label: "Client ID (ci)", placeholder: "vxp_ci_..." },
@@ -19,8 +29,8 @@ const PROVIDERS: { id: string; name: string; hint: string; fields: Field[] }[] =
   },
   {
     id: "evopay",
-    name: "EvoPay (PIX)",
-    hint: "Gateway de pagamento ativo. Cole a API Key gerada no painel da EvoPay.",
+    name: "EvoPay (legado)",
+    hint: "Mantido só como fallback. O PIX ativo é a ZennithPay.",
     fields: [
       { key: "apiKey", label: "API Key", secret: true, placeholder: "evp_..." },
     ],
@@ -56,6 +66,7 @@ export default function IntegrationsPanel() {
   const [busy, setBusy] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string }>>({});
   const [webhookUrl, setWebhookUrl] = useState("");
+  const [zennithWebhookUrl, setZennithWebhookUrl] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -76,7 +87,8 @@ export default function IntegrationsPanel() {
         else next[p.id][f.key] = cfg[f.key] || "";
       }
     }
-    setWebhookUrl(data.webhookUrl || "");
+    setWebhookUrl(data.webhookUrl || data.zennithWebhookUrl || "");
+    setZennithWebhookUrl(data.zennithWebhookUrl || data.webhookUrl || "");
     setValues(next);
     setMasks(nextMasks);
     setLoading(false);
@@ -167,10 +179,26 @@ export default function IntegrationsPanel() {
               </div>
             )}
 
+            {p.id === "zennithpay" && zennithWebhookUrl && (
+              <div>
+                <label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">
+                  URL do Webhook (cole no painel da ZennithPay)
+                </label>
+                <input
+                  readOnly
+                  value={zennithWebhookUrl}
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                  className="w-full p-3 rounded-xl bg-muted text-[11px] text-foreground font-mono select-all"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  A ZennithPay assina cada entrega com HMAC-SHA256 (X-Zennith-Signature). Sem o segredo, o webhook é recusado. Todo Pix pago é reconferido na API antes de liberar o pedido.
+                </p>
+              </div>
+            )}
             {p.id === "evopay" && webhookUrl && (
               <div>
                 <label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">
-                  URL do Webhook (cole no painel da EvoPay — contém um token secreto)
+                  URL do Webhook legado EvoPay
                 </label>
                 <input
                   readOnly
@@ -178,9 +206,6 @@ export default function IntegrationsPanel() {
                   onClick={(e) => (e.target as HTMLInputElement).select()}
                   className="w-full p-3 rounded-xl bg-muted text-[11px] text-foreground font-mono select-all"
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  Chamadas sem esse token são rejeitadas, e todo pagamento é reconferido direto na EvoPay antes de liberar o pedido.
-                </p>
               </div>
             )}
 

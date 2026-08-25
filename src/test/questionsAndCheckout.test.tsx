@@ -29,6 +29,7 @@ vi.mock("@/components/AppShell", () => ({ default: ({ children }: any) => <div>{
 vi.mock("@/components/AuthScreen", () => ({ default: () => <div data-testid="auth-screen" /> }));
 vi.mock("@/components/UserProfileModal", () => ({ default: () => null }));
 vi.mock("@/components/PixPaymentModal", () => ({ default: () => null }));
+vi.mock("@/components/CryptoPaymentModal", () => ({ default: () => null }));
 vi.mock("@/hooks/useFavorites", () => ({ default: () => ({ isFavorite: () => false, toggle: vi.fn() }) }));
 
 /** Estado controlável do mock do useStore. */
@@ -104,6 +105,7 @@ function baseStore(overrides: { state?: Record<string, unknown> } & Record<strin
     refreshPurchases: vi.fn(),
     savePixCharge: vi.fn(),
     buyProduct: vi.fn(async () => 99),
+    loadProductReviews: vi.fn(async () => []),
     ...rest,
   };
 }
@@ -257,6 +259,8 @@ describe("Checkout — Tarefa C/D", () => {
     expect(pixButton.getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText("Cartão (Stripe)").closest("button")!.getAttribute("aria-pressed")).toBe("false");
     expect((screen.getByText("Pagar com PIX") as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByText("R$ 5,90")).toBeTruthy();
+    expect(screen.getByText(/\+ R\$ 0,90/)).toBeTruthy();
   });
 
   it("nenhum método ativo: nada selecionado, sem CPF, botão desabilitado", async () => {

@@ -3,7 +3,7 @@ import { useStore, Product } from "@/store/StoreContext";
 import { Plus, X, Trash2, Upload, Users, Clock, MessageSquare, Pencil, Package, Coins } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { formatBRL, isValidProductPrice, MIN_PRODUCT_PRICE, parsePriceInput, robuxPackageUnits, ROBUX_CATEGORY } from "@/lib/catalog";
+import { formatBRL, formatRobuxPackage, formatStockLabel, isValidProductPrice, MIN_PRODUCT_PRICE, parsePriceInput, productStock, ROBUX_CATEGORY } from "@/lib/catalog";
 
 interface Variation {
   name: string;
@@ -93,9 +93,14 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!state.currentUser?.isVerified && !state.currentUser?.isAdmin) return toast.error("Verifique sua conta para anunciar.");
-    if (!form.name.trim() || !form.price) return toast.error("Preencha nome e preço.");
+    if (!form.name.trim() || !form.price.trim()) return toast.error("Preencha nome e preço.");
     const finalPrice = parsePriceInput(form.price);
-    if (!isValidProductPrice(finalPrice)) return toast.error(`Informe um preço válido a partir de ${formatBRL(MIN_PRODUCT_PRICE)}.`);
+    if (!isValidProductPrice(finalPrice)) return toast.error(`Informe um preço válido a partir de ${formatBRL(MIN_PRODUCT_PRICE)}. Use 2,00 ou 2.00.`);
+
+    const stockNum = form.stock.trim() === "" ? undefined : Number.parseInt(form.stock, 10);
+    const minQtyNum = form.minQuantity.trim() === "" ? undefined : Number.parseInt(form.minQuantity, 10);
+    if (stockNum !== undefined && (!Number.isFinite(stockNum) || stockNum < 0)) return toast.error("Estoque inválido.");
+    if (minQtyNum !== undefined && (!Number.isFinite(minQtyNum) || minQtyNum <= 0)) return toast.error("Quantidade mínima inválida.");
 
     // The advertised price is always the package price.
     let finalVariations = variations
@@ -105,8 +110,13 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     if (isRobuxCategory) {
       const robuxQty = Number.parseInt(form.robuxAmount, 10);
       if (!Number.isFinite(robuxQty) || robuxQty <= 0) return toast.error("Informe quantos Robux o pacote entrega.");
-      // The advertised price is the PACKAGE price. We never store price/unit.
-      finalVariations = [{ name: `${robuxQty} Robux`, price: finalPrice }, ...finalVariations];
+      // Stock/min also live inside the variation so a missing column never hides them.
+      finalVariations = [{
+        name: `${robuxQty} Robux`,
+        price: finalPrice,
+        ...(stockNum !== undefined ? { stock: stockNum } : {}),
+        ...(minQtyNum !== undefined ? { minQuantity: minQtyNum } : {}),
+      }, ...finalVariations];
     }
     finalVariations = finalVariations.filter((v) => isValidProductPrice(v.price));
     if (variations.some((v) => v.name && v.price && !isValidProductPrice(parsePriceInput(v.price)))) {
@@ -119,8 +129,8 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
         price: finalPrice, image: form.image, banner: form.banner || undefined,
         deliveryType: form.deliveryType, deliveryContent: form.deliveryContent,
         variations: finalVariations.length > 0 ? finalVariations : [],
-        stock: form.stock ? parseInt(form.stock) : undefined,
-        minQuantity: form.minQuantity ? parseInt(form.minQuantity) : undefined,
+        stock: stockNum,
+        minQuantity: minQtyNum,
         deliveryTime: form.deliveryTime || undefined,
       });
       if (!ok) return;
@@ -132,8 +142,8 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
         seller: state.currentUser!.name, sellerEmail: state.currentUser!.email,
         deliveryType: form.deliveryType, deliveryContent: form.deliveryContent,
         variations: finalVariations.length > 0 ? finalVariations : undefined,
-        stock: form.stock ? parseInt(form.stock) : undefined,
-        minQuantity: form.minQuantity ? parseInt(form.minQuantity) : undefined,
+        stock: stockNum,
+        minQuantity: minQtyNum,
         deliveryTime: form.deliveryTime || undefined,
       } as any);
       // addProduct owns the success/failure toast: it knows whether the server
@@ -183,7 +193,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                     </div>
                     <div>
                       <label className="text-[10px] font-bold uppercase text-white/40 mb-1 block">Preço do pacote (R$)</label>
-                      <input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} type="number" step="0.01" placeholder="2.00" className="w-full p-3 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm" />
+                      <input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} type="text" inputMode="decimal" placeholder="2,00 ou 2.00" className="w-full p-3 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm" />
                     </div>
                   </div>
                   {form.robuxAmount && form.price && (
@@ -200,7 +210,14 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
               )}
 
               {!isRobuxCategory && (
-                <input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} type="number" step="0.01" placeholder="Preço (R$)" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />
+                <>
+                  <input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} type="text" inputMode="decimal" placeholder="Preço (R$) — ex: 2,00" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />
+                  <div className="grid grid-cols-3 gap-2">
+                    <input value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} type="number" placeholder="Estoque" className="p-2.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-xs" />
+                    <input value={form.minQuantity} onChange={(e) => setForm({ ...form, minQuantity: e.target.value })} type="number" placeholder="Qtd mín" className="p-2.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-xs" />
+                    <input value={form.deliveryTime} onChange={(e) => setForm({ ...form, deliveryTime: e.target.value })} placeholder="Prazo de entrega" className="p-2.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-xs" />
+                  </div>
+                </>
               )}
 
               <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Descrição detalhada" rows={3} className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm resize-none focus:border-[#0084ff] outline-none" />
@@ -285,7 +302,10 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                 <div className="flex-1 min-w-0">
                   <h4 className="font-bold text-white truncate text-sm">{p.name}</h4>
                   <p className="text-xs text-white/40">{p.category} • {p.sales} vendas</p>
-                  <p className="text-sm font-black text-white mt-1">{formatBRL(p.price)}{p.category === ROBUX_CATEGORY && robuxPackageUnits(p) > 1 ? <span className="text-white/40 font-normal"> / pacote de {robuxPackageUnits(p).toLocaleString("pt-BR")} Robux</span> : null}</p>
+                  <p className="text-sm font-black text-white mt-1">
+                    {p.category === ROBUX_CATEGORY ? formatRobuxPackage(p) : formatBRL(p.price)}
+                    <span className="text-white/40 font-normal"> · Estoque: {formatStockLabel(productStock(p))}</span>
+                  </p>
                 </div>
                 <div className="flex flex-col gap-2">
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full text-center ${p.approved ? "bg-[#00c950]/10 text-[#00c950] border border-[#00c950]/20" : "bg-[#ffbd2e]/10 text-[#ffbd2e] border border-[#ffbd2e]/20"}`}>{p.approved ? "Aprovado" : "Pendente"}</span>

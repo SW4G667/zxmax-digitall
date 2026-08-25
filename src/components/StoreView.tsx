@@ -360,7 +360,7 @@ export default function StoreView() {
                       por <span className="text-[#0084ff]">{p.seller}</span>
                       {isVerifiedSeller(p.sellerId) && <BadgeCheck className="w-3 h-3 text-[#0084ff] shrink-0" aria-label="Vendedor verificado" />}
                     </p>
-                    <p className="text-sm font-black text-white mt-2">{priceLabel(p)}</p>
+                    <p className="text-sm font-black text-[#ffbd2e] mt-2">{priceLabel(p)}</p>
                     {p.sales > 0 && <p className="text-[10px] text-white/30 mt-0.5">{p.sales} vendas</p>}
                   </div>
                 </button>

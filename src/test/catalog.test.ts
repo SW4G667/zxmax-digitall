@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   formatBRL,
+  formatRobuxPackage,
+  formatStockLabel,
   isValidProductPrice,
   MIN_PRODUCT_PRICE,
   mergeCatalog,
   normalizeProductPrice,
   parsePriceInput,
+  productMinQuantity,
+  productStock,
   robuxPackageUnits,
   ROBUX_CATEGORY,
   sanitizePrice,
@@ -147,5 +151,30 @@ describe("matriz de visibilidade da loja", () => {
 
   it("administrador: vê tudo", () => {
     expect(storefrontProducts(catalogo, "admin", true).map((p) => p.id)).toEqual([1, 2, 3]);
+  });
+});
+
+describe("estoque Robux", () => {
+  it("lê stock da coluna ou da variação, nunca devolve barra solta", () => {
+    expect(productStock({ stock: 5000 })).toBe(5000);
+    expect(productStock({ stock: null, variations: [{ name: "1000 Robux", price: 5, stock: 800 }] })).toBe(800);
+    expect(productStock({ stock: undefined, variations: [] })).toBeNull();
+    expect(formatStockLabel(5000)).toMatch(/5/);
+    expect(formatStockLabel(null)).toBe("Não informado");
+    expect(formatStockLabel(undefined)).toBe("Não informado");
+    expect(formatStockLabel(undefined)).not.toBe("/");
+  });
+
+  it("mostra pacote como R$ 5,00 / 1.000 Robux", () => {
+    expect(formatRobuxPackage({
+      price: 5,
+      category: ROBUX_CATEGORY,
+      variations: [{ name: "1000 Robux", price: 5 }],
+    })).toBe("R$ 5,00 / 1.000 Robux");
+  });
+
+  it("quantidade mínima também cai da variação", () => {
+    expect(productMinQuantity({ minQuantity: 100 })).toBe(100);
+    expect(productMinQuantity({ variations: [{ minQuantity: 50 }] })).toBe(50);
   });
 });

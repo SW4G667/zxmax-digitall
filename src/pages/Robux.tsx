@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useStore } from "@/store/StoreContext";
-import { formatBRL, ROBUX_CATEGORY, robuxPackageUnits, unitPriceFromPackage } from "@/lib/catalog";
+import { formatBRL, formatRobuxPackage, formatStockLabel, productMinQuantity, productStock, ROBUX_CATEGORY, robuxPackageUnits, unitPriceFromPackage } from "@/lib/catalog";
 import AppShell from "@/components/AppShell";
 import { ShieldCheck, Zap, BadgeCheck, Star, ThumbsUp, Search, X, Bitcoin, CreditCard } from "lucide-react";
 
@@ -52,8 +52,8 @@ export default function RobuxPage() {
         packagePrice: p.price,
         packageUnits: units,
         pricePerUnit: unitPriceFromPackage(p),
-        stock: p.stock ?? null,
-        minQty: p.minQuantity ?? units,
+        stock: productStock(p),
+        minQty: productMinQuantity(p) ?? units,
         delivery: p.deliveryTime || "Combinado com o vendedor",
         rating: p.reviewCount && p.reviewCount > 0 ? Number((p.reviewAvg ?? 0).toFixed(1)) : null,
         reviewCount: p.reviewCount ?? 0,
@@ -65,7 +65,7 @@ export default function RobuxPage() {
     const filtered = q ? list.filter((o) => o.sellerName.toLowerCase().includes(q)) : list;
     if (sort === "barato") filtered.sort((a, b) => a.pricePerUnit - b.pricePerUnit);
     else if (sort === "min") filtered.sort((a, b) => a.minQty - b.minQty);
-    else filtered.sort((a, b) => (b.reviewCount + b.positivePct) - (a.reviewCount + a.positivePct));
+    else filtered.sort((a, b) => (b.reviewCount + (b.positivePct ?? 0)) - (a.reviewCount + (a.positivePct ?? 0)));
     return filtered;
   }, [state.products, state.userDirectory, sort, search]);
 
@@ -190,7 +190,7 @@ export default function RobuxPage() {
                 <div className="text-right shrink-0">
                   <p className="text-[10px] text-white/40">por un.</p>
                   <p className="font-black text-white">{formatBRL(offer.pricePerUnit)}</p>
-                  <p className="text-[10px] text-white/40">{formatBRL(offer.packagePrice)} / {offer.packageUnits.toLocaleString("pt-BR")}</p>
+                  <p className="text-[10px] text-white/40">{formatRobuxPackage({ price: offer.packagePrice, category: ROBUX_CATEGORY, variations: [{ name: `${offer.packageUnits} Robux`, price: offer.packagePrice }] })}</p>
                   <button
                     onClick={(e) => { e.stopPropagation(); navigate(`/produto/${offer.productId}`); }}
                     className="mt-2 bg-[#ffbd2e] hover:bg-[#e6a829] text-black text-[11px] font-black px-3 py-1.5 rounded-lg"
