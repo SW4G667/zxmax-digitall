@@ -374,9 +374,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(loadState);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>("loading");
   const [isDark, setIsDark] = useState<boolean>(() => {
-    // GGMax atual é clara. Só entra no escuro se o usuário pediu.
+    // Dark marketplace is the default. Only opt OUT via theme toggle.
     const stored = localStorage.getItem("zxmax_dark");
-    return stored === null ? false : stored === "true";
+    return stored === null ? true : stored === "true";
   });
 
   // Effects key on the user ID (a stable primitive), not on the user object:

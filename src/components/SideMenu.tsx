@@ -236,8 +236,8 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
           <Icon className="w-[18px] h-[18px]" />
         </span>
         <span className="flex-1 min-w-0">
-          <span className={`block text-[13px] font-bold leading-tight ${entry.danger ? "text-red-500" : "text-foreground"}`}>{entry.label}</span>
-          {entry.hint && <span className="block text-[11px] leading-tight mt-0.5 text-muted-foreground">{entry.hint}</span>}
+          <span className={`block text-[13px] font-bold leading-tight ${entry.danger ? "text-red-300" : "text-white"}`}>{entry.label}</span>
+          {entry.hint && <span className="block text-[11px] leading-tight mt-0.5 text-white/40">{entry.hint}</span>}
         </span>
         {entry.badge !== undefined && entry.badge !== 0 && entry.badge !== "" && (
           <span className="text-[11px] font-black px-2.5 py-1 rounded-full bg-primary text-white">{entry.badge}</span>
@@ -275,14 +275,14 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
 
   return (
     <div className="fixed inset-0 z-[80] flex">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <div className="absolute inset-0 bg-[#050508]/80 backdrop-blur-xl" onClick={onClose} aria-hidden />
 
       <nav
         ref={panelRef as React.RefObject<HTMLElement>}
         role="dialog"
         aria-modal="true"
         aria-label="Menu principal"
-        className="relative w-[88%] max-w-[360px] h-full bg-card border-r border-border flex flex-col overflow-hidden animate-slide-in-bottom shadow-2xl"
+        className="relative w-[88%] max-w-[360px] h-full bg-[#0a0a0f] border-r border-white/10 flex flex-col overflow-hidden animate-slide-in-bottom shadow-[20px_0_60px_rgba(0,0,0,0.8)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="absolute top-0 left-0 w-full h-[300px] bg-gradient-to-b from-primary/10 via-primary/[0.03] to-transparent pointer-events-none" aria-hidden />
@@ -290,8 +290,8 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
         <div className="relative z-10 p-6 pb-4 shrink-0">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-black tracking-tighter text-[#2B7FFF]">ZXMAX</h2>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mt-1 flex items-center gap-1.5">
+              <h2 className="text-2xl font-black tracking-tighter text-white">ZX<span className="text-primary">MAX</span></h2>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/30 mt-1 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-success" aria-hidden /> Marketplace Seguro
               </p>
             </div>
@@ -310,8 +310,8 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
             <button onClick={() => { onOpenProfile(); onClose(); }} className="w-full mt-6 flex items-center gap-3 p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 hover:bg-white/[0.06] hover:border-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary transition text-left group">
               <img src={profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(profile?.display_name || "zxmax")}`} alt="" className="w-12 h-12 rounded-xl object-cover bg-primary/10 border border-white/10" />
               <span className="flex-1 min-w-0">
-                <span className="block text-[13px] font-bold text-foreground truncate">{profile?.display_name || "Minha conta"}</span>
-                <span className="block text-[11px] text-muted-foreground truncate">
+                <span className="block text-[13px] font-bold text-white truncate">{profile?.display_name || "Minha conta"}</span>
+                <span className="block text-[11px] text-white/40 truncate">
                   {profile?.is_verified_seller ? "Vendedor verificado" : mfaEnabled ? "Protegida com 2FA" : "Toque para gerenciar"}
                 </span>
               </span>
@@ -322,7 +322,7 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
         <div className="relative z-10 flex-1 overflow-y-auto px-3 pb-6 space-y-6 scrollbar-hide">
           {sections.map((section) => (
             <section key={section.id} aria-labelledby={`menu-${section.id}`}>
-              <h3 id={`menu-${section.id}`} className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-3 mb-3 flex items-center gap-2">
+              <h3 id={`menu-${section.id}`} className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20 px-3 mb-3 flex items-center gap-2">
                 {section.icon && <section.icon className="w-3 h-3" />} {section.title}
               </h3>
               <ul className="space-y-1">{section.entries.map(renderEntry)}</ul>

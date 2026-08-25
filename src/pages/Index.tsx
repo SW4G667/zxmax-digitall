@@ -84,11 +84,11 @@ function Dashboard({ view }: { view: View }) {
       {view === "admin" && user && isAdmin && (adminGateUnlocked ? <AdminView /> : <AdminLoginGate />)}
       {view === "withdraw" && user && <WithdrawView />}
       {requiresAuth && !user && (
-        <div className="text-center py-20 bg-card border border-border rounded-2xl p-10">
+        <div className="text-center py-20 bg-[#15151a] border border-[#25252e] rounded-2xl p-10">
           <p className="text-3xl mb-3">🔐</p>
-          <p className="text-foreground font-bold mb-1">Faça login para continuar</p>
-          <p className="text-muted-foreground text-sm mb-5">Você precisa estar conectado para acessar esta área.</p>
-          <button onClick={() => setAuthOpen(true)} className="bg-[#2B7FFF] text-white px-6 py-3 rounded-xl font-bold text-sm">Entrar / Criar conta</button>
+          <p className="text-white font-bold mb-1">Faça login para continuar</p>
+          <p className="text-white/40 text-sm mb-5">Você precisa estar conectado para acessar esta área.</p>
+          <button onClick={() => setAuthOpen(true)} className="bg-[#0084ff] text-white px-6 py-3 rounded-xl font-bold text-sm">Entrar / Criar conta</button>
         </div>
       )}
       {view === "admin" && user && !isAdmin && (
