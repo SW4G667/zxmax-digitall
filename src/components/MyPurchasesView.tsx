@@ -77,9 +77,21 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
     : state.purchases.filter(
         (p) => p.buyerId === state.currentUser?.id || p.sellerId === state.currentUser?.id
       );
+  const q = search.trim().toLowerCase();
   const filtered = visiblePurchases.filter((p) => {
+    if (!q) return true;
+    // Procura no nome do produto (se existir), e-mail e ID. Nunca crasha se o
+    // produto ainda não carregou — o comprador/seller precisa continuar vendo
+    // a compra mesmo que o catálogo esteja incompleto.
     const product = state.products.find((pr) => pr.id === p.productId);
-    return product?.name.toLowerCase().includes(search.toLowerCase());
+    const hay = [
+      product?.name || "",
+      p.buyerEmail || "",
+      p.sellerEmail || "",
+      String(p.id),
+      p.variationName || "",
+    ].join(" ").toLowerCase();
+    return hay.includes(q);
   }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const selected = selectedId ? state.purchases.find((p) => p.id === selectedId) : null;

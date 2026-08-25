@@ -876,11 +876,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const approvePurchase = (id: number) => {
-    void supabase.functions.invoke("order-action", { body: { orderId: id, action: "approve" } }).then(() => refreshPurchases());
+    void (async () => {
+      try {
+        const res = await unwrapEdgeCall<{ success?: boolean; status?: string }>(
+          await supabase.functions.invoke("order-action", { body: { orderId: id, action: "approve" } }),
+          "Não foi possível aprovar o pedido.",
+        );
+        if (res.errorMessage) {
+          toast.error(res.errorMessage);
+          return;
+        }
+        toast.success(`Pedido #${id} aprovado.`);
+        void refreshPurchases();
+      } catch (e: any) {
+        toast.error(e?.message || "Erro ao aprovar pedido.");
+      }
+    })();
   };
 
   const revertPurchase = (id: number) => {
-    void supabase.functions.invoke("order-action", { body: { orderId: id, action: "revert" } }).then(() => refreshPurchases());
+    void (async () => {
+      try {
+        const res = await unwrapEdgeCall<{ success?: boolean; status?: string }>(
+          await supabase.functions.invoke("order-action", { body: { orderId: id, action: "revert" } }),
+          "Não foi possível reverter o pedido.",
+        );
+        if (res.errorMessage) {
+          toast.error(res.errorMessage);
+          return;
+        }
+        toast.success(`Pedido #${id} revertido.`);
+        void refreshPurchases();
+      } catch (e: any) {
+        toast.error(e?.message || "Erro ao reverter pedido.");
+      }
+    })();
   };
 
   const refreshWithdrawals = React.useCallback(async () => {

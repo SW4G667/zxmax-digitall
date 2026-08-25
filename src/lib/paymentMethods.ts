@@ -69,53 +69,62 @@ function isMethodsShape(value: unknown): value is Record<PaymentMethodId, boolea
   return (["pix", "crypto", "card", "boleto"] as const).every((k) => typeof v[k] === "boolean");
 }
 
-/** Calcula a disponibilidade de cada método DIRETO de app_settings, honrando
- *  os toggles por função de cada provider. Usado como fallback quando a edge
- *  publicada é antiga e não devolve `v: 2`. */
+/** Calcula a disponibilidade de cada método DIRETO de app_settings.
+ *  Para o COMPRADOR (não-admin), só o objeto `checkout_gateways` é legível
+ *  via RLS — credenciais de provedor só admins leem. Então:
+ *    1. Se `checkout_gateways` tem booleanos explícitos, usamos (honra o que
+ *       o admin ligou/desligou no painel).
+ *    2. Se não tem, fallback seguro: PIX e Crypto ligados (oficiais),
+ *       Cartão/Boleto desligados.
+ *  A verificação de "existe credencial?" roda no servidor (edge) quando
+ *  ela estiver publicada; antes disso, honramos a vontade do admin. */
 export async function computeMethodsFromSettings(): Promise<Record<PaymentMethodId, boolean> | null> {
   try {
     const { data, error } = await (supabase as any)
       .from("app_settings")
       .select("key, value")
       .in("key", ["zennithpay", "vexopay", "stripe", "evopay", "checkout_gateways"]);
-    if (error || !data) return null;
+    if (error || !data) {
+      // Sem leitura do banco (ex.: RLS), cai no FALLBACK global do caller.
+      return null;
+    }
     const byKey: Record<string, any> = {};
     for (const r of data) byKey[r.key] = r.value || {};
 
+    const cg = byKey.checkout_gateways || {};
+    // Se o admin já gravou checkout_gateways com booleanos explícitos,
+    // confiamos 100% no que ele marcou.
+    const hasExplicit =
+      typeof cg.pix === "boolean" ||
+      typeof cg.crypto === "boolean" ||
+      typeof cg.card === "boolean" ||
+      typeof cg.boleto === "boolean";
+
+    if (hasExplicit) {
+      return {
+        pix: cg.pix !== false,
+        crypto: cg.crypto !== false,
+        card: cg.card === true,
+        boleto: cg.boleto === true,
+      };
+    }
+
+    // Sem checkout_gateways salvo: tenta derivar do que cada provider
+    // permite a partir das chaves que o comprador consegue ver (não-secretas).
+    // Pix/crypto ligados por padrão, cartão/boleto desligados.
     const zennith = byKey.zennithpay || {};
     const vexo = byKey.vexopay || {};
     const stripe = byKey.stripe || {};
-    const evo = byKey.evopay || {};
-    const cg = byKey.checkout_gateways || {};
-
-    // Helper: flag booleana com fallback para o valor legado em checkout_gateways
-    const flag = (val: unknown, legacy?: unknown, def = false): boolean => {
-      if (typeof val === "boolean") return val;
-      if (typeof legacy === "boolean") return legacy;
-      return def;
+    const zPix = typeof zennith.pixEnabled === "boolean" ? zennith.pixEnabled : (zennith.enabled !== false);
+    const vCrypto = typeof vexo.cryptoEnabled === "boolean" ? vexo.cryptoEnabled : (vexo.enabled !== false);
+    const sCard = typeof stripe.cardEnabled === "boolean" ? stripe.cardEnabled : stripe.enabled === true;
+    const sBoleto = typeof stripe.boletoEnabled === "boolean" ? stripe.boletoEnabled : false;
+    return {
+      pix: zPix,
+      crypto: vCrypto,
+      card: sCard,
+      boleto: sBoleto,
     };
-    const has = (v: unknown): boolean => typeof v === "string" && v.trim().length > 0;
-
-    // PIX: ZennithPay oficial; evopay.pixEnabled é legado mas não contamos
-    // como ativação a menos que a chave exista (para não reativar o legado
-    // por acidente). EvoPay é DESLIGADO por padrão.
-    const pixOn =
-      flag(zennith.pixEnabled, cg.pix, true) &&
-      (has(zennith.apiKey) || false);
-    // Crypto: VexoPay.
-    const cryptoOn =
-      flag(vexo.cryptoEnabled, cg.crypto, true) &&
-      has(vexo.clientId) && has(vexo.clientSecret);
-    // Cartão: Stripe.
-    const cardOn =
-      flag(stripe.cardEnabled, cg.card, false) &&
-      has(stripe.secretKey);
-    // Boleto: Stripe também.
-    const boletoOn =
-      flag(stripe.boletoEnabled, cg.boleto, false) &&
-      has(stripe.secretKey);
-
-    return { pix: pixOn, crypto: cryptoOn, card: cardOn, boleto: boletoOn };
   } catch {
     return null;
   }
