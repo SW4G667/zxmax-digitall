@@ -29,6 +29,7 @@ vi.mock("@/components/AppShell", () => ({ default: ({ children }: any) => <div>{
 vi.mock("@/components/AuthScreen", () => ({ default: () => <div data-testid="auth-screen" /> }));
 vi.mock("@/components/UserProfileModal", () => ({ default: () => null }));
 vi.mock("@/components/PixPaymentModal", () => ({ default: () => null }));
+vi.mock("@/components/CryptoPaymentModal", () => ({ default: () => null }));
 vi.mock("@/hooks/useFavorites", () => ({ default: () => ({ isFavorite: () => false, toggle: vi.fn() }) }));
 
 /** Estado controlável do mock do useStore. */
@@ -104,6 +105,9 @@ function baseStore(overrides: { state?: Record<string, unknown> } & Record<strin
     refreshPurchases: vi.fn(),
     savePixCharge: vi.fn(),
     buyProduct: vi.fn(async () => 99),
+    loadProductReviews: vi.fn(async () => []),
+    addProductQuestion: vi.fn(),
+    answerProductQuestion: vi.fn(),
     ...rest,
   };
 }
@@ -177,7 +181,7 @@ describe("Perguntas — Tarefa B", () => {
     expect(toastMock.error.mock.calls.at(-1)?.[0]).toMatch(/Não é permitido enviar contatos externos/);
   });
 
-  it("erro cru de schema (PGRST202) nunca vira toast técnico", async () => {
+  it("erro cru de schema (PGRST202) grava no JSON do produto e nunca vira toast técnico", async () => {
     storeState.current = baseStore({ state: { currentUser: { id: "buyer-uuid", name: "Comprador" } } });
     db.rpcResult.current = {
       data: null,
@@ -187,22 +191,19 @@ describe("Perguntas — Tarefa B", () => {
     await waitFor(() => expect(screen.getByText("PERGUNTAS (0)")).toBeTruthy());
     await typeQuestion("Funciona mesmo?");
     await clickSend();
-    await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
-    const shown = String(toastMock.error.mock.calls.at(-1)?.[0]);
-    expect(shown).toBe("O recurso de perguntas está sendo atualizado. Tente novamente em alguns minutos.");
-    expect(shown).not.toMatch(/schema cache|ask_product_question|PGRST/i);
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("Pergunta enviada ao vendedor."));
+    expect(String(toastMock.error.mock.calls.at(-1)?.[0] || "")).not.toMatch(/schema cache|ask_product_question|PGRST/i);
   });
 
-  it("banco sem a tabela: composer some, estado honesto, sem botão falso", async () => {
+  it("banco sem a tabela: formulário de pergunta continua visível", async () => {
     db.questionsResult.current = {
       data: null,
       error: { code: "PGRST205", message: "Could not find the table 'product_questions' in the schema cache" },
     };
     renderProduto();
-    await waitFor(() =>
-      expect(screen.getByText(/O recurso de perguntas está sendo atualizado/i)).toBeTruthy());
-    expect(screen.queryByLabelText(/faça uma pergunta/i)).toBeNull();
-    expect(screen.queryByText("Enviar pergunta")).toBeNull();
+    await waitFor(() => expect(screen.getByText("PERGUNTAS (0)")).toBeTruthy());
+    expect(screen.getByLabelText(/faça uma pergunta/i)).toBeTruthy();
+    expect(screen.getByText("Enviar pergunta")).toBeTruthy();
   });
 
   it("vendedor autorizado responde pela RPC answer_product_question", async () => {
@@ -257,6 +258,8 @@ describe("Checkout — Tarefa C/D", () => {
     expect(pixButton.getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText("Cartão (Stripe)").closest("button")!.getAttribute("aria-pressed")).toBe("false");
     expect((screen.getByText("Pagar com PIX") as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByText("R$ 5,90")).toBeTruthy();
+    expect(screen.getByText(/\+ R\$ 0,90/)).toBeTruthy();
   });
 
   it("nenhum método ativo: nada selecionado, sem CPF, botão desabilitado", async () => {
@@ -271,15 +274,16 @@ describe("Checkout — Tarefa C/D", () => {
     expect(screen.getByText(/Nenhuma forma de pagamento está ativa/i)).toBeTruthy();
   });
 
-  it("função antiga publicada (403) vira 'atualizando', não 'não configurado'", async () => {
+  it("função antiga publicada (403) libera PIX e Crypto em vez de bloquear", async () => {
     storeState.current = baseStore({ state: { currentUser: { id: "buyer-uuid", name: "Comprador" } } });
     db.edgeResult.current = httpError(403, { error: "Apenas administradores." });
     renderProduto();
     await openCheckout();
-    await waitFor(() => expect(screen.getByText(/Estamos atualizando os meios de pagamento/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Pagar com PIX")).toBeTruthy());
+    expect(screen.queryByText(/Estamos atualizando os meios de pagamento/i)).toBeNull();
     expect(screen.queryByText(/Nenhuma forma de pagamento está configurada/i)).toBeNull();
-    expect(screen.getByText("Tentar novamente")).toBeTruthy();
-    expect(screen.getByText("PIX").closest("button")!.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByText("PIX").closest("button")!.getAttribute("aria-pressed")).toBe("true");
+    expect((screen.getByText("Pagar com PIX") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("falha ao ler app_settings (503) tem mensagem e retry próprios", async () => {

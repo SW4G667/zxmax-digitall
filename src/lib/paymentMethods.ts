@@ -37,6 +37,24 @@ export const NO_METHODS: Record<PaymentMethodId, boolean> = {
   boleto: false,
 };
 
+/** PIX + Crypto são os meios oficiais. Se a edge antiga não responder `v: 2`,
+ * o checkout oferece esses dois em vez de travar a compra. */
+export const FALLBACK_CHECKOUT_METHODS: Record<PaymentMethodId, boolean> = {
+  pix: true,
+  crypto: true,
+  card: false,
+  boleto: false,
+};
+
+/** Métodos que o checkout deve deixar clicáveis. */
+export function checkoutMethods(state: PaymentMethodsState): Record<PaymentMethodId, boolean> | null {
+  if (state.status === "ok") return state.methods;
+  if (state.status === "outdated" || state.status === "settingsFailed" || state.status === "network") {
+    return FALLBACK_CHECKOUT_METHODS;
+  }
+  return null;
+}
+
 function isMethodsShape(value: unknown): value is Record<PaymentMethodId, boolean> {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
@@ -56,11 +74,8 @@ export function paymentMethodsNotice(state: PaymentMethodsState): { message: str
       };
     }
     case "outdated":
-      return {
-        message:
-          "Estamos atualizando os meios de pagamento. Tente novamente em alguns minutos.",
-        retryable: true,
-      };
+      // Função antiga: PIX e Crypto ficam disponíveis; não bloqueamos a compra.
+      return null;
     case "settingsFailed":
       return {
         message: "Não foi possível verificar as formas de pagamento agora. Tente novamente em instantes.",

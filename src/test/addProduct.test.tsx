@@ -67,6 +67,7 @@ const supabaseMock = vi.hoisted(() => {
   return {
     from: (table: string) => makeQuery(table),
     functions: { invoke: vi.fn(async () => ({ data: { products: [] }, error: null })) },
+    rpc: vi.fn(async () => ({ data: 0, error: null })),
     channel: () => ({ on: () => ({ subscribe: () => ({}) }) }),
     removeChannel: vi.fn(),
     storage: { from: () => ({ upload: vi.fn(), createSignedUrl: vi.fn() }) },

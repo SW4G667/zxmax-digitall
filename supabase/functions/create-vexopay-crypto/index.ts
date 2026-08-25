@@ -21,16 +21,17 @@ serve(async (req) => {
 
     const body = await req.json();
     const purchaseId = Number(body.purchaseId);
-    const amount = Number(body.amount);
-    const network = body.network || "TRC20";
+    const network = String(body.network || "TRC20");
     const description = body.description || `Pedido #${purchaseId}`;
 
-    if (!purchaseId || !amount || amount < 2) throw new Error("Dados inválidos (mín R$2)");
+    if (!purchaseId) throw new Error("Pedido inválido");
 
-    // Check purchase
+    // Check purchase — o valor cobrado é o do banco, nunca o enviado pelo cliente.
     const { data: purchase } = await serviceClient.from("purchases").select("id, buyer_id, status, amount").eq("id", purchaseId).maybeSingle();
     if (!purchase || purchase.buyer_id !== userData.user.id) throw new Error("Pedido não encontrado");
     if (purchase.status !== "pending") throw new Error("Pedido não está pendente");
+    const amount = Number(purchase.amount);
+    if (!amount || amount < 5) throw new Error("Crypto exige pedido de no mínimo R$ 5,00 (preço + taxa).");
 
     // VexoPay credentials: app_settings.vexopay (clientId/clientSecret/baseUrl)
     let ci = Deno.env.get("VEXOPAY_CLIENT_ID");

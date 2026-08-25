@@ -96,8 +96,8 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
           {user ? (
             <>
               <button
-                onClick={() => navigate("/painel")}
-                className="hidden sm:flex items-center gap-1.5 bg-[#0084ff] hover:bg-[#0066cc] text-white px-3.5 py-2 rounded-xl text-xs font-black transition"
+                onClick={() => navigate("/meus-produtos")}
+                className="hidden sm:flex items-center gap-1.5 bg-[#ffbd2e] hover:bg-[#e6a829] text-black px-3.5 py-2 rounded-xl text-xs font-black transition"
                 title="Criar um anúncio"
               >
                 + Anunciar

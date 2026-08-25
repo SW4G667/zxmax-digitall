@@ -62,7 +62,7 @@ serve(async (req) => {
 
     const { data: purchase } = await admin
       .from("purchases")
-      .select("id, buyer_id, seller_id, evopay_charge_id")
+      .select("id, buyer_id, seller_id, evopay_charge_id, amount, status")
       .eq("evopay_charge_id", id)
       .maybeSingle();
     if (!purchase || (purchase.buyer_id !== userData.user.id && purchase.seller_id !== userData.user.id)) {
@@ -70,6 +70,67 @@ serve(async (req) => {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    const applyIfPaid = async (provider: string, rawStatus: string, confirmedAmount: number | null) => {
+      const paid = ["PAID", "COMPLETED", "CONFIRMED"].includes(String(rawStatus || "").toUpperCase());
+      if (!paid || purchase.status !== "pending") return;
+      const expected = Math.round(Number(purchase.amount) * 100) / 100;
+      const got = confirmedAmount == null || !Number.isFinite(confirmedAmount)
+        ? expected
+        : Math.round(Number(confirmedAmount) * 100) / 100;
+      if (got !== expected) {
+        console.error("check-evopay-status amount mismatch", { expected, got, id });
+        return;
+      }
+      const { error: applyError } = await admin.rpc("apply_verified_payment", {
+        _provider: provider,
+        _event_key: `${id}:poll:${rawStatus}`,
+        _event_type: "poll",
+        _purchase_id: purchase.id,
+        _charge_id: id,
+        _confirmed_amount: expected,
+        _payload: { polled: true, status: rawStatus, amount: got },
+      });
+      if (applyError) console.error("check-evopay-status apply", applyError);
+    };
+
+    // ------------------------------------------------------------------
+    // ZennithPay Status — GET /payments/{reference_id}/status
+    // ------------------------------------------------------------------
+    if (String(id).startsWith("zennith:")) {
+      const { data: zRow } = await admin.from("app_settings").select("value").eq("key", "zennithpay").maybeSingle();
+      const z = (zRow?.value || {}) as Record<string, unknown>;
+      const zKey = String(z.apiKey || Deno.env.get("ZENNITH_API_KEY") || "").trim();
+      const zBase = String(z.baseUrl || "https://zennithpay.online/api/v1").replace(/\/$/, "");
+      if (!zKey) {
+        return new Response(JSON.stringify({ error: "Gateway de PIX não configurado para consulta." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const ref = String(id).slice("zennith:".length);
+      const resp = await fetch(`${zBase}/payments/${encodeURIComponent(ref)}/status`, {
+        headers: { "X-API-Key": zKey, Accept: "application/json" },
+      });
+      const bodyRes = await resp.json().catch(() => ({} as any));
+      if (!resp.ok) {
+        throw new Error(bodyRes?.detail || bodyRes?.error || `ZennithPay ${resp.status}`);
+      }
+      const node = bodyRes?.data ?? bodyRes ?? {};
+      const raw = String(node.status || "PENDING").toUpperCase();
+      const status = ["PAID", "COMPLETED", "CONFIRMED"].includes(raw)
+        ? "COMPLETED"
+        : ["EXPIRED", "CANCELLED", "CANCELED"].includes(raw)
+          ? "EXPIRED"
+          : ["FAILED", "REFUNDED"].includes(raw)
+            ? "FAILED"
+            : "PENDING";
+      if (status === "COMPLETED") await applyIfPaid("zennithpay", raw, Number(node.amount));
+      return new Response(
+        JSON.stringify({ id: String(id), status, amount: node.amount ?? null }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
+      );
     }
 
     // ------------------------------------------------------------------

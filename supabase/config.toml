@@ -26,3 +26,15 @@ verify_jwt = false
 
 [functions.integrations-config]
 verify_jwt = false
+
+[functions.create-zennith-pix]
+verify_jwt = false
+
+[functions.zennith-webhook]
+verify_jwt = false
+
+[functions.zennith-withdraw]
+verify_jwt = false
+
+[functions.create-vexopay-crypto]
+verify_jwt = false

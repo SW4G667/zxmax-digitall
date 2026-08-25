@@ -18,6 +18,57 @@ export const MAX_PRODUCT_PRICE = 1_000_000;
 
 export const ROBUX_CATEGORY = "Robux e Gift Cards";
 
+export interface CatalogVariation {
+  name?: string;
+  price?: number;
+  stock?: number;
+  minQuantity?: number;
+}
+
+/** Persist stock even when the dedicated column is missing: the variation JSON
+ * already survives on every generation of the schema. */
+export function productStock(product: {
+  stock?: number | null;
+  variations?: CatalogVariation[] | null;
+}): number | null {
+  if (product.stock != null) {
+    const direct = Number(product.stock);
+    if (Number.isFinite(direct) && direct >= 0) return Math.trunc(direct);
+  }
+  const fromVar = Number(product.variations?.[0]?.stock);
+  if (Number.isFinite(fromVar) && fromVar >= 0) return Math.trunc(fromVar);
+  return null;
+}
+
+export function productMinQuantity(product: {
+  minQuantity?: number | null;
+  variations?: CatalogVariation[] | null;
+  category?: string | null;
+}): number | null {
+  const direct = Number(product.minQuantity);
+  if (Number.isFinite(direct) && direct > 0) return Math.trunc(direct);
+  const fromVar = Number(product.variations?.[0]?.minQuantity);
+  if (Number.isFinite(fromVar) && fromVar > 0) return Math.trunc(fromVar);
+  return null;
+}
+
+/** Never render a lonely "/". Stock missing → "Não informado". */
+export function formatStockLabel(stock: number | null | undefined): string {
+  if (stock == null || !Number.isFinite(stock)) return "Não informado";
+  return Math.trunc(stock).toLocaleString("pt-BR");
+}
+
+/** GGMax-style package line: "R$ 5,00 / 1.000 Robux". */
+export function formatRobuxPackage(product: {
+  price: number;
+  category?: string | null;
+  variations?: { name?: string; price?: number }[] | null;
+}): string {
+  const units = robuxPackageUnits(product);
+  const price = formatBRL(normalizeProductPrice(product));
+  return `${price} / ${units.toLocaleString("pt-BR")} Robux`;
+}
+
 /** Parse a seller-entered price in either pt-BR or dot-decimal notation.
  * Always returns a finite, non-negative number rounded to 2 decimals (the
  * scale of `products.price numeric(12,2)`), so the UI and the DB agree. */

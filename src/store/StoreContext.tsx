@@ -7,9 +7,12 @@ import {
   MIN_PRODUCT_PRICE,
   mergeCatalog,
   normalizeProductPrice,
+  productMinQuantity,
+  productStock,
   sanitizePrice,
   SAFE_PRODUCT_COLUMNS,
 } from "@/lib/catalog";
+import { WITHDRAW_FEE, WITHDRAW_MIN, withdrawTotals } from "@/lib/fees";
 import { logProductError, productErrorMessage } from "@/lib/productErrors";
 import { unwrapEdgeCall } from "@/lib/edgeErrors";
 
@@ -41,6 +44,8 @@ export interface AdminChatMessage {
 export interface ProductVariation {
   name: string;
   price: number;
+  stock?: number;
+  minQuantity?: number;
 }
 
 export interface ProductQuestion {
@@ -216,7 +221,7 @@ interface StoreContextType {
    * error with retry, or a truthful empty state instead of a silent zero. */
   catalogStatus: CatalogStatus;
   deleteProduct: (id: number) => Promise<{ paused: boolean }>;
-  buyProduct: (id: number, variation?: ProductVariation) => Promise<number | null>;
+  buyProduct: (id: number, variation?: ProductVariation, quantity?: number) => Promise<number | null>;
   savePixCharge: (purchaseId: number, charge: { evopayId: string; qrCodeText: string; expiresAt: string }) => void;
   refreshPurchases: () => Promise<void>;
   markOrderDelivered: (orderId: number) => Promise<boolean>;
@@ -340,22 +345,36 @@ const mapPurchaseRow = (p: any): Purchase => ({
   releasedAt: p.released_at || undefined,
 });
 
-const inferPixType = (key: string): string => {
-  const k = (key || "").trim();
-  if (k.includes("@")) return "email";
-  const digits = k.replace(/\D/g, "");
-  if (/^\+?\d{12,13}$/.test(k.replace(/[\s()-]/g, "")) || (digits.length >= 12 && digits.length <= 13)) return "phone";
-  if (digits.length === 11) return "cpf";
-  if (digits.length === 14) return "cnpj";
-  return "random";
+/** Persist stock/minQuantity inside variation JSON so a missing column never hides them. */
+const mapVariation = (v: ProductVariation) => {
+  const out: Record<string, unknown> = { name: v.name, price: sanitizePrice(v.price) };
+  const stock = Number(v.stock);
+  if (Number.isFinite(stock) && stock >= 0) out.stock = Math.trunc(stock);
+  const minQ = Number(v.minQuantity);
+  if (Number.isFinite(minQ) && minQ > 0) out.minQuantity = Math.trunc(minQ);
+  return out;
 };
+
+const mapWithdrawalRow = (w: any): Withdrawal => ({
+  id: Number(w.id),
+  userEmail: w.user_email || "",
+  userId: w.user_id,
+  amount: Number(w.amount),
+  method: w.method === "instant" ? "instant" : "normal",
+  status: w.status,
+  createdAt: w.created_at,
+  pixKey: w.pix_key || undefined,
+  rejectionReason: w.rejection_reason || undefined,
+  providerTxId: w.provider_tx || w.provider_tx_id || undefined,
+  retryOf: w.retry_of ?? null,
+});
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { user: authUser, profile, isAdmin, signOut } = useAuth();
   const [state, setState] = useState<AppState>(loadState);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>("loading");
   const [isDark, setIsDark] = useState<boolean>(() => {
-    // GGMAX-style: dark theme is the default. Only opt OUT via theme toggle.
+    // Dark marketplace is the default. Only opt OUT via theme toggle.
     const stored = localStorage.getItem("zxmax_dark");
     return stored === null ? true : stored === "true";
   });
@@ -538,8 +557,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0),
           image: p.image, banner: p.banner || undefined, description: p.description, approved: !!p.approved,
           deliveryType: p.delivery_type, variations: p.variations || [], questions: p.questions || [],
-          stock: p.stock ?? undefined,
-          minQuantity: p.min_quantity ?? undefined,
+          stock: productStock({ stock: p.stock, variations: p.variations }) ?? undefined,
+          minQuantity: productMinQuantity({ minQuantity: p.min_quantity, variations: p.variations, category: p.category }) ?? undefined,
           deliveryTime: p.delivery_time || undefined,
           reviewCount: Number.isFinite(Number(p.review_count)) ? Number(p.review_count) : undefined,
           reviewAvg: Number.isFinite(Number(p.review_avg)) ? Number(p.review_avg) : undefined,
@@ -619,7 +638,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       banner: p.banner || null,
       description: p.description || "",
       delivery_type: p.deliveryType,
-      variations: (p.variations || []).map((v) => ({ name: v.name, price: sanitizePrice(v.price) })),
+      variations: (p.variations || []).map(mapVariation),
       questions: [],
       approved: isAdmin,
     };
@@ -704,7 +723,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (p.image !== undefined && p.image) dbPayload.image = p.image;
     if (p.banner !== undefined) dbPayload.banner = p.banner || null;
     if (p.deliveryType !== undefined) dbPayload.delivery_type = p.deliveryType;
-    if (p.variations !== undefined) dbPayload.variations = (p.variations || []).map((v) => ({ name: v.name, price: sanitizePrice(v.price) }));
+    if (p.variations !== undefined) dbPayload.variations = (p.variations || []).map(mapVariation);
     if (p.stock !== undefined) dbPayload.stock = p.stock;
     if (p.minQuantity !== undefined) dbPayload.min_quantity = p.minQuantity;
     if (p.deliveryTime !== undefined) dbPayload.delivery_time = p.deliveryTime;
@@ -799,14 +818,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { paused: false };
   };
 
-  const buyProduct = async (id: number, variation?: ProductVariation) => {
+  const buyProduct = async (id: number, variation?: ProductVariation, quantity?: number) => {
     const product = state.products.find((p) => p.id === id);
     if (!product || !state.currentUser) return null;
     // unwrapEdgeCall lê o corpo real da resposta: sem isso toda falha virava
     // "Edge Function returned a non-2xx status code" na tela do comprador.
     const res = await unwrapEdgeCall<{ purchase: any }>(
       await supabase.functions.invoke("create-purchase", {
-        body: { productId: id, variationName: variation?.name || null },
+        body: { productId: id, variationName: variation?.name || null, quantity: quantity ?? 1 },
       }),
       "Não foi possível registrar a compra. Tente novamente.",
     );
@@ -864,10 +883,54 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void supabase.functions.invoke("order-action", { body: { orderId: id, action: "revert" } }).then(() => refreshPurchases());
   };
 
+  const refreshWithdrawals = React.useCallback(async () => {
+    const authUser = authUserRef.current;
+    if (!authUser) {
+      setState((s) => ({ ...s, withdrawals: [] }));
+      return;
+    }
+    const { data, error } = await (supabase as any)
+      .from("withdrawals")
+      .select("id,user_id,user_email,amount,method,status,created_at,pix_key,rejection_reason,provider_tx,retry_of,fee,net_amount")
+      .order("created_at", { ascending: false });
+    if (error) {
+      console.error("[zxmax:withdrawals]", error);
+      return;
+    }
+    setState((s) => ({ ...s, withdrawals: ((data || []) as any[]).map(mapWithdrawalRow) }));
+  }, []);
+
+  const refreshBalance = React.useCallback(async () => {
+    const authUser = authUserRef.current;
+    if (!authUser) return;
+    const { data, error } = await (supabase as any).rpc("withdrawable_balance", { _user_id: authUser.id });
+    if (error) {
+      console.error("[zxmax:balance]", error);
+      return;
+    }
+    const balance = Number(data);
+    if (!Number.isFinite(balance)) return;
+    setState((s) => ({
+      ...s,
+      userBalances: { ...s.userBalances, [authUser.id]: balance },
+      userEarnings: { ...s.userEarnings, [authUser.id]: balance },
+    }));
+  }, []);
+
+  useEffect(() => {
+    if (!authUserId) {
+      setState((s) => ({ ...s, withdrawals: [] }));
+      return;
+    }
+    void refreshWithdrawals();
+    void refreshBalance();
+  }, [authUserId, refreshWithdrawals, refreshBalance]);
+
   const requestWithdraw = async (method: "normal" | "instant", options?: { retryOf?: number }) => {
     if (!state.currentUser || state.currentUser.balance <= 0) return;
-    const fee = method === "instant" ? (state.currentUser.balance * state.config.instantFee) / 100 : 0;
-    const amount = Number((state.currentUser.balance - fee).toFixed(2));
+    const totals = withdrawTotals(state.currentUser.balance);
+    if (!totals.canWithdraw) throw new Error(totals.reason || `O saque mínimo é R$ ${WITHDRAW_MIN.toFixed(2).replace(".", ",")}.`);
+    const amount = totals.balance;
     // Idempotency: the same user + amount + method within the same minute never
     // creates two withdrawals, even if the request is retried on a flaky network.
     const minuteBucket = new Date().toISOString().slice(0, 16);
@@ -879,35 +942,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       _retry_of: options?.retryOf ?? null,
     });
     if (error) throw new Error(error.message || "Não foi possível solicitar o saque");
-    await loadCatalog();
+    await Promise.all([refreshWithdrawals(), refreshBalance()]);
   };
 
   const approveWithdraw = async (id: number) => {
     const withdrawal = state.withdrawals.find((w) => w.id === id);
-    let providerTx: string | null = null;
-    if (withdrawal?.pixKey) {
-      const pixType = inferPixType(withdrawal.pixKey);
-      const { data, error } = await supabase.functions.invoke("evopay-withdraw", {
-        body: {
-          amount: withdrawal.amount,
-          pixKey: withdrawal.pixKey,
-          pixType,
-          description: "Saque ZXMAX",
-          // stable reference => gateway-side idempotency on retries
-          clientReference: `withdraw_${id}`,
-        },
-      });
-      if (error || data?.error) {
-        throw new Error(data?.error || error?.message || "Erro ao processar saque na EvoPay");
-      }
-      providerTx = data?.id ? String(data.id) : null;
+    if (!withdrawal?.pixKey) throw new Error("Este saque não tem chave Pix cadastrada.");
+    const net = Math.round((Number(withdrawal.amount) - WITHDRAW_FEE) * 100) / 100;
+    const { data, error } = await supabase.functions.invoke("zennith-withdraw", {
+      body: {
+        amount: net > 0 ? net : Number(withdrawal.amount),
+        pixKey: withdrawal.pixKey,
+        clientReference: `zxmax-withdraw-${id}`,
+      },
+    });
+    if (error || data?.error) {
+      throw new Error(data?.error || error?.message || "Erro ao processar saque na ZennithPay");
     }
+    const providerTx = data?.id ? String(data.id) : null;
     const { error: rpcError } = await (supabase as any).rpc("approve_withdrawal", {
       _id: id,
       _provider_tx: providerTx,
     });
     if (rpcError) throw new Error(rpcError.message || "Erro ao aprovar o saque");
-    await loadCatalog();
+    await Promise.all([refreshWithdrawals(), refreshBalance()]);
   };
 
   const rejectWithdraw = async (id: number, reason?: string) => {
@@ -916,7 +974,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       _reason: reason || "",
     });
     if (error) throw new Error(error.message || "Erro ao recusar o saque");
-    await loadCatalog();
+    await refreshWithdrawals();
   };
 
   const updateConfig = (c: Partial<AppConfig>) =>

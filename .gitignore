@@ -34,3 +34,7 @@ supabase/.temp
 
 # Audit output
 audit-report.json
+
+# Local reference screenshots
+image-search/
+.refs-ggmax/

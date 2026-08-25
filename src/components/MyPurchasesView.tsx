@@ -98,7 +98,7 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
     // Generate a new Pix
     setLoadingPix(purchase.id);
     try {
-      const { data, error } = await supabase.functions.invoke("create-evopay-pix", {
+      const { data, error } = await supabase.functions.invoke("create-zennith-pix", {
         body: {
           purchaseId: purchase.id,
           productName: purchase.variationName ? `${product?.name} - ${purchase.variationName}` : product?.name,

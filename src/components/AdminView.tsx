@@ -296,7 +296,7 @@ export default function AdminView() {
           { id: "users", label: "Usuários", icon: Users },
           { id: "notices", label: "Avisos", icon: StarEmoji },
           { id: "adminchat", label: "Chat Equipe", icon: ChatEmoji },
-          { id: "webhooks", label: "Webhooks EvoPay", icon: Webhook },
+          { id: "webhooks", label: "Webhooks", icon: Webhook },
           { id: "apis", label: "APIs & Credenciais", icon: KeyRound },
           { id: "config", label: "Config", icon: Settings },
         ].map((t) => (
@@ -642,7 +642,19 @@ export default function AdminView() {
 
           <div className="glass-card p-4">
             <p className="text-xs font-bold text-muted-foreground uppercase mb-1">URL do Webhook (cole no painel EvoPay)</p>
-            <input readOnly value={state.config.evopayWebhookUrl} onClick={(e) => (e.target as HTMLInputElement).select()} className="w-full p-3 rounded-xl bg-muted text-xs text-foreground font-mono select-all" />
+            <input
+              readOnly
+              value={state.config.evopayWebhookUrl}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(state.config.evopayWebhookUrl);
+                  toast.success("Webhook copiado.");
+                } catch {
+                  toast.error("Não foi possível copiar.");
+                }
+              }}
+              className="w-full p-3 rounded-xl bg-muted text-xs text-foreground font-mono select-all cursor-pointer"
+            />
           </div>
 
           {logsLoading ? (
@@ -764,9 +776,9 @@ export default function AdminView() {
           </div>
 
           <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
-            <h3 className="font-black text-white mb-4">Receita estimada (taxa {state.config.commission}%)</h3>
-            <p className="text-3xl font-black text-[#ffbd2e]">R$ {(state.purchases.reduce((a,p)=>a+Number(p.amount),0) * (state.config.commission/100)).toFixed(2)}</p>
-            <p className="text-xs text-white/40 mt-1">Total vendido: R$ {state.purchases.reduce((a,p)=>a+Number(p.amount),0).toFixed(2)}</p>
+            <h3 className="font-black text-white mb-4">Receita estimada (R$ 0,90 por pedido)</h3>
+            <p className="text-3xl font-black text-[#ffbd2e]">R$ {(state.purchases.filter(p => p.status !== "pending" && p.status !== "cancelled").length * 0.9).toFixed(2)}</p>
+            <p className="text-xs text-white/40 mt-1">Total cobrado dos clientes: R$ {state.purchases.reduce((a,p)=>a+Number(p.amount),0).toFixed(2)}</p>
           </div>
 
           <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
@@ -831,7 +843,26 @@ export default function AdminView() {
           {/* Taxas */}
           <div className="glass-card p-6 space-y-4">
             <h3 className="font-bold text-foreground">Taxas da Plataforma</h3>
+            <p className="text-xs text-muted-foreground">Valores oficiais aplicados no checkout e no saque. O cliente sempre paga R$ 0,90 a mais; o saque mínimo é R$ 10,00 com taxa de R$ 3,50.</p>
             <div className="grid grid-cols-2 gap-4">
+              <div className="p-3 rounded-xl bg-muted">
+                <p className="text-[10px] font-bold uppercase text-muted-foreground">Taxa do comprador</p>
+                <p className="text-lg font-black text-foreground">R$ 0,90</p>
+              </div>
+              <div className="p-3 rounded-xl bg-muted">
+                <p className="text-[10px] font-bold uppercase text-muted-foreground">Saque mínimo</p>
+                <p className="text-lg font-black text-foreground">R$ 10,00</p>
+              </div>
+              <div className="p-3 rounded-xl bg-muted">
+                <p className="text-[10px] font-bold uppercase text-muted-foreground">Taxa de saque</p>
+                <p className="text-lg font-black text-foreground">R$ 3,50</p>
+              </div>
+              <div className="p-3 rounded-xl bg-muted">
+                <p className="text-[10px] font-bold uppercase text-muted-foreground">Exemplo</p>
+                <p className="text-sm font-bold text-foreground">Anúncio R$ 5,00 → cliente paga R$ 5,90</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4 hidden">
               <div>
                 <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Comissão (%)</label>
                 <input type="number" value={commission} onChange={(e) => setCommission(Number(e.target.value))} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground" />
