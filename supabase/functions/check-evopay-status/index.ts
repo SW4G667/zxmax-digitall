@@ -106,12 +106,14 @@ serve(async (req) => {
           continue;
         }
         const node = bodyRes?.data ?? bodyRes?.invoice ?? bodyRes ?? {};
-        const raw = String(node.status ?? node.situation ?? node.payment_status ?? "PENDING").toLowerCase();
-        const status =
-          ["paid", "completed", "confirmed", "approved", "success"].includes(raw) ? "COMPLETED"
-          : ["expired"].includes(raw) ? "EXPIRED"
-          : ["failed", "canceled", "error"].includes(raw) ? "FAILED"
-          : "PENDING";
+        const raw = String(node.status ?? node.situation ?? node.payment_status ?? node.status_descricao ?? "PENDING").toLowerCase();
+        // A VexoPay pode devolver o status em inglês ou em português
+        // (ex.: "COMPLETED"/"COMPLETO", "PENDING"/"PENDENTE"). Normalizamos
+        // ambos para os mesmos valores que o PixPaymentModal entende.
+        const PAID = ["paid", "completed", "confirmed", "approved", "success", "pago", "paga", "completo", "completa", "aprovado", "aprovada", "confirmado", "confirmada", "concluido", "concluído", "concluida", "concluída"];
+        const EXPIRED = ["expired", "expirado", "expirada", "vencido", "vencida", "timeout"];
+        const FAILED = ["failed", "canceled", "cancelled", "error", "falhou", "falha", "cancelado", "cancelada", "rejeitado", "rejeitada", "erro"];
+        const status = PAID.includes(raw) ? "COMPLETED" : EXPIRED.includes(raw) ? "EXPIRED" : FAILED.includes(raw) ? "FAILED" : "PENDING";
 
         return new Response(
           JSON.stringify({ id: String(id), status, amount: node.amount ?? node.amount_brl ?? null }),

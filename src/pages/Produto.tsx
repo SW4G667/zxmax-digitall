@@ -126,7 +126,7 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
                   >
                     {icon}
                     <span className="text-xs font-bold">{label}</span>
-                    {!loadingMethods && !isAvailable(id) && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
+                    {!loadingMethods && methodsState.status === "ok" && !isAvailable(id) && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
                   </button>
                 );
               })}
@@ -391,7 +391,7 @@ export default function ProdutoPage() {
       if (method === "pix") {
         const res = await unwrapEdgeCall<{ id: string; qrCodeText: string; qrCodeUrl?: string; expiresAt?: string }>(
           await supabase.functions.invoke("create-evopay-pix", {
-            body: { purchaseId, productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name, amount: subtotal, buyerName: state.currentUser?.name },
+            body: { purchaseId, productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name, amount: subtotal, buyerName: state.currentUser?.name, payerDocument: cpf || undefined },
           }),
           "Não foi possível gerar o PIX. Tente novamente.",
         );

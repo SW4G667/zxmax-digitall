@@ -47,7 +47,7 @@ async function testConnection(provider: string, cfg: Record<string, any>) {
     }
     if (provider === "vexopay") {
       if (!cfg.clientId || !cfg.clientSecret) return { ok: false, message: "Client ID (ci) e Client Secret (cs) são obrigatórios." };
-      const baseUrl = String(cfg.baseUrl || "https://vexopay.com.br/api").replace(/\/$/, "");
+      const baseUrl = String(cfg.baseUrl || "https://www.vexopay.com.br/api").replace(/\/$/, "");
       const r = await fetch(`${baseUrl}/balance`, {
         headers: { ci: String(cfg.clientId), cs: String(cfg.clientSecret), Accept: "application/json" },
       });

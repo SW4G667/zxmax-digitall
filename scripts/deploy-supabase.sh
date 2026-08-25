@@ -86,13 +86,15 @@ echo "✅ Backend atualizado. Agora configure as SECRETS no dashboard:"
 echo "   https://supabase.com/dashboard/project/$PROJECT_REF/settings/functions"
 echo ""
 echo "   Rode com as secrets (uma por vez, sem expor em log):"
-for s in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY RESEND_API_KEY EVOPAY_API_KEY; do
+for s in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY RESEND_API_KEY EVOPAY_API_KEY VEXOPAY_CLIENT_ID VEXOPAY_CLIENT_SECRET STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET; do
   echo "   - sb secrets set $s=<valor>"
 done
 echo ""
 echo "   Obrigatórias para o login admin e a verificação funcionarem:"
 echo "   - SUPABASE_SERVICE_ROLE_KEY  (aprovação de verificação/produtos)"
-echo "   - EVOPAY_API_KEY             (Pagamento Pix)"
+echo "   - EVOPAY_API_KEY             (Pagamento Pix — fallback)"
+echo "   - VEXOPAY_CLIENT_ID / VEXOPAY_CLIENT_SECRET  (PIX + Crypto — gateway primário;"
+echo "       também podem ser salvos pelo painel admin em 'APIs & Credenciais')"
 echo "   - RESEND_API_KEY             OPCIONAL — o login admin usa OTP do Supabase Auth"
 echo ""
 echo "   No painel: Authentication -> Providers -> Email -> ligue 'Enable Email provider'."
