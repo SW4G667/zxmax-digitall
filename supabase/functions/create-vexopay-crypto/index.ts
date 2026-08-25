@@ -37,6 +37,7 @@ serve(async (req) => {
     let ci = Deno.env.get("VEXOPAY_CLIENT_ID");
     let cs = Deno.env.get("VEXOPAY_CLIENT_SECRET");
     let baseUrl = "https://www.vexopay.com.br/api";
+    let cryptoEnabled = true;
 
     try {
       const { data: setting } = await serviceClient.from("app_settings").select("value").eq("key", "vexopay").maybeSingle();
@@ -45,9 +46,12 @@ serve(async (req) => {
       if (typeof setting?.value?.baseUrl === "string" && setting.value.baseUrl.trim() !== "") {
         baseUrl = setting.value.baseUrl.replace(/\/$/, "");
       }
+      cryptoEnabled = typeof setting?.value?.cryptoEnabled === "boolean"
+        ? setting.value.cryptoEnabled
+        : setting?.value?.enabled !== false;
     } catch {}
 
-    if (!ci || !cs) {
+    if (!ci || !cs || !cryptoEnabled) {
       throw new Error("O pagamento em cripto está temporariamente indisponível: o gateway não está configurado. Avise o suporte.");
     }
 

@@ -16,8 +16,15 @@
  * Nunca uma falha interna é convertida em `{ pix:false, card:false,
  * crypto:false, boleto:false }` — era o que fazia a tela dizer que "nenhuma
  * forma está configurada" quando o problema era outro.
+ *
+ * Quando a edge é antiga, o checkout calcula a disponibilidade direto dos
+ * toggles por função (zennithpay.pixEnabled, vexopay.cryptoEnabled,
+ * stripe.cardEnabled, stripe.boletoEnabled, evopay.pixEnabled como
+ * último-resort legado) e da existência das credenciais salvas em
+ * app_settings.
  */
 
+import { supabase } from "@/integrations/supabase/client";
 import type { EdgeCallResult } from "@/lib/edgeErrors";
 
 export type PaymentMethodId = "pix" | "crypto" | "card" | "boleto";
@@ -37,8 +44,9 @@ export const NO_METHODS: Record<PaymentMethodId, boolean> = {
   boleto: false,
 };
 
-/** PIX + Crypto são os meios oficiais. Se a edge antiga não responder `v: 2`,
- * o checkout oferece esses dois em vez de travar a compra. */
+/** PIX + Crypto são os meios oficiais. Se a edge antiga não responder `v: 2`
+ * e não conseguirmos ler app_settings, o checkout oferece esses dois em vez
+ * de travar a compra. */
 export const FALLBACK_CHECKOUT_METHODS: Record<PaymentMethodId, boolean> = {
   pix: true,
   crypto: true,
@@ -61,6 +69,58 @@ function isMethodsShape(value: unknown): value is Record<PaymentMethodId, boolea
   return (["pix", "crypto", "card", "boleto"] as const).every((k) => typeof v[k] === "boolean");
 }
 
+/** Calcula a disponibilidade de cada método DIRETO de app_settings, honrando
+ *  os toggles por função de cada provider. Usado como fallback quando a edge
+ *  publicada é antiga e não devolve `v: 2`. */
+export async function computeMethodsFromSettings(): Promise<Record<PaymentMethodId, boolean> | null> {
+  try {
+    const { data, error } = await (supabase as any)
+      .from("app_settings")
+      .select("key, value")
+      .in("key", ["zennithpay", "vexopay", "stripe", "evopay", "checkout_gateways"]);
+    if (error || !data) return null;
+    const byKey: Record<string, any> = {};
+    for (const r of data) byKey[r.key] = r.value || {};
+
+    const zennith = byKey.zennithpay || {};
+    const vexo = byKey.vexopay || {};
+    const stripe = byKey.stripe || {};
+    const evo = byKey.evopay || {};
+    const cg = byKey.checkout_gateways || {};
+
+    // Helper: flag booleana com fallback para o valor legado em checkout_gateways
+    const flag = (val: unknown, legacy?: unknown, def = false): boolean => {
+      if (typeof val === "boolean") return val;
+      if (typeof legacy === "boolean") return legacy;
+      return def;
+    };
+    const has = (v: unknown): boolean => typeof v === "string" && v.trim().length > 0;
+
+    // PIX: ZennithPay oficial; evopay.pixEnabled é legado mas não contamos
+    // como ativação a menos que a chave exista (para não reativar o legado
+    // por acidente). EvoPay é DESLIGADO por padrão.
+    const pixOn =
+      flag(zennith.pixEnabled, cg.pix, true) &&
+      (has(zennith.apiKey) || false);
+    // Crypto: VexoPay.
+    const cryptoOn =
+      flag(vexo.cryptoEnabled, cg.crypto, true) &&
+      has(vexo.clientId) && has(vexo.clientSecret);
+    // Cartão: Stripe.
+    const cardOn =
+      flag(stripe.cardEnabled, cg.card, false) &&
+      has(stripe.secretKey);
+    // Boleto: Stripe também.
+    const boletoOn =
+      flag(stripe.boletoEnabled, cg.boleto, false) &&
+      has(stripe.secretKey);
+
+    return { pix: pixOn, crypto: cryptoOn, card: cardOn, boleto: boletoOn };
+  } catch {
+    return null;
+  }
+}
+
 /** Mensagem segura (sem detalhes de secrets/SQL/gateway) por situação. */
 export function paymentMethodsNotice(state: PaymentMethodsState): { message: string; retryable: boolean } | null {
   switch (state.status) {
@@ -74,7 +134,7 @@ export function paymentMethodsNotice(state: PaymentMethodsState): { message: str
       };
     }
     case "outdated":
-      // Função antiga: PIX e Crypto ficam disponíveis; não bloqueamos a compra.
+      // Função antiga: usamos fallback; não bloqueamos a compra.
       return null;
     case "settingsFailed":
       return {

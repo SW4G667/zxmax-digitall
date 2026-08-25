@@ -141,15 +141,22 @@ serve(async (req) => {
         (rows || []).find((r: any) => r.key === key)?.value || {};
 
       // PIX = ZennithPay. Crypto = VexoPay. Cartão/boleto = Stripe.
+      // Toggles por função (pixEnabled, cryptoEnabled, withdrawalsEnabled,
+      // cardEnabled, boletoEnabled) — legado `enabled` é usado como fallback.
       const zennith = cfg("zennithpay");
       const vexopay = cfg("vexopay");
       const stripe = cfg("stripe");
+      const evopay = cfg("evopay");
 
-      const zennithReady = !!(zennith.apiKey || Deno.env.get("ZENNITH_API_KEY")) && zennith.enabled !== false;
+      const zennithPix = typeof zennith.pixEnabled === "boolean" ? zennith.pixEnabled : zennith.enabled !== false;
+      const zennithReady = !!(zennith.apiKey || Deno.env.get("ZENNITH_API_KEY")) && zennithPix;
+      const vexoCrypto = typeof vexopay.cryptoEnabled === "boolean" ? vexopay.cryptoEnabled : vexopay.enabled !== false;
       const vexopayReady = !!(
         (vexopay.clientId && vexopay.clientSecret) ||
         (Deno.env.get("VEXOPAY_CLIENT_ID") && Deno.env.get("VEXOPAY_CLIENT_SECRET"))
-      ) && vexopay.enabled !== false;
+      ) && vexoCrypto;
+      const stripeCard = typeof stripe.cardEnabled === "boolean" ? stripe.cardEnabled : stripe.enabled === true;
+      const stripeBoleto = typeof stripe.boletoEnabled === "boolean" ? stripe.boletoEnabled : stripe.boletoEnabled === true;
       const cardReady = !!(stripe.secretKey || Deno.env.get("STRIPE_SECRET_KEY"));
 
       return json({
@@ -157,8 +164,8 @@ serve(async (req) => {
         methods: {
           pix: zennithReady,
           crypto: vexopayReady,
-          card: cardReady && stripe.enabled !== false,
-          boleto: cardReady && stripe.enabled !== false && stripe.boletoEnabled !== false,
+          card: cardReady && stripeCard,
+          boleto: cardReady && stripeBoleto,
         },
       });
     }

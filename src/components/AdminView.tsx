@@ -920,10 +920,10 @@ export default function AdminView() {
 
           {/* Credenciais sensíveis foram movidas para a aba "APIs & Credenciais" (armazenadas apenas no servidor) */}
 
-          {/* EvoPay (gateway de pagamento ativo) */}
-          <div className="glass-card p-6 space-y-4 border-2 border-primary/20">
+          {/* EvoPay — legado. PIX oficial é ZennithPay (aba APIs & Credenciais). */}
+          <div className="glass-card p-6 space-y-4 border border-dashed border-muted-foreground/30">
             <div className="flex justify-between items-center">
-              <h3 className="font-bold text-foreground">Credenciais EvoPay (PIX) <span className="text-[10px] text-primary">• Gateway ativo</span></h3>
+              <h3 className="font-bold text-foreground">EvoPay legado <span className="text-[10px] text-muted-foreground">• PIX oficial = ZennithPay (aba APIs &amp; Credenciais)</span></h3>
               <div className="flex gap-1 bg-muted rounded-xl p-1">
                 <button onClick={() => setEvopayMode("automatic")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${evopayMode === "automatic" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Automático</button>
                 <button onClick={() => setEvopayMode("manual")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${evopayMode === "manual" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Manual</button>

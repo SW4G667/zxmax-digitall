@@ -41,7 +41,8 @@ serve(async (req) => {
     const cfg = (setting?.value || {}) as Record<string, unknown>;
     const apiKey = String(cfg.apiKey || Deno.env.get("ZENNITH_API_KEY") || "").trim();
     const baseUrl = String(cfg.baseUrl || DEFAULT_BASE).replace(/\/$/, "");
-    if (!apiKey) return json({ error: "ZennithPay não configurada no painel." }, 400);
+    const withdrawalsEnabled = typeof cfg.withdrawalsEnabled === "boolean" ? cfg.withdrawalsEnabled : cfg.enabled !== false;
+    if (!apiKey || !withdrawalsEnabled) return json({ error: "Saques via ZennithPay não estão ativos no momento." }, 400);
 
     const body = await req.json().catch(() => ({}));
     const amount = Number(body.amount);
