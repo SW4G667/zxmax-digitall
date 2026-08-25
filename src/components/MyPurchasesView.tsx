@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import OrderChat from "@/components/OrderChat";
 import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
 import { supabase } from "@/integrations/supabase/client";
+import { unwrapEdgeCall } from "@/lib/edgeErrors";
 
 const statusMap: Record<Purchase["status"], { label: string; cls: string }> = {
   pending: { label: "Aguardando pagamento", cls: "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30" },
@@ -76,9 +77,21 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
     : state.purchases.filter(
         (p) => p.buyerId === state.currentUser?.id || p.sellerId === state.currentUser?.id
       );
+  const q = search.trim().toLowerCase();
   const filtered = visiblePurchases.filter((p) => {
+    if (!q) return true;
+    // Procura no nome do produto (se existir), e-mail e ID. Nunca crasha se o
+    // produto ainda não carregou — o comprador/seller precisa continuar vendo
+    // a compra mesmo que o catálogo esteja incompleto.
     const product = state.products.find((pr) => pr.id === p.productId);
-    return product?.name.toLowerCase().includes(search.toLowerCase());
+    const hay = [
+      product?.name || "",
+      p.buyerEmail || "",
+      p.sellerEmail || "",
+      String(p.id),
+      p.variationName || "",
+    ].join(" ").toLowerCase();
+    return hay.includes(q);
   }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const selected = selectedId ? state.purchases.find((p) => p.id === selectedId) : null;
@@ -98,16 +111,25 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
     // Generate a new Pix
     setLoadingPix(purchase.id);
     try {
-      const { data, error } = await supabase.functions.invoke("create-zennith-pix", {
-        body: {
-          purchaseId: purchase.id,
-          productName: purchase.variationName ? `${product?.name} - ${purchase.variationName}` : product?.name,
-          amount: purchase.amount,
-          buyerEmail: state.currentUser.email,
-          buyerName: state.currentUser.name,
-        },
-      });
-      if (error) throw error;
+      const res = await unwrapEdgeCall<{ id: string; qrCodeText: string; qrCodeUrl?: string; expiresAt?: string; amount?: number }>(
+        await supabase.functions.invoke("create-zennith-pix", {
+          body: {
+            purchaseId: purchase.id,
+            productName: purchase.variationName ? `${product?.name} - ${purchase.variationName}` : product?.name,
+            amount: purchase.amount,
+            buyerEmail: state.currentUser.email,
+            buyerName: state.currentUser.name,
+          },
+        }),
+        "Erro ao gerar PIX.",
+      );
+      if (res.errorMessage) {
+        if (res.status === 404 || /not found/i.test(res.errorMessage)) {
+          throw new Error("Função de PIX (ZennithPay) ainda não publicada no Supabase. Avise o admin.");
+        }
+        throw new Error(res.errorMessage);
+      }
+      const data = res.data;
       if (data?.qrCodeText) {
         savePixCharge(purchase.id, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
         setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? purchase.amount, qrCodeUrl: data.qrCodeUrl, purchaseId: purchase.id });

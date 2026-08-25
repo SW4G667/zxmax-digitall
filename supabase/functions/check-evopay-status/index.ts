@@ -33,23 +33,37 @@ serve(async (req) => {
     }
 
     // Credenciais
-    let apiKey = Deno.env.get("EVOPAY_API_KEY");
-    let evopayEnabled = true;
+    let evoApiKey = Deno.env.get("EVOPAY_API_KEY");
+    let evoPixEnabled = false; // legado desligado por padrão
     try {
       const { data: setting } = await admin.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
-      if (setting?.value?.apiKey) apiKey = setting.value.apiKey;
-      evopayEnabled = setting?.value?.enabled !== false;
+      const v = setting?.value || {};
+      if (v.apiKey) evoApiKey = v.apiKey;
+      evoPixEnabled = typeof v.pixEnabled === "boolean" ? v.pixEnabled : (v.enabled === true);
     } catch (_e) { /* fallback to secret */ }
+
+    let zennithKey = Deno.env.get("ZENNITH_API_KEY");
+    let zennithBase = "https://zennithpay.online/api/v1";
+    let zennithPixEnabled = true;
+    try {
+      const { data: zRow } = await admin.from("app_settings").select("value").eq("key", "zennithpay").maybeSingle();
+      const z = zRow?.value || {};
+      if (z.apiKey) zennithKey = z.apiKey;
+      if (typeof z.baseUrl === "string" && z.baseUrl.trim() !== "") zennithBase = z.baseUrl.replace(/\/$/, "");
+      zennithPixEnabled = typeof z.pixEnabled === "boolean" ? z.pixEnabled : (z.enabled !== false);
+    } catch (_e) { /* fallback */ }
 
     let vexoCi = Deno.env.get("VEXOPAY_CLIENT_ID");
     let vexoCs = Deno.env.get("VEXOPAY_CLIENT_SECRET");
     let vexoBaseUrl: string | undefined;
+    let vexoCryptoEnabled = true;
     try {
       const { data: vexoRow } = await admin.from("app_settings").select("value").eq("key", "vexopay").maybeSingle();
       const v = vexoRow?.value || {};
       if (v.clientId) vexoCi = v.clientId;
       if (v.clientSecret) vexoCs = v.clientSecret;
       if (typeof v.baseUrl === "string" && v.baseUrl.trim() !== "") vexoBaseUrl = v.baseUrl.replace(/\/$/, "");
+      vexoCryptoEnabled = typeof v.cryptoEnabled === "boolean" ? v.cryptoEnabled : (v.enabled !== false);
     } catch (_e) { /* fallback to secrets */ }
 
     const url = new URL(req.url);
@@ -99,11 +113,9 @@ serve(async (req) => {
     // ZennithPay Status — GET /payments/{reference_id}/status
     // ------------------------------------------------------------------
     if (String(id).startsWith("zennith:")) {
-      const { data: zRow } = await admin.from("app_settings").select("value").eq("key", "zennithpay").maybeSingle();
-      const z = (zRow?.value || {}) as Record<string, unknown>;
-      const zKey = String(z.apiKey || Deno.env.get("ZENNITH_API_KEY") || "").trim();
-      const zBase = String(z.baseUrl || "https://zennithpay.online/api/v1").replace(/\/$/, "");
-      if (!zKey) {
+      const zKey = String(zennithKey || "").trim();
+      const zBase = zennithBase;
+      if (!zKey || !zennithPixEnabled) {
         return new Response(JSON.stringify({ error: "Gateway de PIX não configurado para consulta." }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -139,8 +151,8 @@ serve(async (req) => {
     // Cripto: GET /gateway/crypto-status?id=5b3e... ou GET /crypto-status?id=5b3e...
     // ------------------------------------------------------------------
     if (String(id).startsWith("vexo:")) {
-      if (!vexoCi || !vexoCs) {
-        return new Response(JSON.stringify({ error: "Gateway de cripto/PIX não configurado para consulta." }), {
+      if (!vexoCi || !vexoCs || !vexoCryptoEnabled) {
+        return new Response(JSON.stringify({ error: "Gateway de cripto não configurado para consulta." }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -184,15 +196,15 @@ serve(async (req) => {
       throw new Error(lastStatusError || "Não foi possível consultar o status agora na VexoPay.");
     }
 
-    if (!apiKey || !evopayEnabled) {
-      return new Response(JSON.stringify({ error: "Gateway de PIX não configurado para consulta." }), {
+    if (!evoApiKey || !evoPixEnabled) {
+      return new Response(JSON.stringify({ error: "Gateway de PIX legado (EvoPay) não está ativo." }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const response = await fetch(`https://api.evopay.cash/v1/pix?id=${encodeURIComponent(id)}`, {
-      headers: { "Authorization": `Bearer ${apiKey}` },
+      headers: { "Authorization": `Bearer ${evoApiKey}` },
     });
     const data = await response.json();
 

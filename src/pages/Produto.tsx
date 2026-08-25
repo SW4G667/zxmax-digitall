@@ -13,7 +13,7 @@ import { formatBRL, formatRobuxPackage, formatStockLabel, productMinQuantity, pr
 import { BUYER_FEE, checkoutTotals } from "@/lib/fees";
 import CryptoPaymentModal, { CryptoCharge } from "@/components/CryptoPaymentModal";
 import { unwrapEdgeCall } from "@/lib/edgeErrors";
-import { checkoutMethods, classifyPaymentMethods, paymentMethodsNotice, PaymentMethodsState } from "@/lib/paymentMethods";
+import { checkoutMethods, classifyPaymentMethods, computeMethodsFromSettings, paymentMethodsNotice, PaymentMethodsState } from "@/lib/paymentMethods";
 import { friendlyQuestionError, isSchemaMissing } from "@/lib/questionErrors";
 import { containsExternalContact } from "@/lib/externalContact";
 
@@ -62,18 +62,13 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
       if (!active) return;
       let next = classifyPaymentMethods(result);
       if (next.status !== "ok") {
-        const { data } = await (supabase as any).from("app_settings").select("value").eq("key", "checkout_gateways").maybeSingle();
-        const saved = data?.value as Record<string, unknown> | undefined;
-        if (saved && typeof saved.pix === "boolean") {
-          next = {
-            status: "ok",
-            methods: {
-              pix: !!saved.pix,
-              crypto: !!saved.crypto,
-              card: !!saved.card,
-              boleto: !!saved.boleto,
-            },
-          };
+        // Edge antiga: calcula disponibilidade a partir dos toggles por
+        // função de cada provider em app_settings (zennithpay.pixEnabled,
+        // vexopay.cryptoEnabled, stripe.cardEnabled etc.), honrando tanto
+        // as chaves de credencial quanto os ligar/desligar do admin.
+        const computed = await computeMethodsFromSettings();
+        if (computed) {
+          next = { status: "ok", methods: computed };
         }
       }
       if (!active) return;
@@ -428,7 +423,10 @@ export default function ProdutoPage() {
           "Não foi possível gerar o PIX. Tente novamente.",
         );
         if (res.errorMessage || !res.data?.qrCodeText) {
-          toast.error(res.errorMessage ?? "O provedor de PIX não devolveu o código. Tente novamente.");
+          const msg = res.status === 404
+            ? "Função de PIX (ZennithPay) ainda não publicada. Avise o suporte."
+            : res.errorMessage ?? "O provedor de PIX não devolveu o código. Tente novamente.";
+          toast.error(msg);
           return;
         }
         savePixCharge(purchaseId, { evopayId: res.data.id, qrCodeText: res.data.qrCodeText, expiresAt: res.data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
@@ -445,7 +443,10 @@ export default function ProdutoPage() {
           "Não foi possível gerar a cobrança em cripto.",
         );
         if (res.errorMessage || !res.data?.address) {
-          toast.error(res.errorMessage ?? "O provedor de cripto não devolveu o endereço.");
+          const msg = res.status === 404
+            ? "Função de Crypto (VexoPay) ainda não publicada. Avise o suporte."
+            : res.errorMessage ?? "O provedor de cripto não devolveu o endereço.";
+          toast.error(msg);
           return;
         }
         setCryptoCharge({

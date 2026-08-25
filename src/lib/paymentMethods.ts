@@ -16,8 +16,15 @@
  * Nunca uma falha interna é convertida em `{ pix:false, card:false,
  * crypto:false, boleto:false }` — era o que fazia a tela dizer que "nenhuma
  * forma está configurada" quando o problema era outro.
+ *
+ * Quando a edge é antiga, o checkout calcula a disponibilidade direto dos
+ * toggles por função (zennithpay.pixEnabled, vexopay.cryptoEnabled,
+ * stripe.cardEnabled, stripe.boletoEnabled, evopay.pixEnabled como
+ * último-resort legado) e da existência das credenciais salvas em
+ * app_settings.
  */
 
+import { supabase } from "@/integrations/supabase/client";
 import type { EdgeCallResult } from "@/lib/edgeErrors";
 
 export type PaymentMethodId = "pix" | "crypto" | "card" | "boleto";
@@ -37,8 +44,9 @@ export const NO_METHODS: Record<PaymentMethodId, boolean> = {
   boleto: false,
 };
 
-/** PIX + Crypto são os meios oficiais. Se a edge antiga não responder `v: 2`,
- * o checkout oferece esses dois em vez de travar a compra. */
+/** PIX + Crypto são os meios oficiais. Se a edge antiga não responder `v: 2`
+ * e não conseguirmos ler app_settings, o checkout oferece esses dois em vez
+ * de travar a compra. */
 export const FALLBACK_CHECKOUT_METHODS: Record<PaymentMethodId, boolean> = {
   pix: true,
   crypto: true,
@@ -61,6 +69,67 @@ function isMethodsShape(value: unknown): value is Record<PaymentMethodId, boolea
   return (["pix", "crypto", "card", "boleto"] as const).every((k) => typeof v[k] === "boolean");
 }
 
+/** Calcula a disponibilidade de cada método DIRETO de app_settings.
+ *  Para o COMPRADOR (não-admin), só o objeto `checkout_gateways` é legível
+ *  via RLS — credenciais de provedor só admins leem. Então:
+ *    1. Se `checkout_gateways` tem booleanos explícitos, usamos (honra o que
+ *       o admin ligou/desligou no painel).
+ *    2. Se não tem, fallback seguro: PIX e Crypto ligados (oficiais),
+ *       Cartão/Boleto desligados.
+ *  A verificação de "existe credencial?" roda no servidor (edge) quando
+ *  ela estiver publicada; antes disso, honramos a vontade do admin. */
+export async function computeMethodsFromSettings(): Promise<Record<PaymentMethodId, boolean> | null> {
+  try {
+    const { data, error } = await (supabase as any)
+      .from("app_settings")
+      .select("key, value")
+      .in("key", ["zennithpay", "vexopay", "stripe", "evopay", "checkout_gateways"]);
+    if (error || !data) {
+      // Sem leitura do banco (ex.: RLS), cai no FALLBACK global do caller.
+      return null;
+    }
+    const byKey: Record<string, any> = {};
+    for (const r of data) byKey[r.key] = r.value || {};
+
+    const cg = byKey.checkout_gateways || {};
+    // Se o admin já gravou checkout_gateways com booleanos explícitos,
+    // confiamos 100% no que ele marcou.
+    const hasExplicit =
+      typeof cg.pix === "boolean" ||
+      typeof cg.crypto === "boolean" ||
+      typeof cg.card === "boolean" ||
+      typeof cg.boleto === "boolean";
+
+    if (hasExplicit) {
+      return {
+        pix: cg.pix !== false,
+        crypto: cg.crypto !== false,
+        card: cg.card === true,
+        boleto: cg.boleto === true,
+      };
+    }
+
+    // Sem checkout_gateways salvo: tenta derivar do que cada provider
+    // permite a partir das chaves que o comprador consegue ver (não-secretas).
+    // Pix/crypto ligados por padrão, cartão/boleto desligados.
+    const zennith = byKey.zennithpay || {};
+    const vexo = byKey.vexopay || {};
+    const stripe = byKey.stripe || {};
+    const zPix = typeof zennith.pixEnabled === "boolean" ? zennith.pixEnabled : (zennith.enabled !== false);
+    const vCrypto = typeof vexo.cryptoEnabled === "boolean" ? vexo.cryptoEnabled : (vexo.enabled !== false);
+    const sCard = typeof stripe.cardEnabled === "boolean" ? stripe.cardEnabled : stripe.enabled === true;
+    const sBoleto = typeof stripe.boletoEnabled === "boolean" ? stripe.boletoEnabled : false;
+    return {
+      pix: zPix,
+      crypto: vCrypto,
+      card: sCard,
+      boleto: sBoleto,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Mensagem segura (sem detalhes de secrets/SQL/gateway) por situação. */
 export function paymentMethodsNotice(state: PaymentMethodsState): { message: string; retryable: boolean } | null {
   switch (state.status) {
@@ -74,7 +143,7 @@ export function paymentMethodsNotice(state: PaymentMethodsState): { message: str
       };
     }
     case "outdated":
-      // Função antiga: PIX e Crypto ficam disponíveis; não bloqueamos a compra.
+      // Função antiga: usamos fallback; não bloqueamos a compra.
       return null;
     case "settingsFailed":
       return {

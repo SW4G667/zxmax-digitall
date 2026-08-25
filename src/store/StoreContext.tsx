@@ -876,11 +876,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const approvePurchase = (id: number) => {
-    void supabase.functions.invoke("order-action", { body: { orderId: id, action: "approve" } }).then(() => refreshPurchases());
+    void (async () => {
+      try {
+        const res = await unwrapEdgeCall<{ success?: boolean; status?: string }>(
+          await supabase.functions.invoke("order-action", { body: { orderId: id, action: "approve" } }),
+          "Não foi possível aprovar o pedido.",
+        );
+        if (res.errorMessage) {
+          toast.error(res.errorMessage);
+          return;
+        }
+        toast.success(`Pedido #${id} aprovado.`);
+        void refreshPurchases();
+      } catch (e: any) {
+        toast.error(e?.message || "Erro ao aprovar pedido.");
+      }
+    })();
   };
 
   const revertPurchase = (id: number) => {
-    void supabase.functions.invoke("order-action", { body: { orderId: id, action: "revert" } }).then(() => refreshPurchases());
+    void (async () => {
+      try {
+        const res = await unwrapEdgeCall<{ success?: boolean; status?: string }>(
+          await supabase.functions.invoke("order-action", { body: { orderId: id, action: "revert" } }),
+          "Não foi possível reverter o pedido.",
+        );
+        if (res.errorMessage) {
+          toast.error(res.errorMessage);
+          return;
+        }
+        toast.success(`Pedido #${id} revertido.`);
+        void refreshPurchases();
+      } catch (e: any) {
+        toast.error(e?.message || "Erro ao reverter pedido.");
+      }
+    })();
   };
 
   const refreshWithdrawals = React.useCallback(async () => {
@@ -949,16 +979,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const withdrawal = state.withdrawals.find((w) => w.id === id);
     if (!withdrawal?.pixKey) throw new Error("Este saque não tem chave Pix cadastrada.");
     const net = Math.round((Number(withdrawal.amount) - WITHDRAW_FEE) * 100) / 100;
-    const { data, error } = await supabase.functions.invoke("zennith-withdraw", {
-      body: {
-        amount: net > 0 ? net : Number(withdrawal.amount),
-        pixKey: withdrawal.pixKey,
-        clientReference: `zxmax-withdraw-${id}`,
-      },
-    });
-    if (error || data?.error) {
-      throw new Error(data?.error || error?.message || "Erro ao processar saque na ZennithPay");
+    const res = await unwrapEdgeCall<{ id?: string; status?: string; error?: string }>(
+      await supabase.functions.invoke("zennith-withdraw", {
+        body: {
+          amount: net > 0 ? net : Number(withdrawal.amount),
+          pixKey: withdrawal.pixKey,
+          clientReference: `zxmax-withdraw-${id}`,
+        },
+      }),
+      "Erro ao processar saque na ZennithPay.",
+    );
+    if (res.errorMessage || !res.data) {
+      // 404 = function ainda não publicada — mensagem honesta em vez de falha genérica.
+      if (res.status === 404 || /not found/i.test(res.errorMessage || "")) {
+        throw new Error("Função de saque ZennithPay ainda não publicada no Supabase. Publique as edges antes de aprovar saques.");
+      }
+      throw new Error(res.errorMessage || "Erro ao processar saque na ZennithPay");
     }
+    const data = res.data;
     const providerTx = data?.id ? String(data.id) : null;
     const { error: rpcError } = await (supabase as any).rpc("approve_withdrawal", {
       _id: id,

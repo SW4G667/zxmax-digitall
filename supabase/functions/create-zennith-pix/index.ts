@@ -33,7 +33,8 @@ serve(async (req) => {
     const cfg = (setting?.value || {}) as Record<string, unknown>;
     const apiKey = String(cfg.apiKey || Deno.env.get("ZENNITH_API_KEY") || "").trim();
     const baseUrl = String(cfg.baseUrl || DEFAULT_BASE).replace(/\/$/, "");
-    if (!apiKey || cfg.enabled === false) {
+    const pixEnabled = typeof cfg.pixEnabled === "boolean" ? cfg.pixEnabled : cfg.enabled !== false;
+    if (!apiKey || !pixEnabled) {
       return json({ error: "O PIX está temporariamente indisponível. Avise o suporte.", code: "zennith_not_configured" }, 400);
     }
 
