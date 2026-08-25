@@ -193,7 +193,7 @@ export default function RobuxPage() {
                   <p className="text-[10px] text-white/40">{formatRobuxPackage({ price: offer.packagePrice, category: ROBUX_CATEGORY, variations: [{ name: `${offer.packageUnits} Robux`, price: offer.packagePrice }] })}</p>
                   <button
                     onClick={(e) => { e.stopPropagation(); navigate(`/produto/${offer.productId}`); }}
-                    className="mt-2 bg-[#ffbd2e] hover:bg-[#e6a829] text-black text-[11px] font-black px-3 py-1.5 rounded-lg"
+                    className="mt-2 bg-[#2B7FFF] hover:bg-[#1a6eef] text-white text-[11px] font-black px-3 py-1.5 rounded-lg"
                   >
                     Ver oferta
                   </button>

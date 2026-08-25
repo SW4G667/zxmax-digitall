@@ -2,31 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ZXMAX GGMAX - Real marketplace style, not AI */
+/* ZXMAX — visual alinhado à GGMax (marketplace claro, azul, cards brancos) */
 @layer base {
   :root {
-    --background: 0 0% 98%;
-    --foreground: 240 10% 3.9%;
+    --background: 220 16% 97%;
+    --foreground: 222 20% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 222 20% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 211 100% 50%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
+    --popover-foreground: 222 20% 12%;
+    --primary: 212 100% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 20% 12%;
+    --muted: 220 14% 95%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 212 100% 96%;
+    --accent-foreground: 212 100% 40%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 211 100% 50%;
-    --radius: 0.5rem;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 212 100% 58%;
+    --radius: 0.75rem;
     --success: 142 76% 36%;
     --success-foreground: 0 0% 98%;
+    --zx-blue: #2B7FFF;
+    --zx-blue-hover: #1a6eef;
+    --zx-ink: #1b1f27;
+    --zx-muted: #6b7280;
+    --zx-line: #e6e8ec;
+    --zx-page: #f4f6f8;
+    --gg-blue: #2B7FFF;
+    --gg-blue-hover: #1a6eef;
+    --gg-text: #1b1f27;
+    --gg-muted: #6b7280;
+    --gg-faint: #9ca3af;
+    --gg-border: #e6e8ec;
+    --gg-surface: #ffffff;
+    --gg-surface-2: #f0f2f5;
+    --gg-page: #f4f6f8;
   }
 
   .dark {
@@ -36,59 +51,80 @@
     --card-foreground: 0 0% 98%;
     --popover: 240 6% 10%;
     --popover-foreground: 0 0% 98%;
-    --primary: 211 100% 50%;
+    --primary: 212 100% 58%;
     --primary-foreground: 0 0% 98%;
     --secondary: 240 4% 16%;
     --secondary-foreground: 0 0% 98%;
     --muted: 240 4% 16%;
     --muted-foreground: 240 5% 64.9%;
-    --accent: 240 4% 16%;
-    --accent-foreground: 0 0% 98%;
+    --accent: 212 80% 16%;
+    --accent-foreground: 212 100% 75%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
     --border: 240 4% 16%;
     --input: 240 4% 16%;
-    --ring: 211 100% 50%;
+    --ring: 212 100% 58%;
     --success: 142 70% 45%;
     --success-foreground: 0 0% 98%;
+    --zx-blue: #2B7FFF;
+    --zx-blue-hover: #5aaeff;
+    --zx-ink: #f4f4f5;
+    --zx-muted: rgba(255,255,255,0.45);
+    --zx-line: #25252e;
+    --zx-page: #0a0a0f;
+    --gg-blue: #2B7FFF;
+    --gg-blue-hover: #5aaeff;
+    --gg-text: #f4f4f5;
+    --gg-muted: rgba(255,255,255,0.55);
+    --gg-faint: rgba(255,255,255,0.35);
+    --gg-border: #25252e;
+    --gg-surface: #15151a;
+    --gg-surface-2: #1a1a20;
+    --gg-page: #0a0a0f;
   }
 }
 
 @layer base {
   * { @apply border-border; }
-  html, body, #root { min-height: 100%; background: #0a0a0f; }
+  html, body, #root { min-height: 100%; background: var(--zx-page); color: var(--zx-ink); }
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: #0a0a0f; }
-  ::-webkit-scrollbar-thumb { background: #25252e; border-radius: 999px; }
-  ::-webkit-scrollbar-thumb:hover { background: #0084ff; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
+  .dark ::-webkit-scrollbar-thumb { background: #25252e; }
+  ::-webkit-scrollbar-thumb:hover { background: #2B7FFF; }
 }
 
 @layer components {
-  /* GGMAX solid cards, not glassy AI */
   .glass-card {
-    @apply bg-[#15151a] border border-[#25252e] rounded-xl;
-    box-shadow: 0 1px 0 0 rgba(255,255,255,0.03) inset;
+    @apply bg-card border border-border rounded-xl;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
   }
-  .glass-card:hover { border-color: #2a2a36; }
+  .glass-card:hover { border-color: #d0d5dd; }
+  .dark .glass-card:hover { border-color: #2a2a36; }
 
   .btn-gradient {
-    background: #0084ff;
+    background: var(--zx-blue);
     @apply text-white font-bold rounded-lg transition-colors duration-150;
   }
-  .btn-gradient:hover { background: #0066cc; }
+  .btn-gradient:hover { background: var(--zx-blue-hover); }
   .btn-gradient:disabled { opacity: .5; cursor: not-allowed; }
 
+  .btn-anunciar {
+    background: var(--zx-blue);
+    @apply text-white font-bold rounded-full px-4 py-2 text-sm transition-colors;
+  }
+  .btn-anunciar:hover { background: var(--zx-blue-hover); }
+
   .nav-bottom-bar {
-    @apply border-t border-[#1e1e28];
-    background: #0f0f14;
+    @apply border-t border-border bg-card;
   }
 
   .bg-gradient-page {
-    background: #0a0a0f;
+    background: var(--zx-page);
   }
 
   .admin-badge {
@@ -107,12 +143,30 @@
   }
 
   .input-gg {
-    @apply w-full px-4 py-3 rounded-lg bg-[#1a1a20] border border-[#25252e] text-white placeholder:text-white/30 text-sm focus:outline-none focus:border-[#0084ff] focus:ring-1 focus:ring-[#0084ff]/30 transition;
+    @apply w-full px-4 py-3 rounded-xl bg-muted border border-border text-foreground placeholder:text-muted-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition;
   }
 
   .hero-gradient {
-    background: #111114;
-    border: 1px solid #1e1e28;
+    @apply bg-card border border-border;
+  }
+
+  .gg-card {
+    @apply bg-card border border-border rounded-xl overflow-hidden;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+  }
+
+  .gg-price-pill {
+    @apply inline-flex items-center justify-center min-w-[92px] px-3 py-1.5 rounded-lg text-[13px] font-bold;
+    background: #e8f2ff;
+    color: #2B7FFF;
+  }
+  .dark .gg-price-pill {
+    background: rgba(43, 127, 255, 0.16);
+    color: #7eb6ff;
+  }
+
+  .gg-search {
+    @apply flex items-center bg-[#f0f2f5] dark:bg-[#15151a] border border-transparent focus-within:border-[#2B7FFF]/40 rounded-full px-4 py-2;
   }
 }
 
@@ -139,3 +193,67 @@
 
 .animate-fade-in-up { animation: fade-in-up 0.2s ease-out both; }
 .animate-slide-in-bottom { animation: slide-in-bottom 0.25s ease-out both; }
+
+/* Superfícies antigas (hex escuro) viram o visual GGMax no tema claro */
+html:not(.dark) .bg-\[\#15151a\],
+html:not(.dark) .bg-\[\#111114\],
+html:not(.dark) .bg-\[\#0f0f14\] {
+  background-color: #ffffff !important;
+}
+html:not(.dark) .bg-\[\#0a0a0f\],
+html:not(.dark) .bg-\[\#1a1a20\] {
+  background-color: #f4f6f8 !important;
+}
+html:not(.dark) .border-\[\#25252e\],
+html:not(.dark) .border-\[\#1e1e28\] {
+  border-color: #e6e8ec !important;
+}
+html:not(.dark) .divide-\[\#1e1e28\] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #e6e8ec !important;
+}
+html:not(.dark) .text-white {
+  color: #1b1f27;
+}
+html:not(.dark) .text-white\/20 { color: rgb(156 163 175); }
+html:not(.dark) .text-white\/25,
+html:not(.dark) .text-white\/30,
+html:not(.dark) .text-white\/35,
+html:not(.dark) .text-white\/40,
+html:not(.dark) .text-white\/45,
+html:not(.dark) .text-white\/50,
+html:not(.dark) .text-white\/55,
+html:not(.dark) .text-white\/60,
+html:not(.dark) .text-white\/70,
+html:not(.dark) .text-white\/75,
+html:not(.dark) .text-white\/80 {
+  color: #6b7280;
+}
+html:not(.dark) .placeholder\:text-white\/20::placeholder,
+html:not(.dark) .placeholder\:text-white\/25::placeholder,
+html:not(.dark) .placeholder\:text-white\/30::placeholder {
+  color: #9ca3af;
+}
+html:not(.dark) .hover\:text-white:hover { color: #111827; }
+html:not(.dark) .hover\:bg-white\/5:hover,
+html:not(.dark) .hover\:bg-white\/\[0\.06\]:hover,
+html:not(.dark) .hover\:bg-\[\#1a1a20\]:hover {
+  background-color: #f3f4f6 !important;
+}
+html:not(.dark) .bg-white\/5 { background-color: #eef1f4; }
+
+/* Texto branco de volta em botões e selos coloridos */
+html:not(.dark) .bg-\[\#0084ff\],
+html:not(.dark) .bg-\[\#0066cc\],
+html:not(.dark) .bg-\[\#2B7FFF\],
+html:not(.dark) .bg-red-500,
+html:not(.dark) .bg-\[\#00c950\],
+html:not(.dark) .bg-\[\#ef4444\],
+html:not(.dark) .bg-\[\#ff8c00\],
+html:not(.dark) .bg-primary,
+html:not(.dark) .badge-auto,
+html:not(.dark) .badge-hot,
+html:not(.dark) .admin-badge,
+html:not(.dark) .btn-gradient,
+html:not(.dark) .btn-anunciar {
+  color: #fff !important;
+}

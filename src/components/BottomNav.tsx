@@ -62,7 +62,7 @@ export default function BottomNav({ current: propCurrent, onChange: propOnChange
 
   return (
     <>
-      <nav className="fixed bottom-0 left-0 right-0 h-[64px] px-2 flex items-center justify-around z-50 bg-[#0f0f14] border-t border-[#1e1e28] safe-area-inset-bottom">
+      <nav className="fixed bottom-0 left-0 right-0 h-[64px] px-2 flex items-center justify-around z-50 bg-card border-t border-border safe-area-inset-bottom md:hidden">
         {items.map((item) => {
           const Icon = item.icon;
           const active = derivedCurrent === item.key;
@@ -71,10 +71,10 @@ export default function BottomNav({ current: propCurrent, onChange: propOnChange
               key={item.key}
               onClick={() => handleChange(item.key)}
               className={`flex flex-col items-center gap-1 py-2 px-4 rounded-xl transition-colors ${
-                active ? "text-[#0084ff]" : "text-white/40 hover:text-white/80"
+                active ? "text-[#2B7FFF]" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <Icon className={`w-5 h-5 ${active ? "text-[#0084ff]" : "text-white/40"}`} />
+              <Icon className={`w-5 h-5 ${active ? "text-[#2B7FFF]" : "text-muted-foreground"}`} />
               <span className="text-[10px] font-bold uppercase tracking-wide">{item.label}</span>
             </button>
           );

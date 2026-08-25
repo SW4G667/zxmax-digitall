@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="google" content="notranslate" />
     <meta name="robots" content="notranslate" />
-    <title>ZXMAX | Marketplace Digital Elite</title>
-    <meta name="description" content="ZXMAX - O maior marketplace de produtos digitais. Compre e venda bots, contas, scripts, designs e mais.">
+    <title>ZXMAX | Comprar e vender produtos digitais</title>
+    <meta name="description" content="ZXMAX — marketplace de produtos digitais. Compre e venda Robux, contas, bots, scripts e gift cards com Pix e cripto.">
     <meta name="author" content="ZXMAX" />
     
     <meta property="og:type" content="website" />
@@ -25,18 +25,19 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script>
-      // Apply saved theme before paint to avoid flash (default dark = GGMAX style)
+      // Tema claro (GGMax) por padrão. Só aplica dark se o usuário pediu.
       (function () {
         try {
           var stored = localStorage.getItem("zxmax_dark");
-          var isDark = stored === null ? true : stored === "true";
+          var isDark = stored === "true";
           if (isDark) document.documentElement.classList.add("dark");
+          else document.documentElement.classList.remove("dark");
         } catch (e) {}
       })();
     </script>
 </head>
 
-  <body class="dark notranslate" translate="no">
+  <body class="notranslate" translate="no">
     <div id="root" class="notranslate" translate="no"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

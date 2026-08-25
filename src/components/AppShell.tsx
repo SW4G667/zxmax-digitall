@@ -33,13 +33,13 @@ export default function AppShell({ children }: Props) {
   useEffect(() => { if (!user) { setProfileOpen(false); setMenuOpen(false); } }, [user]);
 
   return (
-    <div className="bg-gradient-page min-h-screen pb-24">
+    <div className="bg-gradient-page min-h-screen pb-24 text-foreground">
       <Header
         onProfileClick={() => setProfileOpen(true)}
         onAuthClick={() => setAuthOpen(true)}
         onMenuClick={() => setMenuOpen(true)}
       />
-      <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
+      <main className="max-w-7xl mx-auto px-3 sm:px-4 py-5">{children}</main>
       <SiteFooter />
       <BottomNav />
       <SideMenu
