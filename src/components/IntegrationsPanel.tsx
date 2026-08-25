@@ -9,9 +9,9 @@ const PROVIDERS: { id: string; name: string; hint: string; fields: Field[] }[] =
   {
     id: "vexopay",
     name: "VexoPay (PIX + Crypto)",
-    hint: "Use o Client ID e o Client Secret gerados no painel da VexoPay em API Keys. A base padrão é https://vexopay.com.br/api",
+    hint: "Use o Client ID e o Client Secret gerados no painel da VexoPay em API Keys. A base padrão é https://www.vexopay.com.br/api",
     fields: [
-      { key: "baseUrl", label: "Base URL", placeholder: "https://vexopay.com.br/api" },
+      { key: "baseUrl", label: "Base URL", placeholder: "https://www.vexopay.com.br/api" },
       { key: "clientId", label: "Client ID (ci)", placeholder: "vxp_ci_..." },
       { key: "clientSecret", label: "Client Secret (cs)", secret: true, placeholder: "vxp_cs_..." },
       { key: "webhookSecret", label: "Segredo do webhook (opcional)", secret: true },
