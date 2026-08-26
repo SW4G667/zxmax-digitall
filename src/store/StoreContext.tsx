@@ -1268,7 +1268,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const verifyUser = async (userId: string): Promise<boolean> => {
-    // Try via admin-verify edge function (service_role) first
     try {
       const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "verify_user", userId } });
       if (!error && !data?.error) {
@@ -1282,30 +1281,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
         return true;
       }
-    } catch {}
-
-    // Fallback direct (requires RLS fix migration)
-    try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ is_verified_seller: true, verification_status: "approved", verification_notes: null } as any)
-        .eq("user_id", userId);
-      if (!error) {
-        setState(s => ({
-          ...s,
-          currentUser: s.currentUser?.id === userId ? { ...s.currentUser, isVerified: true } : s.currentUser,
-          userDirectory: {
-            ...(s.userDirectory || {}),
-            ...(s.userDirectory?.[userId] ? { [userId]: { ...s.userDirectory[userId], isVerified: true } } : {}),
-          },
-        }));
-        return true;
-      }
-      console.error("verifyUser direct error", error);
-      return false;
     } catch {
       return false;
     }
+    return false;
   };
 
   const submitSellerDocument = (filePath: string, fileName: string) => {

@@ -27,6 +27,8 @@ describe("fronteira de verificação administrativa", () => {
     expect(store).not.toContain('profileSource = isAdmin ? "profiles" : "profiles_public"');
     expect(store).not.toContain('.from("seller_documents").select');
     expect(store).not.toContain("const reviewSellerDocument");
+    expect(store).not.toContain('update({ is_verified_seller: true, verification_status: "approved"');
+    expect(store).not.toContain("Fallback direct (requires RLS fix migration)");
     expect(config).toMatch(/\[functions\.admin-verify\]\s+verify_jwt = true/);
   });
 });
