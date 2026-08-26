@@ -96,6 +96,26 @@ serve(async (req) => {
       return new Response(JSON.stringify({ documents: enriched }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    if (action === "get_webhook_logs") {
+      const { data, error } = await serviceClient
+        .from("webhook_logs")
+        .select("id, source, event_type, status, order_id, created_at, error")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+
+      const logs = (data || []).map((log: any) => ({
+        id: log.id,
+        source: log.source,
+        event_type: log.event_type,
+        status: log.status,
+        order_id: log.order_id,
+        created_at: log.created_at,
+        has_error: Boolean(log.error),
+      }));
+      return new Response(JSON.stringify({ logs }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     if (action === "get_verifications") {
       const { data, error } = await serviceClient
         .from("profiles")

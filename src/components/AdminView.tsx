@@ -25,9 +25,7 @@ interface WebhookLog {
   event_type: string | null;
   status: string | null;
   order_id: number | null;
-  charge_id: string | null;
-  payload: any;
-  error: string | null;
+  has_error: boolean;
   created_at: string;
 }
 
@@ -54,7 +52,6 @@ export default function AdminView() {
   }, [setSearchParams]);
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
-  const [expandedLog, setExpandedLog] = useState<number | null>(null);
   const [kyc, setKyc] = useState<any[]>([]);
   const [kycLoading, setKycLoading] = useState(false);
   const [kycNotes, setKycNotes] = useState<Record<string, string>>({});
@@ -123,17 +120,13 @@ export default function AdminView() {
 
   const loadWebhookLogs = async () => {
     setLogsLoading(true);
-    const { data, error } = await (supabase as any)
-      .from("webhook_logs")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(100);
+    const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "get_webhook_logs" } });
     setLogsLoading(false);
     if (error) {
       toast.error("Não foi possível carregar os logs do webhook.");
       return;
     }
-    setWebhookLogs((data || []) as WebhookLog[]);
+    setWebhookLogs((data?.logs || []) as WebhookLog[]);
   };
 
   const loadKyc = async () => {
@@ -628,26 +621,21 @@ export default function AdminView() {
             </div>
           ) : (
             webhookLogs.map((log) => {
-              const isError = log.status === "error" || (log.status || "").startsWith("error") || !!log.error;
+              const isError = log.status === "error" || (log.status || "").startsWith("error") || log.has_error;
               return (
                 <div key={log.id} className="glass-card p-4">
-                  <button onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)} className="w-full flex items-center gap-3 text-left">
+                  <div className="w-full flex items-center gap-3 text-left">
                     <span className={`shrink-0 w-2.5 h-2.5 rounded-full ${isError ? "bg-destructive" : log.status === "created" ? "bg-primary" : "bg-success"}`} />
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-foreground text-sm truncate">
                         {log.event_type || "EVENTO"} <span className="text-muted-foreground font-normal">— {log.status}</span>
                       </p>
                       <p className="text-[10px] text-muted-foreground">
-                        {new Date(log.created_at).toLocaleString()} {log.order_id ? `• Pedido #${log.order_id}` : ""} {log.charge_id ? `• Cobrança ${log.charge_id}` : ""}
+                        {new Date(log.created_at).toLocaleString()} {log.order_id ? `• Pedido #${log.order_id}` : ""}
                       </p>
                     </div>
-                  </button>
-                  {log.error && (
-                    <p className="text-xs text-destructive mt-2 bg-destructive/10 p-2 rounded-lg break-words">{log.error}</p>
-                  )}
-                  {expandedLog === log.id && (
-                    <pre className="mt-3 text-[10px] text-foreground bg-muted p-3 rounded-xl overflow-x-auto max-h-72">{JSON.stringify(log.payload, null, 2)}</pre>
-                  )}
+                  </div>
+                  {isError && <p className="text-xs text-destructive mt-2 bg-destructive/10 p-2 rounded-lg">Evento com falha. Consulte o monitoramento restrito do servidor para detalhes.</p>}
                 </div>
               );
             })
