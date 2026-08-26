@@ -142,6 +142,58 @@ serve(async (req) => {
       return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    if (action === "ban_user") {
+      const targetUserId = typeof userId === "string" ? userId.trim() : "";
+      const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetUserId)) {
+        throw new Error("userId inválido");
+      }
+      if (!reason || reason.length > 500) throw new Error("Motivo de banimento inválido");
+      if (targetUserId === userData.user.id) throw new Error("Não é permitido banir a própria conta");
+
+      const { data: targetAdmin } = await serviceClient
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", targetUserId)
+        .eq("role", "admin")
+        .maybeSingle();
+      if (targetAdmin) throw new Error("Não é possível banir uma conta administradora");
+
+      const { error } = await serviceClient.from("bans").insert({
+        user_id: targetUserId,
+        banned_by: userData.user.id,
+        reason,
+        active: true,
+      });
+      if (error) throw error;
+      await serviceClient.from("admin_audit_log").insert({
+        actor_id: userData.user.id,
+        action: "user.banned",
+        target_table: "bans",
+        target_id: targetUserId,
+        reason,
+        metadata: {},
+      });
+      return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    if (action === "unban_user") {
+      const targetUserId = typeof userId === "string" ? userId.trim() : "";
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetUserId)) {
+        throw new Error("userId inválido");
+      }
+      const { error } = await serviceClient.from("bans").update({ active: false }).eq("user_id", targetUserId).eq("active", true);
+      if (error) throw error;
+      await serviceClient.from("admin_audit_log").insert({
+        actor_id: userData.user.id,
+        action: "user.unbanned",
+        target_table: "bans",
+        target_id: targetUserId,
+        metadata: {},
+      });
+      return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     throw new Error("Ação inválida");
 
   } catch (error: any) {

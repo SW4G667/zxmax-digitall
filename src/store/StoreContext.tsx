@@ -999,14 +999,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const userId = await resolveUserId(normalized);
     if (!userId) return false;
 
-    const { error } = await supabase.from("bans").insert({
-      user_id: userId,
-      banned_by: authUser?.id || userId,
-      reason,
-      active: true,
-    });
-    if (error) {
-      toast.error(error.message.includes("administradora") ? "Não é possível banir uma conta administradora." : "Erro ao banir: " + error.message);
+    const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "ban_user", userId, reason } });
+    if (error || data?.error) {
+      toast.error("Não foi possível concluir o banimento. Tente novamente.");
       return false;
     }
 
@@ -1023,8 +1018,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const userId = await resolveUserId(normalized);
     if (!userId) return false;
 
-    const { error } = await supabase.from("bans").update({ active: false }).eq("user_id", userId).eq("active", true);
-    if (error) return false;
+    const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "unban_user", userId } });
+    if (error || data?.error) return false;
 
     setState((s) => ({ ...s, bannedUsers: s.bannedUsers.filter((e) => e !== normalized) }));
     return true;
