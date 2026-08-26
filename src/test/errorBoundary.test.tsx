@@ -22,5 +22,6 @@ describe("ErrorBoundary", () => {
     expect(screen.getByRole("button", { name: "Tentar novamente" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Voltar à vitrine" })).toBeInTheDocument();
     expect(screen.queryByText("BUYER_FEE is not defined")).not.toBeInTheDocument();
+    expect(screen.getByText(/Código de incidente: ZX-/)).toBeInTheDocument();
   });
 });

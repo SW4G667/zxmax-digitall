@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-const allowed = new Set(["auth.login", "auth.recovery", "auth.discord", "admin.access"]);
+const allowed = new Set(["auth.login", "auth.recovery", "auth.discord", "admin.access", "ui.render"]);
 const outcomes = new Set(["success", "failure", "blocked"]);
 
 async function hashOrigin(req: Request) {
@@ -20,6 +20,14 @@ serve(async (req) => {
     const eventType = String(body.eventType || "");
     const outcome = String(body.outcome || "");
     if (!allowed.has(eventType) || !outcomes.has(outcome)) return json({ error: "Evento inválido" }, 400);
+    const rawContext = body.context && typeof body.context === "object" ? body.context as Record<string, unknown> : {};
+    const safeContext = eventType === "ui.render"
+      ? {
+        incident_id: typeof rawContext.incidentId === "string" && /^ZX-[A-Z0-9-]{6,40}$/.test(rawContext.incidentId) ? rawContext.incidentId : null,
+        route: typeof rawContext.route === "string" && rawContext.route.startsWith("/") ? rawContext.route.slice(0, 180) : "/",
+        version: typeof rawContext.version === "string" ? rawContext.version.slice(0, 80) : "unknown",
+      }
+      : { route: "client" };
     const auth = req.headers.get("Authorization");
     const userClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!);
     const { data: userData } = auth?.startsWith("Bearer ") ? await userClient.auth.getUser(auth.slice(7)) : { data: { user: null } };
@@ -28,7 +36,7 @@ serve(async (req) => {
       _actor_id: userData.user?.id || null,
       _event_type: eventType,
       _outcome: outcome,
-      _context: { source_hash: await hashOrigin(req), route: "client" },
+      _context: { source_hash: await hashOrigin(req), ...safeContext },
     });
     if (error) throw error;
     return json({ recorded: true });

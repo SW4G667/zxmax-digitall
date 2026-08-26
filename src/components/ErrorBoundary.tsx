@@ -7,7 +7,35 @@ interface Props {
 
 interface State {
   hasError: boolean;
-  error?: Error;
+  incidentId?: string;
+}
+
+const createIncidentId = () => {
+  const suffix = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID().slice(0, 8).toUpperCase()
+    : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
+  return `ZX-${suffix}`;
+};
+
+const safeRoute = () => typeof window === "undefined" ? "/" : window.location.pathname.slice(0, 180) || "/";
+
+function reportRenderFailure(incidentId: string) {
+  const baseUrl = String(import.meta.env.VITE_SUPABASE_URL || "").replace(/\/$/, "");
+  const anonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || "");
+  if (!baseUrl.startsWith("https://") || !anonKey) return;
+  void fetch(`${baseUrl}/functions/v1/security-event`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: anonKey },
+    body: JSON.stringify({
+      eventType: "ui.render",
+      outcome: "failure",
+      context: {
+        incidentId,
+        route: safeRoute(),
+        version: String(import.meta.env.VITE_APP_VERSION || "unknown").slice(0, 80),
+      },
+    }),
+  }).catch(() => undefined);
 }
 
 export default class ErrorBoundary extends React.Component<Props, State> {
@@ -17,11 +45,15 @@ export default class ErrorBoundary extends React.Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+    void error;
+    return { hasError: true, incidentId: createIncidentId() };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     if (import.meta.env.DEV) console.error("ErrorBoundary caught:", error, info);
+    const incidentId = this.state.incidentId;
+    if (!incidentId) return;
+    reportRenderFailure(incidentId);
   }
 
   handleReload = () => {
@@ -29,7 +61,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
   };
 
   handleReset = () => {
-    this.setState({ hasError: false, error: undefined });
+    this.setState({ hasError: false, incidentId: undefined });
   };
 
   handleHome = () => {
@@ -61,6 +93,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
 
               <div className="mt-7 rounded-2xl border border-white/[0.07] bg-white/[0.035] px-4 py-3 text-xs leading-5 text-white/45">
                 Nenhum dado de pagamento ou acesso foi alterado. Para sua segurança, detalhes técnicos não são exibidos nesta tela.
+                {this.state.incidentId && <span className="mt-2 block font-semibold text-white/60">Código de incidente: {this.state.incidentId}</span>}
               </div>
 
               <div className="mt-7 grid gap-3 sm:grid-cols-2">
