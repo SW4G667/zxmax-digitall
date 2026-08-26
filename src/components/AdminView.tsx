@@ -755,18 +755,8 @@ export default function AdminView() {
                     return;
                   }
                   throw new Error(data?.error || error?.message || "Edge Function falhou");
-                } catch (e: any) {
-                  console.error("Edge approve all failed, trying direct", e);
-                  // Fallback: direct update (requires admin RLS policy)
-                  try {
-                    const { error: directError } = await supabase.from("products").update({ approved: true }).eq("approved", false);
-                    if (directError) throw directError;
-                    toast.success("Todos produtos aprovados via direto! Recarregando...", { id: tid });
-                    setTimeout(() => window.location.reload(), 1000);
-                  } catch (directErr: any) {
-                    console.error("Direct approve all failed", directErr);
-                    toast.error("Falha ao aprovar: " + (directErr?.message || e?.message || "") + " - Verifique se function admin-verify está deployada e RLS fix aplicada.", { id: tid });
-                  }
+                } catch {
+                  toast.error("Falha ao aprovar. Nenhuma alteração foi aplicada; tente novamente após verificar a sessão administrativa.", { id: tid });
                 }
               }} className="bg-[#ffbd2e] text-black px-4 py-2 rounded-xl text-xs font-black">Aprovar TODOS produtos (fix 0 produtos)</button>
               <button onClick={()=>setTab('products' as any)} className="bg-[#0084ff] text-white px-4 py-2 rounded-xl text-xs font-bold">Aprovar Produtos individuais</button>

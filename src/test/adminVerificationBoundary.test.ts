@@ -13,7 +13,9 @@ describe("fronteira de verificação administrativa", () => {
     expect(adminView).not.toContain('.from("seller_documents")');
     expect(adminView).not.toContain('.storage.from("documents")');
     expect(adminView).not.toContain("reviewSellerDocument");
+    expect(adminView).not.toContain('.from("products").update');
     expect(adminView).toContain('action: approved ? "verify_user" : "reject_user"');
+    expect(adminView).toContain('action: "approve_all_products"');
     expect(adminView).toContain("documentId: doc.id");
     expect(adminVerify).toContain('action === "get_verifications"');
     expect(adminVerify).toContain('if (!roleData) throw new Error("Acesso negado: só admin")');
