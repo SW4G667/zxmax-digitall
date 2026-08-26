@@ -34,7 +34,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.zennith-withdraw]
-verify_jwt = false
+verify_jwt = true
 
 [functions.create-vexopay-crypto]
 verify_jwt = false

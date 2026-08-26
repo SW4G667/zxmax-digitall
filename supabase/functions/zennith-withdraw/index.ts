@@ -39,7 +39,8 @@ serve(async (req) => {
 
     const { data: setting } = await admin.from("app_settings").select("value").eq("key", "zennithpay").maybeSingle();
     const cfg = (setting?.value || {}) as Record<string, unknown>;
-    const apiKey = String(cfg.apiKey || Deno.env.get("ZENNITH_API_KEY") || "").trim();
+    // Credenciais nunca são lidas de app_settings: ficam somente no Secret Vault.
+    const apiKey = String(Deno.env.get("ZENNITH_API_KEY") || "").trim();
     const baseUrl = String(cfg.baseUrl || DEFAULT_BASE).replace(/\/$/, "");
     const withdrawalsEnabled = typeof cfg.withdrawalsEnabled === "boolean" ? cfg.withdrawalsEnabled : cfg.enabled !== false;
     if (!apiKey || !withdrawalsEnabled) return json({ error: "Saques via ZennithPay não estão ativos no momento." }, 400);
