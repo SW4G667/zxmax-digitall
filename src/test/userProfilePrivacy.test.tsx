@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -45,5 +47,19 @@ describe("UserProfileModal — privacidade", () => {
     expect(screen.getByText("VND-9384")).toBeInTheDocument();
     expect(screen.queryByText("contato-legado@exemplo.test")).not.toBeInTheDocument();
     expect(screen.queryByText("contato-legado")).not.toBeInTheDocument();
+  });
+
+  it("não deixa as superfícies públicas consultarem e-mails legados de vendedor", async () => {
+    const [storeView, productPage, profileModal] = await Promise.all([
+      readFile(join(process.cwd(), "src/components/StoreView.tsx"), "utf8"),
+      readFile(join(process.cwd(), "src/pages/Produto.tsx"), "utf8"),
+      readFile(join(process.cwd(), "src/components/UserProfileModal.tsx"), "utf8"),
+    ]);
+
+    for (const source of [storeView, productPage, profileModal]) {
+      expect(source).not.toContain("sellerEmail");
+      expect(source).not.toContain("buyerEmail");
+      expect(source).not.toContain("userEmail");
+    }
   });
 });

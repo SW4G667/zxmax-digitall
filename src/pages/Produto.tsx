@@ -297,7 +297,7 @@ export default function ProdutoPage() {
   }, [productId, loadProductReviews]);
   const legacyQuestions = product?.questions || [];
   const productQuestions = remoteQuestions.length > 0
-    ? remoteQuestions.map((q) => ({ id: q.id, userEmail: "", userName: "Comprador", text: q.body, date: q.created_at, answer: q.answer || undefined, answerDate: q.answered_at || undefined }))
+    ? remoteQuestions.map((q) => ({ id: q.id, userName: "Comprador", text: q.body, date: q.created_at, answer: q.answer || undefined, answerDate: q.answered_at || undefined }))
     : legacyQuestions;
 
   useEffect(() => {
