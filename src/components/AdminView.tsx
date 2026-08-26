@@ -39,7 +39,7 @@ export const ADMIN_TABS = [
 export type AdminTab = (typeof ADMIN_TABS)[number];
 
 export default function AdminView() {
-  const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, sendAdminChat, verifyUser, reviewSellerDocument } = useStore();
+  const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, sendAdminChat, verifyUser } = useStore();
   const { mfaEnabled, isAdmin } = useAuth();
   // The active section lives in the URL so the side menu can deep-link to a
   // real admin area (?tab=products) and the browser back button works.
@@ -160,6 +160,26 @@ export default function AdminView() {
       toast.error("Falha ao revisar a verificação. Nenhuma alteração foi aplicada.", { id: tid });
     }
     await loadKyc();
+  };
+
+  const reviewDocument = async (doc: any, approved: boolean) => {
+    const tid = toast.loading(approved ? "Aprovando documento..." : "Recusando documento...");
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-verify", {
+        body: {
+          action: approved ? "verify_user" : "reject_user",
+          userId: doc.user_id,
+          documentId: doc.id,
+          ...(approved ? {} : { notes: "Documento recusado pela revisão administrativa" }),
+        },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message || "Falha");
+      toast.success(approved ? "Documento aprovado e vendedor verificado." : "Documento recusado.", { id: tid });
+      await loadDocs();
+      await loadKyc();
+    } catch {
+      toast.error("Falha ao revisar o documento. Nenhuma alteração foi aplicada.", { id: tid });
+    }
   };
 
   const [docs, setDocs] = useState<any[]>([]);
@@ -476,9 +496,9 @@ export default function AdminView() {
           </div>
           <p className="text-sm text-white/40 mb-6">Aprove documentos para liberar saque. Se não aparece, verifique RLS e bucket.</p>
           <div className="space-y-4">
-            {(docs.length === 0 && (state.sellerDocuments || []).length === 0) ? (
+            {docs.length === 0 ? (
               <p className="text-center text-xs text-white/40 py-10">Nenhum documento enviado ainda.</p>
-            ) : (docs.length > 0 ? docs : state.sellerDocuments || []).map((doc: any) => (
+            ) : docs.map((doc: any) => (
               <div key={doc.id} className="p-4 bg-muted rounded-xl border border-border/40">
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <div className="min-w-0">
@@ -490,19 +510,8 @@ export default function AdminView() {
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   <button onClick={() => openDocument(doc.file_path || doc.filePath || "")} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1"><ExternalLink className="w-3 h-3" /> Abrir</button>
-                  <button onClick={async () => { 
-                    const tid = toast.loading("Aprovando...");
-                    try {
-                      const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "verify_user", userId: doc.user_id || doc.user_id, documentId: doc.id } });
-                      if (error || data?.error) throw new Error(data?.error || error?.message);
-                      reviewSellerDocument(doc.id, "approved");
-                      toast.success("Documento aprovado e vendedor verificado!", { id: tid });
-                      void loadDocs();
-                    } catch (e: any) {
-                      toast.error("Erro ao verificar. Nenhuma alteração foi aplicada.", { id: tid });
-                    }
-                  }} className="px-3 py-2 bg-[#00c950] text-white text-xs font-bold rounded-lg">Aprovar</button>
-                  <button onClick={() => { reviewSellerDocument(doc.id, "rejected"); toast.error("Documento rejeitado."); }} className="px-3 py-2 bg-destructive/10 text-destructive text-xs font-bold rounded-lg">Rejeitar</button>
+                  <button onClick={() => void reviewDocument(doc, true)} className="px-3 py-2 bg-[#00c950] text-white text-xs font-bold rounded-lg">Aprovar</button>
+                  <button onClick={() => void reviewDocument(doc, false)} className="px-3 py-2 bg-destructive/10 text-destructive text-xs font-bold rounded-lg">Rejeitar</button>
                 </div>
               </div>
             ))}
