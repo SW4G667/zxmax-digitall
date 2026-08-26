@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { X, Loader2, Lock, Eye, EyeOff, Shield, AlertTriangle } from "lucide-react";
-import { buildDiscordAuthorizeUrl, rememberRedirectUri } from "@/lib/discordAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { getDiscordRedirectTo } from "@/lib/discordAuth";
 
 export default function AuthScreen({ onClose }: { onClose?: () => void }) {
   const { signUp, signIn } = useAuth();
@@ -27,39 +28,36 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
 
   const handleDiscord = async () => {
     try {
-      const { supabase } = await import("@/integrations/supabase/client");
-
-      // Uses EXACTLY the config saved in the admin panel (app_settings.discord)
-      // — no Client ID hardcoded in the code. The edge function is public
-      // (verify_jwt = false), so this also works for logged-out visitors.
-      const { data, error: cfgErr } = await supabase.functions.invoke("discord-callback", {
-        body: { action: "config" },
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "discord",
+        options: { redirectTo: getDiscordRedirectTo() },
       });
-      if (cfgErr) {
-        toast.error("Login com Discord indisponível: não consegui ler a configuração do servidor (função discord-callback). ");
-        return;
+      if (error) {
+        toast.error("Login com Discord indisponível. Verifique se o provedor foi configurado no Supabase Auth e se a URL de callback está autorizada.");
       }
-      const cfg = data?.config || {};
-      const clientId = String(cfg.clientId || "").trim();
-      if (!clientId) {
-        toast.error("Login com Discord não configurado: cadastre o Client ID em Admin → APIs & Credenciais.");
-        return;
-      }
-      const redirectUri = String(cfg.redirectUri || "").trim() || window.location.origin + "/";
-      const scopes = String(cfg.scopes || "").trim() || "identify email";
-
-      // Remember the exact redirect_uri so the code exchange sends the
-      // identical string (a mismatch is what made Discord answer invalid_grant).
-      rememberRedirectUri(redirectUri);
-
-      window.location.href = buildDiscordAuthorizeUrl({ clientId, redirectUri, scopes });
     } catch (e: any) {
       toast.error("Erro ao iniciar login com Discord: " + (e?.message || "tente novamente."));
     }
   };
 
   const handleForgot = async () => {
-    toast.info("A recuperação de senha estará disponível em breve. Se precisar de ajuda agora, fale com o suporte no Discord.");
+    if (!email.trim()) {
+      setError("Informe seu e-mail para receber o link de recuperação.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: new URL("/reset-password", window.location.origin).toString(),
+      });
+      if (resetError) throw resetError;
+      toast.success("Se existir uma conta com este e-mail, enviaremos um link de recuperação.");
+    } catch {
+      // Resposta neutra para não permitir enumeração de contas.
+      toast.success("Se existir uma conta com este e-mail, enviaremos um link de recuperação.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -142,7 +140,7 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
           </button>
         </form>
 
-        {mode === "login" && <button type="button" onClick={handleForgot} className="w-full text-center text-[11px] font-bold text-white/30 mt-3 hover:text-white/50 transition">Esqueceu sua senha? (em breve)</button>}
+        {mode === "login" && <button type="button" onClick={handleForgot} disabled={loading} className="w-full text-center text-[11px] font-bold text-white/30 mt-3 hover:text-white/50 transition disabled:opacity-50">Esqueceu sua senha?</button>}
 
         <div className="mt-5">
           <button onClick={handleDiscord} className="w-full flex items-center justify-center gap-2 p-3 border border-white/10 rounded-xl hover:bg-white/[0.04] transition text-sm font-bold text-white/60 hover:text-white">

@@ -221,7 +221,7 @@ interface StoreContextType {
    * error with retry, or a truthful empty state instead of a silent zero. */
   catalogStatus: CatalogStatus;
   deleteProduct: (id: number) => Promise<{ paused: boolean }>;
-  buyProduct: (id: number, variation?: ProductVariation, quantity?: number) => Promise<number | null>;
+  buyProduct: (id: number, variation?: ProductVariation, quantity?: number, paymentMethod?: string) => Promise<number | null>;
   savePixCharge: (purchaseId: number, charge: { evopayId: string; qrCodeText: string; expiresAt: string }) => void;
   refreshPurchases: () => Promise<void>;
   markOrderDelivered: (orderId: number) => Promise<boolean>;
@@ -762,7 +762,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const approveProduct = async (id: number) => {
-    const { error } = await (supabase as any).from("products").update({ approved: true }).eq("id", id).select("id").maybeSingle();
+    const { error } = await (supabase as any).rpc("moderate_product", { _product_id: id, _approved: true, _reason: null });
     if (error) {
       logProductError("approveProduct", error);
       toast.error(productErrorMessage(error));
@@ -778,26 +778,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const rejectProduct = async (id: number, reason?: string) => {
-    const product = state.products.find((p) => p.id === id);
-    // Audit first: once the row is gone we can no longer describe what was removed.
-    if (isAdmin && authUserRef.current) {
-      const { error: auditError } = await (supabase as any).from("admin_audit_log").insert({
-        actor_id: authUserRef.current.id,
-        action: "product.rejected",
-        target_table: "products",
-        target_id: String(id),
-        reason: reason?.trim() || null,
-        metadata: { name: product?.name ?? null, seller_id: product?.sellerId ?? null },
-      });
-      if (auditError) logProductError("rejectProduct:audit", auditError);
-    }
-    const { error } = await (supabase as any).from("products").delete().eq("id", id);
+    const { error } = await (supabase as any).rpc("moderate_product", { _product_id: id, _approved: false, _reason: reason?.trim() || null });
     if (error) {
       logProductError("rejectProduct", error);
       toast.error(productErrorMessage(error));
       return false;
     }
-    setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
+    await loadCatalog();
     return true;
   };
 
@@ -818,14 +805,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { paused: false };
   };
 
-  const buyProduct = async (id: number, variation?: ProductVariation, quantity?: number) => {
+  const buyProduct = async (id: number, variation?: ProductVariation, quantity?: number, paymentMethod?: string) => {
     const product = state.products.find((p) => p.id === id);
     if (!product || !state.currentUser) return null;
     // unwrapEdgeCall lê o corpo real da resposta: sem isso toda falha virava
     // "Edge Function returned a non-2xx status code" na tela do comprador.
     const res = await unwrapEdgeCall<{ purchase: any }>(
       await supabase.functions.invoke("create-purchase", {
-        body: { productId: id, variationName: variation?.name || null, quantity: quantity ?? 1 },
+        body: { productId: id, variationName: variation?.name || null, quantity: quantity ?? 1, paymentMethod },
       }),
       "Não foi possível registrar a compra. Tente novamente.",
     );
@@ -1376,21 +1363,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const saveGatewaySettings = async (settings: { evopayApiKey?: string; evopayMode?: string }): Promise<boolean> => {
-    const { data: existing } = await (supabase as any).from("app_settings").select("value").eq("key", "evopay").maybeSingle();
-    const value: Record<string, any> = { ...(existing?.value || {}) };
-    if (settings.evopayMode !== undefined) value.mode = settings.evopayMode;
-    if (settings.evopayApiKey !== undefined && settings.evopayApiKey !== "") value.apiKey = settings.evopayApiKey;
-    const { error } = await (supabase as any).from("app_settings").upsert({ key: "evopay", value }, { onConflict: "key" });
-    if (error) return false;
-    setState((s) => ({
-      ...s,
-      config: {
-        ...s.config,
-        evopayMode: (settings.evopayMode as any) ?? s.config.evopayMode,
-        evopayApiKey: settings.evopayApiKey ?? s.config.evopayApiKey,
-      },
-    }));
-    return true;
+    void settings;
+    // Credenciais não podem ser persistidas pelo navegador. A administração
+    // de gateways ocorre no painel de APIs, com secrets das Edge Functions.
+    toast.error("Configure gateways em APIs & Credenciais. Chaves não são aceitas pelo navegador.");
+    return false;
   };
 
   const toggleDark = () => setIsDark((d) => !d);

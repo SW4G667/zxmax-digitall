@@ -31,7 +31,9 @@ serve(async (req) => {
 
     const { data: setting } = await admin.from("app_settings").select("value").eq("key", "zennithpay").maybeSingle();
     const cfg = (setting?.value || {}) as Record<string, unknown>;
-    const apiKey = String(cfg.apiKey || Deno.env.get("ZENNITH_API_KEY") || "").trim();
+    // Nunca ler credencial do banco: a API Key fica exclusivamente nos secrets
+    // da função Edge e não pode ser acessada pela interface administrativa.
+    const apiKey = String(Deno.env.get("ZENNITH_API_KEY") || "").trim();
     const baseUrl = String(cfg.baseUrl || DEFAULT_BASE).replace(/\/$/, "");
     const pixEnabled = typeof cfg.pixEnabled === "boolean" ? cfg.pixEnabled : cfg.enabled !== false;
     if (!apiKey || !pixEnabled) {

@@ -13,8 +13,6 @@ import MyPurchasesView from "@/components/MyPurchasesView";
 import WithdrawView from "@/components/WithdrawView";
 import AppShell from "@/components/AppShell";
 import LoadingScreen from "@/components/LoadingScreen";
-import { supabase } from "@/integrations/supabase/client";
-import { consumeRememberedRedirectUri, DISCORD_REDIRECT_STORAGE_KEY } from "@/lib/discordAuth";
 import { toast } from "sonner";
 
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "withdraw";
@@ -61,6 +59,15 @@ function Dashboard({ view }: { view: View }) {
   }, [user]);
 
   useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("login") !== "1" || user) return;
+    setAuthOpen(true);
+    params.delete("login");
+    const next = `${location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+    navigate(next, { replace: true });
+  }, [location.pathname, location.search, navigate, user]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("payment") === "success" && user) {
       void refreshPurchases();
@@ -104,63 +111,8 @@ function Dashboard({ view }: { view: View }) {
 
 function AppGate({ view }: { view: View }) {
   const { user, loading, banned } = useAuth();
-  const [discordLoading, setDiscordLoading] = useState(false);
-
-  useEffect(() => {
-    if (user) return;
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    if (!code) return;
-
-    // Só tratamos o retorno como Discord se esta aba iniciou o fluxo (marcador
-    // salvo antes do redirect). Um ?code= solto pode ser confirmação de e-mail
-    // do Supabase (PKCE), que o próprio client troca automaticamente.
-    let isDiscordReturn = false;
-    try {
-      isDiscordReturn = !!sessionStorage.getItem(DISCORD_REDIRECT_STORAGE_KEY);
-    } catch { /* noop */ }
-    if (!isDiscordReturn) return;
-
-    // A redirect_uri da troca TEM que ser idêntica à usada na autorização.
-    const redirectUri = consumeRememberedRedirectUri() || window.location.origin + "/";
-    const cleanUrl = window.location.origin + window.location.pathname;
-    window.history.replaceState({}, "", cleanUrl);
-    setDiscordLoading(true);
-
-    supabase.functions
-      .invoke("discord-callback", { body: { code, redirectUri } })
-      .then(({ data, error }) => {
-        if (error) {
-          console.error("discord-callback invoke error:", error);
-          toast.error("Discord: não foi possível concluir o login (servidor). Verifique o deploy da função discord-callback.");
-          setDiscordLoading(false);
-          return;
-        }
-        if (!data?.success) {
-          toast.error("Discord: " + (data?.error || "Erro desconhecido. Tente novamente."));
-          setDiscordLoading(false);
-          return;
-        }
-        if (data.password && data.user?.email) {
-          supabase.auth.signInWithPassword({ email: data.user.email, password: data.password }).then(({ error: signInErr }) => {
-            if (signInErr) toast.error("Erro ao autenticar: " + signInErr.message);
-            else toast.success("Login com Discord realizado!");
-            setDiscordLoading(false);
-          });
-        } else {
-          toast.error("Resposta inesperada do servidor Discord.");
-          setDiscordLoading(false);
-        }
-      })
-      .catch((err) => {
-        console.error("Discord callback exception", err);
-        toast.error("Discord: falha inesperada ao concluir o login.");
-        setDiscordLoading(false);
-      });
-  }, [user]);
-
-  if (loading || discordLoading) {
-    return <LoadingScreen message={discordLoading ? "Autenticando com Discord..." : "Carregando..."} />;
+  if (loading) {
+    return <LoadingScreen message="Carregando..." />;
   }
 
   if (user && banned) return <BannedScreen />;

@@ -247,43 +247,41 @@ describe("Checkout — Tarefa C/D", () => {
     },
   });
 
-  it("métodos ativos: PIX selecionável, botão 'Pagar com PIX' habilitado", async () => {
+  it("métodos ativos: PIX Zennith selecionável com taxa específica", async () => {
     storeState.current = baseStore({ state: { currentUser: { id: "buyer-uuid", name: "Comprador" } } });
-    db.edgeResult.current = { data: { v: 2, methods: { pix: true, crypto: false, card: false, boleto: false } }, error: null };
+    db.edgeResult.current = { data: { v: 3, methods: { zennith_pix: true, vexopay_pix: false, crypto: false, card: false, boleto: false }, fees: { zennith_pix: 0.9 } }, error: null };
     renderProduto();
     await waitFor(() => expect(screen.getByText("COMPRAR")).toBeTruthy());
     await openCheckout();
-    await waitFor(() => expect(screen.getByText("Pagar com PIX")).toBeTruthy());
-    const pixButton = screen.getByText("PIX").closest("button")!;
+    await waitFor(() => expect(screen.getByText("Pagar com PIX · Zennith")).toBeTruthy());
+    const pixButton = screen.getByText("PIX · Zennith").closest("button")!;
     expect(pixButton.getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText("Cartão (Stripe)").closest("button")!.getAttribute("aria-pressed")).toBe("false");
-    expect((screen.getByText("Pagar com PIX") as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByText("Pagar com PIX · Zennith") as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByText("R$ 5,90")).toBeTruthy();
     expect(screen.getByText(/\+ R\$ 0,90/)).toBeTruthy();
   });
 
   it("nenhum método ativo: nada selecionado, sem CPF, botão desabilitado", async () => {
     storeState.current = baseStore({ state: { currentUser: { id: "buyer-uuid", name: "Comprador" } } });
-    db.edgeResult.current = { data: { v: 2, methods: { pix: false, crypto: false, card: false, boleto: false } }, error: null };
+    db.edgeResult.current = { data: { v: 3, methods: { zennith_pix: false, vexopay_pix: false, crypto: false, card: false, boleto: false }, fees: {} }, error: null };
     renderProduto();
     await openCheckout();
     await waitFor(() => expect(screen.getByText("Nenhuma forma disponível")).toBeTruthy());
-    expect(screen.getByText("PIX").closest("button")!.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByText("PIX · Zennith").closest("button")!.getAttribute("aria-pressed")).toBe("false");
     expect(screen.queryByText(/CPF para pagamento/i)).toBeNull();
     expect((screen.getByText("Nenhuma forma disponível") as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/Nenhuma forma de pagamento está ativa/i)).toBeTruthy();
+    expect(screen.getByText(/Só aparecem habilitadas as formas realmente configuradas/i)).toBeTruthy();
   });
 
-  it("função antiga publicada (403) libera PIX e Crypto em vez de bloquear", async () => {
+  it("resposta de função desatualizada (403) não oferece meios sem validação", async () => {
     storeState.current = baseStore({ state: { currentUser: { id: "buyer-uuid", name: "Comprador" } } });
     db.edgeResult.current = httpError(403, { error: "Apenas administradores." });
     renderProduto();
     await openCheckout();
-    await waitFor(() => expect(screen.getByText("Pagar com PIX")).toBeTruthy());
-    expect(screen.queryByText(/Estamos atualizando os meios de pagamento/i)).toBeNull();
-    expect(screen.queryByText(/Nenhuma forma de pagamento está configurada/i)).toBeNull();
-    expect(screen.getByText("PIX").closest("button")!.getAttribute("aria-pressed")).toBe("true");
-    expect((screen.getByText("Pagar com PIX") as HTMLButtonElement).disabled).toBe(false);
+    await waitFor(() => expect(screen.getByText("Nenhuma forma disponível")).toBeTruthy());
+    expect(screen.getByText("PIX · Zennith").closest("button")!.getAttribute("aria-pressed")).toBe("false");
+    expect((screen.getByText("Nenhuma forma disponível") as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("falha ao ler app_settings (503) tem mensagem e retry próprios", async () => {
@@ -291,16 +289,16 @@ describe("Checkout — Tarefa C/D", () => {
     db.edgeResult.current = httpError(503, { error: "Não foi possível verificar as formas de pagamento agora. Tente novamente em instantes.", code: "payment_settings_unavailable" });
     renderProduto();
     await openCheckout();
-    await waitFor(() => expect(screen.getByText(/Não foi possível verificar as formas de pagamento agora/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Não foi possível verificar os métodos de pagamento agora/i)).toBeTruthy());
     expect(screen.getByText("Tentar novamente")).toBeTruthy();
   });
 
   it("modal rolável e acima da navegação inferior (mobile)", async () => {
     storeState.current = baseStore({ state: { currentUser: { id: "buyer-uuid", name: "Comprador" } } });
-    db.edgeResult.current = { data: { v: 2, methods: { pix: true, crypto: false, card: false, boleto: false } }, error: null };
+    db.edgeResult.current = { data: { v: 3, methods: { zennith_pix: true, vexopay_pix: false, crypto: false, card: false, boleto: false }, fees: { zennith_pix: 0.9 } }, error: null };
     renderProduto();
     await openCheckout();
-    await waitFor(() => expect(screen.getByText("Pagar com PIX")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Pagar com PIX · Zennith")).toBeTruthy());
     const dialog = screen.getByRole("dialog", { name: /checkout zxmax/i });
     const panel = dialog.firstElementChild as HTMLElement;
     expect(panel.className).toContain("overflow-y-auto");

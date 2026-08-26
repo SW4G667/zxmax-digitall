@@ -13,7 +13,6 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-const BUYER_FEE = 0.9;
 const ROBUX_CATEGORY = "Robux e Gift Cards";
 
 function roundMoney(n: number): number {
@@ -48,12 +47,22 @@ serve(async (req) => {
     const productId = Number(body.productId);
     const variationName = typeof body.variationName === "string" ? body.variationName : null;
     const requestedQty = Number(body.quantity);
+    const paymentMethod = ["zennith_pix", "vexopay_pix", "crypto", "card", "boleto"].includes(String(body.paymentMethod)) ? String(body.paymentMethod) : null;
     if (!productId || Number.isNaN(productId)) return json({ error: "Produto inválido" }, 400);
 
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+
+    const { data: gatewayRows } = await admin.from("app_settings").select("key,value").in("key", ["zennithpay", "vexopay"]);
+    const gateway = (key: string) => (gatewayRows || []).find((row: any) => row.key === key)?.value || {};
+    const configuredFee = paymentMethod === "zennith_pix"
+      ? Number(gateway("zennithpay").pixFee)
+      : paymentMethod === "vexopay_pix"
+        ? Number(gateway("vexopay").pixFee)
+        : 0;
+    const buyerFee = Number.isFinite(configuredFee) && configuredFee >= 0 && configuredFee <= 1000 ? roundMoney(configuredFee) : 0;
 
     const { data: product, error: productError } = await admin
       .from("products")
@@ -86,9 +95,8 @@ serve(async (req) => {
     const safeProductAmount = isRobux
       ? roundMoney((quantity / units) * Number(product.price))
       : roundMoney(unitPrice);
-    const buyerFee = BUYER_FEE;
     const amount = roundMoney(safeProductAmount + buyerFee);
-    if (amount < 2.9) return json({ error: "Valor mínimo do pedido é R$ 2,90 (R$ 2,00 + taxa)." }, 400);
+    if (amount < 2) return json({ error: "Valor mínimo do pedido é R$ 2,00." }, 400);
 
     const { data: profile } = await admin
       .from("profiles")
@@ -108,6 +116,7 @@ serve(async (req) => {
       amount,
       messages: [],
       variation_name: variationName || (isRobux ? `${quantity} Robux` : null),
+      payment_provider: paymentMethod,
     };
 
     const withExtras = {

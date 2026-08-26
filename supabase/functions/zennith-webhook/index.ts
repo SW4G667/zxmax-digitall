@@ -47,34 +47,33 @@ serve(async (req) => {
   try {
     const { data: setting } = await admin.from("app_settings").select("value").eq("key", "zennithpay").maybeSingle();
     const cfg = (setting?.value || {}) as Record<string, unknown>;
-    const apiKey = String(cfg.apiKey || Deno.env.get("ZENNITH_API_KEY") || "").trim();
-    const webhookSecret = String(cfg.webhookSecret || Deno.env.get("ZENNITH_WEBHOOK_SECRET") || "").trim();
+    // Credenciais vivem apenas nos secrets da função. Sem um segredo de
+    // webhook não existe modo permissivo: eventos não autenticados são sempre
+    // rejeitados antes que qualquer pedido seja consultado ou atualizado.
+    const apiKey = String(Deno.env.get("ZENNITH_API_KEY") || "").trim();
+    const webhookSecret = String(Deno.env.get("ZENNITH_WEBHOOK_SECRET") || "").trim();
     const baseUrl = String(cfg.baseUrl || DEFAULT_BASE).replace(/\/$/, "");
 
     const timestamp = req.headers.get("x-zennith-timestamp") || "";
     const signature = (req.headers.get("x-zennith-signature") || "").replace(/^sha256=/i, "").trim().toLowerCase();
     const eventName = req.headers.get("x-zennith-event") || "";
 
-    if (webhookSecret) {
-      if (!timestamp || !signature) {
-        await admin.from("webhook_logs").insert({
-          source: "zennithpay", event_type: "AUTH", status: "rejected",
-          payload: null, error: "Assinatura ou timestamp ausente",
-        });
-        return json({ error: "Unauthorized" }, 401);
-      }
-      const age = Math.abs(Date.now() - Date.parse(timestamp));
-      if (!Number.isFinite(age) || age > 5 * 60 * 1000) {
-        return json({ error: "Timestamp expirado" }, 401);
-      }
-      const expected = await hmacHex(webhookSecret, `${timestamp}.${rawBody}`);
-      if (!timingSafeEqual(expected, signature)) {
-        await admin.from("webhook_logs").insert({
-          source: "zennithpay", event_type: "AUTH", status: "rejected",
-          payload: null, error: "Assinatura HMAC inválida",
-        });
-        return json({ error: "Unauthorized" }, 401);
-      }
+    if (!webhookSecret) {
+      await admin.from("webhook_logs").insert({ source: "zennithpay", event_type: "AUTH", status: "rejected", payload: null, error: "Secret de webhook ausente" });
+      return json({ error: "Webhook não configurado" }, 503);
+    }
+    if (!timestamp || !signature) {
+      await admin.from("webhook_logs").insert({ source: "zennithpay", event_type: "AUTH", status: "rejected", payload: null, error: "Assinatura ou timestamp ausente" });
+      return json({ error: "Unauthorized" }, 401);
+    }
+    const age = Math.abs(Date.now() - Date.parse(timestamp));
+    if (!Number.isFinite(age) || age > 5 * 60 * 1000) {
+      return json({ error: "Timestamp expirado" }, 401);
+    }
+    const expected = await hmacHex(webhookSecret, `${timestamp}.${rawBody}`);
+    if (!timingSafeEqual(expected, signature)) {
+      await admin.from("webhook_logs").insert({ source: "zennithpay", event_type: "AUTH", status: "rejected", payload: null, error: "Assinatura HMAC inválida" });
+      return json({ error: "Unauthorized" }, 401);
     }
 
     const event = rawBody ? JSON.parse(rawBody) : {};

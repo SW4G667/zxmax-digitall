@@ -1,4 +1,3 @@
-const ADMIN_ROLE_CACHE_PREFIX = "zxmax_admin_role_";
 const ADMIN_GATE_PREFIX = "zxmax_admin_gate_ok_";
 
 /** Race a promise against a timeout, resolving with `fallback` on timeout.
@@ -16,12 +15,6 @@ export async function withTimeout<T>(promise: PromiseLike<T>, ms: number, fallba
   }
 }
 
-export function readAdminCache(userId: string): boolean {
-  try { return localStorage.getItem(ADMIN_ROLE_CACHE_PREFIX + userId) === "1"; } catch { return false; }
-}
-export function writeAdminCache(userId: string, isAdmin: boolean) {
-  try { if (isAdmin) localStorage.setItem(ADMIN_ROLE_CACHE_PREFIX + userId, "1"); else localStorage.removeItem(ADMIN_ROLE_CACHE_PREFIX + userId); } catch { /* storage unavailable */ }
-}
 export function readAdminGate(userId: string): boolean {
   try { return !!localStorage.getItem(ADMIN_GATE_PREFIX + userId); } catch { return false; }
 }
@@ -36,7 +29,7 @@ export function clearAdminGate(userId: string) {
 export function wipePersistedAuth(): void {
   try {
     for (const key of Object.keys(localStorage)) {
-      if ((key.startsWith("sb-") && key.includes("auth")) || key.startsWith(ADMIN_ROLE_CACHE_PREFIX) || key.startsWith(ADMIN_GATE_PREFIX) || key === "zxmax_mfa_enroll") localStorage.removeItem(key);
+      if ((key.startsWith("sb-") && key.includes("auth")) || key.startsWith(ADMIN_GATE_PREFIX) || key === "zxmax_mfa_enroll") localStorage.removeItem(key);
     }
     sessionStorage.removeItem("zxmax_admin_mfa_verified");
   } catch { /* storage unavailable */ }

@@ -17,6 +17,7 @@ import NotFound from "./pages/NotFound.tsx";
 import Produto from "./pages/Produto.tsx";
 import Robux from "./pages/Robux.tsx";
 import Favoritos from "./pages/Favoritos.tsx";
+import AuthCallback from "./pages/AuthCallback.tsx";
 
 const queryClient = new QueryClient();
 
@@ -40,6 +41,7 @@ const App = () => (
                 <Route path="/suporte" element={<Index view="support" />} />
                 <Route path="/admin" element={<Index view="admin" />} />
                 <Route path="/sacar" element={<Index view="withdraw" />} />
+                <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/faq" element={<Faq />} />
                 <Route path="/termos" element={<Termos />} />

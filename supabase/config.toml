@@ -1,4 +1,4 @@
-project_id = "dbekdedzgkfgtlytrnyw"
+project_id = "szvkktvubyhulzipcxfk"
 
 [functions.discord-callback]
 verify_jwt = false

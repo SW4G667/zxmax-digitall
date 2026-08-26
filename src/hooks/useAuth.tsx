@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session, Factor } from "@supabase/supabase-js";
-import { clearAdminGate, peekStoredSession, readAdminCache, readAdminGate, wipePersistedAuth, withTimeout, writeAdminCache, writeAdminGate } from "@/lib/authSession";
+import { clearAdminGate, peekStoredSession, readAdminGate, wipePersistedAuth, withTimeout, writeAdminGate } from "@/lib/authSession";
 
 interface Profile {
   id: string;
@@ -90,16 +90,15 @@ function friendlyMfaError(message: string): string {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Boot straight from the session Supabase stored in this browser. When it
-  // exists, `loading` starts false and the user/admin/gate states come from
-  // the local caches immediately — nothing flashes or disappears on return.
+  // A sessão pode iniciar do armazenamento do SDK, mas nunca aceitamos um
+  // papel administrativo vindo do navegador. O papel é confirmado no banco.
   const [bootSession] = useState<Session | null>(() => peekStoredSession());
   const [user, setUser] = useState<User | null>(() => bootSession?.user ?? null);
   const [session, setSession] = useState<Session | null>(bootSession);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(() => !bootSession);
   const [banned, setBanned] = useState<BanInfo | null>(null);
-  const [isAdmin, setIsAdmin] = useState(() => (bootSession?.user ? readAdminCache(bootSession.user.id) : false));
+  const [isAdmin, setIsAdmin] = useState(false);
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [adminGateUnlocked, setAdminGateUnlocked] = useState(() => (bootSession?.user ? readAdminGate(bootSession.user.id) : false));
 
@@ -113,9 +112,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(sess);
     setUser(u);
     if (u) {
-      // Admin permission and gate unlock are read from the cache instantly so
-      // the Admin button never disappears while the network confirms them.
-      setIsAdmin(readAdminCache(u.id));
+      // Nunca mostrar privilégios até a confirmação do banco; cache local não
+      // é uma fonte de autorização.
+      setIsAdmin(false);
       setAdminGateUnlocked(readAdminGate(u.id));
     }
   }, []);
@@ -156,15 +155,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkAdmin = useCallback(async (userId: string) => {
     try {
       const res = await withTimeout(
-        supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle(),
+        (supabase as any).rpc("has_role", { _user_id: userId, _role: "admin" }),
         8000,
         null as any
       );
-      // On timeout/error keep whatever the cache said — the Admin button must
-      // not vanish just because the network hiccuped.
-      if (!res || res.error) return;
-      const admin = !!res.data;
-      writeAdminCache(userId, admin);
+      // Em timeout/erro, falha fechada: o painel não fica acessível até haver
+      // confirmação. As operações administrativas também validam o papel no
+      // servidor, independentemente desta indicação visual.
+      if (!res || res.error) {
+        if (userRef.current?.id === userId) setIsAdmin(false);
+        return;
+      }
+      const admin = res.data === true;
       if (userRef.current?.id === userId) setIsAdmin(admin);
     } catch { /* noop */ }
   }, []);

@@ -10,10 +10,10 @@ import AppShell from "@/components/AppShell";
 import useFavorites from "@/hooks/useFavorites";
 import { supabase } from "@/integrations/supabase/client";
 import { formatBRL, formatRobuxPackage, formatStockLabel, productMinQuantity, productStock, ROBUX_CATEGORY, robuxPackageUnits, unitPriceFromPackage } from "@/lib/catalog";
-import { BUYER_FEE, checkoutTotals } from "@/lib/fees";
+import { checkoutTotals } from "@/lib/fees";
 import CryptoPaymentModal, { CryptoCharge } from "@/components/CryptoPaymentModal";
 import { unwrapEdgeCall } from "@/lib/edgeErrors";
-import { checkoutMethods, classifyPaymentMethods, computeMethodsFromSettings, paymentMethodsNotice, PaymentMethodsState } from "@/lib/paymentMethods";
+import { checkoutMethods, classifyPaymentMethods, paymentMethodsNotice, PaymentMethodsState } from "@/lib/paymentMethods";
 import { friendlyQuestionError, isSchemaMissing } from "@/lib/questionErrors";
 import { containsExternalContact } from "@/lib/externalContact";
 
@@ -35,9 +35,9 @@ interface SellerOffer {
   verified: boolean;
 }
 
-type CheckoutMethod = "pix" | "crypto" | "card" | "boleto";
+type CheckoutMethod = "zennith_pix" | "vexopay_pix" | "crypto" | "card" | "boleto";
 
-const METHOD_ORDER: CheckoutMethod[] = ["pix", "card", "crypto", "boleto"];
+const METHOD_ORDER: CheckoutMethod[] = ["zennith_pix", "vexopay_pix", "crypto", "card", "boleto"];
 
 function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConfirm, loading }: { product: Product; quantity: number; unitPrice: number; subtotal: number; onClose: () => void; onConfirm: (method: string, cpf: string, network?: string) => void; loading: boolean }) {
   // Sem método selecionado até sabermos o que está ativo: nunca deixamos PIX
@@ -47,7 +47,8 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
   const [methodsState, setMethodsState] = useState<PaymentMethodsState>({ status: "loading" });
   const [methodsRetry, setMethodsRetry] = useState(0);
   const [network, setNetwork] = useState("TRC20");
-  const { buyerFee: fee, total } = checkoutTotals(subtotal);
+  const fee = method && methodsState.status === "ok" ? Number(methodsState.fees[method] || 0) : 0;
+  const total = Math.round((subtotal + fee) * 100) / 100;
 
   // Pergunta ao servidor quais meios estão REALMENTE configurados. Falhas de
   // consulta (função antiga publicada, settings ilegíveis, rede) NÃO viram
@@ -60,17 +61,7 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
         "Não foi possível consultar as formas de pagamento.",
       );
       if (!active) return;
-      let next = classifyPaymentMethods(result);
-      if (next.status !== "ok") {
-        // Edge antiga: calcula disponibilidade a partir dos toggles por
-        // função de cada provider em app_settings (zennithpay.pixEnabled,
-        // vexopay.cryptoEnabled, stripe.cardEnabled etc.), honrando tanto
-        // as chaves de credencial quanto os ligar/desligar do admin.
-        const computed = await computeMethodsFromSettings();
-        if (computed) {
-          next = { status: "ok", methods: computed };
-        }
-      }
+      const next = classifyPaymentMethods(result);
       if (!active) return;
       setMethodsState(next);
     })();
@@ -97,7 +88,7 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
       return;
     }
     const cleanCpf = cpf.replace(/\D/g, "");
-    if (method === "pix" || method === "crypto") {
+    if (method === "zennith_pix" || method === "vexopay_pix" || method === "crypto") {
       if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
         toast.error("Digite um CPF/CNPJ válido (11 ou 14 dígitos) para PIX/Crypto");
         return;
@@ -107,7 +98,8 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
   };
 
   const methodButtons: Array<{ id: CheckoutMethod; label: string; icon: React.ReactNode; selectedClass: string }> = [
-    { id: "pix", label: "PIX", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-[#0084ff] border-[#0084ff] text-white" },
+    { id: "zennith_pix", label: "PIX · Zennith", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-[#0084ff] border-[#0084ff] text-white" },
+    { id: "vexopay_pix", label: "PIX · Vexo", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-[#00c950] border-[#00c950] text-black" },
     { id: "crypto", label: "Crypto", icon: <Bitcoin className="w-5 h-5" />, selectedClass: "bg-[#ffbd2e] border-[#ffbd2e] text-black" },
     { id: "card", label: "Cartão (Stripe)", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-white border-white text-black" },
     { id: "boleto", label: "Boleto (Stripe)", icon: <Package className="w-5 h-5" />, selectedClass: "bg-white border-white text-black" },
@@ -185,16 +177,17 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
               </div>
             )}
 
-            <div className="flex justify-between text-xs"><span className="text-white/40">Taxa da plataforma</span><span className="text-[#ffbd2e]">+ {formatBRL(fee)}</span></div>
+            <div className="flex justify-between text-xs"><span className="text-white/40">Taxa do método</span><span className="text-[#ffbd2e]">+ {formatBRL(fee)}</span></div>
             <div className="h-px bg-[#1e1e28] my-2" />
             <div className="flex justify-between font-black"><span className="text-white">Total</span><span className="text-white text-lg">{formatBRL(total)}</span></div>
-            <p className="text-[10px] text-white/30">Taxa fixa de {formatBRL(BUYER_FEE)}. O vendedor recebe {formatBRL(subtotal)}.</p>
+            <p className="text-[10px] text-white/30">A taxa é definida para o método selecionado. O vendedor recebe {formatBRL(subtotal)}.</p>
           </div>
 
           <button onClick={handleConfirm} disabled={loading || loadingMethods || !method || !isAvailable(method)} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
             {loading ? "Processando..."
               : !anyMethod && !loadingMethods ? "Nenhuma forma disponível"
-              : method === "pix" ? "Pagar com PIX"
+              : method === "zennith_pix" ? "Pagar com PIX · Zennith"
+              : method === "vexopay_pix" ? "Pagar com PIX · Vexo"
               : method === "crypto" ? "Pagar com Crypto"
               : method === "boleto" ? "Gerar boleto"
               : "Pagar com cartão"}
@@ -412,19 +405,19 @@ export default function ProdutoPage() {
         if (cpfError) console.error("[zxmax:cpf]", cpfError);
       }
 
-      purchaseId = await buyProduct(product.id, selectedVariation || undefined, displayQuantity);
+      purchaseId = await buyProduct(product.id, selectedVariation || undefined, displayQuantity, method);
       if (!purchaseId) return; // buyProduct já explicou o motivo
 
-      if (method === "pix") {
+      if (method === "zennith_pix" || method === "vexopay_pix") {
         const res = await unwrapEdgeCall<{ id: string; qrCodeText: string; qrCodeUrl?: string; expiresAt?: string; amount?: number }>(
-          await supabase.functions.invoke("create-zennith-pix", {
+          await supabase.functions.invoke(method === "zennith_pix" ? "create-zennith-pix" : "create-evopay-pix", {
             body: { purchaseId, productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name, buyerName: state.currentUser?.name, payerDocument: cpf || undefined },
           }),
           "Não foi possível gerar o PIX. Tente novamente.",
         );
         if (res.errorMessage || !res.data?.qrCodeText) {
           const msg = res.status === 404
-            ? "Função de PIX (ZennithPay) ainda não publicada. Avise o suporte."
+            ? `Função de PIX (${method === "zennith_pix" ? "ZennithPay" : "VexoPay"}) ainda não publicada. Avise o suporte.`
             : res.errorMessage ?? "O provedor de PIX não devolveu o código. Tente novamente.";
           toast.error(msg);
           return;
