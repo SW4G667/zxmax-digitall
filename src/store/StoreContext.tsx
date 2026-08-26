@@ -442,7 +442,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         : "user_id, public_id, display_name, avatar_url, is_verified_seller";
       const { data: profiles } = await (supabase as any).from(profileSource).select(profileSelect);
       const directory = ((profiles || []) as any[]).reduce((acc, p) => {
-        acc[p.user_id] = { userId: p.user_id, publicId: String(p.public_id || ""), email: p.email || "", name: p.display_name || p.email?.split("@")[0] || "Usuário", avatar: p.avatar_url || undefined, isVerified: !!p.is_verified_seller };
+        acc[p.user_id] = { userId: p.user_id, publicId: String(p.public_id || ""), email: isAdmin ? (p.email || "") : "", name: p.display_name || "Usuário", avatar: p.avatar_url || undefined, isVerified: !!p.is_verified_seller };
         return acc;
       }, {} as Record<string, UserDirectoryEntry>);
 
@@ -1021,7 +1021,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const { data } = await (supabase as any).from("profiles").select("user_id").eq("public_id", Number(normalized)).maybeSingle();
       return (data as any)?.user_id || null;
     }
-    if (normalized.includes("@")) {
+    if (normalized.includes("@") && isAdmin) {
       const { data } = await (supabase as any).from("profiles").select("user_id").eq("email", normalized.toLowerCase()).maybeSingle();
       return (data as any)?.user_id || null;
     }
