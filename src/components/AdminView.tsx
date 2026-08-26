@@ -38,7 +38,7 @@ export const ADMIN_TABS = [
 export type AdminTab = (typeof ADMIN_TABS)[number];
 
 export default function AdminView() {
-  const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument } = useStore();
+  const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, sendAdminChat, verifyUser, reviewSellerDocument } = useStore();
   const { mfaEnabled, isAdmin } = useAuth();
   // The active section lives in the URL so the side menu can deep-link to a
   // real admin area (?tab=products) and the browser back button works.
@@ -59,10 +59,6 @@ export default function AdminView() {
   const [kycNotes, setKycNotes] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
   const [chatMsg, setChatMsg] = useState("");
-  const [newTagName, setNewTagName] = useState("");
-  const [newTagColor, setNewTagColor] = useState("#8B5CF6");
-  const [tagAssignEmail, setTagAssignEmail] = useState("");
-  const [tagAssignTagId, setTagAssignTagId] = useState<number | "">("");
   const [rules, setRules] = useState(state.config.rules);
   const [commission, setCommission] = useState(state.config.commission);
   const [instantFee, setInstantFee] = useState(state.config.instantFee);

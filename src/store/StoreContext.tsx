@@ -147,7 +147,7 @@ export interface SupportTicket {
 }
 
 export interface UserTag {
-  id: number;
+  id: string;
   name: string;
   color: string; // hex or hsl
 }
@@ -178,13 +178,6 @@ export interface AppConfig {
   discordLink: string;
   categories: string[];
   globalNotice: string;
-  authMode: "automatic" | "manual";
-  discordClientId: string;
-  discordClientSecret: string;
-  discordRedirectUri: string;
-  discordScopes: string;
-  discordMode: "automatic" | "manual";
-  discordServerLink: string;
   rules: string;
 }
 
@@ -199,7 +192,7 @@ interface AppState {
   globalNotices: GlobalNotice[];
   adminChat: AdminChatMessage[];
   userTags: UserTag[];
-  userTagAssignments: Record<string, number[]>; // email -> tagIds
+  userTagAssignments: Record<string, string[]>; // public ID -> tag UUIDs
   userBalances: Record<string, number>;
   userEarnings: Record<string, number>;
   sellerDocuments: SellerDocument[];
@@ -252,10 +245,11 @@ interface StoreContextType {
   addProductQuestion: (productId: number, text: string) => void;
   answerProductQuestion: (productId: number, questionId: number, answer: string) => void;
   deleteNotice: (id: number) => void;
-  createUserTag: (name: string, color: string) => void;
-  deleteUserTag: (id: number) => void;
-  assignUserTag: (email: string, tagId: number) => void;
-  unassignUserTag: (email: string, tagId: number) => void;
+  refreshUserTags: () => Promise<void>;
+  createUserTag: (name: string, color: string) => Promise<boolean>;
+  deleteUserTag: (id: string) => Promise<boolean>;
+  assignUserTag: (publicId: string, tagId: string) => Promise<boolean>;
+  unassignUserTag: (publicId: string, tagId: string) => Promise<boolean>;
   verifyUser: (userId: string) => Promise<boolean>;
   submitSellerDocument: (filePath: string, fileName: string) => void;
   reviewSellerDocument: (documentId: string, status: "approved" | "rejected") => void;
@@ -269,13 +263,6 @@ const defaultConfig: AppConfig = {
   discordLink: "https://discord.gg/zxmax",
   categories: ["Robux e Gift Cards", "Bots Discord", "Contas", "Scripts", "Assinaturas", "Designs Digitais", "Serviços Online", "Consultoria Virtual", "Keys de Software", "Arquivos", "Jogos e Itens"],
   globalNotice: "",
-  authMode: "automatic",
-  discordClientId: "",
-  discordClientSecret: "",
-  discordRedirectUri: typeof window !== "undefined" ? window.location.origin + "/" : "",
-  discordScopes: "identify email",
-  discordMode: "automatic",
-  discordServerLink: "https://discord.gg/zxmax",
   rules: "1- Proibido estelionato(golpe).\n2-Proibido lavagem de dinheiro no sistema de saque do site.\n3-Proibido venda de conteúdo adulto, cp, gore ou qualquer conteúdo doloso\n\n**(Toda regra quebrada resultará a suspensão do usuário de 1 semana a permanente sem receber dinheiro de vendas durante a suspensão.)**",
 };
 
@@ -456,6 +443,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setState((s) => ({ ...s, userDirectory: { ...(s.userDirectory || {}), ...directory }, sellerDocuments }));
     })();
   }, [authUserId, isAdmin]);
+
+  const refreshUserTags = React.useCallback(async () => {
+    if (!isAdmin) {
+      setState((s) => ({ ...s, userTags: [], userTagAssignments: {} }));
+      return;
+    }
+    const { data, error } = await (supabase as any).rpc("get_admin_user_tags");
+    if (error) {
+      console.warn("[zxmax:tags:load]", error);
+      return;
+    }
+    const tags = Array.isArray(data?.tags)
+      ? data.tags.map((tag: any) => ({ id: String(tag.id), name: String(tag.name || ""), color: String(tag.color || "#8b5cf6") }))
+      : [];
+    const assignments = data?.assignments && typeof data.assignments === "object"
+      ? Object.fromEntries(Object.entries(data.assignments).map(([publicId, tagIds]) => [publicId, Array.isArray(tagIds) ? tagIds.map(String) : []]))
+      : {};
+    setState((s) => ({ ...s, userTags: tags, userTagAssignments: assignments }));
+  }, [isAdmin]);
+
+  useEffect(() => { void refreshUserTags(); }, [refreshUserTags]);
 
   /** Runs a products query and, if the database has not received the latest
    * migrations yet, retries without the newer optional columns. Without this a
@@ -1243,45 +1251,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const deleteNotice = (id: number) =>
     setState((s) => ({ ...s, globalNotices: (s.globalNotices || []).filter((n) => n.id !== id) }));
 
-  const createUserTag = (name: string, color: string) => {
-    if (!name.trim()) return;
-    const tag: UserTag = { id: Date.now(), name: name.trim(), color };
-    setState((s) => ({ ...s, userTags: [...(s.userTags || []), tag] }));
+  const createUserTag = async (name: string, color: string) => {
+    const { error } = await (supabase as any).rpc("create_admin_user_tag", { _name: name.trim(), _color: color });
+    if (error) { console.warn("[zxmax:tags:create]", error); return false; }
+    await refreshUserTags();
+    return true;
   };
 
-  const deleteUserTag = (id: number) =>
-    setState((s) => {
-      const newAssignments: Record<string, number[]> = {};
-      Object.entries(s.userTagAssignments || {}).forEach(([email, ids]) => {
-        const filtered = ids.filter((tid) => tid !== id);
-        if (filtered.length) newAssignments[email] = filtered;
-      });
-      return {
-        ...s,
-        userTags: (s.userTags || []).filter((t) => t.id !== id),
-        userTagAssignments: newAssignments,
-      };
-    });
+  const deleteUserTag = async (id: string) => {
+    const { error } = await (supabase as any).rpc("delete_admin_user_tag", { _tag_id: id });
+    if (error) { console.warn("[zxmax:tags:delete]", error); return false; }
+    await refreshUserTags();
+    return true;
+  };
 
-  const assignUserTag = (email: string, tagId: number) =>
-    setState((s) => {
-      const current = s.userTagAssignments?.[email] || [];
-      if (current.includes(tagId)) return s;
-      return {
-        ...s,
-        userTagAssignments: { ...(s.userTagAssignments || {}), [email]: [...current, tagId] },
-      };
-    });
+  const assignUserTag = async (publicId: string, tagId: string) => {
+    const normalized = Number(publicId);
+    if (!Number.isSafeInteger(normalized) || normalized <= 0) return false;
+    const { error } = await (supabase as any).rpc("assign_admin_user_tag", { _public_id: normalized, _tag_id: tagId });
+    if (error) { console.warn("[zxmax:tags:assign]", error); return false; }
+    await refreshUserTags();
+    return true;
+  };
 
-  const unassignUserTag = (email: string, tagId: number) =>
-    setState((s) => {
-      const current = s.userTagAssignments?.[email] || [];
-      const filtered = current.filter((id) => id !== tagId);
-      const next = { ...(s.userTagAssignments || {}) };
-      if (filtered.length) next[email] = filtered;
-      else delete next[email];
-      return { ...s, userTagAssignments: next };
-    });
+  const unassignUserTag = async (publicId: string, tagId: string) => {
+    const normalized = Number(publicId);
+    if (!Number.isSafeInteger(normalized) || normalized <= 0) return false;
+    const { error } = await (supabase as any).rpc("unassign_admin_user_tag", { _public_id: normalized, _tag_id: tagId });
+    if (error) { console.warn("[zxmax:tags:unassign]", error); return false; }
+    await refreshUserTags();
+    return true;
+  };
 
   const verifyUser = async (userId: string): Promise<boolean> => {
     // Try via admin-verify edge function (service_role) first
@@ -1350,7 +1350,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setGlobalNotice, publishNotice, updatePixKey, sendAdminChat,
         sendPurchaseMessage, confirmDelivery, confirmOrderReceipt, sellerRefundOrder, checkAutoReleaseOrders, openDispute, reviewPurchase, loadProductReviews,
         addProductQuestion, answerProductQuestion,
-        deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
+        deleteNotice, refreshUserTags, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
         verifyUser, submitSellerDocument, reviewSellerDocument, isDark, toggleDark,
       }}
     >

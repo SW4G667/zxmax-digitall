@@ -160,11 +160,27 @@ export function AdminTicketsPanel() {
 }
 
 export function AdminTagsPanel() {
-  const { state, createUserTag, deleteUserTag, assignUserTag } = useStore();
+  const { state, createUserTag, deleteUserTag, assignUserTag, refreshUserTags } = useStore();
   const [name, setName] = useState("");
   const [color, setColor] = useState("#8B5CF6");
-  const [email, setEmail] = useState("");
-  const [tagId, setTagId] = useState<number | "">("");
+  const [publicId, setPublicId] = useState("");
+  const [tagId, setTagId] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const create = async () => {
+    setBusy(true);
+    const ok = await createUserTag(name, color);
+    setBusy(false);
+    ok ? (setName(""), toast.success("Tag criada e persistida.")) : toast.error("Não foi possível criar a tag.");
+  };
+
+  const assign = async () => {
+    if (!publicId || !tagId) return toast.error("Informe o ID público e a tag.");
+    setBusy(true);
+    const ok = await assignUserTag(publicId, tagId);
+    setBusy(false);
+    ok ? toast.success("Tag atribuída e persistida.") : toast.error("Não foi possível atribuir. Confira o ID público.");
+  };
 
   return (
     <div className="space-y-6">
@@ -173,25 +189,26 @@ export function AdminTagsPanel() {
         <div className="flex gap-2">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome" className="flex-1 p-3 rounded-xl bg-muted text-sm" />
           <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="w-12 h-12 rounded-xl" />
-          <button onClick={() => { createUserTag(name, color); setName(""); toast.success("Tag criada"); }} className="btn-gradient px-4 rounded-xl"><Plus className="w-4 h-4" /></button>
+          <button onClick={() => void create()} disabled={busy || !name.trim()} className="btn-gradient px-4 rounded-xl disabled:opacity-50"><Plus className="w-4 h-4" /></button>
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
         {(state.userTags || []).map((t) => (
           <span key={t.id} className="px-3 py-1.5 rounded-full text-xs font-bold text-white flex items-center gap-2" style={{ background: t.color }}>
             {t.name}
-            <button onClick={() => deleteUserTag(t.id)}><Trash2 className="w-3 h-3" /></button>
+            <button onClick={() => void deleteUserTag(t.id)} title="Excluir tag"><Trash2 className="w-3 h-3" /></button>
           </span>
         ))}
       </div>
       <div className="glass-card p-6 space-y-3">
         <h3 className="font-bold">Atribuir tag</h3>
-        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail do usuário" className="w-full p-3 rounded-xl bg-muted text-sm" />
-        <select value={tagId} onChange={(e) => setTagId(e.target.value ? Number(e.target.value) : "")} className="w-full p-3 rounded-xl bg-muted text-sm">
+        <p className="text-xs text-muted-foreground">Use o ID público exibido no perfil. Nenhum e-mail é necessário para atribuir a tag.</p>
+        <input value={publicId} onChange={(e) => setPublicId(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="ID público do usuário" className="w-full p-3 rounded-xl bg-muted text-sm" />
+        <select value={tagId} onChange={(e) => setTagId(e.target.value)} className="w-full p-3 rounded-xl bg-muted text-sm">
           <option value="">Selecione</option>
           {(state.userTags || []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
-        <button onClick={() => { if (email && tagId) { assignUserTag(email, Number(tagId)); toast.success("Tag atribuída"); } }} className="btn-gradient px-4 py-2 rounded-xl text-sm font-bold">Atribuir</button>
+        <div className="flex gap-2"><button onClick={() => void assign()} disabled={busy} className="btn-gradient px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-50">Atribuir</button><button onClick={() => void refreshUserTags()} disabled={busy} className="px-4 py-2 rounded-xl text-sm font-bold bg-muted">Atualizar</button></div>
       </div>
     </div>
   );
