@@ -487,6 +487,7 @@ export default function ProdutoPage() {
       const latest = state.purchases.find((p) => p.productId === product.id && p.buyerId === state.currentUser?.id);
       if (latest) {
         await supabase.functions.invoke("send-email", { body: { type: "purchase_confirmed", purchaseId: latest.id } });
+        await supabase.functions.invoke("send-email", { body: { type: "new_sale", purchaseId: latest.id } });
       }
     } catch {}
   };
@@ -505,7 +506,7 @@ export default function ProdutoPage() {
       return;
     }
     setSendingQuestion(true);
-    const { error } = await (supabase as any).rpc("ask_product_question", { _product_id: product.id, _body: clean });
+    const { data: createdQuestion, error } = await (supabase as any).rpc("ask_product_question", { _product_id: product.id, _body: clean });
     if (error && isSchemaMissing(error)) {
       const next = [
         ...(product.questions || []),
@@ -534,6 +535,9 @@ export default function ProdutoPage() {
       return;
     }
     toast.success("Pergunta enviada ao vendedor.");
+    if (createdQuestion?.id) {
+      void supabase.functions.invoke("send-email", { body: { type: "new_question", questionId: createdQuestion.id } });
+    }
     setQuestion("");
     await loadQuestions();
   };
