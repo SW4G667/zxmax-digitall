@@ -183,12 +183,14 @@ describe("Perguntas — Tarefa B", () => {
 
   it("usuário autenticado envia pergunta válida pela RPC do banco", async () => {
     storeState.current = baseStore({ state: { currentUser: { id: "buyer-uuid", name: "Comprador" } } });
+    db.rpcResult.current = { data: { id: 77 }, error: null };
     renderProduto();
     await waitFor(() => expect(screen.getByText("PERGUNTAS (0)")).toBeTruthy());
     await typeQuestion("Aceita pagamento no PIX?");
     await clickSend();
     await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("Pergunta enviada ao vendedor."));
     expect(supabaseMock.rpc).toHaveBeenCalledWith("ask_product_question", { _product_id: 41, _body: "Aceita pagamento no PIX?" });
+    expect(supabaseMock.functions.invoke).toHaveBeenCalledWith("send-email", { body: { type: "new_question", questionId: 77 } });
   });
 
   it("contato externo é bloqueado com a mensagem do banco (validação no servidor)", async () => {
@@ -205,7 +207,7 @@ describe("Perguntas — Tarefa B", () => {
     expect(toastMock.error.mock.calls.at(-1)?.[0]).toMatch(/Não é permitido enviar contatos externos/);
   });
 
-  it("erro cru de schema (PGRST202) grava no JSON do produto e nunca vira toast técnico", async () => {
+  it("erro cru de schema (PGRST202) não grava no anúncio e nunca vira toast técnico", async () => {
     storeState.current = baseStore({ state: { currentUser: { id: "buyer-uuid", name: "Comprador" } } });
     db.rpcResult.current = {
       data: null,
@@ -215,8 +217,10 @@ describe("Perguntas — Tarefa B", () => {
     await waitFor(() => expect(screen.getByText("PERGUNTAS (0)")).toBeTruthy());
     await typeQuestion("Funciona mesmo?");
     await clickSend();
-    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("Pergunta enviada ao vendedor."));
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
+    expect(toastMock.success).not.toHaveBeenCalledWith("Pergunta enviada ao vendedor.");
     expect(String(toastMock.error.mock.calls.at(-1)?.[0] || "")).not.toMatch(/schema cache|ask_product_question|PGRST/i);
+    expect(supabaseMock.functions.invoke).not.toHaveBeenCalledWith("send-email", expect.anything());
   });
 
   it("banco sem a tabela: formulário de pergunta continua visível", async () => {

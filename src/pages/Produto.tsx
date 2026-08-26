@@ -492,11 +492,6 @@ export default function ProdutoPage() {
     } catch {}
   };
 
-  const persistLegacyQuestions = async (next: Array<{ id: number; userName: string; text: string; date: string; answer?: string; answerDate?: string }>) => {
-    const { error } = await (supabase as any).from("products").update({ questions: next }).eq("id", product.id);
-    return error;
-  };
-
   const handleSendQuestion = async () => {
     if (!state.currentUser) { setAuthOpen(true); return; }
     const clean = question.trim();
@@ -507,27 +502,6 @@ export default function ProdutoPage() {
     }
     setSendingQuestion(true);
     const { data: createdQuestion, error } = await (supabase as any).rpc("ask_product_question", { _product_id: product.id, _body: clean });
-    if (error && isSchemaMissing(error)) {
-      const next = [
-        ...(product.questions || []),
-        {
-          id: Date.now(),
-          userName: state.currentUser.name || "Comprador",
-          text: clean,
-          date: new Date().toISOString(),
-        },
-      ];
-      const upErr = await persistLegacyQuestions(next);
-      setSendingQuestion(false);
-      if (upErr) {
-        toast.error(friendlyQuestionError(upErr, "ask"));
-        return;
-      }
-      addProductQuestion(product.id, clean);
-      toast.success("Pergunta enviada ao vendedor.");
-      setQuestion("");
-      return;
-    }
     setSendingQuestion(false);
     if (error) {
       toast.error(friendlyQuestionError(error, "ask"));
