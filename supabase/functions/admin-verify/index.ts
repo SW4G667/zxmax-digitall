@@ -28,6 +28,20 @@ serve(async (req) => {
     const userId = body.userId;
     const documentId = body.documentId;
 
+    const resolveTargetUserId = async (identifier: unknown) => {
+      const normalized = typeof identifier === "string" ? identifier.trim() : "";
+      if (!normalized || normalized.length > 254) throw new Error("Identificador de usuário inválido");
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalized)) return normalized;
+
+      const query = serviceClient.from("profiles").select("user_id");
+      const { data, error } = /^[0-9]+$/.test(normalized)
+        ? await query.eq("public_id", Number(normalized)).maybeSingle()
+        : await query.eq("email", normalized.toLowerCase()).maybeSingle();
+      if (error) throw error;
+      if (!data?.user_id) throw new Error("Usuário não encontrado");
+      return data.user_id as string;
+    };
+
     if (action === "verify_user") {
       if (!userId) throw new Error("userId obrigatório");
       const { error } = await serviceClient.from("profiles").update({
@@ -143,11 +157,8 @@ serve(async (req) => {
     }
 
     if (action === "ban_user") {
-      const targetUserId = typeof userId === "string" ? userId.trim() : "";
+      const targetUserId = await resolveTargetUserId(body.identifier);
       const reason = typeof body.reason === "string" ? body.reason.trim() : "";
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetUserId)) {
-        throw new Error("userId inválido");
-      }
       if (!reason || reason.length > 500) throw new Error("Motivo de banimento inválido");
       if (targetUserId === userData.user.id) throw new Error("Não é permitido banir a própria conta");
 
@@ -178,10 +189,7 @@ serve(async (req) => {
     }
 
     if (action === "unban_user") {
-      const targetUserId = typeof userId === "string" ? userId.trim() : "";
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetUserId)) {
-        throw new Error("userId inválido");
-      }
+      const targetUserId = await resolveTargetUserId(body.identifier);
       const { error } = await serviceClient.from("bans").update({ active: false }).eq("user_id", targetUserId).eq("active", true);
       if (error) throw error;
       await serviceClient.from("admin_audit_log").insert({

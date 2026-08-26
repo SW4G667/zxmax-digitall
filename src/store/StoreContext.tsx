@@ -979,27 +979,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         : null,
     }));
 
-  const resolveUserId = async (identifier: string) => {
-    const normalized = identifier.trim();
-    if (!normalized) return null;
-    if (/^[0-9]+$/.test(normalized)) {
-      const { data } = await (supabase as any).from("profiles").select("user_id").eq("public_id", Number(normalized)).maybeSingle();
-      return (data as any)?.user_id || null;
-    }
-    if (normalized.includes("@") && isAdmin) {
-      const { data } = await (supabase as any).from("profiles").select("user_id").eq("email", normalized.toLowerCase()).maybeSingle();
-      return (data as any)?.user_id || null;
-    }
-    return normalized;
-  };
-
   const banUser = async (identifier: string, reason = "Violação das regras da plataforma") => {
     const normalized = identifier.trim();
     if (!normalized) return false;
-    const userId = await resolveUserId(normalized);
-    if (!userId) return false;
-
-    const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "ban_user", userId, reason } });
+    const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "ban_user", identifier: normalized, reason } });
     if (error || data?.error) {
       toast.error("Não foi possível concluir o banimento. Tente novamente.");
       return false;
@@ -1015,10 +998,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const unbanUser = async (identifier: string) => {
     const normalized = identifier.trim();
     if (!normalized) return false;
-    const userId = await resolveUserId(normalized);
-    if (!userId) return false;
-
-    const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "unban_user", userId } });
+    const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "unban_user", identifier: normalized } });
     if (error || data?.error) return false;
 
     setState((s) => ({ ...s, bannedUsers: s.bannedUsers.filter((e) => e !== normalized) }));

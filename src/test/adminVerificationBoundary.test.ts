@@ -25,6 +25,8 @@ describe("fronteira de verificação administrativa", () => {
     expect(adminVerify).toContain('action === "get_webhook_logs"');
     expect(adminVerify).toContain('action === "ban_user"');
     expect(adminVerify).toContain('action === "unban_user"');
+    expect(adminVerify).toContain("const resolveTargetUserId");
+    expect(adminVerify).toContain("body.identifier");
     expect(adminVerify).toContain('action: "user.banned"');
     expect(adminVerify).toContain('action: "user.unbanned"');
     expect(adminVerify).toContain('if (!roleData) throw new Error("Acesso negado: só admin")');
@@ -35,6 +37,8 @@ describe("fronteira de verificação administrativa", () => {
     expect(store).not.toContain("Fallback direct (requires RLS fix migration)");
     expect(store).not.toContain('.from("bans").insert');
     expect(store).not.toContain('.from("bans").update');
+    expect(store).not.toContain("const resolveUserId");
+    expect(store).not.toContain('.from("profiles").select("user_id")');
     expect(store).toContain('action: "ban_user"');
     expect(store).toContain('action: "unban_user"');
     expect(config).toMatch(/\[functions\.admin-verify\]\s+verify_jwt = true/);
