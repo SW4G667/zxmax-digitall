@@ -29,7 +29,7 @@ export function clearAdminGate(userId: string) {
 export function wipePersistedAuth(): void {
   try {
     for (const key of Object.keys(localStorage)) {
-      if ((key.startsWith("sb-") && key.includes("auth")) || key.startsWith(ADMIN_GATE_PREFIX) || key === "zxmax_mfa_enroll") localStorage.removeItem(key);
+      if ((key.startsWith("sb-") && key.includes("auth")) || key.startsWith("zxmax_admin_role_") || key.startsWith(ADMIN_GATE_PREFIX) || key === "zxmax_mfa_enroll") localStorage.removeItem(key);
     }
     sessionStorage.removeItem("zxmax_admin_mfa_verified");
   } catch { /* storage unavailable */ }

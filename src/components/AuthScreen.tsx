@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { X, Loader2, Lock, Eye, EyeOff, Shield, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getDiscordRedirectTo } from "@/lib/discordAuth";
+import { recordSecurityEvent } from "@/lib/securityEvents";
 
 export default function AuthScreen({ onClose }: { onClose?: () => void }) {
   const { signUp, signIn } = useAuth();
@@ -28,14 +29,17 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
 
   const handleDiscord = async () => {
     try {
+      void recordSecurityEvent(supabase, "auth.discord", "success");
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "discord",
         options: { redirectTo: getDiscordRedirectTo() },
       });
       if (error) {
+        void recordSecurityEvent(supabase, "auth.discord", "failure");
         toast.error("Login com Discord indisponível. Verifique se o provedor foi configurado no Supabase Auth e se a URL de callback está autorizada.");
       }
     } catch (e: any) {
+      void recordSecurityEvent(supabase, "auth.discord", "failure");
       toast.error("Erro ao iniciar login com Discord: " + (e?.message || "tente novamente."));
     }
   };
@@ -51,9 +55,11 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
         redirectTo: new URL("/reset-password", window.location.origin).toString(),
       });
       if (resetError) throw resetError;
+      void recordSecurityEvent(supabase, "auth.recovery", "success");
       toast.success("Se existir uma conta com este e-mail, enviaremos um link de recuperação.");
     } catch {
       // Resposta neutra para não permitir enumeração de contas.
+      void recordSecurityEvent(supabase, "auth.recovery", "failure");
       toast.success("Se existir uma conta com este e-mail, enviaremos um link de recuperação.");
     } finally {
       setLoading(false);
@@ -80,12 +86,14 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
       } else {
         const { error: err } = await signIn(email, password);
         if (err) {
+          void recordSecurityEvent(supabase, "auth.login", "failure");
           if (err.includes("Invalid login")) setError("Email ou senha incorretos.");
           else if (err.includes("Email not confirmed")) setError("Confirme seu e-mail antes.");
           else setError(err);
         } else {
           // Login confirmed: close the modal right away. The admin 2FA code,
           // when needed, is asked only inside the admin panel.
+          void recordSecurityEvent(supabase, "auth.login", "success");
           toast.success("Login realizado!");
           onClose?.();
         }

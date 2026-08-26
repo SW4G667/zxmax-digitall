@@ -34,6 +34,7 @@ export function classifyPaymentMethods(result: EdgeCallResult<{ methods?: unknow
   }
   if (result.status === 401) return { status: "session" };
   if (result.status === 503) return { status: "network" };
+  if (result.status === null) return { status: "network" };
   return { status: "unavailable" };
 }
 

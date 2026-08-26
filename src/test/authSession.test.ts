@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { peekStoredSession, readAdminCache, readAdminGate, wipePersistedAuth } from "@/lib/authSession";
+import { peekStoredSession, readAdminGate, wipePersistedAuth } from "@/lib/authSession";
 
 afterEach(() => { localStorage.clear(); sessionStorage.clear(); });
 
@@ -12,7 +12,7 @@ describe("persisted auth cleanup", () => {
     sessionStorage.setItem("zxmax_admin_mfa_verified", "1");
     wipePersistedAuth();
     expect(peekStoredSession()).toBeNull();
-    expect(readAdminCache("u")).toBe(false);
+    expect(localStorage.getItem("zxmax_admin_role_u")).toBeNull();
     expect(readAdminGate("u")).toBe(false);
     expect(sessionStorage.getItem("zxmax_admin_mfa_verified")).toBeNull();
   });
