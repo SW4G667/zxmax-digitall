@@ -112,9 +112,9 @@ function baseStore(overrides: { state?: Record<string, unknown> } & Record<strin
   };
 }
 
-const renderProduto = () =>
+const renderProduto = (id = 41) =>
   render(
-    <MemoryRouter initialEntries={["/produto/41"]}>
+    <MemoryRouter initialEntries={[`/produto/${id}`]}>
       <Routes>
         <Route path="/produto/:id" element={<ProdutoPage />} />
       </Routes>
@@ -145,6 +145,30 @@ beforeEach(() => {
   db.rpcResult.current = { data: null, error: null };
   db.rpcCalls.current = [];
   db.edgeResult.current = { data: null, error: null };
+});
+
+describe("Produto Robux — regressão de taxa", () => {
+  it("abre preço e checkout sem cair ao renderizar a taxa do comprador", async () => {
+    const robuxProduct = {
+      ...PRODUCT,
+      id: 51,
+      name: "Pacote 1.000 Robux",
+      category: "Robux e Gift Cards",
+      price: 19.9,
+      stock: 1000,
+      variations: [{ id: "robux-1000", name: "1.000 Robux", price: 19.9, stock: 1000 }],
+    };
+    storeState.current = baseStore({ state: { products: [robuxProduct], currentUser: { id: "buyer-uuid", name: "Comprador" } } });
+    db.edgeResult.current = { data: { v: 3, methods: { zennith_pix: true, vexopay_pix: false, crypto: false, card: false, boleto: false }, fees: { zennith_pix: 0.9 } }, error: null };
+
+    renderProduto(51);
+
+    expect(await screen.findByText(/inclui taxa de R\$\s?0,90/i)).toBeTruthy();
+    const buyButtons = screen.getAllByRole("button", { name: /comprar agora/i });
+    expect(buyButtons.length).toBeGreaterThan(0);
+    await act(async () => { buyButtons[0].click(); });
+    expect(await screen.findByText("Pagar com PIX · Zennith")).toBeTruthy();
+  });
 });
 
 describe("Perguntas — Tarefa B", () => {
