@@ -65,7 +65,7 @@ export interface Product {
   price: number;
   category: string;
   seller: string;
-  sellerEmail: string;
+  sellerEmail?: string;
   sellerId: string;
   sellerPublicId?: string;
   sales: number;
@@ -519,7 +519,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const price = normalizeProductPrice({ price: Number(p.price), category: p.category, variations: p.variations });
         return {
           id: Number(p.id), name: p.name, price, category: p.category,
-          seller: p.seller_name, sellerEmail: p.seller_email || "", sellerId: p.seller_id,
+          seller: p.seller_name, sellerId: p.seller_id,
           sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0),
           image: p.image, banner: p.banner || undefined, description: p.description, approved: !!p.approved,
           deliveryType: p.delivery_type, variations: p.variations || [], questions: p.questions || [],

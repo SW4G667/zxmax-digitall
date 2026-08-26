@@ -50,10 +50,11 @@ describe("UserProfileModal — privacidade", () => {
   });
 
   it("não deixa as superfícies públicas consultarem e-mails legados de vendedor", async () => {
-    const [storeView, productPage, profileModal] = await Promise.all([
+    const [storeView, productPage, profileModal, storeContext] = await Promise.all([
       readFile(join(process.cwd(), "src/components/StoreView.tsx"), "utf8"),
       readFile(join(process.cwd(), "src/pages/Produto.tsx"), "utf8"),
       readFile(join(process.cwd(), "src/components/UserProfileModal.tsx"), "utf8"),
+      readFile(join(process.cwd(), "src/store/StoreContext.tsx"), "utf8"),
     ]);
 
     for (const source of [storeView, productPage, profileModal]) {
@@ -61,5 +62,9 @@ describe("UserProfileModal — privacidade", () => {
       expect(source).not.toContain("buyerEmail");
       expect(source).not.toContain("userEmail");
     }
+    const catalogMapperStart = storeContext.indexOf("const products = unique.map");
+    const catalogMapperEnd = storeContext.indexOf("setState((old)", catalogMapperStart);
+    const catalogMapper = storeContext.slice(catalogMapperStart, catalogMapperEnd);
+    expect(catalogMapper).not.toContain("sellerEmail:");
   });
 });
