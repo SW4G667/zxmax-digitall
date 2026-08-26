@@ -59,10 +59,10 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
   return (
     <header className="sticky top-0 z-50 bg-[#0a0a0f] border-b border-[#1e1e28]">
       <div className="max-w-7xl mx-auto px-3 sm:px-4 h-14 flex items-center gap-2 sm:gap-4">
-        <button onClick={onMenuClick} className="p-2 rounded-lg hover:bg-white/5 transition shrink-0 group" title="Menu" aria-label="Abrir menu">
-          <div className="flex flex-col gap-[4px] w-[18px]">
+        <button onClick={onMenuClick} className="p-2.5 rounded-xl border border-transparent hover:border-white/10 hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff] transition shrink-0 group" title="Abrir menu" aria-label="Abrir menu principal">
+          <div className="flex flex-col gap-[4px] w-[19px]" aria-hidden>
             <span className="block h-[2px] w-full bg-white group-hover:bg-[#0084ff] transition rounded-full" />
-            <span className="block h-[2px] w-3/4 bg-white group-hover:bg-[#0084ff] transition rounded-full" />
+            <span className="block h-[2px] w-full bg-white group-hover:bg-[#0084ff] transition rounded-full" />
             <span className="block h-[2px] w-full bg-white group-hover:bg-[#0084ff] transition rounded-full" />
           </div>
         </button>

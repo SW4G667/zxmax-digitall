@@ -169,7 +169,7 @@ export default function StoreView() {
 
   return (
     <div className="space-y-5">
-      {/* Top filters - clean pills */}
+      {/* Top filters — compact controls keep the catalog scannable on mobile. */}
       <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1" role="tablist" aria-label="Categorias">
         <button
           onClick={() => navigate("/robux")}
@@ -191,6 +191,9 @@ export default function StoreView() {
             {cat}
           </button>
         ))}
+        <button onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters} className={`shrink-0 px-3.5 py-2.5 rounded-full text-xs font-bold border transition flex items-center gap-1.5 ${showFilters ? "bg-[#0084ff] border-[#0084ff] text-white" : "bg-[#1a1a20] border-[#25252e] text-white/70 hover:text-white hover:border-white/20"}`}>
+          <SlidersHorizontal className="w-3.5 h-3.5" /> Filtros
+        </button>
       </div>
 
       {/* Hero */}
@@ -216,7 +219,7 @@ export default function StoreView() {
             className="bg-transparent border-none focus:ring-0 focus:outline-none text-sm w-full ml-3 text-black placeholder:text-black/40"
           />
           <button onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters} className="ml-2 bg-[#0084ff] hover:bg-[#0066cc] text-white px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-1.5">
-            <SlidersHorizontal className="w-4 h-4" /> Filtros
+            <SlidersHorizontal className="w-4 h-4" /> Ajustar
           </button>
         </div>
 
@@ -274,13 +277,13 @@ export default function StoreView() {
             <Flame className="w-4 h-4 text-[#ff4444]" aria-hidden />
             <h2 className="text-sm font-black text-white uppercase tracking-wide">Em alta</h2>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
             {trending.map((p) => (
               <button key={`trend-${p.id}`} onClick={() => navigate(`/produto/${p.id}`)} className="text-left bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden cursor-pointer hover:border-[#2a2a36] focus:outline-none focus:ring-2 focus:ring-[#0084ff] transition group">
                 <div className="aspect-[4/3] bg-[#1a1a20] overflow-hidden"><img src={p.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-300" loading="lazy" /></div>
-                <div className="p-3">
+                <div className="p-2.5 sm:p-3">
                   <p className="text-xs font-bold text-white truncate">{p.name}</p>
-                  <p className="text-sm font-black text-white mt-1">{priceLabel(p)}</p>
+                  <p className="mt-2 inline-flex rounded-lg border border-[#0084ff]/25 bg-[#0084ff]/10 px-2 py-1 text-xs font-black text-[#45a7ff]">{priceLabel(p)}</p>
                 </div>
               </button>
             ))}
@@ -291,10 +294,13 @@ export default function StoreView() {
       {/* Products */}
       <div>
         <div className="flex items-center justify-between mb-3 gap-3">
+          <div>
           <h2 className="text-sm font-bold text-white">
             {category === "Todos" ? (debouncedSearch ? `Resultados para "${search}"` : "Todos os produtos") : category}{" "}
             {!isFirstLoad && <span className="text-white/30">({filtered.length})</span>}
           </h2>
+          <p className="mt-0.5 text-[11px] text-white/35">Produtos publicados, entrega e vendedor sinalizados em cada anúncio.</p>
+          </div>
           <button
             onClick={() => void refreshProducts()}
             className="text-white/40 hover:text-white text-xs font-bold flex items-center gap-1.5 transition"
@@ -340,7 +346,7 @@ export default function StoreView() {
                 <AlertTriangle className="w-3.5 h-3.5" /> Conexão instável — mostrando os últimos anúncios carregados.
               </p>
             )}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3">
               {page.map((p) => (
                 <button
                   key={p.id}
@@ -354,14 +360,15 @@ export default function StoreView() {
                       {p.deliveryType === "auto" && <span className="bg-[#00c950] text-white text-[9px] px-2 py-0.5 rounded-full font-black">AUTO</span>}
                     </div>
                   </div>
-                  <div className="p-3 flex flex-col flex-1">
+                  <div className="p-2.5 sm:p-3 flex flex-col flex-1">
+                    <p className="mb-1 text-[9px] font-black uppercase tracking-wide text-white/35 truncate">{p.category}</p>
                     <h3 className="font-bold text-white text-xs leading-tight line-clamp-2 min-h-[32px]">{p.name}</h3>
                     <p className="text-[11px] text-white/40 mt-1 truncate flex items-center gap-1">
                       por <span className="text-[#0084ff]">{p.seller}</span>
                       {isVerifiedSeller(p.sellerId) && <BadgeCheck className="w-3 h-3 text-[#0084ff] shrink-0" aria-label="Vendedor verificado" />}
                     </p>
-                    <p className="text-sm font-black text-[#ffbd2e] mt-2">{priceLabel(p)}</p>
-                    {p.sales > 0 && <p className="text-[10px] text-white/30 mt-0.5">{p.sales} vendas</p>}
+                    <p className="mt-2 inline-flex self-start rounded-lg border border-[#0084ff]/25 bg-[#0084ff]/10 px-2 py-1 text-xs font-black text-[#45a7ff]">{priceLabel(p)}</p>
+                    {p.sales > 0 && <p className="text-[10px] text-white/30 mt-1">{p.sales} vendas</p>}
                   </div>
                 </button>
               ))}
