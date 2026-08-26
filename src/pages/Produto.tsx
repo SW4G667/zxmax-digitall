@@ -492,7 +492,7 @@ export default function ProdutoPage() {
     } catch {}
   };
 
-  const persistLegacyQuestions = async (next: Array<{ id: number; userEmail: string; userName: string; text: string; date: string; answer?: string; answerDate?: string }>) => {
+  const persistLegacyQuestions = async (next: Array<{ id: number; userName: string; text: string; date: string; answer?: string; answerDate?: string }>) => {
     const { error } = await (supabase as any).from("products").update({ questions: next }).eq("id", product.id);
     return error;
   };
@@ -512,7 +512,6 @@ export default function ProdutoPage() {
         ...(product.questions || []),
         {
           id: Date.now(),
-          userEmail: state.currentUser.email || "",
           userName: state.currentUser.name || "Comprador",
           text: clean,
           date: new Date().toISOString(),
