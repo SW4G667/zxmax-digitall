@@ -89,6 +89,8 @@ serve(async (req) => {
   } catch (error: any) {
     console.error("stripe-webhook", error?.message || error);
     try { await admin.from("webhook_logs").insert({ source: "stripe", event_type: "error", status: "error", payload: { size: raw.length }, error: error?.message || String(error) }); } catch { /* noop */ }
-    return json({ received: true });
+    // Após uma assinatura válida, não confirmar a entrega em caso de erro interno.
+    // A Stripe repetirá o evento; apply_verified_payment é idempotente por eventId.
+    return json({ error: "Temporary webhook processing failure" }, 500);
   }
 });

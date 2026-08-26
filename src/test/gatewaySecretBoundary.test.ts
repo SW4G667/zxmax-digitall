@@ -21,4 +21,11 @@ describe("fronteira de secrets dos gateways", () => {
     expect(evopay).not.toContain("EVOPAY_API_KEY");
     expect(evopay).not.toContain("app_settings");
   });
+
+  it("permite retry da Stripe quando o processamento interno do webhook falha", async () => {
+    const webhook = await source("supabase/functions/stripe-webhook/index.ts");
+    expect(webhook).toContain('return json({ error: "Temporary webhook processing failure" }, 500)');
+    expect(webhook).toContain("apply_verified_payment");
+    expect(webhook).toContain('return json({ error: "Unauthorized" }, 401)');
+  });
 });
