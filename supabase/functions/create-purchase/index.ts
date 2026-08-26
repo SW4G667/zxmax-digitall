@@ -55,7 +55,7 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { data: gatewayRows } = await admin.from("app_settings").select("key,value").in("key", ["zennithpay", "vexopay"]);
+    const { data: gatewayRows } = await admin.from("app_settings").select("key,value").in("key", ["zennithpay", "vexopay", "stripe"]);
     const gateway = (key: string) => (gatewayRows || []).find((row: any) => row.key === key)?.value || {};
     const configuredFee = paymentMethod === "zennith_pix"
       ? Number(gateway("zennithpay").pixFee)
@@ -63,6 +63,14 @@ serve(async (req) => {
         ? Number(gateway("vexopay").pixFee)
         : 0;
     const buyerFee = Number.isFinite(configuredFee) && configuredFee >= 0 && configuredFee <= 1000 ? roundMoney(configuredFee) : 0;
+    const stripe = gateway("stripe") as Record<string, unknown>;
+    const stripeReady = Boolean(Deno.env.get("STRIPE_SECRET_KEY") && Deno.env.get("STRIPE_WEBHOOK_SECRET"));
+    if (paymentMethod === "card" && (!stripeReady || stripe.cardEnabled !== true)) {
+      return json({ error: "Cartão indisponível no momento. Escolha PIX ou tente mais tarde." }, 503);
+    }
+    if (paymentMethod === "boleto" && (!stripeReady || stripe.boletoEnabled !== true)) {
+      return json({ error: "Boleto indisponível no momento. Escolha PIX ou tente mais tarde." }, 503);
+    }
 
     const { data: product, error: productError } = await admin
       .from("products")

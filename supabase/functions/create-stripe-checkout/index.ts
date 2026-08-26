@@ -102,20 +102,19 @@ serve(async (req) => {
     // ------------------------------------------------------------------
     // Credenciais
     // ------------------------------------------------------------------
-    let secretKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
-    let enabled = true;
+    const secretKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
     const { data: setting } = await serviceClient
       .from("app_settings").select("value").eq("key", "stripe").maybeSingle();
-    if (setting?.value?.secretKey) secretKey = String(setting.value.secretKey);
-    if (setting?.value?.enabled === false) enabled = false;
+    const stripeConfig = (setting?.value || {}) as Record<string, unknown>;
+    const enabled = paymentMethod === "boleto" ? stripeConfig.boletoEnabled === true : stripeConfig.cardEnabled === true;
 
     if (!enabled) {
-      throw new CheckoutError("stripe_disabled", "O pagamento com cartão está desativado no momento. Use PIX.");
+      throw new CheckoutError("stripe_disabled", paymentMethod === "boleto" ? "O boleto está desativado no momento. Use PIX." : "O pagamento com cartão está desativado no momento. Use PIX.");
     }
     if (!secretKey) {
       throw new CheckoutError(
         "stripe_not_configured",
-        "O pagamento com cartão ainda não foi configurado. Cadastre a Secret Key em Admin → APIs.",
+        "O pagamento Stripe ainda não foi configurado. Um administrador deve adicionar as secrets no ambiente seguro e concluir o webhook.",
       );
     }
     if (!/^sk_(test|live)_/.test(secretKey)) {
@@ -137,7 +136,7 @@ serve(async (req) => {
     params.append("line_items[0][price_data][unit_amount]", String(Math.round(amount * 100)));
     params.append("line_items[0][quantity]", "1");
     params.append("mode", "payment");
-    params.append("success_url", `${siteUrl}/minhas-compras?order=${purchaseId}&payment=success`);
+    params.append("success_url", `${siteUrl}/minhas-compras?order=${purchaseId}&payment=success&session_id={CHECKOUT_SESSION_ID}`);
     params.append("cancel_url", `${siteUrl}/minhas-compras?order=${purchaseId}&payment=canceled`);
     params.append("client_reference_id", String(purchaseId));
     params.append("metadata[purchaseId]", String(purchaseId));
@@ -145,7 +144,8 @@ serve(async (req) => {
     // Boleto exige nome e endereço do pagador.
     if (paymentMethod === "boleto") {
       params.append("billing_address_collection", "required");
-      params.append("payment_method_options[boleto][expires_after_days]", "3");
+      const expiresAfterDays = Number(stripeConfig.boletoExpiresAfterDays);
+      params.append("payment_method_options[boleto][expires_after_days]", String(Number.isInteger(expiresAfterDays) && expiresAfterDays >= 0 && expiresAfterDays <= 60 ? expiresAfterDays : 3));
     }
 
     const stripeResp = await fetch("https://api.stripe.com/v1/checkout/sessions", {
@@ -172,9 +172,21 @@ serve(async (req) => {
       throw translateStripeError(stripeData, stripeResp.status);
     }
 
+    // O webhook compara esta referência antes de liberar o pedido. Sem ela,
+    // uma sessão Stripe nunca pode marcar uma compra arbitrária como paga.
+    const { error: chargeUpdateError } = await serviceClient
+      .from("purchases")
+      .update({ evopay_charge_id: `stripe:${stripeData.id}` })
+      .eq("id", purchaseId)
+      .eq("status", "pending");
+    if (chargeUpdateError) {
+      console.error("stripe charge reference failed", chargeUpdateError.message);
+      throw new CheckoutError("stripe_reference", "Não foi possível preparar a confirmação segura do pedido. Tente novamente.", 503);
+    }
+
     await serviceClient.from("webhook_logs").insert({
       source: "stripe", event_type: "CREATE_CHECKOUT", status: "created",
-      order_id: purchaseId, charge_id: stripeData.id, payload: stripeData, error: null,
+      order_id: purchaseId, charge_id: `stripe:${stripeData.id}`, payload: { id: stripeData.id, payment_method: paymentMethod }, error: null,
     });
 
     return json({ success: true, id: stripeData.id, url: stripeData.url, amount });

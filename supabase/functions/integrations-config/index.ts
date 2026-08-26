@@ -6,6 +6,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const DEFAULTS = {
   zennithpay: { baseUrl: "https://zennithpay.online/api/v1", pixEnabled: false, pixFee: 0.9 },
   vexopay: { baseUrl: "https://www.vexopay.com.br/api", pixEnabled: false, cryptoEnabled: false, pixFee: 1.2 },
+  stripe: { cardEnabled: false, boletoEnabled: false, boletoExpiresAfterDays: 3 },
 };
 const clampFee = (value: unknown, fallback: number) => {
   const fee = Number(value);
@@ -28,13 +29,15 @@ serve(async (req) => {
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "get");
-    const { data: rows, error } = await admin.from("app_settings").select("key,value").in("key", ["zennithpay", "vexopay"]);
+    const { data: rows, error } = await admin.from("app_settings").select("key,value").in("key", ["zennithpay", "vexopay", "stripe"]);
     if (error) return json({ error: "Não foi possível consultar a configuração de pagamentos.", code: "payment_settings_unavailable" }, 503);
-    const row = (name: "zennithpay" | "vexopay") => ({ ...DEFAULTS[name], ...((rows || []).find((item: any) => item.key === name)?.value || {}) });
+    const row = <T extends keyof typeof DEFAULTS>(name: T) => ({ ...DEFAULTS[name], ...((rows || []).find((item: any) => item.key === name)?.value || {}) });
     const zennith = row("zennithpay");
     const vexopay = row("vexopay");
+    const stripe = row("stripe");
     const zennithReady = Boolean(Deno.env.get("ZENNITH_API_KEY"));
     const vexoReady = Boolean(Deno.env.get("VEXOPAY_CLIENT_ID") && Deno.env.get("VEXOPAY_CLIENT_SECRET"));
+    const stripeReady = Boolean(Deno.env.get("STRIPE_SECRET_KEY") && Deno.env.get("STRIPE_WEBHOOK_SECRET"));
 
     if (action === "payment_methods") return json({
       v: 3,
@@ -42,8 +45,8 @@ serve(async (req) => {
         zennith_pix: zennithReady && zennith.pixEnabled === true,
         vexopay_pix: vexoReady && vexopay.pixEnabled === true,
         crypto: vexoReady && vexopay.cryptoEnabled === true,
-        card: false,
-        boleto: false,
+        card: stripeReady && stripe.cardEnabled === true,
+        boleto: stripeReady && stripe.boletoEnabled === true,
       },
       fees: { zennith_pix: clampFee(zennith.pixFee, 0.9), vexopay_pix: clampFee(vexopay.pixFee, 1.2) },
     });
@@ -56,27 +59,36 @@ serve(async (req) => {
       VEXOPAY_CLIENT_ID: Boolean(Deno.env.get("VEXOPAY_CLIENT_ID")),
       VEXOPAY_CLIENT_SECRET: Boolean(Deno.env.get("VEXOPAY_CLIENT_SECRET")),
       VEXOPAY_WEBHOOK_SECRET: Boolean(Deno.env.get("VEXOPAY_WEBHOOK_SECRET")),
+      STRIPE_SECRET_KEY: Boolean(Deno.env.get("STRIPE_SECRET_KEY")),
+      STRIPE_WEBHOOK_SECRET: Boolean(Deno.env.get("STRIPE_WEBHOOK_SECRET")),
     };
-    if (action === "get") return json({ integrations: { zennithpay: zennith, vexopay }, secretStatus });
-    const provider = body.provider === "vexopay" ? "vexopay" : body.provider === "zennithpay" ? "zennithpay" : null;
+    if (action === "get") return json({ integrations: { zennithpay: zennith, vexopay, stripe }, secretStatus });
+    const provider = body.provider === "vexopay" ? "vexopay" : body.provider === "zennithpay" ? "zennithpay" : body.provider === "stripe" ? "stripe" : null;
     if (!provider) return json({ error: "Provedor inválido." }, 400);
     if (action === "save") {
       const incoming = body.values || {};
       const current = row(provider);
-      const next = {
-        baseUrl: typeof incoming.baseUrl === "string" && /^https:\/\//.test(incoming.baseUrl) ? incoming.baseUrl.replace(/\/$/, "") : current.baseUrl,
-        pixEnabled: incoming.pixEnabled === true,
-        pixFee: clampFee(incoming.pixFee, current.pixFee),
-        ...(provider === "vexopay" ? { cryptoEnabled: incoming.cryptoEnabled === true } : {}),
-      };
+      const next = provider === "stripe"
+        ? {
+          cardEnabled: incoming.cardEnabled === true,
+          boletoEnabled: incoming.boletoEnabled === true,
+          boletoExpiresAfterDays: Number.isInteger(Number(incoming.boletoExpiresAfterDays)) && Number(incoming.boletoExpiresAfterDays) >= 0 && Number(incoming.boletoExpiresAfterDays) <= 60 ? Number(incoming.boletoExpiresAfterDays) : current.boletoExpiresAfterDays,
+        }
+        : {
+          baseUrl: typeof incoming.baseUrl === "string" && /^https:\/\//.test(incoming.baseUrl) ? incoming.baseUrl.replace(/\/$/, "") : current.baseUrl,
+          pixEnabled: incoming.pixEnabled === true,
+          pixFee: clampFee(incoming.pixFee, current.pixFee),
+          ...(provider === "vexopay" ? { cryptoEnabled: incoming.cryptoEnabled === true } : {}),
+        };
       const { error: saveError } = await admin.from("app_settings").upsert({ key: provider, value: next }, { onConflict: "key" });
       if (saveError) return json({ error: "Não foi possível salvar a configuração." }, 400);
-      await admin.from("admin_audit_log").insert({ actor_id: user.id, action: "gateway.config_updated", target_table: "app_settings", target_id: provider, metadata: { pixEnabled: next.pixEnabled, pixFee: next.pixFee, cryptoEnabled: (next as any).cryptoEnabled ?? false } });
+      await admin.from("admin_audit_log").insert({ actor_id: user.id, action: "gateway.config_updated", target_table: "app_settings", target_id: provider, metadata: provider === "stripe" ? { cardEnabled: next.cardEnabled, boletoEnabled: next.boletoEnabled, boletoExpiresAfterDays: next.boletoExpiresAfterDays } : { pixEnabled: next.pixEnabled, pixFee: next.pixFee, cryptoEnabled: (next as any).cryptoEnabled ?? false } });
       return json({ saved: true });
     }
     if (action === "test") {
       if (provider === "zennithpay" && !zennithReady) return json({ ok: false, message: "A secret ZENNITH_API_KEY ainda não foi configurada no Supabase." });
       if (provider === "vexopay" && !vexoReady) return json({ ok: false, message: "As secrets da VexoPay ainda não foram configuradas no Supabase." });
+      if (provider === "stripe" && !stripeReady) return json({ ok: false, message: "As secrets STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET ainda não foram configuradas no Supabase." });
       return json({ ok: true, message: "Credenciais detectadas no servidor. Nenhuma cobrança foi criada." });
     }
     return json({ error: "Ação inválida." }, 400);
