@@ -96,6 +96,18 @@ serve(async (req) => {
       return new Response(JSON.stringify({ documents: enriched }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    if (action === "get_verifications") {
+      const { data, error } = await serviceClient
+        .from("profiles")
+        .select("user_id, public_id, email, display_name, full_name, cpf, birth_date, phone, city, state, verification_selfie_path, verification_status, verification_notes, verification_submitted_at, is_verified_seller")
+        .not("verification_status", "is", null)
+        .neq("verification_status", "none")
+        .order("verification_submitted_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return new Response(JSON.stringify({ verifications: data || [] }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     if (action === "get_document_url") {
       const filePath = body.filePath;
       if (!filePath) throw new Error("filePath obrigatório");

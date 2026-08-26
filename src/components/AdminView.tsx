@@ -118,26 +118,7 @@ export default function AdminView() {
     } catch (e) {
       console.error("admin-verify failed", e);
     }
-    // Fallback direct via storage
-    try {
-      const { data, error } = await supabase.storage.from("documents").createSignedUrl(cleanPath, 60 * 10);
-      if (error) throw error;
-      if (!data?.signedUrl) throw new Error("URL vazia");
-      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
-    } catch (e: any) {
-      console.error("createSignedUrl failed", e);
-      toast.error("Não foi possível abrir: " + (e?.message || "verifique bucket RLS"));
-      // Last fallback: try download
-      try {
-        const { data } = await supabase.storage.from("documents").download(cleanPath);
-        if (data) {
-          const url = URL.createObjectURL(data);
-          window.open(url, "_blank");
-        }
-      } catch (err) {
-        console.error("download failed", err);
-      }
-    }
+    toast.error("Não foi possível abrir o documento no momento.");
   };
 
   const loadWebhookLogs = async () => {
@@ -157,15 +138,10 @@ export default function AdminView() {
 
   const loadKyc = async () => {
     setKycLoading(true);
-    const { data, error } = await (supabase as any)
-      .from("profiles")
-      .select("user_id, public_id, email, display_name, full_name, cpf, birth_date, phone, city, state, verification_selfie_path, verification_status, verification_notes, verification_submitted_at, is_verified_seller")
-      .not("verification_status", "is", null)
-      .neq("verification_status", "none")
-      .order("verification_submitted_at", { ascending: false });
+    const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "get_verifications" } });
     setKycLoading(false);
     if (error) return toast.error("Não foi possível carregar as verificações.");
-    setKyc(data || []);
+    setKyc(data?.verifications || []);
   };
 
   const reviewKyc = async (userId: string, approved: boolean) => {
@@ -181,18 +157,7 @@ export default function AdminView() {
         toast.success("Verificação recusada.", { id: tid });
       }
     } catch (e: any) {
-      // Fallback to direct
-      if (approved) {
-        const ok = await verifyUser(userId);
-        ok ? toast.success("Usuário verificado! (fallback)", { id: tid }) : toast.error("Falha ao verificar: " + (e?.message || ""), { id: tid });
-      } else {
-        const { error } = await (supabase as any).from("profiles").update({
-          verification_status: "rejected",
-          is_verified_seller: false,
-          verification_notes: kycNotes[userId]?.trim() || "Documentos ilegíveis",
-        } as any).eq("user_id", userId);
-        error ? toast.error("Falha ao recusar: " + error.message, { id: tid }) : toast.success("Recusado (fallback)", { id: tid });
-      }
+      toast.error("Falha ao revisar a verificação. Nenhuma alteração foi aplicada.", { id: tid });
     }
     await loadKyc();
   };
@@ -206,9 +171,7 @@ export default function AdminView() {
         return;
       }
     } catch {}
-    // Fallback to direct query
-    const { data } = await (supabase as any).from("seller_documents").select("id, user_id, file_path, file_name, status, created_at").order("created_at", { ascending: false }).limit(100);
-    if (data) setDocs(data);
+    toast.error("Não foi possível carregar os documentos.");
   };
 
   useEffect(() => {
@@ -536,14 +499,7 @@ export default function AdminView() {
                       toast.success("Documento aprovado e vendedor verificado!", { id: tid });
                       void loadDocs();
                     } catch (e: any) {
-                      reviewSellerDocument(doc.id, "approved");
-                      const ok = await verifyUser(doc.user_id || doc.user_id);
-                      if (ok) {
-                        toast.success("Aprovado (fallback)!", { id: tid });
-                        void loadDocs();
-                      } else {
-                        toast.error("Erro ao verificar: " + (e?.message || "tente novamente"), { id: tid });
-                      }
+                      toast.error("Erro ao verificar. Nenhuma alteração foi aplicada.", { id: tid });
                     }
                   }} className="px-3 py-2 bg-[#00c950] text-white text-xs font-bold rounded-lg">Aprovar</button>
                   <button onClick={() => { reviewSellerDocument(doc.id, "rejected"); toast.error("Documento rejeitado."); }} className="px-3 py-2 bg-destructive/10 text-destructive text-xs font-bold rounded-lg">Rejeitar</button>
