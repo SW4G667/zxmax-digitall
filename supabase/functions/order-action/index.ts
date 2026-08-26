@@ -63,7 +63,7 @@ serve(async (req) => {
 
     const { data: order } = await admin
       .from("purchases")
-      .select("id, buyer_id, seller_id, status, amount, evopay_charge_id, messages")
+      .select("id, buyer_id, seller_id, status, amount, payment_provider, evopay_charge_id, messages")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -158,55 +158,10 @@ serve(async (req) => {
         return json({ error: "Não é permitido enviar contatos externos (WhatsApp, Discord, e-mail, links ou telefone)." }, 400);
       }
 
-      const chargeId = String(order.evopay_charge_id || "");
-      let gatewayRefundStatus = "skipped";
-
-      if (chargeId.startsWith("vexo:")) {
-        return json({ error: "O reembolso VexoPay permanece pendente de documentação oficial do endpoint e confirmação do provedor; o pedido não foi alterado." }, 409);
-      }
-
-      const formattedAmount = `R$ ${Number(order.amount).toFixed(2).replace(".", ",")}`;
-      messages = [
-        ...messages,
-        {
-          from: "System",
-          text: `💸 REEMBOLSO REALIZADO PELO VENDEDOR\nValor: ${formattedAmount}\nMotivo: ${cleanReason}\nPrazo de crédito: até 1–2 dias úteis na conta/banco do comprador.`,
-          date: now,
-        },
-      ];
-
-      const { error } = await admin
-        .from("purchases")
-        .update({
-          status: "refunded",
-          refund_reason: cleanReason,
-          refunded_at: now,
-          messages,
-          updated_at: now,
-        })
-        .eq("id", order.id);
-
-      if (error) throw error;
-
-      // Log de auditoria
-      try {
-        await admin.from("admin_audit_log").insert({
-          actor_id: auth.user.id,
-          action: "order.refunded",
-          target_table: "purchases",
-          target_id: String(order.id),
-          reason: cleanReason,
-          metadata: { amount: order.amount, buyer_id: order.buyer_id, seller_id: order.seller_id, gatewayRefundStatus },
-        });
-      } catch {}
-
+      const provider = String(order.payment_provider || order.evopay_charge_id || "desconhecido");
       return json({
-        success: true,
-        status: "refunded",
-        refundReason: cleanReason,
-        refundedAt: now,
-        gatewayRefundStatus,
-      });
+        error: `O reembolso por ${provider} exige endpoint oficial, confirmação verificável do provedor e conciliação antes de alterar o pedido.`,
+      }, 409);
     }
 
     if (action === "open_dispute") {
@@ -253,6 +208,7 @@ serve(async (req) => {
     }
 
     if (action === "check_auto_release") {
+      if (!isAdmin) return json({ error: "Apenas administradores podem executar a liberação automática manualmente." }, 403);
       const { data: count, error } = await admin.rpc("process_auto_release_orders");
       if (error) throw error;
       return json({ success: true, autoReleasedCount: count || 0 });
