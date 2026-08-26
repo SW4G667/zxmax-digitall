@@ -56,6 +56,14 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
     window.dispatchEvent(new CustomEvent("zxmax:search", { detail: trimmed }));
   };
 
+  const openListing = () => {
+    if (!user) {
+      onAuthClick?.();
+      return;
+    }
+    navigate("/meus-produtos");
+  };
+
   return (
     <header className="sticky top-0 z-50 bg-[#0a0a0f] border-b border-[#1e1e28]">
       <div className="max-w-7xl mx-auto px-3 sm:px-4 h-14 flex items-center gap-2 sm:gap-4">
@@ -69,6 +77,14 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
 
         <button onClick={() => navigate("/loja")} className="shrink-0 flex items-center" aria-label="Ir para a loja">
           <h2 className="text-xl sm:text-2xl font-black tracking-tighter text-white">ZX<span className="text-[#0084ff]">MAX</span></h2>
+        </button>
+
+        <button
+          onClick={openListing}
+          className="sm:hidden shrink-0 rounded-lg bg-[#168cff] px-2.5 py-1.5 text-[10px] font-black text-white shadow-[0_8px_20px_rgba(0,132,255,0.22)] transition hover:bg-[#0877eb] active:scale-[0.97]"
+          aria-label={user ? "Abrir meus anúncios" : "Entrar para anunciar"}
+        >
+          + Anunciar
         </button>
 
         <form onSubmit={submitSearch} className="hidden md:flex items-center bg-[#15151a] border border-[#25252e] rounded-xl px-3 py-2 flex-1 max-w-xl focus-within:border-[#0084ff]/50 transition">
@@ -96,7 +112,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
           {user ? (
             <>
               <button
-                onClick={() => navigate("/meus-produtos")}
+                onClick={openListing}
                 className="hidden sm:flex items-center gap-1.5 bg-[#ffbd2e] hover:bg-[#e6a829] text-black px-3.5 py-2 rounded-xl text-xs font-black transition"
                 title="Criar um anúncio"
               >
