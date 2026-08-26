@@ -253,7 +253,6 @@ interface StoreContextType {
   unassignUserTag: (publicId: string, tagId: string) => Promise<boolean>;
   verifyUser: (userId: string) => Promise<boolean>;
   submitSellerDocument: (filePath: string, fileName: string) => void;
-  reviewSellerDocument: (documentId: string, status: "approved" | "rejected") => void;
   isDark: boolean;
   toggleDark: () => void;
 }
@@ -416,35 +415,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [authUserId, profile, isAdmin, state.userBalances, state.userEarnings]);
 
   useEffect(() => {
-    const authUser = authUserRef.current;
     void (async () => {
-      const profileSource = isAdmin ? "profiles" : "profiles_public";
-      const profileSelect = isAdmin
-        ? "user_id, public_id, email, display_name, avatar_url, is_verified_seller"
-        : "user_id, public_id, display_name, avatar_url, is_verified_seller";
-      const { data: profiles } = await (supabase as any).from(profileSource).select(profileSelect);
+      const { data: profiles } = await (supabase as any)
+        .from("profiles_public")
+        .select("user_id, public_id, display_name, avatar_url, is_verified_seller");
       const directory = ((profiles || []) as any[]).reduce((acc, p) => {
-        acc[p.user_id] = { userId: p.user_id, publicId: String(p.public_id || ""), email: isAdmin ? (p.email || "") : "", name: p.display_name || "Usuário", avatar: p.avatar_url || undefined, isVerified: !!p.is_verified_seller };
+        acc[p.user_id] = { userId: p.user_id, publicId: String(p.public_id || ""), email: "", name: p.display_name || "Usuário", avatar: p.avatar_url || undefined, isVerified: !!p.is_verified_seller };
         return acc;
       }, {} as Record<string, UserDirectoryEntry>);
 
-      const { data: docs } = authUser
-        ? await (supabase as any).from("seller_documents").select("id, user_id, file_path, file_name, status, created_at").order("created_at", { ascending: false })
-        : { data: [] };
-      const sellerDocuments = ((docs || []) as any[]).map((d) => ({
-        id: d.id,
-        userId: d.user_id,
-        userPublicId: directory[d.user_id]?.publicId || d.user_id,
-        userEmail: directory[d.user_id]?.email || "",
-        filePath: d.file_path,
-        fileName: d.file_name || "Documento",
-        status: d.status || "pending",
-        createdAt: d.created_at,
-      }));
-
-      setState((s) => ({ ...s, userDirectory: { ...(s.userDirectory || {}), ...directory }, sellerDocuments }));
+      setState((s) => ({ ...s, userDirectory: { ...(s.userDirectory || {}), ...directory } }));
     })();
-  }, [authUserId, isAdmin]);
+  }, [authUserId]);
 
   const refreshUserTags = React.useCallback(async () => {
     if (!isAdmin) {
@@ -1333,11 +1315,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState(s => ({ ...s, sellerDocuments: [doc, ...(s.sellerDocuments || [])] }));
   };
 
-  const reviewSellerDocument = (documentId: string, status: "approved" | "rejected") => {
-    void (supabase as any).from("seller_documents").update({ status, reviewed_by: authUser?.id, reviewed_at: new Date().toISOString() }).eq("id", documentId);
-    setState(s => ({ ...s, sellerDocuments: (s.sellerDocuments || []).map(d => d.id === documentId ? { ...d, status } : d) }));
-  };
-
   const toggleDark = () => setIsDark((d) => !d);
 
   return (
@@ -1353,7 +1330,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         sendPurchaseMessage, confirmDelivery, confirmOrderReceipt, sellerRefundOrder, checkAutoReleaseOrders, openDispute, reviewPurchase, loadProductReviews,
         addProductQuestion, answerProductQuestion,
         deleteNotice, refreshUserTags, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
-        verifyUser, submitSellerDocument, reviewSellerDocument, isDark, toggleDark,
+        verifyUser, submitSellerDocument, isDark, toggleDark,
       }}
     >
       {children}

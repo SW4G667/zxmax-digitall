@@ -52,6 +52,7 @@ export default function AdminView() {
   }, [setSearchParams]);
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [docs, setDocs] = useState<any[]>([]);
   const [kyc, setKyc] = useState<any[]>([]);
   const [kycLoading, setKycLoading] = useState(false);
   const [kycNotes, setKycNotes] = useState<Record<string, string>>({});
@@ -75,7 +76,7 @@ export default function AdminView() {
   const adminMessages = state.adminChat || [];
   const globalNotices = state.globalNotices || [];
   const disputes = state.purchases.filter(p => p.status === "dispute");
-  const pendingDocuments = (state.sellerDocuments || []).filter(d => d.status === "pending");
+  const pendingDocuments = docs.filter(d => d.status === "pending");
 
   const handleSaveConfig = async () => {
     updateConfig({
@@ -175,7 +176,6 @@ export default function AdminView() {
     }
   };
 
-  const [docs, setDocs] = useState<any[]>([]);
   const loadDocs = async () => {
     try {
       const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "get_documents" } });

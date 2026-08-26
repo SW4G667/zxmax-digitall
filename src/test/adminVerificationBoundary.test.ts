@@ -6,6 +6,7 @@ describe("fronteira de verificação administrativa", () => {
   it("centraliza dados sensíveis e mutações de verificação na função administrativa", async () => {
     const adminView = await readFile(join(process.cwd(), "src/components/AdminView.tsx"), "utf8");
     const adminVerify = await readFile(join(process.cwd(), "supabase/functions/admin-verify/index.ts"), "utf8");
+    const store = await readFile(join(process.cwd(), "src/store/StoreContext.tsx"), "utf8");
     const config = await readFile(join(process.cwd(), "supabase/config.toml"), "utf8");
 
     expect(adminView).toContain('action: "get_verifications"');
@@ -23,6 +24,9 @@ describe("fronteira de verificação administrativa", () => {
     expect(adminVerify).toContain('action === "get_verifications"');
     expect(adminVerify).toContain('action === "get_webhook_logs"');
     expect(adminVerify).toContain('if (!roleData) throw new Error("Acesso negado: só admin")');
+    expect(store).not.toContain('profileSource = isAdmin ? "profiles" : "profiles_public"');
+    expect(store).not.toContain('.from("seller_documents").select');
+    expect(store).not.toContain("const reviewSellerDocument");
     expect(config).toMatch(/\[functions\.admin-verify\]\s+verify_jwt = true/);
   });
 });
