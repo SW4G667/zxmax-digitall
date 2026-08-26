@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import AppShell from "@/components/AppShell";
 import SideMenu from "@/components/SideMenu";
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -22,6 +23,14 @@ vi.mock("@/hooks/useFavorites", () => ({
   default: () => ({ count: 0 }),
 }));
 
+vi.mock("@/components/Header", () => ({
+  default: ({ onMenuClick }: { onMenuClick: () => void }) => <button onClick={onMenuClick}>Abrir navegação</button>,
+}));
+vi.mock("@/components/BottomNav", () => ({ default: () => null }));
+vi.mock("@/components/ProfileModal", () => ({ default: () => null }));
+vi.mock("@/components/AuthScreen", () => ({ default: () => null }));
+vi.mock("@/components/SiteFooter", () => ({ default: () => null }));
+
 describe("SideMenu administrativo", () => {
   it("constrói as entradas administrativas mesmo quando o menu está fechado", () => {
     expect(() => render(
@@ -29,5 +38,17 @@ describe("SideMenu administrativo", () => {
         <SideMenu open={false} onClose={vi.fn()} onNavigate={vi.fn()} onOpenProfile={vi.fn()} />
       </MemoryRouter>,
     )).not.toThrow();
+  });
+
+  it("permite abrir o menu administrativo dentro da casca de rota", () => {
+    render(
+      <MemoryRouter>
+        <AppShell><p>Conteúdo da rota</p></AppShell>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Abrir navegação" }));
+    expect(screen.getByText("Tags de usuários")).toBeInTheDocument();
+    expect(screen.getByText("Cargos e permissões")).toBeInTheDocument();
   });
 });
