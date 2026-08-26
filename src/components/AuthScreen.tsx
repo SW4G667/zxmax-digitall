@@ -104,13 +104,14 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-[#05070d] p-4 sm:p-6">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_7%_10%,rgba(0,132,255,0.34),transparent_25%),radial-gradient(circle_at_91%_84%,rgba(0,77,175,0.26),transparent_28%),linear-gradient(145deg,#07101c_0%,#05070d_46%,#070910_100%)]" />
-      <div className="pointer-events-none absolute -left-24 top-1/4 h-72 w-72 rounded-full bg-[#0084ff]/15 blur-3xl" />
-      <div className="pointer-events-none absolute -right-28 bottom-8 h-80 w-80 rounded-full bg-[#005bb5]/15 blur-3xl" />
-      <div className="pointer-events-none absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.045)_1px,transparent_1px)] [background-size:32px_32px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_72%)]" />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-[#02050b]/[0.63] p-4 backdrop-blur-[2px] sm:p-6">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_7%_10%,rgba(0,132,255,0.28),transparent_28%),radial-gradient(circle_at_91%_84%,rgba(0,77,175,0.2),transparent_31%),linear-gradient(145deg,rgba(4,12,22,0.44)_0%,rgba(2,5,11,0.7)_54%,rgba(3,7,14,0.56)_100%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-[#02050b]/35 to-transparent" />
+      <div className="pointer-events-none absolute -left-24 top-1/4 h-72 w-72 rounded-full bg-[#0084ff]/13 blur-3xl" />
+      <div className="pointer-events-none absolute -right-28 bottom-8 h-80 w-80 rounded-full bg-[#005bb5]/13 blur-3xl" />
+      <div className="pointer-events-none absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px)] [background-size:32px_32px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_72%)]" />
 
-      <div className="relative z-10 w-full max-w-md overflow-hidden rounded-[1.7rem] border border-white/10 bg-[#0c0e16]/95 p-6 shadow-[0_34px_110px_rgba(0,0,0,0.62)] backdrop-blur-xl animate-fade-in-up sm:p-8">
+      <div className="relative z-10 my-auto w-full max-w-md overflow-hidden rounded-[1.7rem] border border-white/[0.14] bg-[#0b0f18]/[0.89] p-6 shadow-[0_34px_110px_rgba(0,0,0,0.66)] backdrop-blur-2xl animate-fade-in-up sm:p-8">
         <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-[#3da0ff]/75 to-transparent" />
         {onClose && (
           <button aria-label="Fechar autenticação" onClick={onClose} className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white/60 transition hover:bg-white/10 hover:text-white active:scale-95">
@@ -123,7 +124,7 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
             <Shield className="h-5 w-5" />
           </div>
           <h1 className="text-3xl font-black tracking-[-0.07em] text-white">ZX<span className="text-[#168cff]">MAX</span></h1>
-          <p className="mt-2 text-sm font-medium text-white/50">Acesse sua conta e acompanhe seus pedidos.</p>
+          <p className="mt-2 text-sm font-medium text-white/55">Acesse sua conta sem sair da vitrine.</p>
           <div className="mt-3 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-300/80">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.7)]" /> Compra Protegida
           </div>
