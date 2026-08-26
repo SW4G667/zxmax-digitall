@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import MyPurchasesView from "@/components/MyPurchasesView";
 import IntegrationsPanel from "@/components/IntegrationsPanel";
 import TwoFactorPanel from "@/components/TwoFactorPanel";
+import { AdminTagsPanel } from "@/components/AdminMorePanels";
 import {
   AdminStatsPanel,
   AdminPurchasesPanel,
@@ -297,6 +298,7 @@ export default function AdminView() {
           { id: "moderation", label: "Moderação", icon: Ban },
           { id: "tools", label: "Ferramentas", icon: Wrench },
           { id: "roles", label: "Cargos", icon: Users },
+          { id: "tags", label: "Tags", icon: Tag },
           { id: "security", label: "Segurança 2FA", icon: ShieldCheck },
           { id: "products", label: "Produtos", icon: PackageEmoji, count: pendingProducts.length },
           { id: "withdrawals", label: "Saques", icon: MoneyEmoji, count: pendingWithdrawals.length },
@@ -691,6 +693,8 @@ export default function AdminView() {
 
 
       {tab === "apis" && <IntegrationsPanel />}
+
+      {tab === "tags" && <AdminTagsPanel />}
 
       {tab === "roles" && (
         <div className="space-y-6 max-w-3xl">
