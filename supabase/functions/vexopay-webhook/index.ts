@@ -4,6 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "content-type" };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 const paid = (status: unknown) => String(status || "").toLowerCase() === "paid";
+const documentedEvents = new Set(["payment.completed", "payment.failed", "payment.expired"]);
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -15,7 +16,8 @@ serve(async (req) => {
     const eventType = String(body.event || "unknown");
     const eventData = (body.data || {}) as Record<string, unknown>;
     const transactionId = String(eventData.transactionId || eventData.id || "").trim();
-    if (!transactionId) return json({ received: true });
+    if (!transactionId) return json({ error: "Missing transaction id" }, 400);
+    if (!documentedEvents.has(eventType)) return json({ error: "Unsupported webhook event" }, 400);
 
     const chargeId = `vexo:${transactionId}`;
     const { data: purchase } = await admin
