@@ -185,9 +185,6 @@ export interface AppConfig {
   discordScopes: string;
   discordMode: "automatic" | "manual";
   discordServerLink: string;
-  evopayApiKey: string;
-  evopayMode: "automatic" | "manual";
-  evopayWebhookUrl: string;
   rules: string;
 }
 
@@ -260,7 +257,6 @@ interface StoreContextType {
   assignUserTag: (email: string, tagId: number) => void;
   unassignUserTag: (email: string, tagId: number) => void;
   verifyUser: (userId: string) => Promise<boolean>;
-  saveGatewaySettings: (settings: { evopayApiKey?: string; evopayMode?: string }) => Promise<boolean>;
   submitSellerDocument: (filePath: string, fileName: string) => void;
   reviewSellerDocument: (documentId: string, status: "approved" | "rejected") => void;
   isDark: boolean;
@@ -280,9 +276,6 @@ const defaultConfig: AppConfig = {
   discordScopes: "identify email",
   discordMode: "automatic",
   discordServerLink: "https://discord.gg/zxmax",
-  evopayApiKey: "",
-  evopayMode: "automatic",
-  evopayWebhookUrl: typeof window !== "undefined" ? `https://dbekdedzgkfgtlytrnyw.supabase.co/functions/v1/evopay-webhook` : "",
   rules: "1- Proibido estelionato(golpe).\n2-Proibido lavagem de dinheiro no sistema de saque do site.\n3-Proibido venda de conteúdo adulto, cp, gore ou qualquer conteúdo doloso\n\n**(Toda regra quebrada resultará a suspensão do usuário de 1 semana a permanente sem receber dinheiro de vendas durante a suspensão.)**",
 };
 
@@ -463,26 +456,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setState((s) => ({ ...s, userDirectory: { ...(s.userDirectory || {}), ...directory }, sellerDocuments }));
     })();
   }, [authUserId, isAdmin]);
-
-  // Load admin-configurable gateway settings (only readable by admins via RLS)
-  useEffect(() => {
-    if (!authUserId || !isAdmin) return;
-    void (async () => {
-      const { data } = await (supabase as any).from("app_settings").select("key, value").eq("key", "evopay").maybeSingle();
-      if (data?.value) {
-        setState((s) => ({
-          ...s,
-          config: {
-            ...s.config,
-            evopayMode: data.value.mode || s.config.evopayMode,
-            evopayApiKey: data.value.apiKey || s.config.evopayApiKey,
-          },
-        }));
-      }
-    })();
-  }, [authUserId, isAdmin]);
-
-
 
   /** Runs a products query and, if the database has not received the latest
    * migrations yet, retries without the newer optional columns. Without this a
@@ -1363,14 +1336,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState(s => ({ ...s, sellerDocuments: (s.sellerDocuments || []).map(d => d.id === documentId ? { ...d, status } : d) }));
   };
 
-  const saveGatewaySettings = async (settings: { evopayApiKey?: string; evopayMode?: string }): Promise<boolean> => {
-    void settings;
-    // Credenciais não podem ser persistidas pelo navegador. A administração
-    // de gateways ocorre no painel de APIs, com secrets das Edge Functions.
-    toast.error("Configure gateways em APIs & Credenciais. Chaves não são aceitas pelo navegador.");
-    return false;
-  };
-
   const toggleDark = () => setIsDark((d) => !d);
 
   return (
@@ -1386,7 +1351,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         sendPurchaseMessage, confirmDelivery, confirmOrderReceipt, sellerRefundOrder, checkAutoReleaseOrders, openDispute, reviewPurchase, loadProductReviews,
         addProductQuestion, answerProductQuestion,
         deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
-        verifyUser, saveGatewaySettings, submitSellerDocument, reviewSellerDocument, isDark, toggleDark,
+        verifyUser, submitSellerDocument, reviewSellerDocument, isDark, toggleDark,
       }}
     >
       {children}

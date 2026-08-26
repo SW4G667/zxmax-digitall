@@ -13,12 +13,11 @@ export function AdminCategoriesPanel() {
     const list = cats.split("\n").map((c) => c.trim()).filter(Boolean);
     if (!list.length) return toast.error("Inclua ao menos uma categoria.");
     setSaving(true);
-    updateConfig({ categories: list });
-    const { data: existing } = await (supabase as any).from("app_settings").select("value").eq("key", "platform").maybeSingle();
-    const value = { ...(existing?.value || {}), categories: list };
-    const { error } = await (supabase as any).from("app_settings").upsert({ key: "platform", value }, { onConflict: "key" });
+    const { data, error } = await (supabase as any).rpc("update_platform_categories", { _categories: list });
     setSaving(false);
-    error ? toast.error(error.message) : toast.success("Categorias salvas. Aparecem na loja e no formulário de anúncio.");
+    if (error) return toast.error(error.message);
+    updateConfig({ categories: Array.isArray(data?.categories) ? data.categories : list });
+    toast.success("Categorias salvas. Aparecem na loja e no formulário de anúncio.");
   };
 
   return (
@@ -206,26 +205,27 @@ export function AdminPlatformPanel() {
 
   useEffect(() => {
     void (async () => {
-      const { data } = await (supabase as any).from("app_settings").select("value").eq("key", "platform").maybeSingle();
-      if (data?.value) {
-        setMaintenance(!!data.value.maintenance);
-        setMessage(data.value.maintenance_message || "");
-        setMinPrice(Number(data.value.min_product_price || 2));
-        setMinWithdraw(Number(data.value.min_withdraw || 5.0));
+      const { data, error } = await (supabase as any).rpc("get_admin_platform_settings");
+      if (error) {
+        toast.error("Não foi possível carregar as configurações da plataforma.");
+        return;
+      }
+      if (data) {
+        setMaintenance(!!data.maintenance);
+        setMessage(data.message || "");
+        setMinPrice(Number(data.minProductPrice || 2));
+        setMinWithdraw(Number(data.minWithdraw || 5.0));
       }
     })();
   }, []);
 
   const save = async () => {
-    const { data: existing } = await (supabase as any).from("app_settings").select("value").eq("key", "platform").maybeSingle();
-    const value = {
-      ...(existing?.value || {}),
-      maintenance,
-      maintenance_message: message,
-      min_product_price: minPrice,
-      min_withdraw: minWithdraw,
-    };
-    const { error } = await (supabase as any).from("app_settings").upsert({ key: "platform", value }, { onConflict: "key" });
+    const { error } = await (supabase as any).rpc("update_platform_settings", {
+      _maintenance: maintenance,
+      _message: message,
+      _min_product_price: minPrice,
+      _min_withdraw: minWithdraw,
+    });
     error ? toast.error(error.message) : toast.success("Plataforma atualizada.");
   };
 

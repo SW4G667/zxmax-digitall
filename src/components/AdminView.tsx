@@ -38,7 +38,7 @@ export const ADMIN_TABS = [
 export type AdminTab = (typeof ADMIN_TABS)[number];
 
 export default function AdminView() {
-  const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument, saveGatewaySettings } = useStore();
+  const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument } = useStore();
   const { mfaEnabled, isAdmin } = useAuth();
   // The active section lives in the URL so the side menu can deep-link to a
   // real admin area (?tab=products) and the browser back button works.
@@ -72,9 +72,6 @@ export default function AdminView() {
   const [discordRedirectUri, setDiscordRedirectUri] = useState(state.config.discordRedirectUri);
   const [discordScopes, setDiscordScopes] = useState(state.config.discordScopes);
   const [discordServerLink, setDiscordServerLink] = useState(state.config.discordServerLink);
-  // EvoPay config (active payment gateway)
-  const [evopayMode, setEvopayMode] = useState(state.config.evopayMode);
-  const [evopayApiKey, setEvopayApiKey] = useState("");
   // Auth mode
   const [authMode, setAuthMode] = useState(state.config.authMode);
   const [banIdentifier, setBanIdentifier] = useState("");
@@ -100,16 +97,8 @@ export default function AdminView() {
       authMode,
       discordMode, discordClientId, discordRedirectUri, discordScopes, discordServerLink,
       discordLink: discordServerLink,
-      evopayMode,
     });
-    const tid = toast.loading("Salvando configurações...");
-    const ok = await saveGatewaySettings({ evopayMode, evopayApiKey: evopayApiKey.trim() || undefined });
-    if (ok) {
-      setEvopayApiKey("");
-      toast.success("Configurações salvas!", { id: tid });
-    } else {
-      toast.error("Configurações locais salvas, mas falha ao salvar as credenciais do gateway.", { id: tid });
-    }
+    toast.success("Preferências locais atualizadas. Gateways PIX são administrados na aba APIs & Credenciais.");
   };
 
   const handleBan = async () => {
@@ -668,29 +657,12 @@ export default function AdminView() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-bold text-foreground">Eventos do Webhook EvoPay</h3>
-              <p className="text-xs text-muted-foreground">Últimos 100 eventos recebidos e cobranças geradas. Use para depurar pagamentos.</p>
+              <h3 className="font-bold text-foreground">Eventos de webhook</h3>
+              <p className="text-xs text-muted-foreground">Últimos 100 eventos recebidos dos gateways configurados. Use para depurar pagamentos sem expor URLs ou segredos.</p>
             </div>
             <button onClick={() => loadWebhookLogs()} className="shrink-0 p-2.5 rounded-xl bg-card border border-border/40 text-muted-foreground hover:text-foreground transition">
               <RefreshCw className={`w-4 h-4 ${logsLoading ? "animate-spin" : ""}`} />
             </button>
-          </div>
-
-          <div className="glass-card p-4">
-            <p className="text-xs font-bold text-muted-foreground uppercase mb-1">URL do Webhook (cole no painel EvoPay)</p>
-            <input
-              readOnly
-              value={state.config.evopayWebhookUrl}
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(state.config.evopayWebhookUrl);
-                  toast.success("Webhook copiado.");
-                } catch {
-                  toast.error("Não foi possível copiar.");
-                }
-              }}
-              className="w-full p-3 rounded-xl bg-muted text-xs text-foreground font-mono select-all cursor-pointer"
-            />
           </div>
 
           {logsLoading ? (
@@ -975,32 +947,6 @@ export default function AdminView() {
           </div>
 
           {/* Credenciais sensíveis foram movidas para a aba "APIs & Credenciais" (armazenadas apenas no servidor) */}
-
-          {/* EvoPay — legado. PIX oficial é ZennithPay (aba APIs & Credenciais). */}
-          <div className="glass-card p-6 space-y-4 border border-dashed border-muted-foreground/30">
-            <div className="flex justify-between items-center">
-              <h3 className="font-bold text-foreground">EvoPay legado <span className="text-[10px] text-muted-foreground">• PIX oficial = ZennithPay (aba APIs &amp; Credenciais)</span></h3>
-              <div className="flex gap-1 bg-muted rounded-xl p-1">
-                <button onClick={() => setEvopayMode("automatic")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${evopayMode === "automatic" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Automático</button>
-                <button onClick={() => setEvopayMode("manual")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${evopayMode === "manual" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Manual</button>
-              </div>
-            </div>
-            <div>
-              <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Webhook URL (cole no painel EvoPay)</label>
-              <input readOnly value={state.config.evopayWebhookUrl} onClick={(e) => { (e.target as HTMLInputElement).select(); }} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono select-all" />
-            </div>
-            {evopayMode === "manual" ? (
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">API Key</label>
-                <input type="password" value={evopayApiKey} onChange={(e) => setEvopayApiKey(e.target.value)} placeholder={state.config.evopayApiKey ? "•••••••• (já configurada — preencha para alterar)" : "Cole sua API Key da EvoPay"} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
-                <p className="text-[10px] text-muted-foreground mt-1">A chave é guardada com segurança no servidor e usada para gerar cobranças e saques. Deixe em branco para manter a atual.</p>
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">Usando a API Key padrão configurada nos secrets do backend (EVOPAY_API_KEY).</p>
-            )}
-          </div>
-
-
 
           {/* Regras */}
           <div className="glass-card p-6 space-y-4">
