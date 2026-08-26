@@ -1,5 +1,5 @@
--- ZXMAX · Registro mínimo de eventos de autenticação, com deduplicação por origem.
-
+-- Mantém uma impressão pseudonimizada de origem por no máximo o necessário
+-- para deduplicar rajadas; não armazena IP, e-mail, token ou segredo.
 CREATE OR REPLACE FUNCTION public.record_security_event(
   _actor_id uuid,
   _event_type text,
@@ -20,8 +20,6 @@ BEGIN
     RAISE EXCEPTION 'Evento de segurança inválido' USING ERRCODE = '22023';
   END IF;
 
-  -- Evita que uma origem provoque um volume ilimitado de logs sem ocultar
-  -- tentativas repetidas de naturezas diferentes.
   IF source_hash IS NOT NULL AND EXISTS (
     SELECT 1 FROM public.security_events
     WHERE event_type = _event_type

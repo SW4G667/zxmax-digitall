@@ -43,6 +43,8 @@ interface AuthContextType {
   loading: boolean;
   banned: BanInfo | null;
   isAdmin: boolean;
+  /** Indica que o RPC de papel respondeu para o usuário autenticado atual. */
+  adminRoleResolved: boolean;
   mfaEnabled: boolean;
   /** True when this browser already confirmed the authenticator code for the
    * current admin. Persisted in localStorage: the code is only asked again
@@ -99,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(() => !bootSession);
   const [banned, setBanned] = useState<BanInfo | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [adminRoleResolved, setAdminRoleResolved] = useState(false);
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [adminGateUnlocked, setAdminGateUnlocked] = useState(() => (bootSession?.user ? readAdminGate(bootSession.user.id) : false));
 
@@ -115,6 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Nunca mostrar privilégios até a confirmação do banco; cache local não
       // é uma fonte de autorização.
       setIsAdmin(false);
+      setAdminRoleResolved(false);
       setAdminGateUnlocked(readAdminGate(u.id));
     }
   }, []);
@@ -163,12 +167,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // confirmação. As operações administrativas também validam o papel no
       // servidor, independentemente desta indicação visual.
       if (!res || res.error) {
-        if (userRef.current?.id === userId) setIsAdmin(false);
+        if (userRef.current?.id === userId) {
+          setIsAdmin(false);
+          setAdminRoleResolved(true);
+        }
         return;
       }
       const admin = res.data === true;
-      if (userRef.current?.id === userId) setIsAdmin(admin);
-    } catch { /* noop */ }
+      if (userRef.current?.id === userId) {
+        setIsAdmin(admin);
+        setAdminRoleResolved(true);
+      }
+    } catch {
+      if (userRef.current?.id === userId) {
+        setIsAdmin(false);
+        setAdminRoleResolved(true);
+      }
+    }
   }, []);
 
   const refreshMfaFlag = useCallback(async () => {
@@ -232,6 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setProfile(null);
           setBanned(null);
           setIsAdmin(false);
+          setAdminRoleResolved(false);
           setMfaEnabled(false);
           setAdminGateUnlocked(false);
           setLoading(false);
@@ -262,6 +278,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setProfile(null);
           setBanned(null);
           setIsAdmin(false);
+          setAdminRoleResolved(false);
           setMfaEnabled(false);
           setAdminGateUnlocked(false);
           setLoading(false);
@@ -287,6 +304,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setBanned(null);
         setIsAdmin(false);
+        setAdminRoleResolved(false);
         setMfaEnabled(false);
         setAdminGateUnlocked(false);
         setLoading(false);
@@ -502,6 +520,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
     setBanned(null);
     setIsAdmin(false);
+    setAdminRoleResolved(false);
     setMfaEnabled(false);
     setAdminGateUnlocked(false);
     setLoading(false);
@@ -550,6 +569,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         banned,
         isAdmin,
+        adminRoleResolved,
         mfaEnabled,
         adminGateUnlocked,
         signUp,

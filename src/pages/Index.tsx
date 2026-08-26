@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useStore } from "@/store/StoreContext";
@@ -14,6 +14,8 @@ import WithdrawView from "@/components/WithdrawView";
 import AppShell from "@/components/AppShell";
 import LoadingScreen from "@/components/LoadingScreen";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { recordSecurityEvent } from "@/lib/securityEvents";
 
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "withdraw";
 const PATHS: Record<View, string> = { store: "/loja", inventory: "/meus-produtos", purchases: "/minhas-compras", support: "/suporte", admin: "/admin", withdraw: "/sacar" };
@@ -22,11 +24,12 @@ const PROTECTED_VIEWS: View[] = ["inventory", "purchases", "support", "withdraw"
 
 function Dashboard({ view }: { view: View }) {
   const { refreshPurchases } = useStore();
-  const { isAdmin, user, adminGateUnlocked } = useAuth();
+  const { isAdmin, user, adminGateUnlocked, adminRoleResolved } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [authOpen, setAuthOpen] = useState(false);
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<number | null>(null);
+  const lastAdminBlockRef = useRef<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -59,6 +62,16 @@ function Dashboard({ view }: { view: View }) {
   }, [user]);
 
   useEffect(() => {
+    if (view !== "admin") {
+      lastAdminBlockRef.current = null;
+      return;
+    }
+    if (!user || !adminRoleResolved || isAdmin || lastAdminBlockRef.current === user.id) return;
+    lastAdminBlockRef.current = user.id;
+    void recordSecurityEvent(supabase, "admin.access", "blocked");
+  }, [adminRoleResolved, isAdmin, user, view]);
+
+  useEffect(() => {
     const params = new URLSearchParams(location.search);
     if (params.get("login") !== "1" || user) return;
     setAuthOpen(true);
@@ -89,6 +102,7 @@ function Dashboard({ view }: { view: View }) {
       {/* O código do autenticador só é pedido aqui, dentro do painel admin.
           Uma vez confirmado, fica desbloqueado neste navegador até sair da conta. */}
       {view === "admin" && user && isAdmin && (adminGateUnlocked ? <AdminView /> : <AdminLoginGate />)}
+      {view === "admin" && user && !adminRoleResolved && <LoadingScreen message="Verificando permissões..." />}
       {view === "withdraw" && user && <WithdrawView />}
       {requiresAuth && !user && (
         <div className="text-center py-20 bg-[#15151a] border border-[#25252e] rounded-2xl p-10">
@@ -98,7 +112,7 @@ function Dashboard({ view }: { view: View }) {
           <button onClick={() => setAuthOpen(true)} className="bg-[#0084ff] text-white px-6 py-3 rounded-xl font-bold text-sm">Entrar / Criar conta</button>
         </div>
       )}
-      {view === "admin" && user && !isAdmin && (
+      {view === "admin" && user && adminRoleResolved && !isAdmin && (
         <div className="text-center py-20 bg-[#15151a] border border-[#25252e] rounded-2xl p-10">
           <p className="text-3xl mb-3">⛔</p>
           <p className="text-white font-bold">Acesso restrito a administradores.</p>

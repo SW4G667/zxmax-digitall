@@ -28,7 +28,7 @@ serve(async (req) => {
       _actor_id: userData.user?.id || null,
       _event_type: eventType,
       _outcome: outcome,
-      _context: { subject_hash: await hashOrigin(req), route: "client" },
+      _context: { source_hash: await hashOrigin(req), route: "client" },
     });
     if (error) throw error;
     return json({ recorded: true });

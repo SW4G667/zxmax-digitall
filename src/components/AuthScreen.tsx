@@ -29,7 +29,6 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
 
   const handleDiscord = async () => {
     try {
-      void recordSecurityEvent(supabase, "auth.discord", "success");
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "discord",
         options: { redirectTo: getDiscordRedirectTo() },

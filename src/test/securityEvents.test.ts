@@ -10,4 +10,13 @@ describe("security event logging", () => {
     });
     expect(JSON.stringify(invoke.mock.calls[0])).not.toMatch(/senha|password|token|@/i);
   });
+
+  it("registra bloqueio administrativo sem anexar a identidade do usuário", () => {
+    const invoke = vi.fn();
+    recordSecurityEvent({ functions: { invoke } }, "admin.access", "blocked");
+    expect(invoke).toHaveBeenCalledWith("security-event", {
+      body: { eventType: "admin.access", outcome: "blocked" },
+    });
+    expect(JSON.stringify(invoke.mock.calls[0])).not.toMatch(/email|senha|password|token|user_id/i);
+  });
 });

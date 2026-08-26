@@ -1,4 +1,4 @@
-export type SecurityEventType = "auth.login" | "auth.recovery" | "auth.discord";
+export type SecurityEventType = "auth.login" | "auth.recovery" | "auth.discord" | "admin.access";
 export type SecurityEventOutcome = "success" | "failure" | "blocked";
 
 type FunctionClient = {

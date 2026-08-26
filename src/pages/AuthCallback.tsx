@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import LoadingScreen from "@/components/LoadingScreen";
+import { recordSecurityEvent } from "@/lib/securityEvents";
 
 /**
  * Callback exclusivo de OAuth. A troca PKCE é feita pelo SDK Supabase quando
@@ -13,12 +14,17 @@ export default function AuthCallback() {
   const location = useLocation();
   const [message, setMessage] = useState("Concluindo autenticação segura...");
   const [failed, setFailed] = useState(false);
+  const finishedRef = useRef(false);
 
   useEffect(() => {
     let active = true;
+    finishedRef.current = false;
     const params = new URLSearchParams(location.search);
-    const oauthError = params.get("error") || params.get("error_code");
+    const hashParams = new URLSearchParams(location.hash.replace(/^#/, ""));
+    const oauthError = params.get("error") || params.get("error_code") || hashParams.get("error") || hashParams.get("error_code");
     if (oauthError) {
+      finishedRef.current = true;
+      void recordSecurityEvent(supabase, "auth.discord", "failure");
       setFailed(true);
       setMessage("O login com Discord foi cancelado ou não pôde ser concluído. Tente novamente.");
       window.history.replaceState({}, document.title, "/auth/callback");
@@ -26,13 +32,18 @@ export default function AuthCallback() {
     }
 
     const cleanAndContinue = () => {
-      if (!active) return;
+      if (!active || finishedRef.current) return;
+      finishedRef.current = true;
+      void recordSecurityEvent(supabase, "auth.discord", "success");
       window.history.replaceState({}, document.title, "/auth/callback");
       navigate("/loja", { replace: true });
     };
 
     const timeout = window.setTimeout(() => {
       if (active) {
+        if (finishedRef.current) return;
+        finishedRef.current = true;
+        void recordSecurityEvent(supabase, "auth.discord", "failure");
         setFailed(true);
         setMessage("A autenticação demorou mais que o esperado. Verifique a configuração do Discord ou tente novamente.");
       }
@@ -51,7 +62,7 @@ export default function AuthCallback() {
       window.clearTimeout(timeout);
       listener.subscription.unsubscribe();
     };
-  }, [location.search, navigate]);
+  }, [location.hash, location.search, navigate]);
 
   if (failed) {
     return (
