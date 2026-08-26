@@ -57,6 +57,13 @@ serve(async (req) => {
         _payload: { eventType, transactionId, status, amount },
       });
       if (error) throw error;
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const headers = { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey };
+        await fetch(`${supabaseUrl}/functions/v1/send-email`, { method: "POST", headers, body: JSON.stringify({ type: "purchase_confirmed", purchaseId: purchase.id }) });
+        await fetch(`${supabaseUrl}/functions/v1/send-email`, { method: "POST", headers, body: JSON.stringify({ type: "new_sale", purchaseId: purchase.id }) });
+      } catch { /* notificação não altera a confirmação de pagamento */ }
     }
 
     await admin.from("webhook_logs").insert({ source: "vexopay", event_type: eventType, status, order_id: purchase.id, charge_id: chargeId, payload: { transactionId, amount: Number.isFinite(amount) ? amount : null }, error: null });

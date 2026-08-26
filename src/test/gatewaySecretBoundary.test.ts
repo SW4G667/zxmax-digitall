@@ -49,6 +49,8 @@ describe("fronteira de secrets dos gateways", () => {
     expect(webhook).toContain("/gateway/pix-status?transactionId=");
     expect(webhook).toContain("/gateway/crypto-status?id=");
     expect(webhook).toContain("apply_verified_payment");
+    expect(webhook).toContain('type: "purchase_confirmed", purchaseId: purchase.id');
+    expect(webhook).toContain('type: "new_sale", purchaseId: purchase.id');
     expect(webhook).toContain('return json({ error: "Missing transaction id" }, 400)');
     expect(webhook).toContain('return json({ error: "Unsupported webhook event" }, 400)');
     expect(webhook).toContain('new Set(["payment.completed", "payment.failed", "payment.expired"])');
