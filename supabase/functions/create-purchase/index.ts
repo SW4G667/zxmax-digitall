@@ -71,6 +71,14 @@ serve(async (req) => {
     if (paymentMethod === "boleto" && (!stripeReady || stripe.boletoEnabled !== true)) {
       return json({ error: "Boleto indisponível no momento. Escolha PIX ou tente mais tarde." }, 503);
     }
+    const vexopay = gateway("vexopay") as Record<string, unknown>;
+    const vexopayReady = Boolean(Deno.env.get("VEXOPAY_CLIENT_ID") && Deno.env.get("VEXOPAY_CLIENT_SECRET"));
+    if (paymentMethod === "vexopay_pix" && (!vexopayReady || vexopay.pixEnabled !== true)) {
+      return json({ error: "PIX via VexoPay indisponível no momento. Escolha outro método ou tente mais tarde." }, 503);
+    }
+    if (paymentMethod === "crypto" && (!vexopayReady || vexopay.cryptoEnabled !== true)) {
+      return json({ error: "Pagamento em Crypto indisponível no momento. Escolha outro método ou tente mais tarde." }, 503);
+    }
 
     const { data: product, error: productError } = await admin
       .from("products")
@@ -139,14 +147,14 @@ serve(async (req) => {
     ({ data: purchase, error: purchaseError } = await admin
       .from("purchases")
       .insert(withExtras)
-      .select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at,product_amount,buyer_fee,quantity")
+      .select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,payment_provider,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at,product_amount,buyer_fee,quantity")
       .maybeSingle());
 
     if (purchaseError) {
       const retry = await admin
         .from("purchases")
         .insert(purchasePayload)
-        .select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at")
+        .select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,payment_provider,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at")
         .maybeSingle();
       purchase = retry.data;
       purchaseError = retry.error;

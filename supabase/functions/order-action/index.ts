@@ -158,36 +158,11 @@ serve(async (req) => {
         return json({ error: "Não é permitido enviar contatos externos (WhatsApp, Discord, e-mail, links ou telefone)." }, 400);
       }
 
-      // Tenta acionar refund no gateway VexoPay/EvoPay se configurado
       const chargeId = String(order.evopay_charge_id || "");
       let gatewayRefundStatus = "skipped";
 
       if (chargeId.startsWith("vexo:")) {
-        try {
-          const { data: vexoRow } = await admin.from("app_settings").select("value").eq("key", "vexopay").maybeSingle();
-          const v = vexoRow?.value || {};
-          const ci = v.clientId || Deno.env.get("VEXOPAY_CLIENT_ID");
-          const cs = v.clientSecret || Deno.env.get("VEXOPAY_CLIENT_SECRET");
-          const baseUrl = (v.baseUrl || "https://www.vexopay.com.br/api").replace(/\/$/, "");
-
-          if (ci && cs) {
-            const txid = chargeId.slice("vexo:".length);
-            const candidates = ["/gateway/refund", "/gateway/pix-refund", "/gateway/payout"];
-            for (const path of candidates) {
-              const resp = await fetch(`${baseUrl}${path}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", ci: String(ci), cs: String(cs) },
-                body: JSON.stringify({ chargeId: txid, amount: order.amount, reason: cleanReason }),
-              });
-              if (resp.ok) {
-                gatewayRefundStatus = "ok";
-                break;
-              }
-            }
-          }
-        } catch (e: any) {
-          console.error("VexoPay refund API attempt error:", e?.message || e);
-        }
+        return json({ error: "O reembolso VexoPay permanece pendente de documentação oficial do endpoint e confirmação do provedor; o pedido não foi alterado." }, 409);
       }
 
       const formattedAmount = `R$ ${Number(order.amount).toFixed(2).replace(".", ",")}`;

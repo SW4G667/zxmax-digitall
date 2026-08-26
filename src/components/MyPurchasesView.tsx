@@ -100,6 +100,11 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
   const handlePayPix = async (purchase: Purchase, e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (!state.currentUser) return;
+    const provider = purchase.paymentProvider || "zennith_pix";
+    if (provider !== "zennith_pix" && provider !== "vexopay_pix") {
+      toast.error("Este pedido não pode ser retomado como PIX. Volte ao método de pagamento original.");
+      return;
+    }
     const product = state.products.find((p) => p.id === purchase.productId);
     const expired = purchase.pixExpiresAt ? new Date(purchase.pixExpiresAt).getTime() < Date.now() : true;
     setResumeId(purchase.id);
@@ -112,20 +117,25 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
     setLoadingPix(purchase.id);
     try {
       const res = await unwrapEdgeCall<{ id: string; qrCodeText: string; qrCodeUrl?: string; expiresAt?: string; amount?: number }>(
-        await supabase.functions.invoke("create-zennith-pix", {
-          body: {
-            purchaseId: purchase.id,
-            productName: purchase.variationName ? `${product?.name} - ${purchase.variationName}` : product?.name,
-            amount: purchase.amount,
-            buyerEmail: state.currentUser.email,
-            buyerName: state.currentUser.name,
+        await supabase.functions.invoke(
+          provider === "vexopay_pix" ? "create-evopay-pix" : "create-zennith-pix",
+          {
+            body: provider === "vexopay_pix"
+              ? { purchaseId: purchase.id }
+              : {
+                purchaseId: purchase.id,
+                productName: purchase.variationName ? `${product?.name} - ${purchase.variationName}` : product?.name,
+                amount: purchase.amount,
+                buyerEmail: state.currentUser.email,
+                buyerName: state.currentUser.name,
+              },
           },
-        }),
+        ),
         "Erro ao gerar PIX.",
       );
       if (res.errorMessage) {
         if (res.status === 404 || /not found/i.test(res.errorMessage)) {
-          throw new Error("Função de PIX (ZennithPay) ainda não publicada no Supabase. Avise o admin.");
+          throw new Error(`Função de PIX (${provider === "vexopay_pix" ? "VexoPay" : "ZennithPay"}) ainda não publicada no Supabase. Avise o admin.`);
         }
         throw new Error(res.errorMessage);
       }

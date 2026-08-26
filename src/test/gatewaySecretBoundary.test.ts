@@ -28,4 +28,26 @@ describe("fronteira de secrets dos gateways", () => {
     expect(webhook).toContain("apply_verified_payment");
     expect(webhook).toContain('return json({ error: "Unauthorized" }, 401)');
   });
+
+  it("mantém o contrato VexoPay somente em secrets de ambiente e endpoints documentados", async () => {
+    const [crypto, status, purchase, webhook] = await Promise.all([
+      source("supabase/functions/create-vexopay-crypto/index.ts"),
+      source("supabase/functions/check-evopay-status/index.ts"),
+      source("supabase/functions/create-purchase/index.ts"),
+      source("supabase/functions/vexopay-webhook/index.ts"),
+    ]);
+    expect(crypto).toContain('Deno.env.get("VEXOPAY_CLIENT_ID")');
+    expect(crypto).not.toContain("setting?.value?.clientId");
+    expect(crypto).not.toContain("setting?.value?.clientSecret");
+    expect(crypto).toContain('`${baseUrl}/gateway/crypto-create`');
+    expect(crypto).not.toContain('"/crypto-create"');
+    expect(crypto).toContain("amount < 20 || amount > 3000");
+    expect(status).not.toContain("EVOPAY_API_KEY");
+    expect(status).not.toContain("v.clientId");
+    expect(status).toContain("payment_provider");
+    expect(purchase).toContain("vexopayReady");
+    expect(webhook).toContain("/gateway/pix-status?transactionId=");
+    expect(webhook).toContain("/gateway/crypto-status?id=");
+    expect(webhook).toContain("apply_verified_payment");
+  });
 });

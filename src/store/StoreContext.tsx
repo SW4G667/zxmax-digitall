@@ -108,6 +108,7 @@ export interface Purchase {
   createdAt: string;
   updatedAt?: string;
   amount: number;
+  paymentProvider?: "zennith_pix" | "vexopay_pix" | "crypto" | "card" | "boleto";
   messages: PurchaseMessage[];
   reviewed?: boolean;
   reviewStars?: number;
@@ -311,6 +312,7 @@ const mapPurchaseRow = (p: any): Purchase => ({
   createdAt: p.created_at,
   updatedAt: p.updated_at || undefined,
   amount: Number(p.amount),
+  paymentProvider: p.payment_provider || undefined,
   messages: p.messages || [],
   reviewed: p.reviewed,
   reviewStars: p.review_stars || undefined,
@@ -817,7 +819,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshPurchases = async () => {
-    const { data } = await (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at,delivered_pending_at,refund_reason,refunded_at,seller_released,released_at").order("created_at", { ascending: false });
+    const { data } = await (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,payment_provider,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at,delivered_pending_at,refund_reason,refunded_at,seller_released,released_at").order("created_at", { ascending: false });
     if (!data) return;
     const purchases = (data as any[]).map(mapPurchaseRow) as Purchase[];
     // Check if any delivered_pending_confirmation order is > 3 days old and auto-release
