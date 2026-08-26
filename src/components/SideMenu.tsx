@@ -4,7 +4,7 @@ import {
   X, Store, Package, ShoppingBag, Headset, Shield, User, Wallet, FileText,
   HelpCircle, Lock, ScrollText, Heart, ShieldCheck, TrendingUp, LogOut, LogIn,
   LayoutGrid, BadgeCheck, ClipboardCheck, Users, MessageSquare, Receipt,
-  BarChart3, KeyRound, Loader2, Flag, Settings,
+  BarChart3, KeyRound, Loader2, Flag, Settings, Tag,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useStore } from "@/store/StoreContext";
