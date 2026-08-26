@@ -10,7 +10,7 @@ import AppShell from "@/components/AppShell";
 import useFavorites from "@/hooks/useFavorites";
 import { supabase } from "@/integrations/supabase/client";
 import { formatBRL, formatRobuxPackage, formatStockLabel, productMinQuantity, productStock, ROBUX_CATEGORY, robuxPackageUnits, unitPriceFromPackage } from "@/lib/catalog";
-import { checkoutTotals } from "@/lib/fees";
+import { BUYER_FEE, checkoutTotals } from "@/lib/fees";
 import CryptoPaymentModal, { CryptoCharge } from "@/components/CryptoPaymentModal";
 import { unwrapEdgeCall } from "@/lib/edgeErrors";
 import { checkoutMethods, classifyPaymentMethods, paymentMethodsNotice, PaymentMethodsState } from "@/lib/paymentMethods";
