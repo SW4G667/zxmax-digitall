@@ -703,7 +703,7 @@ export default function AdminView() {
         <div className="space-y-6 max-w-3xl">
           <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
             <h3 className="font-black text-white flex items-center gap-2"><Users className="w-5 h-5 text-[#0084ff]" /> Cargos e Permissões</h3>
-            <p className="text-xs text-white/50 mt-2">Dê acesso admin por e-mail e crie cargos custom com permissões.</p>
+            <p className="text-xs text-white/50 mt-2">Conceda somente cargos existentes; a autorização e a auditoria são executadas no banco.</p>
           </div>
 
           <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6 space-y-4">
@@ -712,9 +712,8 @@ export default function AdminView() {
               <input id="role-email" placeholder="E-mail do usuário" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none" />
               <select id="role-select" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm">
                 <option value="admin">Admin (total)</option>
-                <option value="moderator">Moderador (produtos + disputas)</option>
                 <option value="support">Suporte (chat)</option>
-                <option value="finance">Financeiro (saques)</option>
+                <option value="user">Usuário padrão</option>
               </select>
               <button
                 onClick={async () => {
@@ -723,11 +722,10 @@ export default function AdminView() {
                   const email = emailInput?.value?.trim();
                   const role = roleSelect?.value;
                   if (!email) return toast.error("Digite e-mail");
-                  const { data: prof } = await supabase.from("profiles").select("user_id").eq("email", email).maybeSingle();
-                  if (!prof?.user_id) return toast.error("Usuário não encontrado");
-                  const { error } = await supabase.from("user_roles").upsert({ user_id: prof.user_id, role: role as "admin" | "support" | "user" }, { onConflict: "user_id,role" });
+                  if (role !== "admin" && role !== "support" && role !== "user") return toast.error("Cargo inválido");
+                  const { error } = await (supabase as any).rpc("assign_user_role", { _email: email, _role: role });
                   if (error) return toast.error(error.message);
-                  toast.success(`Cargo ${role} dado para ${email}`);
+                  toast.success("Cargo atualizado com auditoria.");
                   emailInput.value = "";
                 }}
                 className="bg-[#0084ff] text-white px-6 py-3 rounded-xl font-bold text-sm"
