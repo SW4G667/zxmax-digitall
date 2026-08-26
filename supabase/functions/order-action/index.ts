@@ -15,11 +15,13 @@ const BodySchema = z.object({
     "confirm_receipt",         // comprador confirma recebimento -> delivered (liberação imediata)
     "seller_refund",           // vendedor reembolsa comprador -> refunded
     "open_dispute",            // comprador abre disputa -> dispute
+    "send_message",            // participantes enviam mensagem autorizada ao pedido
     "approve",                 // admin aprova -> delivered
     "revert",                  // admin reverte -> paid
     "check_auto_release",      // verifica e processa auto-liberações de 3 dias
   ]),
   reason: z.string().trim().optional(),
+  message: z.string().trim().min(1).max(1000).optional(),
 });
 
 const containsExternalContact = (text: string): boolean => {
@@ -58,7 +60,7 @@ serve(async (req) => {
       return json({ error: "Dados inválidos", fields: parsed.error.flatten().fieldErrors }, 400);
     }
 
-    const { orderId, action, reason } = parsed.data;
+    const { orderId, action, reason, message } = parsed.data;
     const admin = createClient(supabaseUrl, serviceKey);
 
     const { data: order } = await admin
@@ -76,6 +78,25 @@ serve(async (req) => {
 
     const now = new Date().toISOString();
     let messages = Array.isArray(order.messages) ? order.messages : [];
+
+    if (action === "send_message") {
+      if (!isBuyer && !isSeller && !isAdmin) return json({ error: "Apenas participantes do pedido podem enviar mensagens." }, 403);
+      if (order.status === "pending") return json({ error: "Mensagens ficam disponíveis após a confirmação do pagamento." }, 409);
+      const cleanMessage = message?.trim() || "";
+      if (!cleanMessage) return json({ error: "Mensagem obrigatória." }, 400);
+      if (containsExternalContact(cleanMessage)) {
+        return json({ error: "Não é permitido enviar contatos externos (WhatsApp, Discord, e-mail, links ou telefone)." }, 400);
+      }
+
+      const from = isAdmin ? "Administração" : isSeller ? "Vendedor" : "Comprador";
+      messages = [...messages, { from, text: cleanMessage, date: now }];
+      const { error } = await admin
+        .from("purchases")
+        .update({ messages, updated_at: now })
+        .eq("id", order.id);
+      if (error) throw error;
+      return json({ success: true, message: messages.at(-1) });
+    }
 
     if (action === "confirm_delivery") {
       // Vendedor confirma entrega -> status delivered_pending_confirmation

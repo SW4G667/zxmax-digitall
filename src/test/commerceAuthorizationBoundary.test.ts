@@ -22,4 +22,14 @@ describe("fronteira de autorização comercial", () => {
     expect(action).toContain("Apenas administradores podem executar a liberação automática manualmente.");
     expect(action).not.toContain('status: "refunded"');
   });
+
+  it("persiste mensagens de pedido somente pelo contrato de servidor autorizado", async () => {
+    const action = await source("supabase/functions/order-action/index.ts");
+    const store = await source("src/store/StoreContext.tsx");
+    expect(action).toContain('"send_message"');
+    expect(action).toContain("Apenas participantes do pedido podem enviar mensagens.");
+    expect(action).toContain("containsExternalContact(cleanMessage)");
+    expect(store).toContain('action: "send_message"');
+    expect(store).not.toContain('.from("purchases").update({ messages:');
+  });
 });

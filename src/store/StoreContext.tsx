@@ -235,7 +235,7 @@ interface StoreContextType {
   publishNotice: (text: string) => void;
   updatePixKey: (key: string) => void;
   sendAdminChat: (from: string, text: string) => void;
-  sendPurchaseMessage: (purchaseId: number, from: string, text: string) => void;
+  sendPurchaseMessage: (purchaseId: number, from: string, text: string) => Promise<boolean>;
   confirmDelivery: (purchaseId: number) => Promise<boolean>;
   confirmOrderReceipt: (purchaseId: number) => Promise<boolean>;
   sellerRefundOrder: (purchaseId: number, reason: string) => Promise<{ success: boolean; error?: string }>;
@@ -1042,20 +1042,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       tickets: s.tickets.map((t) => (t.id === id ? { ...t, status: "closed" as const } : t)),
     }));
 
-  const sendPurchaseMessage = (purchaseId: number, from: string, text: string) =>
-    setState((s) => {
-      const nextPurchases = s.purchases.map((p) =>
-        p.id === purchaseId
-          ? { ...p, messages: [...(p.messages || []), { from, text, date: new Date().toISOString() }] }
-          : p
-      );
-      const updated = nextPurchases.find((p) => p.id === purchaseId);
-      if (updated) void (supabase as any).from("purchases").update({ messages: updated.messages }).eq("id", purchaseId);
-      return {
-      ...s,
-      purchases: nextPurchases,
-      };
+  const sendPurchaseMessage = async (purchaseId: number, _from: string, text: string) => {
+    const { data, error } = await supabase.functions.invoke("order-action", {
+      body: { orderId: purchaseId, action: "send_message", message: text },
     });
+    if (error || data?.error) return false;
+    await refreshPurchases();
+    return true;
+  };
 
   const confirmDelivery = async (purchaseId: number) => {
     const { data, error } = await supabase.functions.invoke("order-action", { body: { orderId: purchaseId, action: "confirm_delivery" } });
