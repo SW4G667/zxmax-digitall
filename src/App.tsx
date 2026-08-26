@@ -18,6 +18,7 @@ import Produto from "./pages/Produto.tsx";
 import Robux from "./pages/Robux.tsx";
 import Favoritos from "./pages/Favoritos.tsx";
 import AuthCallback from "./pages/AuthCallback.tsx";
+import MaintenanceGate from "@/components/MaintenanceGate";
 
 const queryClient = new QueryClient();
 
@@ -30,6 +31,7 @@ const App = () => (
             <BrowserRouter>
               <Sonner position="top-center" richColors />
               <CookieConsent />
+              <MaintenanceGate>
               <Routes>
                 <Route path="/" element={<Index view="store" />} />
                 <Route path="/loja" element={<Index view="store" />} />
@@ -50,6 +52,7 @@ const App = () => (
                 <Route path="/perfil" element={<Perfil />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
+              </MaintenanceGate>
             </BrowserRouter>
           </StoreProvider>
         </AuthProvider>

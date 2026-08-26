@@ -7,6 +7,7 @@ import {
   MIN_PRODUCT_PRICE,
   mergeCatalog,
   normalizeProductPrice,
+  parsePriceInput,
   productMinQuantity,
   productStock,
   sanitizePrice,
@@ -613,7 +614,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     // Client-side guards first, so obvious problems never reach the database
     // and the seller gets a precise message instead of a generic failure.
-    const price = sanitizePrice(p.price);
+    const price = parsePriceInput(p.price);
     if (!p.name?.trim()) { toast.error("Informe o nome do anúncio."); return false; }
     if (price < MIN_PRODUCT_PRICE) {
       toast.error(`O preço mínimo é R$ ${MIN_PRODUCT_PRICE.toFixed(2).replace(".", ",")}.`);
@@ -713,7 +714,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (p.category !== undefined) dbPayload.category = p.category;
     if (p.description !== undefined) dbPayload.description = p.description;
     if (p.price !== undefined) {
-      const price = sanitizePrice(p.price);
+      const price = parsePriceInput(p.price);
       if (price < MIN_PRODUCT_PRICE) {
         toast.error(`O preço mínimo é R$ ${MIN_PRODUCT_PRICE.toFixed(2).replace(".", ",")}.`);
         return false;

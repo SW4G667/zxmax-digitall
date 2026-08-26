@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useStore, Product, Withdrawal, Purchase } from "@/store/StoreContext";
 import { MoneyEmoji, PackageEmoji, ChatEmoji, StarEmoji, ShieldEmoji } from "@/components/CustomEmojis";
-import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag, ArrowLeft, ExternalLink, Eye, Webhook, RefreshCw, KeyRound, ShieldCheck, Lock, BarChart3, ShoppingBag, Ban, Wrench } from "lucide-react";
+import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag, ArrowLeft, ExternalLink, Eye, Webhook, RefreshCw, KeyRound, ShieldCheck, Lock, BarChart3, ShoppingBag, Ban, Wrench, Wrench as MaintenanceIcon } from "lucide-react";
 import { toast } from "sonner";
 import MyPurchasesView from "@/components/MyPurchasesView";
 import IntegrationsPanel from "@/components/IntegrationsPanel";
@@ -16,7 +16,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useSearchParams } from "react-router-dom";
-import { formatBRL } from "@/lib/catalog";
+import { formatBRL, isValidProductPrice, parsePriceInput } from "@/lib/catalog";
 
 interface WebhookLog {
   id: number;
@@ -80,6 +80,12 @@ export default function AdminView() {
   const [banIdentifier, setBanIdentifier] = useState("");
   const [banReason, setBanReason] = useState("");
   const [selectedDisputeId, setSelectedDisputeId] = useState<number | null>(null);
+  const [platformLoading, setPlatformLoading] = useState(false);
+  const [platformSaving, setPlatformSaving] = useState(false);
+  const [maintenance, setMaintenance] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState("");
+  const [minProductPrice, setMinProductPrice] = useState("2,00");
+  const [minWithdraw, setMinWithdraw] = useState("5,00");
 
   const pendingProducts = state.products.filter((p) => !p.approved);
   const pendingWithdrawals = state.withdrawals.filter((w) => w.status === "pending");
@@ -239,6 +245,36 @@ export default function AdminView() {
       void loadDocs();
     }
   }, [tab]);
+
+  const loadPlatformSettings = React.useCallback(async () => {
+    setPlatformLoading(true);
+    const { data, error } = await (supabase as any).rpc("get_admin_platform_settings");
+    setPlatformLoading(false);
+    if (error) { toast.error("Não foi possível carregar as configurações da plataforma."); return; }
+    setMaintenance(!!data?.maintenance);
+    setMaintenanceMessage(String(data?.message || ""));
+    setMinProductPrice(formatBRL(data?.minProductPrice ?? 2).replace("R$ ", ""));
+    setMinWithdraw(formatBRL(data?.minWithdraw ?? 5).replace("R$ ", ""));
+  }, []);
+
+  useEffect(() => { if (tab === "config") void loadPlatformSettings(); }, [tab, loadPlatformSettings]);
+
+  const savePlatformSettings = async () => {
+    const parsedPrice = parsePriceInput(minProductPrice);
+    const parsedWithdraw = parsePriceInput(minWithdraw);
+    if (!isValidProductPrice(parsedPrice)) { toast.error("Use um preço mínimo entre R$ 2,00 e R$ 1.000.000,00."); return; }
+    if (parsedWithdraw < 5 || parsedWithdraw > 1_000_000) { toast.error("Use um saque mínimo entre R$ 5,00 e R$ 1.000.000,00."); return; }
+    setPlatformSaving(true);
+    const { error } = await (supabase as any).rpc("update_platform_settings", {
+      _maintenance: maintenance,
+      _message: maintenanceMessage.trim(),
+      _min_product_price: parsedPrice,
+      _min_withdraw: parsedWithdraw,
+    });
+    setPlatformSaving(false);
+    if (error) { toast.error(error.message || "Não foi possível salvar a plataforma."); return; }
+    toast.success(maintenance ? "Modo manutenção ativado para visitantes." : "Plataforma reaberta para visitantes.");
+  };
 
   if (selectedDisputeId) {
     return (
@@ -838,6 +874,28 @@ export default function AdminView() {
       {/* Config Tab */}
       {tab === "config" && (
         <div className="space-y-6">
+          <div className="glass-card p-6 space-y-4 border border-[#168cff]/25 bg-[#168cff]/[0.045]">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h3 className="font-black text-foreground flex items-center gap-2"><MaintenanceIcon className="w-5 h-5 text-[#168cff]" /> Operação da plataforma</h3>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">Quando ativado, visitantes veem a página de manutenção. Administradores autenticados continuam acessando o painel após validação de papel e 2FA.</p>
+              </div>
+              <label className="inline-flex items-center gap-2 text-xs font-bold text-foreground"><input type="checkbox" checked={maintenance} onChange={(event) => setMaintenance(event.target.checked)} disabled={platformLoading} /> Modo manutenção</label>
+            </div>
+            <textarea value={maintenanceMessage} maxLength={300} onChange={(event) => setMaintenanceMessage(event.target.value)} placeholder="Mensagem curta para visitantes" className="w-full rounded-xl bg-muted p-3 text-sm text-foreground" rows={3} disabled={platformLoading} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-bold text-muted-foreground">Preço mínimo de anúncio
+                <input value={minProductPrice} inputMode="decimal" onChange={(event) => setMinProductPrice(event.target.value)} placeholder="2,00" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
+              </label>
+              <label className="text-xs font-bold text-muted-foreground">Saque mínimo
+                <input value={minWithdraw} inputMode="decimal" onChange={(event) => setMinWithdraw(event.target.value)} placeholder="5,00" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <button onClick={() => void savePlatformSettings()} disabled={platformSaving || platformLoading} className="btn-gradient rounded-xl px-5 py-3 text-sm font-bold disabled:opacity-50">{platformSaving ? "Salvando..." : "Salvar operação"}</button>
+              {discordServerLink.trim() && <button onClick={() => window.open(discordServerLink.trim(), "_blank", "noopener,noreferrer")} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-bold text-foreground hover:bg-white/[0.08]"><ExternalLink className="w-4 h-4" /> Abrir comunidade Discord</button>}
+            </div>
+          </div>
           {/* Taxas */}
           <div className="glass-card p-6 space-y-4">
             <h3 className="font-bold text-foreground">Taxas da Plataforma</h3>
