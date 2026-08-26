@@ -18,6 +18,11 @@ describe("IntegrationsPanel — Stripe seguro", () => {
           stripe: { cardEnabled: true, boletoEnabled: true, boletoExpiresAfterDays: 3 },
         },
         secretStatus: { STRIPE_SECRET_KEY: true, STRIPE_WEBHOOK_SECRET: true },
+        discord: {
+          enabled: true,
+          providerCallback: "https://example.supabase.co/auth/v1/callback",
+          appCallback: "https://zxmax.vercel.app/auth/callback",
+        },
       },
       error: null,
     });
@@ -30,5 +35,8 @@ describe("IntegrationsPanel — Stripe seguro", () => {
     expect(screen.getByLabelText("Validade do boleto (dias)")).toHaveValue(3);
     expect(screen.queryByPlaceholderText(/secret|api key|client secret/i)).not.toBeInTheDocument();
     expect(screen.getByText(/STRIPE_SECRET_KEY/)).toBeInTheDocument();
+    expect(screen.getByText("Discord OAuth")).toBeInTheDocument();
+    expect(screen.getByText("Provedor habilitado")).toBeInTheDocument();
+    expect(screen.getByText("https://example.supabase.co/auth/v1/callback")).toBeInTheDocument();
   });
 });

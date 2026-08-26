@@ -17,6 +17,12 @@ type StripeConfig = {
   boletoExpiresAfterDays?: number;
 };
 
+type DiscordOAuthStatus = {
+  enabled?: boolean;
+  providerCallback?: string;
+  appCallback?: string;
+};
+
 type Provider = {
   id: "zennithpay" | "vexopay";
   name: string;
@@ -49,13 +55,14 @@ const emptyConfig: Record<Provider["id"], GatewayConfig> = {
 export default function IntegrationsPanel() {
   const [configs, setConfigs] = useState<Record<Provider["id"], GatewayConfig>>(emptyConfig);
   const [stripe, setStripe] = useState<StripeConfig>({ cardEnabled: false, boletoEnabled: false, boletoExpiresAfterDays: 3 });
+  const [discord, setDiscord] = useState<DiscordOAuthStatus>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [secretStatus, setSecretStatus] = useState<Record<string, boolean>>({});
 
   const load = async () => {
     setLoading(true);
-    const result = await unwrapEdgeCall<{ integrations?: Record<string, GatewayConfig & StripeConfig>; secretStatus?: Record<string, boolean> }>(
+    const result = await unwrapEdgeCall<{ integrations?: Record<string, GatewayConfig & StripeConfig>; secretStatus?: Record<string, boolean>; discord?: DiscordOAuthStatus }>(
       await supabase.functions.invoke("integrations-config", { body: { action: "get" } }),
       "Não foi possível carregar a configuração de pagamentos.",
     );
@@ -67,6 +74,7 @@ export default function IntegrationsPanel() {
     });
     setStripe({ cardEnabled: false, boletoEnabled: false, boletoExpiresAfterDays: 3, ...(received.stripe || {}) });
     setSecretStatus(result.data?.secretStatus || {});
+    setDiscord(result.data?.discord || {});
     setLoading(false);
   };
 
@@ -189,6 +197,19 @@ export default function IntegrationsPanel() {
           </article>
         );
       })()}
+      <article className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+          <div><h3 className="font-bold text-card-foreground">Discord OAuth</h3><p className="mt-1 max-w-2xl text-sm text-muted-foreground">O cliente inicia OAuth com PKCE pelo Supabase. Client ID e Client Secret pertencem somente ao Discord Developer Portal e ao Supabase Auth.</p></div>
+          <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold ${discord.enabled ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}><BadgeCheck className="h-3.5 w-3.5" />{discord.enabled ? "Provedor habilitado" : "Provedor não habilitado"}</span>
+        </div>
+        <ol className="mt-4 list-decimal space-y-2 pl-5 text-xs leading-5 text-muted-foreground">
+          <li>Crie ou abra a aplicação ZXMAX no Discord Developer Portal e cadastre o callback do provedor abaixo.</li>
+          <li>No Supabase, vá em Authentication → Providers → Discord, habilite o provedor e informe Client ID e Client Secret.</li>
+          <li>Em Authentication → URL Configuration, mantenha o callback da aplicação permitido para o retorno seguro da sessão.</li>
+        </ol>
+        <div className="mt-4 grid gap-3 md:grid-cols-2"><div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[11px] font-bold text-muted-foreground">Callback no Discord</p><code className="mt-1 block break-all text-xs text-foreground">{discord.providerCallback || "Carregando…"}</code></div><div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[11px] font-bold text-muted-foreground">Callback permitido da aplicação</p><code className="mt-1 block break-all text-xs text-foreground">{discord.appCallback || "Carregando…"}</code></div></div>
+        <div className="mt-5 flex flex-wrap gap-3"><a href="https://discord.com/developers/applications" target="_blank" rel="noreferrer" className="rounded-lg border border-border px-4 py-2 text-sm font-bold">Abrir Discord Developer Portal</a><a href="https://supabase.com/dashboard/project/szvkktvubyhulzipcxfk/auth/providers" target="_blank" rel="noreferrer" className="rounded-lg border border-border px-4 py-2 text-sm font-bold">Abrir Supabase Auth</a></div>
+      </article>
     </section>
   );
 }

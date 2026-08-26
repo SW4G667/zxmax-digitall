@@ -38,6 +38,15 @@ serve(async (req) => {
     const zennithReady = Boolean(Deno.env.get("ZENNITH_API_KEY"));
     const vexoReady = Boolean(Deno.env.get("VEXOPAY_CLIENT_ID") && Deno.env.get("VEXOPAY_CLIENT_SECRET"));
     const stripeReady = Boolean(Deno.env.get("STRIPE_SECRET_KEY") && Deno.env.get("STRIPE_WEBHOOK_SECRET"));
+    const siteUrl = String(Deno.env.get("SITE_URL") || "https://zxmax.vercel.app").replace(/\/$/, "");
+    let discordEnabled = false;
+    try {
+      const authSettings = await fetch(`${Deno.env.get("SUPABASE_URL")}/auth/v1/settings`, {
+        headers: { apikey: Deno.env.get("SUPABASE_ANON_KEY")! },
+      });
+      const settings = await authSettings.json().catch(() => ({} as Record<string, any>));
+      discordEnabled = settings?.external?.discord === true;
+    } catch { /* indisponibilidade de status não deve afetar pagamentos */ }
 
     if (action === "payment_methods") return json({
       v: 3,
@@ -62,7 +71,15 @@ serve(async (req) => {
       STRIPE_SECRET_KEY: Boolean(Deno.env.get("STRIPE_SECRET_KEY")),
       STRIPE_WEBHOOK_SECRET: Boolean(Deno.env.get("STRIPE_WEBHOOK_SECRET")),
     };
-    if (action === "get") return json({ integrations: { zennithpay: zennith, vexopay, stripe }, secretStatus });
+    if (action === "get") return json({
+      integrations: { zennithpay: zennith, vexopay, stripe },
+      secretStatus,
+      discord: {
+        enabled: discordEnabled,
+        providerCallback: `${Deno.env.get("SUPABASE_URL")}/auth/v1/callback`,
+        appCallback: `${siteUrl}/auth/callback`,
+      },
+    });
     const provider = body.provider === "vexopay" ? "vexopay" : body.provider === "zennithpay" ? "zennithpay" : body.provider === "stripe" ? "stripe" : null;
     if (!provider) return json({ error: "Provedor inválido." }, 400);
     if (action === "save") {

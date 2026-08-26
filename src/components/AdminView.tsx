@@ -66,14 +66,6 @@ export default function AdminView() {
   const [rules, setRules] = useState(state.config.rules);
   const [commission, setCommission] = useState(state.config.commission);
   const [instantFee, setInstantFee] = useState(state.config.instantFee);
-  // Discord config
-  const [discordMode, setDiscordMode] = useState(state.config.discordMode);
-  const [discordClientId, setDiscordClientId] = useState(state.config.discordClientId);
-  const [discordRedirectUri, setDiscordRedirectUri] = useState(state.config.discordRedirectUri);
-  const [discordScopes, setDiscordScopes] = useState(state.config.discordScopes);
-  const [discordServerLink, setDiscordServerLink] = useState(state.config.discordServerLink);
-  // Auth mode
-  const [authMode, setAuthMode] = useState(state.config.authMode);
   const [banIdentifier, setBanIdentifier] = useState("");
   const [banReason, setBanReason] = useState("");
   const [selectedDisputeId, setSelectedDisputeId] = useState<number | null>(null);
@@ -94,11 +86,8 @@ export default function AdminView() {
   const handleSaveConfig = async () => {
     updateConfig({
       rules, commission, instantFee,
-      authMode,
-      discordMode, discordClientId, discordRedirectUri, discordScopes, discordServerLink,
-      discordLink: discordServerLink,
     });
-    toast.success("Preferências locais atualizadas. Gateways PIX são administrados na aba APIs & Credenciais.");
+    toast.success("Preferências locais atualizadas. Pagamentos e OAuth são administrados na aba APIs & Credenciais.");
   };
 
   const handleBan = async () => {
@@ -865,7 +854,7 @@ export default function AdminView() {
             </div>
             <div className="flex flex-wrap gap-3">
               <button onClick={() => void savePlatformSettings()} disabled={platformSaving || platformLoading} className="btn-gradient rounded-xl px-5 py-3 text-sm font-bold disabled:opacity-50">{platformSaving ? "Salvando..." : "Salvar operação"}</button>
-              {discordServerLink.trim() && <button onClick={() => window.open(discordServerLink.trim(), "_blank", "noopener,noreferrer")} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-bold text-foreground hover:bg-white/[0.08]"><ExternalLink className="w-4 h-4" /> Abrir comunidade Discord</button>}
+              <button onClick={() => setTab("apis")} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-bold text-foreground hover:bg-white/[0.08]"><ExternalLink className="w-4 h-4" /> Configurar integrações</button>
             </div>
           </div>
           {/* Taxas */}
@@ -904,49 +893,16 @@ export default function AdminView() {
 
           {/* Auth */}
           <div className="glass-card p-6 space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="font-bold text-foreground">Autenticação</h3>
-              <div className="flex gap-1 bg-muted rounded-xl p-1">
-                <button onClick={() => setAuthMode("automatic")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${authMode === "automatic" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Automático</button>
-                <button onClick={() => setAuthMode("manual")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${authMode === "manual" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Manual</button>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">No modo automático, o sistema usa as credenciais padrão. No manual, usa as configurações abaixo (Discord).</p>
+            <h3 className="font-bold text-foreground">Autenticação</h3>
+            <p className="text-xs leading-5 text-muted-foreground">Login por senha e provedores sociais são configurados no Supabase Auth. O painel não recebe Client Secret, nem armazena credenciais OAuth no navegador.</p>
           </div>
 
           {/* Discord */}
           <div className="glass-card p-6 space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="font-bold text-foreground">Credenciais Discord</h3>
-              <div className="flex gap-1 bg-muted rounded-xl p-1">
-                <button onClick={() => setDiscordMode("automatic")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${discordMode === "automatic" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Automático</button>
-                <button onClick={() => setDiscordMode("manual")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${discordMode === "manual" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Manual</button>
-              </div>
-            </div>
-            <div>
-              <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Link do Servidor Discord</label>
-              <input value={discordServerLink} onChange={(e) => setDiscordServerLink(e.target.value)} placeholder="https://discord.gg/..." className="w-full p-3 rounded-xl bg-muted text-sm text-foreground" />
-            </div>
-            {discordMode === "manual" && (
-              <>
-                <div>
-                  <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Client ID</label>
-                  <input value={discordClientId} onChange={(e) => setDiscordClientId(e.target.value)} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
-                </div>
-                <p className="text-[10px] text-muted-foreground">O Client Secret do Discord fica na aba "APIs & Credenciais" e é guardado apenas no servidor.</p>
-                <div>
-                  <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Redirect URI</label>
-                  <input value={discordRedirectUri} onChange={(e) => setDiscordRedirectUri(e.target.value)} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Scopes</label>
-                  <input value={discordScopes} onChange={(e) => setDiscordScopes(e.target.value)} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
-                </div>
-              </>
-            )}
+            <h3 className="font-bold text-foreground">Discord OAuth</h3>
+            <p className="text-xs leading-5 text-muted-foreground">O Client ID e o Client Secret devem ser cadastrados diretamente no provedor Discord e no Supabase Auth. A aba de integrações mostra o callback oficial e o status de ativação, sem revelar valores sensíveis.</p>
+            <button onClick={() => setTab("apis")} className="btn-gradient rounded-xl px-5 py-3 text-sm font-bold">Abrir configuração segura</button>
           </div>
-
-          {/* Credenciais sensíveis foram movidas para a aba "APIs & Credenciais" (armazenadas apenas no servidor) */}
 
           {/* Regras */}
           <div className="glass-card p-6 space-y-4">
