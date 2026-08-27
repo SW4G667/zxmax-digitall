@@ -18,4 +18,12 @@ describe("Acesso administrativo após 2FA", () => {
     expect(source).toContain("void refreshAuthorization()");
     expect(source).toContain("adminRoleResolved && isAdmin");
   });
+
+  it("faz o gate interno atualizar as permissões do servidor antes de liberar o painel", async () => {
+    const source = await readFile(join(process.cwd(), "src/components/AdminLoginGate.tsx"), "utf8");
+
+    expect(source).toContain("refreshAuthorization,");
+    expect(source).toContain("await refreshAuthorization();");
+    expect(source).toContain("await refreshAuthorization();\n      unlockAdminGate();");
+  });
 });
