@@ -55,7 +55,7 @@ serve(async (req) => {
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
   const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-  const EMAIL_FROM = Deno.env.get("EMAIL_FROM") || "ZXMAX <noreply@zxmax.com.br>";
+  const EMAIL_FROM = String(Deno.env.get("EMAIL_FROM") || "").trim();
   const SITE_URL = (Deno.env.get("SITE_URL") || "https://zxmax.vercel.app").replace(/\/+$/, "");
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return json({ error: "Serviço indisponível." }, 503);
 
@@ -74,6 +74,11 @@ serve(async (req) => {
     const type = body.type;
     if (!(["purchase_confirmed", "new_sale", "new_question"] as const).includes(type)) {
       return json({ error: "Tipo de notificação inválido." }, 400);
+    }
+    // Payment confirmation and sale notices originate only after a verified
+    // provider webhook. A buyer or seller must not be able to resend them.
+    if ((type === "purchase_confirmed" || type === "new_sale") && !internalCall) {
+      return json({ error: "Este tipo de notificação é processado pelo servidor." }, 403);
     }
 
     let logId: number;
@@ -117,7 +122,6 @@ serve(async (req) => {
         .eq("id", purchaseId)
         .maybeSingle();
       if (error || !purchase) return json({ error: "Pedido não encontrado." }, 404);
-      if (!internalCall && actorId !== purchase.buyer_id && actorId !== purchase.seller_id) return json({ error: "Sem permissão para esta notificação." }, 403);
       if (!paidStatus.has(String(purchase.status))) return json({ error: "O pagamento ainda não foi confirmado." }, 409);
       const { data: product } = await admin.from("products").select("name").eq("id", purchase.product_id).maybeSingle();
       const productName = product?.name || `Produto #${purchase.product_id}`;
@@ -151,6 +155,7 @@ serve(async (req) => {
     if (previous) return json({ already_sent: true });
 
     if (!RESEND_API_KEY) return json({ skipped: true, reason: "email_provider_not_configured" }, 202);
+    if (!EMAIL_FROM) return json({ skipped: true, reason: "email_sender_not_configured" }, 202);
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },

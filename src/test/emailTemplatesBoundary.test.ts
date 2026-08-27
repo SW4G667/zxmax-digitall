@@ -15,9 +15,13 @@ describe("e-mails transacionais seguros", () => {
 
   it("continua autorizando e evitando duplicação antes de acessar o provedor", async () => {
     const email = await source();
-    expect(email).toContain("if (!internalCall && actorId !== purchase.buyer_id && actorId !== purchase.seller_id)");
+    expect(email).toContain('if ((type === "purchase_confirmed" || type === "new_sale") && !internalCall)');
+    expect(email).toContain("Este tipo de notificação é processado pelo servidor.");
+    expect(email).toContain("if (!internalCall && actorId !== question.author_id)");
     expect(email).toContain('.eq("status", "sent")');
     expect(email).toContain("if (previous) return json({ already_sent: true });");
     expect(email).toContain('if (!RESEND_API_KEY) return json({ skipped: true, reason: "email_provider_not_configured" }, 202);');
+    expect(email).toContain('if (!EMAIL_FROM) return json({ skipped: true, reason: "email_sender_not_configured" }, 202);');
+    expect(email).not.toContain('"ZXMAX <noreply@zxmax.com.br>"');
   });
 });
