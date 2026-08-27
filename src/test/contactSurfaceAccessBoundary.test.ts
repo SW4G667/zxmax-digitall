@@ -4,19 +4,20 @@ import { describe, expect, it } from "vitest";
 
 const source = async (path: string) => readFile(join(process.cwd(), path), "utf8");
 
-describe("superfícies legítimas de e-mail", () => {
+describe("superfícies protegidas e minimizadas de contato", () => {
   it("monta os painéis administrativos somente após sessão, papel e gate administrativo", async () => {
     const index = await source("src/pages/Index.tsx");
     const admin = await source("src/components/AdminView.tsx");
     const extra = await source("src/components/AdminExtraPanels.tsx");
-    const more = await source("src/components/AdminMorePanels.tsx");
 
     expect(index).toContain("const isOperator = isAdmin || isSupport;");
     expect(index).toContain('view === "admin" && user && isOperator && (adminGateUnlocked ? <AdminView /> : <AdminLoginGate />)');
     expect(admin).toContain('useAuth()');
     expect(admin).toContain('action: "get_webhook_logs"');
-    expect(extra).toContain("p.buyerEmail");
-    expect(more).toContain("p.buyerEmail");
+    expect(extra).not.toContain("p.buyerEmail");
+    expect(extra).not.toContain("p.sellerEmail");
+    expect(extra).toContain("p.buyerPublicId");
+    expect(extra).toContain("p.sellerPublicId");
   });
 
   it("mantém os dados de pedido em rota autenticada e não pesquisa contato de contraparte", async () => {

@@ -101,7 +101,7 @@ export function AdminPurchasesPanel() {
           <ShoppingBag className="w-4 h-4 text-primary" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold">Pedido #{p.id} · R$ {Number(p.amount).toFixed(2)}</p>
-            <p className="text-[11px] text-muted-foreground truncate">{p.buyerEmail} → {p.sellerEmail} · {p.status}</p>
+            <p className="text-[11px] text-muted-foreground truncate">Comprador {p.buyerPublicId ? `ID ${p.buyerPublicId}` : "em validação"} → Vendedor {p.sellerPublicId ? `ID ${p.sellerPublicId}` : "em validação"} · {p.status}</p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => approvePurchase(p.id)} className="px-3 py-1.5 text-[11px] font-bold bg-success/10 text-success rounded-lg">Aprovar</button>
@@ -127,7 +127,7 @@ export function AdminTicketsPanel() {
         {state.tickets.map((t) => (
           <button key={t.id} onClick={() => setSelected(t.id)} className={`w-full text-left glass-card p-4 ${selected === t.id ? "border-primary" : ""}`}>
             <p className="text-sm font-bold truncate">{t.subject}</p>
-            <p className="text-[11px] text-muted-foreground">{t.userEmail} · {t.status}</p>
+            <p className="text-[11px] text-muted-foreground">{state.userDirectory?.[t.userId]?.publicId ? `ID ${state.userDirectory[t.userId].publicId}` : "Solicitante"} · {t.status}</p>
           </button>
         ))}
       </div>
@@ -143,7 +143,7 @@ export function AdminTicketsPanel() {
             <div className="space-y-2 max-h-64 overflow-y-auto mb-3">
               {active.messages.map((m, i) => (
                 <div key={i} className="bg-muted rounded-xl p-2 text-xs">
-                  <p className="font-bold">{m.from}</p>
+                  <p className="font-bold">{m.from === active.userEmail ? "Solicitante" : "Equipe ZXMAX"}</p>
                   <p>{m.text}</p>
                 </div>
               ))}
