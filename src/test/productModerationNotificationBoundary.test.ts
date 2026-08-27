@@ -38,4 +38,15 @@ describe("notificações de moderação", () => {
     expect(chat).toContain("Não foi possível enviar a imagem. Atualize a página e tente novamente.");
     expect(chat).not.toContain('toast.error("Erro ao enviar imagem: " + (err?.message');
   });
+
+  it("remove tokens de imagem assinada legada na projeção pública de catálogo", async () => {
+    const catalog = await source("supabase/functions/public-products/index.ts");
+
+    expect(catalog).toContain("function publicProductImage");
+    expect(catalog).toContain('"/storage/v1/object/sign/product-images/"');
+    expect(catalog).toContain("parsed.origin !== new URL(supabaseUrl).origin");
+    expect(catalog).toContain("/storage/v1/object/public/product-images/${objectPath}");
+    expect(catalog).toContain("image: publicProductImage(product.image, supabaseUrl)");
+    expect(catalog).toContain("banner: publicProductImage(product.banner, supabaseUrl)");
+  });
 });

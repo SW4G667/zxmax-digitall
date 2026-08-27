@@ -21,6 +21,25 @@ const LEGACY_COLUMNS =
 
 const MAX_LIMIT = 100;
 
+/** O bucket de imagens de anúncio é público. Linhas antigas podem ter gravado
+ * uma URL assinada de longa duração; ao projetá-las na vitrine, removemos o
+ * token e retornamos somente a rota pública do mesmo objeto. */
+function publicProductImage(value: unknown, supabaseUrl: string): unknown {
+  if (typeof value !== "string" || !value) return value;
+  try {
+    const parsed = new URL(value);
+    if (parsed.origin !== new URL(supabaseUrl).origin) return value;
+    const marker = "/storage/v1/object/sign/product-images/";
+    const signedIndex = parsed.pathname.indexOf(marker);
+    if (signedIndex < 0) return value;
+    const objectPath = parsed.pathname.slice(signedIndex + marker.length);
+    if (!objectPath) return value;
+    return `${supabaseUrl}/storage/v1/object/public/product-images/${objectPath}`;
+  } catch {
+    return value;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -66,6 +85,8 @@ serve(async (req) => {
     }
     const enrichedProducts = products.map((product: any) => ({
       ...product,
+      image: publicProductImage(product.image, supabaseUrl),
+      banner: publicProductImage(product.banner, supabaseUrl),
       seller_public_id: product.seller_public_id || publicIds.get(String(product.seller_id)) || null,
     }));
 
