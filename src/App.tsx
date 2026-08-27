@@ -13,6 +13,7 @@ import Termos from "./pages/Termos.tsx";
 import Privacidade from "./pages/Privacidade.tsx";
 import Regras from "./pages/Regras.tsx";
 import Perfil from "./pages/Perfil.tsx";
+import Configuracoes from "./pages/Configuracoes.tsx";
 import Categorias from "./pages/Categorias.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import Produto from "./pages/Produto.tsx";
@@ -52,6 +53,7 @@ const App = () => (
                 <Route path="/privacidade" element={<Privacidade />} />
                 <Route path="/regras" element={<Regras />} />
                 <Route path="/perfil" element={<Perfil />} />
+                <Route path="/configuracoes" element={<Configuracoes />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
               </MaintenanceGate>

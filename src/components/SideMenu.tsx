@@ -148,6 +148,7 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
       icon: User,
       entries: [
         { key: "profile", icon: User, label: "Meu perfil", hint: "Dados, verificação e segurança", to: "/perfil" },
+        { key: "settings", icon: Settings, label: "Configurações", hint: "Senha, sessões e preferências", to: "/configuracoes" },
         { key: "orders", icon: ShoppingBag, label: "Meus pedidos", hint: "Compras, entregas e chat", view: "purchases", to: "/minhas-compras", badge: openOrders },
         { key: "support", icon: Headset, label: "Suporte", hint: "Falar com a equipe", view: "support", to: "/suporte" },
         { key: "wallet", icon: Wallet, label: "Saldo e saques", hint: "Receber por Pix", view: "withdraw", to: "/sacar" },

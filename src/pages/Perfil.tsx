@@ -7,6 +7,7 @@ import { ArrowLeft, Shield, Upload, Loader2, CheckCircle2, Clock, XCircle, LogOu
 import TwoFactorPanel from "@/components/TwoFactorPanel";
 import LoadingScreen from "@/components/LoadingScreen";
 import AppShell from "@/components/AppShell";
+import { useStore } from "@/store/StoreContext";
 
 const STATUS_META: Record<string, { label: string; className: string; icon: any }> = {
   none: { label: "Não verificado", className: "bg-[#1a1a20] text-white/40 border border-[#25252e]", icon: Shield },
@@ -36,6 +37,7 @@ function avatarExtension(type: string) {
 
 function PerfilInner() {
   const { user, profile, loading, refreshProfile, isAdmin, signOut } = useAuth();
+  const { state } = useStore();
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
@@ -219,6 +221,10 @@ function PerfilInner() {
 
   const defaultAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(`zxmax-${profile?.public_id || "perfil"}`)}`;
   const shownAvatar = avatarPreview || profile?.avatar_url || defaultAvatar;
+  const myListings = state.products.filter((product) => product.sellerId === user.id);
+  const activeListings = myListings.filter((product) => product.approved).length;
+  const reviewCount = myListings.reduce((total, product) => total + Number(product.reviewCount || 0), 0);
+  const receivedSales = state.purchases.filter((purchase) => purchase.sellerId === user.id).length;
 
   return (
     <AppShell>
@@ -242,6 +248,19 @@ function PerfilInner() {
             <p className="mt-4 text-xs text-red-400 bg-red-500/5 border border-red-500/20 p-3 rounded-xl">Motivo: {(profile as any).verification_notes}</p>
           )}
         </div>
+
+        <section className="mb-5 grid grid-cols-3 gap-3" aria-label="Resumo público da atividade">
+          {[
+            ["Anúncios no ar", activeListings, "/meus-produtos"],
+            ["Vendas recebidas", receivedSales, "/minhas-compras?scope=sales"],
+            ["Avaliações", reviewCount, "/meus-produtos"],
+          ].map(([label, value, href]) => (
+            <a key={String(label)} href={String(href)} className="rounded-2xl border border-[#25252e] bg-[#15151a] px-3 py-4 transition hover:border-[#0084ff]/40 hover:bg-[#0084ff]/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]">
+              <span className="block text-[9px] font-black uppercase tracking-wide text-white/35 leading-tight">{String(label)}</span>
+              <span className="mt-1 block text-xl font-black text-white">{String(value)}</span>
+            </a>
+          ))}
+        </section>
 
         <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6 mb-5">
           <h2 className="font-bold text-white mb-1">Dados pessoais</h2>
