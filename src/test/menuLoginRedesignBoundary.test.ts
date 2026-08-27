@@ -13,6 +13,7 @@ describe("redesign próprio de menu e autenticação", () => {
     expect(shell).toContain("menuOpen={menuOpen}");
     expect(header).toContain('aria-controls="zxmax-main-menu"');
     expect(header).toContain("aria-expanded={menuOpen}");
+    expect(header).toContain("zx-icon-action hidden sm:flex border-[#5865F2]/25");
     expect(menu).toContain('id="zxmax-main-menu"');
     expect(menu).toContain('aria-modal="true"');
     expect(menu).toContain('event.key === "Escape"');

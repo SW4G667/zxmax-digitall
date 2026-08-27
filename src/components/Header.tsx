@@ -86,7 +86,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
         </form>
 
         <div className="flex items-center gap-1 ml-auto">
-          <a href={state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noopener noreferrer" className="zx-icon-action hidden xs:flex border-[#5865F2]/25 bg-[#5865F2]/10 hover:bg-[#5865F2]/20" title="Entrar no Discord">
+          <a href={state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noopener noreferrer" className="zx-icon-action hidden sm:flex border-[#5865F2]/25 bg-[#5865F2]/10 hover:bg-[#5865F2]/20" title="Entrar no Discord">
             <DiscordIcon className="w-4 h-4 text-[#5865F2]" />
           </a>
 
