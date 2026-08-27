@@ -13,6 +13,7 @@ import Termos from "./pages/Termos.tsx";
 import Privacidade from "./pages/Privacidade.tsx";
 import Regras from "./pages/Regras.tsx";
 import Perfil from "./pages/Perfil.tsx";
+import Categorias from "./pages/Categorias.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import Produto from "./pages/Produto.tsx";
 import Robux from "./pages/Robux.tsx";
@@ -35,6 +36,7 @@ const App = () => (
               <Routes>
                 <Route path="/" element={<Index view="store" />} />
                 <Route path="/loja" element={<Index view="store" />} />
+                <Route path="/categorias" element={<Categorias />} />
                 <Route path="/produto/:id" element={<Produto />} />
                 <Route path="/robux" element={<Robux />} />
                 <Route path="/favoritos" element={<Favoritos />} />

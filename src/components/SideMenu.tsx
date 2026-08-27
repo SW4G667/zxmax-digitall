@@ -4,7 +4,7 @@ import {
   X, Store, Package, ShoppingBag, Headset, Shield, User, Wallet, FileText,
   HelpCircle, Lock, ScrollText, Heart, ShieldCheck, TrendingUp, LogOut, LogIn,
   LayoutGrid, BadgeCheck, ClipboardCheck, Users, MessageSquare, Receipt,
-  BarChart3, KeyRound, Loader2, Flag, Settings, Tag,
+  BarChart3, KeyRound, Loader2, Flag, Settings, Tag, Sparkles, Zap,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useStore } from "@/store/StoreContext";
@@ -118,7 +118,9 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
       icon: TrendingUp,
       entries: [
         { key: "store", icon: Store, label: "Início / Loja", hint: "Todos os anúncios", to: "/loja", view: "store" },
-        { key: "cats", icon: LayoutGrid, label: "Categorias", hint: "Navegar por tipo de produto", to: "/loja?cat=" },
+        { key: "cats", icon: LayoutGrid, label: "Categorias", hint: "Navegar por tipo de produto", to: "/categorias" },
+        { key: "new", icon: Sparkles, label: "Novidades", hint: "Anúncios mais recentes", to: "/loja?sort=recentes" },
+        { key: "auto", icon: Zap, label: "Entrega automática", hint: "Filtrar produtos imediatos", to: "/loja?delivery=auto" },
         { key: "favs", icon: Heart, label: "Favoritos", hint: "Seus produtos salvos", to: "/favoritos", badge: count },
       ],
     };
