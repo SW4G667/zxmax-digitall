@@ -34,6 +34,8 @@ describe("checkout PIX exclusivo e neutro", () => {
     expect(product).toContain("product.sellerPublicId || state.userDirectory?.[product.sellerId]?.publicId || null");
     expect(product).toContain("ID público:");
     expect(product).not.toContain("sellerEmail");
+    expect(product).toContain("E-mail e telefone não são exibidos publicamente.");
+    expect(product).not.toContain('[["E-mail", null], ["Telefone", null]');
   });
 
   it("apenas atualiza a leitura do pedido depois do status validado pelo servidor", async () => {
