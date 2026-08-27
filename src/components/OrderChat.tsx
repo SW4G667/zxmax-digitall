@@ -146,8 +146,8 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
       if (error) throw error;
       await sendMessage(null, path);
       void load();
-    } catch (err: any) {
-      toast.error("Erro ao enviar imagem: " + (err?.message || "tente novamente"));
+    } catch {
+      toast.error("Não foi possível enviar a imagem. Atualize a página e tente novamente.");
     }
     setUploading(false);
     e.target.value = "";

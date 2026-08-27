@@ -31,4 +31,11 @@ describe("notificações de moderação", () => {
     expect(email).toContain("previousQuery = previousQuery.eq(\"charge_id\", idempotencyKey)");
     expect(email).toContain("charge_id: idempotencyKey || result.id || null");
   });
+
+  it("não expõe erros brutos de armazenamento ao enviar anexo no chat", async () => {
+    const chat = await source("src/components/OrderChat.tsx");
+
+    expect(chat).toContain("Não foi possível enviar a imagem. Atualize a página e tente novamente.");
+    expect(chat).not.toContain('toast.error("Erro ao enviar imagem: " + (err?.message');
+  });
 });
