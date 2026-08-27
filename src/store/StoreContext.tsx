@@ -217,7 +217,6 @@ interface StoreContextType {
   savePixCharge: (purchaseId: number, charge: { evopayId: string; qrCodeText: string; expiresAt: string }) => void;
   /** Atualiza pedidos sem descartar a última lista válida quando a rede falha. */
   refreshPurchases: () => Promise<{ ok: boolean; message?: string }>;
-  markOrderDelivered: (orderId: number) => Promise<boolean>;
   markPurchasePaid: (purchaseId: number) => void;
   approvePurchase: (id: number) => void;
   revertPurchase: (id: number) => void;
@@ -851,16 +850,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void refreshPurchases();
   }, [authUserId, sessionReady]);
 
-  const markOrderDelivered = async (orderId: number) => {
-    const { data, error } = await supabase.functions.invoke("mark-order-delivered", { body: { orderId } });
-    if (error || data?.error) return false;
-    setState((s) => ({
-      ...s,
-      purchases: s.purchases.map((p) => (p.id === orderId ? { ...p, status: "delivered" as const } : p)),
-    }));
-    return true;
-  };
-
   const markPurchasePaid = (id: number) => {
     void refreshPurchases();
   };
@@ -1308,7 +1297,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         state, login, logout, addProduct, updateProduct, approveProduct, rejectProduct, deleteProduct,
         refreshProducts: loadCatalog,
         catalogStatus,
-        buyProduct, savePixCharge, refreshPurchases, markOrderDelivered, markPurchasePaid, approvePurchase, revertPurchase, requestWithdraw,
+        buyProduct, savePixCharge, refreshPurchases, markPurchasePaid, approvePurchase, revertPurchase, requestWithdraw,
         approveWithdraw, rejectWithdraw, updateConfig, updateProfile,
         banUser, unbanUser, addTicket, replyTicket, closeTicket, resolveTicket,
         setGlobalNotice, publishNotice, updatePixKey, sendAdminChat,

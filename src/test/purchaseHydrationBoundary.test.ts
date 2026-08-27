@@ -42,6 +42,13 @@ describe("hidratação persistente de pedidos", () => {
     expect(edge).not.toContain("seller_email");
   });
 
+  it("mantém transições de entrega no contrato único de ações autorizadas", async () => {
+    const context = await source("src/store/StoreContext.tsx");
+    expect(context).toContain('action: "confirm_delivery"');
+    expect(context).not.toContain('functions.invoke("mark-order-delivered"');
+    expect(context).not.toContain("markOrderDelivered:");
+  });
+
   it("mantém a visão do vendedor limitada à identidade pública do comprador e ao chat do pedido", async () => {
     const purchases = await source("src/components/MyPurchasesView.tsx");
     const inventory = await source("src/components/InventoryView.tsx");
