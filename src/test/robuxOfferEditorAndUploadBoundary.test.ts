@@ -32,6 +32,14 @@ describe("formulário, upload e checkout de Robux", () => {
     expect(storageMigration).not.toContain("is_order_party((split_part(name");
   });
 
+  it("não descarta estoque ou mínimo em uma falha de autorização", async () => {
+    const store = await source("src/store/StoreContext.tsx");
+
+    expect(store).toContain('const retriable = code === "42703" || code === "PGRST204"');
+    expect(store).not.toContain('code === "42703" || code === "PGRST204" || code === "42501"');
+    expect(store).toContain('if ((code === "42703" || code === "PGRST204") && ("stock" in dbPayload');
+  });
+
   it("apresenta PIX uma única vez e não exibe fornecedor técnico ao comprador", async () => {
     const productPage = await source("src/pages/Produto.tsx");
 

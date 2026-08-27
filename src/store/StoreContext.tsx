@@ -636,7 +636,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       logProductError("addProduct:insert", error);
       // Only a missing column / column-grant problem justifies a narrower retry.
       const code = String(error?.code ?? "");
-      const retriable = code === "42703" || code === "PGRST204" || code === "42501";
+      // Falha de autorização não é incompatibilidade de schema. Reenviar sem
+      // estoque/mínimo nesse caso fazia uma oferta parecer salva com valores
+      // antigos. Só deployments sem coluna podem usar o payload reduzido.
+      const retriable = code === "42703" || code === "PGRST204";
       if (!retriable) break;
     }
 
@@ -707,7 +710,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Older deployments have column-level grants without the optional stock
       // fields. Retry the core product update instead of rejecting the edit.
       let { error } = await (supabase as any).from("products").update(dbPayload).eq("id", id);
-      if (error && ("stock" in dbPayload || "min_quantity" in dbPayload || "delivery_time" in dbPayload)) {
+      const code = String(error?.code ?? "");
+      if ((code === "42703" || code === "PGRST204") && ("stock" in dbPayload || "min_quantity" in dbPayload || "delivery_time" in dbPayload)) {
         const { stock, min_quantity, delivery_time, ...safePayload } = dbPayload;
         ({ error } = await (supabase as any).from("products").update(safePayload).eq("id", id));
       }
