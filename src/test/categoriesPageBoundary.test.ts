@@ -22,7 +22,11 @@ describe("página de categorias", () => {
     expect(menu).toContain('to: "/categorias"');
     expect(menu).toContain('to: "/loja?sort=recentes"');
     expect(menu).toContain('to: "/loja?delivery=auto"');
+    expect(menu).toContain('to: "/loja?sort=vendidos"');
+    expect(menu).toContain('to: "/loja?verified=1"');
+    expect(menu).toContain('to: "/robux"');
     expect(store).toContain('const sortParam = params.get("sort") as SortKey | null;');
     expect(store).toContain('const deliveryParam = params.get("delivery");');
+    expect(store).toContain('const verifiedParam = params.get("verified");');
   });
 });

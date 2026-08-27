@@ -77,10 +77,12 @@ export default function StoreView() {
     const q = params.get("q");
     const sortParam = params.get("sort") as SortKey | null;
     const deliveryParam = params.get("delivery");
+    const verifiedParam = params.get("verified");
     if (cat && categories.includes(cat)) setCategory(cat);
     if (q) setSearch(q);
     if (sortParam && SORT_OPTIONS.some((option) => option.id === sortParam)) setSort(sortParam);
     if (deliveryParam === "auto" || deliveryParam === "manual") setDeliveryFilter(deliveryParam);
+    setOnlyVerified(verifiedParam === "1");
   }, [location.search, categories]);
 
   useEffect(() => {

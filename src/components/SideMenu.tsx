@@ -118,8 +118,11 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
       icon: TrendingUp,
       entries: [
         { key: "store", icon: Store, label: "Início / Loja", hint: "Todos os anúncios", to: "/loja", view: "store" },
+        { key: "robux", icon: Sparkles, label: "Robux e Gift Cards", hint: "Loja de moedas e créditos", to: "/robux" },
         { key: "cats", icon: LayoutGrid, label: "Categorias", hint: "Navegar por tipo de produto", to: "/categorias" },
         { key: "new", icon: Sparkles, label: "Novidades", hint: "Anúncios mais recentes", to: "/loja?sort=recentes" },
+        { key: "popular", icon: TrendingUp, label: "Mais vendidos", hint: "Ofertas com mais vendas", to: "/loja?sort=vendidos" },
+        { key: "verified", icon: BadgeCheck, label: "Vendedores verificados", hint: "Filtrar contas verificadas", to: "/loja?verified=1" },
         { key: "auto", icon: Zap, label: "Entrega automática", hint: "Filtrar produtos imediatos", to: "/loja?delivery=auto" },
         { key: "favs", icon: Heart, label: "Favoritos", hint: "Seus produtos salvos", to: "/favoritos", badge: count },
       ],

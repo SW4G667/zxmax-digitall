@@ -99,6 +99,18 @@ serve(async (req) => {
     if (productError || !product || !product.approved) return json({ error: "Produto indisponível" }, 404);
     if (product.seller_id === user.id) return json({ error: "Você não pode comprar o próprio anúncio." }, 400);
 
+    // A public listing must always belong to an active marketplace identity.
+    // Old imported rows can keep a stale seller_id after the original account
+    // is removed; never create a payable order without a valid counterparty.
+    const { data: sellerProfile, error: sellerProfileError } = await admin
+      .from("profiles")
+      .select("user_id, public_id")
+      .eq("user_id", product.seller_id)
+      .maybeSingle();
+    if (sellerProfileError || !sellerProfile?.public_id) {
+      return json({ error: "Este anúncio não está disponível para compra no momento." }, 409);
+    }
+
     const variations = Array.isArray(product.variations) ? product.variations : [];
     const variation = variationName ? variations.find((v: any) => v?.name === variationName) : null;
     const unitPrice = Number(variation ? variation.price : product.price);
@@ -137,7 +149,7 @@ serve(async (req) => {
       buyer_public_id: String(profile?.public_id || ""),
       seller_id: product.seller_id,
       seller_email: product.seller_email || "",
-      seller_public_id: product.seller_public_id || "",
+      seller_public_id: product.seller_public_id || String(sellerProfile.public_id),
       status: "pending",
       amount,
       messages: [],

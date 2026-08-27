@@ -67,4 +67,23 @@ describe("UserProfileModal — privacidade", () => {
     const catalogMapper = storeContext.slice(catalogMapperStart, catalogMapperEnd);
     expect(catalogMapper).not.toContain("sellerEmail:");
   });
+
+  it("não fabrica ID público quando um anúncio legado não possui contraparte válida", async () => {
+    const [productSource, purchaseSource] = await Promise.all([
+      readFile(join(process.cwd(), "src/pages/Produto.tsx"), "utf8"),
+      readFile(join(process.cwd(), "supabase/functions/create-purchase/index.ts"), "utf8"),
+    ]);
+
+    expect(productSource).toContain("Conta do vendedor em validação");
+    expect(productSource).not.toContain('publicSellerId || "Indisponível"');
+    expect(purchaseSource).toContain("never create a payable order without a valid counterparty");
+    expect(purchaseSource).toContain("Este anúncio não está disponível para compra no momento.");
+  });
+
+  it("enriquece anúncios legados somente com o ID público de perfil e não com contato", async () => {
+    const publicProducts = await readFile(join(process.cwd(), "supabase/functions/public-products/index.ts"), "utf8");
+    expect(publicProducts).toContain('select("user_id, public_id")');
+    expect(publicProducts).toContain("seller_public_id: product.seller_public_id || publicIds.get");
+    expect(publicProducts).not.toContain('select("user_id, email");');
+  });
 });

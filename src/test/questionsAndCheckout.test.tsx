@@ -83,7 +83,7 @@ import ProdutoPage from "@/pages/Produto";
 const SELLER_ID = "seller-uuid";
 const PRODUCT = {
   id: 41, name: "Tetse", price: 5, category: "Bots Discord", seller: "Vendedor",
-  sellerId: SELLER_ID, approved: true, deliveryType: "manual" as const,
+  sellerId: SELLER_ID, sellerPublicId: "100001", approved: true, deliveryType: "manual" as const,
   variations: [], questions: [], sales: 0, image: "https://cdn.example/i.png",
 };
 

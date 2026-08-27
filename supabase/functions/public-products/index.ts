@@ -48,7 +48,28 @@ serve(async (req) => {
 
     if (products === null) throw lastError ?? new Error("catalog unavailable");
 
-    return new Response(JSON.stringify({ products }), {
+    // Old product rows may predate seller_public_id. Enrich only with the
+    // public identifier from profiles; do not expose contact data.
+    const sellerIds = [...new Set(
+      products.map((product: any) => String(product?.seller_id || "")).filter(Boolean),
+    )];
+    const publicIds = new Map<string, string>();
+    if (sellerIds.length) {
+      const { data: profiles, error: profileError } = await serviceClient
+        .from("profiles")
+        .select("user_id, public_id")
+        .in("user_id", sellerIds);
+      if (profileError) throw profileError;
+      for (const profile of profiles || []) {
+        if (profile.user_id && profile.public_id) publicIds.set(String(profile.user_id), String(profile.public_id));
+      }
+    }
+    const enrichedProducts = products.map((product: any) => ({
+      ...product,
+      seller_public_id: product.seller_public_id || publicIds.get(String(product.seller_id)) || null,
+    }));
+
+    return new Response(JSON.stringify({ products: enrichedProducts }), {
       headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "public, max-age=15" },
     });
   } catch (error) {
