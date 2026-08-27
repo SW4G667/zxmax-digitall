@@ -40,6 +40,8 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   session: Session | null;
+  /** True somente após o SDK confirmar ou rejeitar a sessão persistida. */
+  sessionReady: boolean;
   loading: boolean;
   banned: BanInfo | null;
   isAdmin: boolean;
@@ -97,6 +99,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [bootSession] = useState<Session | null>(() => peekStoredSession());
   const [user, setUser] = useState<User | null>(() => bootSession?.user ?? null);
   const [session, setSession] = useState<Session | null>(bootSession);
+  // O usuário armazenado localmente é apenas otimista. Consumidores que fazem
+  // chamadas protegidas aguardam este sinal antes de usarem o token do SDK.
+  const [sessionReady, setSessionReady] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(() => !bootSession);
   const [banned, setBanned] = useState<BanInfo | null>(null);
@@ -235,10 +240,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         if (!mounted) return;
         if (ignoreSignedOutRecoveryRef.current) {
+          setSessionReady(true);
           setLoading(false);
           return;
         }
         applySession(sess);
+        setSessionReady(true);
         if (sess?.user) {
           setLoading(false);
           hydrateAccount(sess.user.id);
@@ -254,7 +261,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (e) {
         console.error("Auth init error", e);
-        if (mounted) setLoading(false);
+        if (mounted) {
+          // Não mantemos uma identidade otimista quando o SDK não conseguiu
+          // confirmar a sessão; evita queries RLS com token ainda indisponível.
+          applySession(null);
+          setSessionReady(true);
+          setLoading(false);
+        }
       }
     };
 
@@ -262,6 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, sess) => {
       if (!mounted) return;
+      setSessionReady(true);
       const nextUser = sess?.user ?? null;
       const prevId = userRef.current?.id ?? null;
 
@@ -516,6 +530,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // the Supabase SDK lock stalls or the user reloads before it releases.
     userRef.current = null;
     setSession(null);
+    setSessionReady(false);
     setUser(null);
     setProfile(null);
     setBanned(null);
@@ -566,6 +581,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         profile,
         session,
+        sessionReady,
         loading,
         banned,
         isAdmin,

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useStore, Purchase } from "@/store/StoreContext";
 import { ShoppingBagEmoji, StarEmoji } from "@/components/CustomEmojis";
-import { Search, ShieldAlert, Copy, ArrowLeft, QrCode, MessageSquare, Eye, PackageCheck, CircleDot, CheckCircle2 } from "lucide-react";
+import { Search, ShieldAlert, Copy, ArrowLeft, QrCode, MessageSquare, Eye, PackageCheck, CircleDot, CheckCircle2, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import OrderChat from "@/components/OrderChat";
 import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
 import { supabase } from "@/integrations/supabase/client";
 import { unwrapEdgeCall } from "@/lib/edgeErrors";
+import { useAuth } from "@/hooks/useAuth";
 
 const statusMap: Record<Purchase["status"], { label: string; cls: string }> = {
   pending: { label: "Aguardando pagamento", cls: "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30" },
@@ -55,6 +56,7 @@ function StageStepper({ status }: { status: Purchase["status"] }) {
 
 export default function MyPurchasesView({ initialSelectedId }: { initialSelectedId?: number | null }) {
   const { state, confirmDelivery, openDispute, reviewPurchase, savePixCharge, refreshPurchases } = useStore();
+  const { sessionReady } = useAuth();
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(initialSelectedId || null);
 
@@ -71,6 +73,34 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
   const [pixCharge, setPixCharge] = useState<PixCharge | null>(null);
   const [resumeId, setResumeId] = useState<number | null>(null);
   const [loadingPix, setLoadingPix] = useState<number | null>(null);
+  const [syncState, setSyncState] = useState<"loading" | "ready" | "error">("loading");
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const refreshPurchasesRef = useRef(refreshPurchases);
+  refreshPurchasesRef.current = refreshPurchases;
+
+  const refreshOrderList = useCallback(async (notify = false) => {
+    if (!sessionReady) {
+      setSyncState("loading");
+      return;
+    }
+    setSyncState("loading");
+    setSyncMessage(null);
+    const result = await refreshPurchasesRef.current();
+    if (!result.ok) {
+      setSyncState("error");
+      setSyncMessage(result.message || "Não foi possível atualizar seus pedidos agora.");
+      if (notify) toast.error("Não foi possível atualizar seus pedidos.");
+      return;
+    }
+    setSyncState("ready");
+    if (notify) toast.success("Pedidos atualizados.");
+  }, [sessionReady]);
+
+  // Segunda camada de defesa: a tela também atualiza ao ser aberta. Isso cobre
+  // navegação direta para /minhas-compras após o SDK terminar de restaurar o JWT.
+  useEffect(() => {
+    void refreshOrderList();
+  }, [refreshOrderList]);
 
   const visiblePurchases = state.currentUser?.isAdmin
     ? state.purchases
@@ -87,10 +117,21 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
       product?.name || "",
       String(p.id),
       p.variationName || "",
-      ...(state.currentUser?.isAdmin ? [p.buyerEmail || "", p.sellerEmail || ""] : []),
+      String(p.buyerPublicId || ""),
+      String(p.sellerPublicId || ""),
     ].join(" ").toLowerCase();
     return hay.includes(q);
   }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const purchaseSummary = visiblePurchases.reduce(
+    (summary, purchase) => {
+      summary.total += 1;
+      if (purchase.status === "pending") summary.pending += 1;
+      if (["paid", "delivered_pending_confirmation"].includes(purchase.status)) summary.inProgress += 1;
+      if (purchase.status === "delivered") summary.done += 1;
+      return summary;
+    },
+    { total: 0, pending: 0, inProgress: 0, done: 0 },
+  );
 
   const selected = selectedId ? state.purchases.find((p) => p.id === selectedId) : null;
   const selectedProduct = selected ? state.products.find((p) => p.id === selected.productId) : null;
@@ -206,7 +247,7 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
             <h3 className="font-bold text-foreground truncate">{selectedProduct.name}</h3>
             <p className="text-xs text-muted-foreground">
               {state.currentUser?.isAdmin
-                ? `Comprador: ${selected.buyerEmail} · Vendedor: ${selected.sellerEmail}`
+                ? `Comprador #${selected.buyerPublicId || "—"} · Vendedor #${selected.sellerPublicId || "—"}`
                 : selectedAsSeller
                   ? selectedCounterparty
                   : <>Vendedor: <span className="text-primary font-semibold">{selectedProduct.seller}</span></>}
@@ -319,13 +360,45 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
 
   return (
     <div className="animate-fade-in-up">
-      <div className="mb-10">
-        <div className="flex items-center gap-3 mb-2">
-          <h1 className="text-3xl md:text-4xl font-black text-foreground">Minhas Compras</h1>
-          <ShoppingBagEmoji className="w-8 h-8" />
+      <div className="mb-7">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <h1 className="text-3xl md:text-4xl font-black text-foreground">Meus pedidos</h1>
+              <ShoppingBagEmoji className="w-8 h-8" />
+            </div>
+            <p className="text-muted-foreground">Acompanhe suas compras e vendas, com status, entrega e chat protegido por pedido.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void refreshOrderList(true)} disabled={syncState === "loading"} className="shrink-0 gap-2">
+            {syncState === "loading" ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Atualizar
+          </Button>
         </div>
-        <p className="text-muted-foreground">Acompanhe suas compras e vendas, com status, entrega e chat protegido por pedido.</p>
       </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5" aria-label="Resumo dos pedidos">
+        {[
+          ["Total", purchaseSummary.total, "text-foreground"],
+          ["Aguardando pagamento", purchaseSummary.pending, "text-yellow-600 dark:text-yellow-400"],
+          ["Em andamento", purchaseSummary.inProgress, "text-primary"],
+          ["Concluídos", purchaseSummary.done, "text-emerald-600 dark:text-emerald-400"],
+        ].map(([label, value, color]) => (
+          <div key={String(label)} className="rounded-2xl border border-border/50 bg-card/70 px-4 py-3">
+            <p className="text-[10px] uppercase tracking-wide font-bold text-muted-foreground truncate">{label}</p>
+            <p className={`mt-1 text-2xl leading-none font-black ${color}`}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {syncState === "error" && (
+        <div role="alert" className="mb-5 flex items-start justify-between gap-4 rounded-2xl border border-destructive/30 bg-destructive/5 p-4">
+          <div>
+            <p className="font-bold text-sm text-foreground">Não foi possível sincronizar os pedidos agora.</p>
+            <p className="mt-1 text-xs text-muted-foreground">{syncMessage} A lista anterior foi preservada. Tente atualizar novamente.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void refreshOrderList(true)} className="shrink-0">Tentar de novo</Button>
+        </div>
+      )}
 
       <div className="bg-card rounded-2xl px-4 py-3 mb-8 border border-border/40 flex items-center gap-3">
         <Search className="w-4 h-4 text-muted-foreground" />
@@ -333,6 +406,12 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
       </div>
 
       <div className="grid gap-4">
+        {syncState === "loading" && visiblePurchases.length === 0 && (
+          <div className="glass-card p-8 flex items-center gap-3 text-muted-foreground" role="status">
+            <Loader2 className="w-5 h-5 animate-spin text-primary" />
+            <span className="text-sm font-medium">Sincronizando seus pedidos com segurança...</span>
+          </div>
+        )}
         {filtered.map((p) => {
           const prod = state.products.find((pr) => pr.id === p.productId);
           return (
@@ -392,10 +471,10 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
           );
         })}
 
-        {filtered.length === 0 && (
+        {syncState !== "loading" && filtered.length === 0 && (
           <div className="text-center py-20 bg-card rounded-3xl border-2 border-dashed border-border">
             <p className="text-3xl mb-3">🛍️</p>
-            <p className="text-muted-foreground font-medium">Você ainda não fez nenhuma compra.</p>
+            <p className="text-muted-foreground font-medium">{search ? "Nenhum pedido corresponde à sua busca." : "Você ainda não tem pedidos vinculados a esta conta."}</p>
           </div>
         )}
       </div>

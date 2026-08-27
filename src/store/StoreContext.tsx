@@ -215,7 +215,8 @@ interface StoreContextType {
   deleteProduct: (id: number) => Promise<{ paused: boolean }>;
   buyProduct: (id: number, variation?: ProductVariation, quantity?: number, paymentMethod?: string) => Promise<number | null>;
   savePixCharge: (purchaseId: number, charge: { evopayId: string; qrCodeText: string; expiresAt: string }) => void;
-  refreshPurchases: () => Promise<void>;
+  /** Atualiza pedidos sem descartar a última lista válida quando a rede falha. */
+  refreshPurchases: () => Promise<{ ok: boolean; message?: string }>;
   markOrderDelivered: (orderId: number) => Promise<boolean>;
   markPurchasePaid: (purchaseId: number) => void;
   approvePurchase: (id: number) => void;
@@ -301,10 +302,10 @@ const publicIdFromProfile = (profile: any, fallback: string) => String(profile?.
 const mapPurchaseRow = (p: any): Purchase => ({
   id: Number(p.id),
   productId: Number(p.product_id),
-  buyerEmail: p.buyer_email,
+  buyerEmail: p.buyer_email || "",
   buyerId: p.buyer_id,
   buyerPublicId: p.buyer_public_id,
-  sellerEmail: p.seller_email,
+  sellerEmail: p.seller_email || "",
   sellerId: p.seller_id,
   sellerPublicId: p.seller_public_id,
   status: p.status,
@@ -352,7 +353,7 @@ const mapWithdrawalRow = (w: any): Withdrawal => ({
 });
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const { user: authUser, profile, isAdmin, signOut } = useAuth();
+  const { user: authUser, profile, isAdmin, sessionReady, signOut } = useAuth();
   const [state, setState] = useState<AppState>(loadState);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>("loading");
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -814,13 +815,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshPurchases = async () => {
-    const { data, error } = await (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,payment_provider,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at,delivered_pending_at,refund_reason,refunded_at,seller_released,released_at").order("created_at", { ascending: false });
-    if (error) {
-      console.warn("[zxmax:purchases:load]", error.message || error);
-      return;
+    if (!authUserRef.current || !sessionReady) {
+      return { ok: false, message: "A sessão ainda está sendo verificada." };
     }
-    if (!data) return;
-    const purchases = (data as any[]).map(mapPurchaseRow) as Purchase[];
+    const result = await unwrapEdgeCall<{ purchases?: any[] }>(
+      await supabase.functions.invoke("get-my-purchases", { body: {} }),
+      "Não foi possível carregar seus pedidos.",
+    );
+    if (result.errorMessage) {
+      console.warn("[zxmax:purchases:load]", result.errorMessage);
+      return { ok: false, message: result.errorMessage };
+    }
+    const purchases = (result.data?.purchases || []).map(mapPurchaseRow) as Purchase[];
     // Check if any delivered_pending_confirmation order is > 3 days old and auto-release
     const hasPendingAutoRelease = purchases.some(
       (p) => p.status === "delivered_pending_confirmation" && p.deliveredPendingAt && (Date.now() - new Date(p.deliveredPendingAt).getTime() >= 3 * 24 * 60 * 60 * 1000)
@@ -829,6 +835,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await checkAutoReleaseOrders();
     }
     setState((s) => ({ ...s, purchases }));
+    return { ok: true };
   };
 
   // Orders must be rehydrated from the RLS-protected source after every
@@ -836,12 +843,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // retained the optimistic state created in this browser tab, so a reload
   // appeared to erase a legitimate pending purchase.
   useEffect(() => {
-    if (!authUserId) {
+    if (!authUserId && sessionReady) {
       setState((s) => (s.purchases.length ? { ...s, purchases: [] } : s));
       return;
     }
+    if (!authUserId || !sessionReady) return;
     void refreshPurchases();
-  }, [authUserId]);
+  }, [authUserId, sessionReady]);
 
   const markOrderDelivered = async (orderId: number) => {
     const { data, error } = await supabase.functions.invoke("mark-order-delivered", { body: { orderId } });

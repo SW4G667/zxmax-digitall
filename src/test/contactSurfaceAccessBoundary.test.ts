@@ -18,14 +18,16 @@ describe("superfícies legítimas de e-mail", () => {
     expect(more).toContain("p.buyerEmail");
   });
 
-  it("mantém os dados de pedido em rota autenticada e não pesquisa e-mail de contraparte para participante comum", async () => {
+  it("mantém os dados de pedido em rota autenticada e não pesquisa contato de contraparte", async () => {
     const index = await source("src/pages/Index.tsx");
     const purchases = await source("src/components/MyPurchasesView.tsx");
     const inventory = await source("src/components/InventoryView.tsx");
 
     expect(index).toContain('view === "purchases" && user && <MyPurchasesView');
     expect(purchases).toContain("p.buyerId === state.currentUser?.id || p.sellerId === state.currentUser?.id");
-    expect(purchases).toContain("state.currentUser?.isAdmin ? [p.buyerEmail || \"\", p.sellerEmail || \"\"] : []");
+    expect(purchases).toContain("String(p.buyerPublicId || \"\")");
+    expect(purchases).toContain("String(p.sellerPublicId || \"\")");
+    expect(purchases).not.toContain("state.currentUser?.isAdmin ? [p.buyerEmail || \"\", p.sellerEmail || \"\"] : []");
     expect(inventory).toContain("p.sellerId === state.currentUser?.id");
   });
 });
