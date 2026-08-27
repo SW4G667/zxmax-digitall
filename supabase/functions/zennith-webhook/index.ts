@@ -52,7 +52,7 @@ serve(async (req) => {
     // rejeitados antes que qualquer pedido seja consultado ou atualizado.
     const apiKey = String(Deno.env.get("ZENNITH_API_KEY") || "").trim();
     const webhookSecret = String(Deno.env.get("ZENNITH_WEBHOOK_SECRET") || "").trim();
-    const baseUrl = String(cfg.baseUrl || DEFAULT_BASE).replace(/\/$/, "");
+    const baseUrl = DEFAULT_BASE;
 
     const timestamp = req.headers.get("x-zennith-timestamp") || "";
     const signature = (req.headers.get("x-zennith-signature") || "").replace(/^sha256=/i, "").trim().toLowerCase();

@@ -4,8 +4,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 const DEFAULTS = {
-  zennithpay: { baseUrl: "https://zennithpay.online/api/v1", pixEnabled: false, pixFee: 0.9 },
-  vexopay: { baseUrl: "https://www.vexopay.com.br/api", pixEnabled: false, cryptoEnabled: false, pixFee: 1.2 },
+  zennithpay: { pixEnabled: false, pixFee: 0.9 },
+  vexopay: { pixEnabled: false, cryptoEnabled: false, pixFee: 1.2 },
   stripe: { cardEnabled: false, boletoEnabled: false, boletoExpiresAfterDays: 3 },
 };
 const clampFee = (value: unknown, fallback: number) => {
@@ -31,7 +31,11 @@ serve(async (req) => {
     const action = String(body.action || "get");
     const { data: rows, error } = await admin.from("app_settings").select("key,value").in("key", ["zennithpay", "vexopay", "stripe"]);
     if (error) return json({ error: "Não foi possível consultar a configuração de pagamentos.", code: "payment_settings_unavailable" }, 503);
-    const row = <T extends keyof typeof DEFAULTS>(name: T) => ({ ...DEFAULTS[name], ...((rows || []).find((item: any) => item.key === name)?.value || {}) });
+    const row = <T extends keyof typeof DEFAULTS>(name: T) => {
+      const raw = (rows || []).find((item: any) => item.key === name)?.value;
+      const { baseUrl: _legacyBaseUrl, ...safeValues } = raw && typeof raw === "object" ? raw : {};
+      return { ...DEFAULTS[name], ...safeValues };
+    };
     const zennith = row("zennithpay");
     const vexopay = row("vexopay");
     const stripe = row("stripe");
@@ -92,7 +96,6 @@ serve(async (req) => {
           boletoExpiresAfterDays: Number.isInteger(Number(incoming.boletoExpiresAfterDays)) && Number(incoming.boletoExpiresAfterDays) >= 0 && Number(incoming.boletoExpiresAfterDays) <= 60 ? Number(incoming.boletoExpiresAfterDays) : current.boletoExpiresAfterDays,
         }
         : {
-          baseUrl: typeof incoming.baseUrl === "string" && /^https:\/\//.test(incoming.baseUrl) ? incoming.baseUrl.replace(/\/$/, "") : current.baseUrl,
           pixEnabled: incoming.pixEnabled === true,
           pixFee: clampFee(incoming.pixFee, current.pixFee),
           ...(provider === "vexopay" ? { cryptoEnabled: incoming.cryptoEnabled === true } : {}),

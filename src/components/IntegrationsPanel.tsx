@@ -5,7 +5,6 @@ import { unwrapEdgeCall } from "@/lib/edgeErrors";
 import { toast } from "sonner";
 
 type GatewayConfig = {
-  baseUrl?: string;
   pixEnabled?: boolean;
   cryptoEnabled?: boolean;
   pixFee?: number;
@@ -48,8 +47,8 @@ const PROVIDERS: Provider[] = [
 ];
 
 const emptyConfig: Record<Provider["id"], GatewayConfig> = {
-  zennithpay: { baseUrl: "https://zennithpay.online/api/v1", pixEnabled: false, pixFee: 0.9 },
-  vexopay: { baseUrl: "https://www.vexopay.com.br/api", pixEnabled: false, cryptoEnabled: false, pixFee: 1.2 },
+  zennithpay: { pixEnabled: false, pixFee: 0.9 },
+  vexopay: { pixEnabled: false, cryptoEnabled: false, pixFee: 1.2 },
 };
 
 export default function IntegrationsPanel() {
@@ -168,7 +167,10 @@ export default function IntegrationsPanel() {
               <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold ${ready ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}><BadgeCheck className="h-3.5 w-3.5" />{ready ? "Secrets detectados" : "Secrets pendentes"}</span>
             </div>
             <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <label className="space-y-1 text-sm font-medium">Base URL<input value={config.baseUrl || ""} onChange={(event) => update(provider.id, "baseUrl", event.target.value)} className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs" /></label>
+              <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+                <p className="font-semibold text-foreground">Endpoint protegido</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">A rota oficial é fixada no servidor. O painel não aceita URLs arbitrárias nem armazena chaves.</p>
+              </div>
               <label className="space-y-1 text-sm font-medium">Taxa PIX para o comprador (R$)<input type="number" min="0" max="1000" step="0.01" value={config.pixFee ?? 0} onChange={(event) => update(provider.id, "pixFee", event.target.value)} className="w-full rounded-lg border border-input bg-background px-3 py-2" /></label>
             </div>
             <div className="mt-4 flex flex-wrap gap-x-6 gap-y-3 text-sm">

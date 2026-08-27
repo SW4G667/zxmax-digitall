@@ -39,14 +39,11 @@ serve(async (req) => {
     // Credenciais da VexoPay existem apenas no ambiente da Edge Function.
     const ci = String(Deno.env.get("VEXOPAY_CLIENT_ID") || "").trim();
     const cs = String(Deno.env.get("VEXOPAY_CLIENT_SECRET") || "").trim();
-    let baseUrl = "https://www.vexopay.com.br/api";
+    const baseUrl = "https://www.vexopay.com.br/api";
     let cryptoEnabled = false;
 
     try {
       const { data: setting } = await serviceClient.from("app_settings").select("value").eq("key", "vexopay").maybeSingle();
-      if (typeof setting?.value?.baseUrl === "string" && setting.value.baseUrl.trim() !== "") {
-        baseUrl = setting.value.baseUrl.replace(/\/$/, "");
-      }
       cryptoEnabled = setting?.value?.cryptoEnabled === true;
     } catch {}
 

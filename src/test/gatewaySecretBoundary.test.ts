@@ -30,11 +30,15 @@ describe("fronteira de secrets dos gateways", () => {
   });
 
   it("mantém o contrato VexoPay somente em secrets de ambiente e endpoints documentados", async () => {
-    const [crypto, status, purchase, webhook] = await Promise.all([
+    const [crypto, status, purchase, webhook, pix, zennithPix, zennithWebhook, integrations] = await Promise.all([
       source("supabase/functions/create-vexopay-crypto/index.ts"),
       source("supabase/functions/check-evopay-status/index.ts"),
       source("supabase/functions/create-purchase/index.ts"),
       source("supabase/functions/vexopay-webhook/index.ts"),
+      source("supabase/functions/create-evopay-pix/index.ts"),
+      source("supabase/functions/create-zennith-pix/index.ts"),
+      source("supabase/functions/zennith-webhook/index.ts"),
+      source("supabase/functions/integrations-config/index.ts"),
     ]);
     expect(crypto).toContain('Deno.env.get("VEXOPAY_CLIENT_ID")');
     expect(crypto).not.toContain("setting?.value?.clientId");
@@ -54,5 +58,11 @@ describe("fronteira de secrets dos gateways", () => {
     expect(webhook).toContain('return json({ error: "Missing transaction id" }, 400)');
     expect(webhook).toContain('return json({ error: "Unsupported webhook event" }, 400)');
     expect(webhook).toContain('new Set(["payment.completed", "payment.failed", "payment.expired"])');
+    for (const sourceCode of [crypto, status, webhook, pix, zennithPix, zennithWebhook]) {
+      expect(sourceCode).not.toContain("config.baseUrl");
+      expect(sourceCode).not.toContain("cfg.baseUrl");
+    }
+    expect(integrations).not.toContain("incoming.baseUrl");
+    expect(integrations).toContain("baseUrl: _legacyBaseUrl");
   });
 });

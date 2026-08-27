@@ -49,7 +49,7 @@ serve(async (req) => {
       const key = String(Deno.env.get("ZENNITH_API_KEY") || "").trim();
       const zennith = configuration("zennithpay");
       if (!key || zennith.pixEnabled !== true) return json({ error: "Gateway ZennithPay indisponível para consulta." }, 503);
-      const baseUrl = typeof zennith.baseUrl === "string" && zennith.baseUrl.startsWith("https://") ? zennith.baseUrl.replace(/\/$/, "") : "https://zennithpay.online/api/v1";
+      const baseUrl = "https://zennithpay.online/api/v1";
       const reference = chargeId.slice("zennith:".length);
       const response = await fetch(`${baseUrl}/payments/${encodeURIComponent(reference)}/status`, { headers: { Accept: "application/json", "X-API-Key": key } });
       const payload = await response.json().catch(() => ({} as Record<string, unknown>));
@@ -63,7 +63,7 @@ serve(async (req) => {
       const vexo = configuration("vexopay");
       const enabled = provider === "vexopay_pix" ? vexo.pixEnabled === true : vexo.cryptoEnabled === true;
       if (!ci || !cs || !enabled) return json({ error: "Gateway VexoPay indisponível para consulta." }, 503);
-      const baseUrl = typeof vexo.baseUrl === "string" && vexo.baseUrl.startsWith("https://") ? vexo.baseUrl.replace(/\/$/, "") : "https://www.vexopay.com.br/api";
+      const baseUrl = "https://www.vexopay.com.br/api";
       const transaction = chargeId.slice("vexo:".length);
       const statusPath = provider === "vexopay_pix"
         ? `/gateway/pix-status?transactionId=${encodeURIComponent(transaction)}`

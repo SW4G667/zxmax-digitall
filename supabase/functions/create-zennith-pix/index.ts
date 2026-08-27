@@ -34,7 +34,7 @@ serve(async (req) => {
     // Nunca ler credencial do banco: a API Key fica exclusivamente nos secrets
     // da função Edge e não pode ser acessada pela interface administrativa.
     const apiKey = String(Deno.env.get("ZENNITH_API_KEY") || "").trim();
-    const baseUrl = String(cfg.baseUrl || DEFAULT_BASE).replace(/\/$/, "");
+    const baseUrl = DEFAULT_BASE;
     const pixEnabled = typeof cfg.pixEnabled === "boolean" ? cfg.pixEnabled : cfg.enabled !== false;
     if (!apiKey || !pixEnabled) {
       return json({ error: "O PIX está temporariamente indisponível. Avise o suporte.", code: "zennith_not_configured" }, 400);

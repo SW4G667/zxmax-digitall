@@ -19,7 +19,7 @@ serve(async (req) => {
     const { data: setting } = await admin.from("app_settings").select("value").eq("key", "vexopay").maybeSingle();
     const config = (setting?.value || {}) as Record<string, unknown>;
     const enabled = config.pixEnabled === true;
-    const baseUrl = typeof config.baseUrl === "string" && config.baseUrl.startsWith("https://") ? config.baseUrl.replace(/\/$/, "") : "https://www.vexopay.com.br/api";
+    const baseUrl = "https://www.vexopay.com.br/api";
     if (!enabled || !clientId || !clientSecret) return json({ error: "O PIX via VexoPay está temporariamente indisponível.", code: "vexopay_not_configured" }, 400);
 
     const body = await req.json().catch(() => ({}));

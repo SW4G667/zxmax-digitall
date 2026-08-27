@@ -35,7 +35,7 @@ serve(async (req) => {
     const config = (configRow?.value || {}) as Record<string, unknown>;
     const enabled = purchase.payment_provider === "vexopay_pix" ? config.pixEnabled === true : config.cryptoEnabled === true;
     if (!enabled) throw new Error("vexopay_disabled");
-    const baseUrl = typeof config.baseUrl === "string" && config.baseUrl.startsWith("https://") ? config.baseUrl.replace(/\/$/, "") : "https://www.vexopay.com.br/api";
+    const baseUrl = "https://www.vexopay.com.br/api";
     const statusPath = purchase.payment_provider === "vexopay_pix"
       ? `/gateway/pix-status?transactionId=${encodeURIComponent(transactionId)}`
       : `/gateway/crypto-status?id=${encodeURIComponent(transactionId)}`;
