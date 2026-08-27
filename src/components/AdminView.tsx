@@ -653,16 +653,21 @@ export default function AdminView() {
         <div className="space-y-6 max-w-3xl">
           <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
             <h3 className="font-black text-white flex items-center gap-2"><Users className="w-5 h-5 text-[#0084ff]" /> Cargos e Permissões</h3>
-            <p className="text-xs text-white/50 mt-2">Conceda somente cargos existentes; a autorização e a auditoria são executadas no banco.</p>
+            <p className="text-xs text-white/50 mt-2">Cada atribuição substitui o cargo anterior, é auditada no banco e não permite rebaixar a própria conta administrativa.</p>
+            <div className="mt-4 grid gap-2 md:grid-cols-3 text-xs">
+              <div className="rounded-xl border border-[#253149] bg-[#0d1420] p-3"><p className="font-bold text-white">Admin</p><p className="mt-1 text-white/50">Operações, catálogo, pagamentos e auditoria.</p></div>
+              <div className="rounded-xl border border-[#253149] bg-[#0d1420] p-3"><p className="font-bold text-white">Suporte</p><p className="mt-1 text-white/50">Identificação organizacional, sem poderes financeiros ou administrativos.</p></div>
+              <div className="rounded-xl border border-[#253149] bg-[#0d1420] p-3"><p className="font-bold text-white">Usuário</p><p className="mt-1 text-white/50">Compra, venda e recursos próprios da conta.</p></div>
+            </div>
           </div>
 
           <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6 space-y-4">
-            <h4 className="font-bold text-white">Dar cargo por e-mail</h4>
+              <h4 className="font-bold text-white">Alterar cargo por e-mail</h4>
             <div className="grid gap-3">
               <input id="role-email" placeholder="E-mail do usuário" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none" />
               <select id="role-select" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm">
-                <option value="admin">Admin (total)</option>
-                <option value="support">Suporte (chat)</option>
+                <option value="admin">Admin (operações completas)</option>
+                <option value="support">Suporte (sem financeiro/admin)</option>
                 <option value="user">Usuário padrão</option>
               </select>
               <button
@@ -675,7 +680,7 @@ export default function AdminView() {
                   if (role !== "admin" && role !== "support" && role !== "user") return toast.error("Cargo inválido");
                   const { error } = await (supabase as any).rpc("assign_user_role", { _email: email, _role: role });
                   if (error) return toast.error(error.message);
-                  toast.success("Cargo atualizado com auditoria.");
+                  toast.success("Cargo substituído com auditoria.");
                   emailInput.value = "";
                 }}
                 className="bg-[#0084ff] text-white px-6 py-3 rounded-xl font-bold text-sm"
