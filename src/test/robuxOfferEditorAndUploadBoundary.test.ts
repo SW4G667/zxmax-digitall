@@ -23,6 +23,7 @@ describe("formulário, upload e checkout de Robux", () => {
   it("higieniza a falha de upload e deixa imagens de anúncio no bucket público próprio", async () => {
     const inventory = await source("src/components/InventoryView.tsx");
     const storageMigration = await source("supabase/migrations/20260827071500_isolate_storage_policy_helpers.sql");
+    const productImageLimits = await source("supabase/migrations/20260827074500_restrict_product_image_uploads.sql");
 
     expect(inventory).toContain('storage.from("product-images").upload');
     expect(inventory).toContain('storage.from("product-images").getPublicUrl');
@@ -30,6 +31,8 @@ describe("formulário, upload e checkout de Robux", () => {
     expect(inventory).not.toContain('toast.error("Erro upload: " +');
     expect(storageMigration).toContain("is_current_order_attachment_party");
     expect(storageMigration).not.toContain("is_order_party((split_part(name");
+    expect(productImageLimits).toContain("file_size_limit = 5242880");
+    expect(productImageLimits).toContain("'image/jpeg', 'image/png', 'image/webp'");
   });
 
   it("não descarta estoque ou mínimo em uma falha de autorização", async () => {
@@ -38,6 +41,16 @@ describe("formulário, upload e checkout de Robux", () => {
     expect(store).toContain('const retriable = code === "42703" || code === "PGRST204"');
     expect(store).not.toContain('code === "42703" || code === "PGRST204" || code === "42501"');
     expect(store).toContain('if ((code === "42703" || code === "PGRST204") && ("stock" in dbPayload');
+  });
+
+  it("vincula anúncios futuros ao perfil da sessão, sem duplicar o gatilho Robux", async () => {
+    const correction = await source("supabase/migrations/20260827073000_fix_product_identity_profile_lookup.sql");
+
+    expect(correction).toContain("WHERE user_id = auth.uid()");
+    expect(correction).toContain("DROP TRIGGER IF EXISTS canonicalize_robux_offer_trg");
+    expect(correction).toContain("DROP TRIGGER IF EXISTS a_canonicalize_robux_offer_trg");
+    expect(correction).toContain("CREATE TRIGGER a_canonicalize_robux_offer_trg");
+    expect(correction).not.toContain("WHERE id = auth.uid()");
   });
 
   it("apresenta PIX uma única vez e não exibe fornecedor técnico ao comprador", async () => {

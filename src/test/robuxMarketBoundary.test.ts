@@ -1,13 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { formatRobuxUnitPrice } from "@/lib/catalog";
+import { formatRobuxUnitPrice, unitPriceFromPackage } from "@/lib/catalog";
 
 describe("mercado de Robux", () => {
   it("preserva precisão útil para o valor unitário sem alterar os totais monetários", () => {
     expect(formatRobuxUnitPrice(0.0053)).toMatch(/0,0053/);
     expect(formatRobuxUnitPrice(0.0271)).toMatch(/0,0271/);
     expect(formatRobuxUnitPrice("invalid")).toBe("—");
+    expect(unitPriceFromPackage({ price: 2, category: "Robux e Gift Cards", variations: [{ name: "1000 Robux" }] })).toBe(0.002);
   });
 
   it("renderiza um comparador próprio de ofertas reais e inicia na quantidade mínima", async () => {
@@ -24,6 +25,10 @@ describe("mercado de Robux", () => {
     expect(productPage).toContain("setQuantityDraft(event.target.value.replace(/\\D/g, \"\"))");
     expect(productPage).toContain("Sem avaliações registradas");
     expect(productPage).toContain("formatRobuxUnitPrice");
+    expect(productPage).toContain("const unitPrice = isRobux");
+    expect(productPage).toContain("isRobux ? undefined : (selectedVariation || undefined)");
+    expect(productPage).toContain("A taxa aplicável aparece ao escolher a forma de pagamento.");
+    expect(productPage).not.toContain("inclui taxa de {formatBRL(BUYER_FEE)}");
     expect(productPage).not.toContain("Eldorado-style");
     expect(productPage).not.toContain("TradeShield");
     expect(marketPage).toContain("Mercado de Robux");

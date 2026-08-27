@@ -148,7 +148,7 @@ beforeEach(() => {
 });
 
 describe("Produto Robux — regressão de taxa", () => {
-  it("abre preço e checkout sem cair ao renderizar a taxa do comprador", async () => {
+  it("abre subtotal sem presumir taxa e mostra a taxa do PIX apenas no checkout", async () => {
     const robuxProduct = {
       ...PRODUCT,
       id: 51,
@@ -163,11 +163,12 @@ describe("Produto Robux — regressão de taxa", () => {
 
     renderProduto(51);
 
-    expect(await screen.findByText(/inclui taxa de R\$\s?0,90/i)).toBeTruthy();
+    expect(await screen.findByText(/subtotal do produto\. A taxa aplicável aparece ao escolher a forma de pagamento\./i)).toBeTruthy();
     const buyButtons = screen.getAllByRole("button", { name: /comprar agora/i });
     expect(buyButtons.length).toBeGreaterThan(0);
     await act(async () => { buyButtons[0].click(); });
     expect(await screen.findByText("Pagar com PIX")).toBeTruthy();
+    expect(screen.getByText(/Taxa do método/i).parentElement).toHaveTextContent(/R\$\s?0,90/i);
   });
 });
 
