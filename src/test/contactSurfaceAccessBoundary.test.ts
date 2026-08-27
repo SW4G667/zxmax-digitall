@@ -11,7 +11,8 @@ describe("superfícies legítimas de e-mail", () => {
     const extra = await source("src/components/AdminExtraPanels.tsx");
     const more = await source("src/components/AdminMorePanels.tsx");
 
-    expect(index).toContain('view === "admin" && user && isAdmin && (adminGateUnlocked ? <AdminView /> : <AdminLoginGate />)');
+    expect(index).toContain("const isOperator = isAdmin || isSupport;");
+    expect(index).toContain('view === "admin" && user && isOperator && (adminGateUnlocked ? <AdminView /> : <AdminLoginGate />)');
     expect(admin).toContain('useAuth()');
     expect(admin).toContain('action: "get_webhook_logs"');
     expect(extra).toContain("p.buyerEmail");

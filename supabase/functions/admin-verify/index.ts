@@ -19,14 +19,37 @@ serve(async (req) => {
     const { data: userData } = await anonClient.auth.getUser(token);
     if (!userData.user) throw new Error("Unauthorized");
 
-    // Check admin role
-    const { data: roleData } = await serviceClient.from("user_roles").select("role").eq("user_id", userData.user.id).eq("role", "admin").maybeSingle();
-    if (!roleData) throw new Error("Acesso negado: só admin");
-
     const body = await req.json();
     const action = body.action;
     const userId = body.userId;
     const documentId = body.documentId;
+
+    const requiredCapabilities: Record<string, string> = {
+      verify_user: "review_identity",
+      reject_user: "review_identity",
+      get_documents: "review_identity",
+      get_verifications: "review_identity",
+      get_document_url: "review_identity",
+      approve_all_products: "moderate_catalog",
+      ban_user: "manage_user_safety",
+      unban_user: "manage_user_safety",
+      get_webhook_logs: "view_sanitized_webhooks",
+    };
+    const requiredCapability = requiredCapabilities[action];
+    if (!requiredCapability) throw new Error("Ação inválida");
+
+    // A checagem roda com o JWT já validado, não com service role. Admin passa
+    // por definição; suporte precisa ter a capacidade explícita no banco.
+    const authorizationClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: allowed, error: capabilityError } = await authorizationClient.rpc("has_capability", {
+      _user_id: userData.user.id,
+      _capability: requiredCapability,
+    });
+    if (capabilityError || allowed !== true) {
+      throw new Error("Você não tem a permissão necessária para esta ação.");
+    }
 
     const resolveTargetUserId = async (identifier: unknown) => {
       const normalized = typeof identifier === "string" ? identifier.trim() : "";

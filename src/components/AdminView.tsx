@@ -7,6 +7,8 @@ import MyPurchasesView from "@/components/MyPurchasesView";
 import IntegrationsPanel from "@/components/IntegrationsPanel";
 import TwoFactorPanel from "@/components/TwoFactorPanel";
 import { AdminTagsPanel } from "@/components/AdminMorePanels";
+import AdminRolePermissionsPanel from "@/components/AdminRolePermissionsPanel";
+import OperatorConsole from "@/components/OperatorConsole";
 import {
   AdminStatsPanel,
   AdminPurchasesPanel,
@@ -38,7 +40,7 @@ export type AdminTab = (typeof ADMIN_TABS)[number];
 
 export default function AdminView() {
   const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, sendAdminChat, verifyUser } = useStore();
-  const { mfaEnabled, isAdmin } = useAuth();
+  const { mfaEnabled, isAdmin, isSupport } = useAuth();
   // The active section lives in the URL so the side menu can deep-link to a
   // real admin area (?tab=products) and the browser back button works.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -70,6 +72,22 @@ export default function AdminView() {
   const [maintenanceMessage, setMaintenanceMessage] = useState("");
   const [minProductPrice, setMinProductPrice] = useState("2,00");
   const [minWithdraw, setMinWithdraw] = useState("5,00");
+  const [operatorCapabilities, setOperatorCapabilities] = useState<string[]>([]);
+  const [operatorAccessLoading, setOperatorAccessLoading] = useState(!isAdmin);
+
+  const hasCapability = React.useCallback((capability: string) => isAdmin || operatorCapabilities.includes(capability), [isAdmin, operatorCapabilities]);
+
+  useEffect(() => {
+    if (isAdmin) { setOperatorCapabilities(["moderate_catalog", "review_identity", "manage_user_safety", "manage_tags", "view_sanitized_webhooks"]); setOperatorAccessLoading(false); return; }
+    if (!isSupport) { setOperatorCapabilities([]); setOperatorAccessLoading(false); return; }
+    setOperatorAccessLoading(true);
+    void (async () => {
+      const { data, error } = await (supabase as any).rpc("get_my_admin_capabilities");
+      if (error) { setOperatorCapabilities([]); toast.error("Não foi possível confirmar as permissões operacionais."); }
+      else setOperatorCapabilities(Array.isArray(data?.capabilities) ? data.capabilities.map(String) : []);
+      setOperatorAccessLoading(false);
+    })();
+  }, [isAdmin, isSupport]);
 
   const pendingProducts = state.products.filter((p) => !p.approved);
   const pendingWithdrawals = state.withdrawals.filter((w) => w.status === "pending");
@@ -77,6 +95,14 @@ export default function AdminView() {
   const globalNotices = state.globalNotices || [];
   const disputes = state.purchases.filter(p => p.status === "dispute");
   const pendingDocuments = docs.filter(d => d.status === "pending");
+  const requiredCapabilityByTab: Partial<Record<AdminTab, string>> = {
+    products: "moderate_catalog",
+    tags: "manage_tags",
+    documents: "review_identity",
+    verifications: "review_identity",
+    webhooks: "view_sanitized_webhooks",
+  };
+  const canOpenTab = (candidate: AdminTab) => isAdmin || candidate === "dashboard" || (!!requiredCapabilityByTab[candidate] && hasCapability(requiredCapabilityByTab[candidate]!));
 
   const handleSaveConfig = async () => {
     updateConfig({
@@ -197,6 +223,10 @@ export default function AdminView() {
     }
   }, [tab]);
 
+  useEffect(() => {
+    if (!operatorAccessLoading && !canOpenTab(tab)) setTab("dashboard");
+  }, [tab, operatorAccessLoading, operatorCapabilities, isAdmin, setTab]);
+
   const loadPlatformSettings = React.useCallback(async () => {
     setPlatformLoading(true);
     const { data, error } = await (supabase as any).rpc("get_admin_platform_settings");
@@ -238,6 +268,11 @@ export default function AdminView() {
     );
   }
 
+  if (!isAdmin && (operatorAccessLoading || tab === "dashboard" || !canOpenTab(tab))) {
+    if (operatorAccessLoading) return <div className="rounded-2xl border border-border bg-card p-10 text-center text-muted-foreground">Confirmando permissões operacionais…</div>;
+    return <OperatorConsole capabilities={operatorCapabilities} onOpenTab={setTab} />;
+  }
+
 
   return (
     <div className="animate-fade-in-up pb-20">
@@ -245,7 +280,7 @@ export default function AdminView() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl font-black text-foreground mb-2 flex items-center gap-3">
-              Painel Admin
+              {isAdmin ? "Painel Admin" : "Operações autorizadas"}
               {mfaEnabled ? <span className="inline-flex items-center gap-1.5 text-[11px] bg-success/15 text-success border border-success/20 px-3 py-1 rounded-full"><ShieldCheck className="w-3.5 h-3.5" /> 2FA Ativo</span> : <span className="inline-flex items-center gap-1.5 text-[11px] bg-destructive/15 text-destructive border border-destructive/20 px-3 py-1 rounded-full"><Lock className="w-3.5 h-3.5" /> 2FA Inativo</span>}
             </h1>
             <p className="text-muted-foreground">Gerenciamento global da plataforma. Acesso protegido.</p>
@@ -287,7 +322,7 @@ export default function AdminView() {
           { id: "webhooks", label: "Webhooks", icon: Webhook },
           { id: "apis", label: "APIs & Credenciais", icon: KeyRound },
           { id: "config", label: "Config", icon: Settings },
-        ].map((t) => (
+        ].filter((t) => canOpenTab(t.id as AdminTab)).map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id as any)}
@@ -649,59 +684,7 @@ export default function AdminView() {
 
       {tab === "tags" && <AdminTagsPanel />}
 
-      {tab === "roles" && (
-        <div className="space-y-6 max-w-3xl">
-          <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
-            <h3 className="font-black text-white flex items-center gap-2"><Users className="w-5 h-5 text-[#0084ff]" /> Cargos e Permissões</h3>
-            <p className="text-xs text-white/50 mt-2">Cada atribuição substitui o cargo anterior, é auditada no banco e não permite rebaixar a própria conta administrativa.</p>
-            <div className="mt-4 grid gap-2 md:grid-cols-3 text-xs">
-              <div className="rounded-xl border border-[#253149] bg-[#0d1420] p-3"><p className="font-bold text-white">Admin</p><p className="mt-1 text-white/50">Operações, catálogo, pagamentos e auditoria.</p></div>
-              <div className="rounded-xl border border-[#253149] bg-[#0d1420] p-3"><p className="font-bold text-white">Suporte</p><p className="mt-1 text-white/50">Identificação organizacional, sem poderes financeiros ou administrativos.</p></div>
-              <div className="rounded-xl border border-[#253149] bg-[#0d1420] p-3"><p className="font-bold text-white">Usuário</p><p className="mt-1 text-white/50">Compra, venda e recursos próprios da conta.</p></div>
-            </div>
-          </div>
-
-          <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6 space-y-4">
-              <h4 className="font-bold text-white">Alterar cargo por e-mail</h4>
-            <div className="grid gap-3">
-              <input id="role-email" placeholder="E-mail do usuário" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none" />
-              <select id="role-select" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm">
-                <option value="admin">Admin (operações completas)</option>
-                <option value="support">Suporte (sem financeiro/admin)</option>
-                <option value="user">Usuário padrão</option>
-              </select>
-              <button
-                onClick={async () => {
-                  const emailInput = document.getElementById('role-email') as HTMLInputElement;
-                  const roleSelect = document.getElementById('role-select') as HTMLSelectElement;
-                  const email = emailInput?.value?.trim();
-                  const role = roleSelect?.value;
-                  if (!email) return toast.error("Digite e-mail");
-                  if (role !== "admin" && role !== "support" && role !== "user") return toast.error("Cargo inválido");
-                  const { error } = await (supabase as any).rpc("assign_user_role", { _email: email, _role: role });
-                  if (error) return toast.error(error.message);
-                  toast.success("Cargo substituído com auditoria.");
-                  emailInput.value = "";
-                }}
-                className="bg-[#0084ff] text-white px-6 py-3 rounded-xl font-bold text-sm"
-              >
-                Dar acesso
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
-            <h4 className="font-bold text-white mb-3">Usuários com acesso</h4>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {Object.values(state.userDirectory || {}).slice(0, 20).map((u: any) => (
-                <div key={u.userId} className="flex items-center justify-between p-3 rounded-xl bg-[#0a0a0f] border border-[#1e1e28]">
-                  <div><p className="text-sm font-bold text-white truncate">{u.name}</p><p className="text-[11px] text-white/40 font-mono">{u.email} • ID {u.publicId}</p></div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {tab === "roles" && <AdminRolePermissionsPanel />}
 
       {tab === "dashboard" && (
         <div className="space-y-6">

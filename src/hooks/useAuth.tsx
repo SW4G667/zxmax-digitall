@@ -45,6 +45,8 @@ interface AuthContextType {
   loading: boolean;
   banned: BanInfo | null;
   isAdmin: boolean;
+  /** Papel operacional limitado, confirmado no banco e distinto de admin. */
+  isSupport: boolean;
   /** Indica que o RPC de papel respondeu para o usuário autenticado atual. */
   adminRoleResolved: boolean;
   mfaEnabled: boolean;
@@ -108,6 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(() => !bootSession);
   const [banned, setBanned] = useState<BanInfo | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSupport, setIsSupport] = useState(false);
   const [adminRoleResolved, setAdminRoleResolved] = useState(false);
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [adminGateUnlocked, setAdminGateUnlocked] = useState(() => (bootSession?.user ? readAdminGate(bootSession.user.id) : false));
@@ -125,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Nunca mostrar privilégios até a confirmação do banco; cache local não
       // é uma fonte de autorização.
       setIsAdmin(false);
+      setIsSupport(false);
       setAdminRoleResolved(false);
       setAdminGateUnlocked(readAdminGate(u.id));
     }
@@ -193,6 +197,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const checkSupport = useCallback(async (userId: string) => {
+    try {
+      const res = await withTimeout(
+        (supabase as any).rpc("has_role", { _user_id: userId, _role: "support" }),
+        8000,
+        null as any,
+      );
+      if (userRef.current?.id === userId) setIsSupport(res?.data === true && !res?.error);
+    } catch {
+      if (userRef.current?.id === userId) setIsSupport(false);
+    }
+  }, []);
+
   const refreshMfaFlag = useCallback(async () => {
     try {
       const { data } = await withTimeout(supabase.auth.mfa.listFactors(), 8000, { data: null, error: null } as any);
@@ -209,10 +226,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         fetchProfile(userId).catch(() => null),
         checkBan(userId).catch(() => null),
         checkAdmin(userId).catch(() => null),
+        checkSupport(userId).catch(() => null),
         refreshMfaFlag().catch(() => null),
       ]);
     },
-    [fetchProfile, checkBan, checkAdmin, refreshMfaFlag]
+    [fetchProfile, checkBan, checkAdmin, checkSupport, refreshMfaFlag]
   );
 
   useEffect(() => {
@@ -256,6 +274,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setProfile(null);
           setBanned(null);
           setIsAdmin(false);
+          setIsSupport(false);
           setAdminRoleResolved(false);
           setMfaEnabled(false);
           setAdminGateUnlocked(false);
@@ -294,6 +313,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setProfile(null);
           setBanned(null);
           setIsAdmin(false);
+          setIsSupport(false);
           setAdminRoleResolved(false);
           setMfaEnabled(false);
           setAdminGateUnlocked(false);
@@ -320,6 +340,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setBanned(null);
         setIsAdmin(false);
+        setIsSupport(false);
         setAdminRoleResolved(false);
         setMfaEnabled(false);
         setAdminGateUnlocked(false);
@@ -538,6 +559,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
     setBanned(null);
     setIsAdmin(false);
+    setIsSupport(false);
     setAdminRoleResolved(false);
     setMfaEnabled(false);
     setAdminGateUnlocked(false);
@@ -575,9 +597,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await Promise.all([
       checkBan(u.id).catch(() => null),
       checkAdmin(u.id).catch(() => null),
+      checkSupport(u.id).catch(() => null),
       refreshMfaFlag().catch(() => null),
     ]);
-  }, [checkBan, checkAdmin, refreshMfaFlag]);
+  }, [checkBan, checkAdmin, checkSupport, refreshMfaFlag]);
 
   const updateProfileFn = useCallback(
     async (data: Partial<Pick<Profile, "display_name" | "avatar_url" | "pix_key" | "document_type">>) => {
@@ -599,6 +622,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         banned,
         isAdmin,
+        isSupport,
         adminRoleResolved,
         mfaEnabled,
         adminGateUnlocked,

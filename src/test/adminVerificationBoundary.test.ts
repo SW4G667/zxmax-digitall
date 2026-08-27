@@ -29,7 +29,13 @@ describe("fronteira de verificação administrativa", () => {
     expect(adminVerify).toContain("body.identifier");
     expect(adminVerify).toContain('action: "user.banned"');
     expect(adminVerify).toContain('action: "user.unbanned"');
-    expect(adminVerify).toContain('if (!roleData) throw new Error("Acesso negado: só admin")');
+    expect(adminVerify).toContain("const requiredCapabilities: Record<string, string>");
+    expect(adminVerify).toContain('approve_all_products: "moderate_catalog"');
+    expect(adminVerify).toContain('verify_user: "review_identity"');
+    expect(adminVerify).toContain('ban_user: "manage_user_safety"');
+    expect(adminVerify).toContain('get_webhook_logs: "view_sanitized_webhooks"');
+    expect(adminVerify).toContain('authorizationClient.rpc("has_capability"');
+    expect(adminVerify).toContain("Você não tem a permissão necessária para esta ação.");
     expect(store).not.toContain('profileSource = isAdmin ? "profiles" : "profiles_public"');
     expect(store).not.toContain('.from("seller_documents").select');
     expect(store).not.toContain("const reviewSellerDocument");

@@ -43,7 +43,7 @@ interface MenuSection {
 const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: Props) {
-  const { isAdmin, user, profile, mfaEnabled, loading, signOut } = useAuth();
+  const { isAdmin, isSupport, user, profile, mfaEnabled, loading, signOut } = useAuth();
   const { state } = useStore();
   const { count } = useFavorites();
   const location = useLocation();
@@ -186,12 +186,12 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
 
     // Admin links are only built when the backend confirmed the role. They are
     // never rendered — not even hidden — for anyone else.
-    if (isAdmin) {
+    if (isAdmin || isSupport) {
       sections.splice(3, 0, {
         id: "admin",
-        title: "Administração",
+        title: isAdmin ? "Administração" : "Operações de suporte",
         icon: Shield,
-        entries: [
+        entries: isAdmin ? [
           { key: "admin-dash", icon: BarChart3, label: "Painel administrativo", hint: "Métricas e visão geral", to: "/admin" },
           { key: "admin-products", icon: ClipboardCheck, label: "Moderação de anúncios", hint: "Aprovar ou reprovar", to: "/admin?tab=products", badge: pendingModeration },
           { key: "admin-orders", icon: Receipt, label: "Pedidos", to: "/admin?tab=orders" },
@@ -205,6 +205,8 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
           { key: "admin-apis", icon: KeyRound, label: "APIs e credenciais", to: "/admin?tab=apis" },
           { key: "admin-config", icon: Settings, label: "Operação e manutenção", hint: "Taxas, limites e modo de manutenção", to: "/admin?tab=config" },
           { key: "admin-security", icon: ShieldCheck, label: "Segurança do painel", hint: mfaEnabled ? "2FA ativo" : "Ative o 2FA", to: "/admin?tab=security" },
+        ] : [
+          { key: "support-operations", icon: Shield, label: "Console de operações", hint: "Ações permitidas à sua conta", to: "/admin" },
         ],
       });
     }
@@ -216,7 +218,7 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
     });
 
     return sections;
-  }, [user, isAdmin, isSeller, count, openOrders, myPendingListings, sellerOrders, pendingModeration, mfaEnabled, profile?.is_verified_seller, onOpenProfile, onClose, signOut]);
+  }, [user, isAdmin, isSupport, isSeller, count, openOrders, myPendingListings, sellerOrders, pendingModeration, mfaEnabled, profile?.is_verified_seller, onOpenProfile, onClose, signOut]);
 
   if (!open) return null;
 

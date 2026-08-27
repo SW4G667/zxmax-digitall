@@ -351,7 +351,7 @@ const mapWithdrawalRow = (w: any): Withdrawal => ({
 });
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const { user: authUser, profile, isAdmin, sessionReady, signOut } = useAuth();
+  const { user: authUser, profile, isAdmin, isSupport, sessionReady, signOut } = useAuth();
   const [state, setState] = useState<AppState>(loadState);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>("loading");
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -428,7 +428,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [authUserId]);
 
   const refreshUserTags = React.useCallback(async () => {
-    if (!isAdmin) {
+    if (!isAdmin && !isSupport) {
       setState((s) => ({ ...s, userTags: [], userTagAssignments: {} }));
       return;
     }
@@ -444,7 +444,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ? Object.fromEntries(Object.entries(data.assignments).map(([publicId, tagIds]) => [publicId, Array.isArray(tagIds) ? tagIds.map(String) : []]))
       : {};
     setState((s) => ({ ...s, userTags: tags, userTagAssignments: assignments }));
-  }, [isAdmin]);
+  }, [isAdmin, isSupport]);
 
   useEffect(() => { void refreshUserTags(); }, [refreshUserTags]);
 

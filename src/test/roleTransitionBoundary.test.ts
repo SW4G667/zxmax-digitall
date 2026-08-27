@@ -14,10 +14,11 @@ describe("transição segura de cargos", () => {
   });
 
   it("não apresenta cargos sem capacidade de servidor no painel", async () => {
-    const view = await source("src/components/AdminView.tsx");
-    expect(view).toContain('value="admin"');
-    expect(view).toContain('value="support"');
-    expect(view).toContain('value="user"');
-    expect(view).not.toMatch(/value="(?:moderator|finance)"/);
+    const panel = await source("src/components/AdminRolePermissionsPanel.tsx");
+    expect(panel).toContain('value="admin"');
+    expect(panel).toContain('value="support"');
+    expect(panel).toContain('value="user"');
+    expect(panel).not.toMatch(/value="(?:moderator|finance)"/);
+    expect(panel).toContain('rpc("assign_user_role_by_public_id"');
   });
 });

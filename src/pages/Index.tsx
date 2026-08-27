@@ -24,7 +24,8 @@ const PROTECTED_VIEWS: View[] = ["inventory", "purchases", "support", "withdraw"
 
 function Dashboard({ view }: { view: View }) {
   const { refreshPurchases } = useStore();
-  const { isAdmin, user, adminGateUnlocked, adminRoleResolved } = useAuth();
+  const { isAdmin, isSupport, user, adminGateUnlocked, adminRoleResolved } = useAuth();
+  const isOperator = isAdmin || isSupport;
   const navigate = useNavigate();
   const location = useLocation();
   const [authOpen, setAuthOpen] = useState(false);
@@ -68,10 +69,10 @@ function Dashboard({ view }: { view: View }) {
       lastAdminBlockRef.current = null;
       return;
     }
-    if (!user || !adminRoleResolved || isAdmin || lastAdminBlockRef.current === user.id) return;
+    if (!user || !adminRoleResolved || isOperator || lastAdminBlockRef.current === user.id) return;
     lastAdminBlockRef.current = user.id;
     void recordSecurityEvent(supabase, "admin.access", "blocked");
-  }, [adminRoleResolved, isAdmin, user, view]);
+  }, [adminRoleResolved, isOperator, user, view]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -103,7 +104,7 @@ function Dashboard({ view }: { view: View }) {
       {view === "support" && user && <SupportView />}
       {/* O código do autenticador só é pedido aqui, dentro do painel admin.
           Uma vez confirmado, fica desbloqueado neste navegador até sair da conta. */}
-      {view === "admin" && user && isAdmin && (adminGateUnlocked ? <AdminView /> : <AdminLoginGate />)}
+      {view === "admin" && user && isOperator && (adminGateUnlocked ? <AdminView /> : <AdminLoginGate />)}
       {view === "admin" && user && !adminRoleResolved && <LoadingScreen message="Verificando permissões..." />}
       {view === "withdraw" && user && <WithdrawView />}
       {requiresAuth && !user && (
@@ -114,7 +115,7 @@ function Dashboard({ view }: { view: View }) {
           <button onClick={() => setAuthOpen(true)} className="bg-[#0084ff] text-white px-6 py-3 rounded-xl font-bold text-sm">Entrar / Criar conta</button>
         </div>
       )}
-      {view === "admin" && user && adminRoleResolved && !isAdmin && (
+      {view === "admin" && user && adminRoleResolved && !isOperator && (
         <div className="text-center py-20 bg-[#15151a] border border-[#25252e] rounded-2xl p-10">
           <p className="text-3xl mb-3">⛔</p>
           <p className="text-white font-bold">Acesso restrito a administradores.</p>
