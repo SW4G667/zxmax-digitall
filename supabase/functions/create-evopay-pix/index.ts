@@ -33,9 +33,9 @@ serve(async (req) => {
     if (activeCharge && String(purchase.evopay_charge_id || "").startsWith("vexo:") && purchase.pix_qr_code) {
       return json({ id: purchase.evopay_charge_id, status: "PENDING", amount: Number(purchase.amount), qrCodeText: purchase.pix_qr_code, expiresAt: purchase.pix_expires_at, qrCodeUrl: null });
     }
-    const { data: profile } = await admin.from("profiles").select("display_name,cpf").eq("user_id", authData.user.id).maybeSingle();
-    const document = String(profile?.cpf || body.payerDocument || "").replace(/\D/g, "");
-    if (![11, 14].includes(document.length)) return json({ error: "Cadastre um CPF/CNPJ válido no perfil antes de pagar" }, 400);
+    const { data: profile } = await admin.from("profiles").select("display_name").eq("user_id", authData.user.id).maybeSingle();
+    const document = String(body.payerDocument || "").replace(/\D/g, "");
+    if (![11, 14].includes(document.length)) return json({ error: "Informe um CPF/CNPJ válido para gerar o PIX" }, 400);
     const { data: product } = await admin.from("products").select("name").eq("id", purchase.product_id).maybeSingle();
     const response = await fetch(`${baseUrl}/gateway/pix-create`, {
       method: "POST",

@@ -419,11 +419,6 @@ export default function ProdutoPage() {
     setBuyLoading(true);
     let purchaseId: number | null = null;
     try {
-      if (cpf && state.currentUser) {
-        const { error: cpfError } = await supabase.from("profiles").update({ cpf } as any).eq("user_id", state.currentUser.id);
-        if (cpfError) console.error("[zxmax:cpf]", cpfError);
-      }
-
       purchaseId = await buyProduct(product.id, selectedVariation || undefined, displayQuantity, method);
       if (!purchaseId) return; // buyProduct já explicou o motivo
 
