@@ -58,7 +58,8 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
 
   const handleDelete = async (id: number) => {
     if (!window.confirm("Excluir este anúncio?")) return;
-    const { paused } = await deleteProduct(id);
+    const { ok, paused } = await deleteProduct(id);
+    if (!ok) return;
     if (paused) toast.success("Produto tem pedidos, foi pausado para preservar histórico.");
     else toast.success("Produto excluído.");
   };

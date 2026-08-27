@@ -212,7 +212,7 @@ interface StoreContextType {
   /** Real network state of the catalog, so the store can show a skeleton, an
    * error with retry, or a truthful empty state instead of a silent zero. */
   catalogStatus: CatalogStatus;
-  deleteProduct: (id: number) => Promise<{ paused: boolean }>;
+  deleteProduct: (id: number) => Promise<{ ok: boolean; paused: boolean }>;
   buyProduct: (id: number, variation?: ProductVariation, quantity?: number, paymentMethod?: string) => Promise<number | null>;
   savePixCharge: (purchaseId: number, charge: { evopayId: string; qrCodeText: string; expiresAt: string }) => void;
   /** Atualiza pedidos sem descartar a última lista válida quando a rede falha. */
@@ -765,26 +765,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
 
-  const deleteProduct = async (id: number): Promise<{ paused: boolean }> => {
+  const deleteProduct = async (id: number): Promise<{ ok: boolean; paused: boolean }> => {
     const product = state.products.find((item) => item.id === id);
     const actorId = authUserRef.current?.id;
     if (!product || !actorId || (!isAdmin && product.sellerId !== actorId)) {
       toast.error("Você não tem permissão para remover este anúncio.");
-      return { paused: false };
+      return { ok: false, paused: false };
     }
-    // If product has orders, pause (unapprove) instead of deleting to preserve history
-    const hasOrders = state.purchases.some((pu) => pu.productId === id);
-    if (hasOrders) {
-      const { error } = await (supabase as any).from("products").update({ approved: false }).eq("id", id);
-      if (error) { logProductError("deleteProduct:pause", error); toast.error(productErrorMessage(error)); return { paused: true }; }
-      setState((s) => ({ ...s, products: s.products.map((p) => (p.id === id ? { ...p, approved: false } : p)) }));
-      return { paused: true };
+    const { data, error } = await (supabase as any).rpc("remove_product", { _product_id: id });
+    const status = data && typeof data === "object" ? data.status : null;
+    if (error || (status !== "deleted" && status !== "paused")) {
+      if (error) logProductError("deleteProduct", error);
+      toast.error(error ? productErrorMessage(error) : "Não foi possível confirmar a remoção do anúncio. Atualize a página e tente novamente.");
+      await loadCatalog();
+      return { ok: false, paused: false };
     }
-    const { error } = await (supabase as any).from("products").delete().eq("id", id);
-    if (error) { logProductError("deleteProduct", error); toast.error(productErrorMessage(error)); return { paused: false }; }
-    // Deleted rows must stay deleted — never re-added by a stale merge.
-    setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
-    return { paused: false };
+    // Só informar sucesso depois de reidratar o catálogo persistido no servidor.
+    await loadCatalog();
+    return { ok: true, paused: status === "paused" };
   };
 
   const buyProduct = async (id: number, variation?: ProductVariation, quantity?: number, paymentMethod?: string) => {
