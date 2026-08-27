@@ -30,6 +30,8 @@ function Dashboard({ view }: { view: View }) {
   const [authOpen, setAuthOpen] = useState(false);
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<number | null>(null);
   const lastAdminBlockRef = useRef<string | null>(null);
+  const purchaseScope = new URLSearchParams(location.search).get("scope");
+  const initialPurchaseScope = purchaseScope === "sales" || purchaseScope === "purchases" ? purchaseScope : "all";
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -97,7 +99,7 @@ function Dashboard({ view }: { view: View }) {
     <AppShell>
       {view === "store" && <StoreView />}
       {view === "inventory" && user && <InventoryView onOpenChat={handleOpenChat} />}
-      {view === "purchases" && user && <MyPurchasesView initialSelectedId={selectedPurchaseId} />}
+      {view === "purchases" && user && <MyPurchasesView initialSelectedId={selectedPurchaseId} initialScope={initialPurchaseScope} />}
       {view === "support" && user && <SupportView />}
       {/* O código do autenticador só é pedido aqui, dentro do painel admin.
           Uma vez confirmado, fica desbloqueado neste navegador até sair da conta. */}

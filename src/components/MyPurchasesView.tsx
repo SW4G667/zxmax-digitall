@@ -54,7 +54,7 @@ function StageStepper({ status }: { status: Purchase["status"] }) {
   );
 }
 
-export default function MyPurchasesView({ initialSelectedId }: { initialSelectedId?: number | null }) {
+export default function MyPurchasesView({ initialSelectedId, initialScope = "all" }: { initialSelectedId?: number | null; initialScope?: "all" | "purchases" | "sales" }) {
   const { state, confirmDelivery, openDispute, reviewPurchase, savePixCharge, refreshPurchases } = useStore();
   const { sessionReady } = useAuth();
   const [search, setSearch] = useState("");
@@ -65,6 +65,9 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
       setSelectedId(initialSelectedId);
     }
   }, [initialSelectedId]);
+  useEffect(() => {
+    setOrderScope(initialScope);
+  }, [initialScope]);
   const [disputeReason, setDisputeReason] = useState("");
   const [showDisputeForm, setShowDisputeForm] = useState(false);
   const [rating, setRating] = useState(5);
@@ -75,7 +78,7 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
   const [loadingPix, setLoadingPix] = useState<number | null>(null);
   const [syncState, setSyncState] = useState<"loading" | "ready" | "error">("loading");
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
-  const [orderScope, setOrderScope] = useState<"all" | "purchases" | "sales">("all");
+  const [orderScope, setOrderScope] = useState<"all" | "purchases" | "sales">(initialScope);
   const refreshPurchasesRef = useRef(refreshPurchases);
   refreshPurchasesRef.current = refreshPurchases;
 

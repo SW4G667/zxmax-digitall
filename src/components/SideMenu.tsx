@@ -170,7 +170,7 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
         { key: "listings", icon: Package, label: "Meus anúncios", hint: "Criar, editar e pausar", view: "inventory", to: "/meus-produtos", badge: myPendingListings },
         ...(isSeller
           ? [
-              { key: "sales", icon: Receipt, label: "Pedidos e entregas", hint: "Vendas aguardando entrega", view: "purchases" as View, to: "/minhas-compras", badge: sellerOrders },
+              { key: "sales", icon: Receipt, label: "Pedidos e entregas", hint: "Vendas aguardando entrega", to: "/minhas-compras?scope=sales", badge: sellerOrders },
               { key: "verify", icon: BadgeCheck, label: "Verificação de vendedor", hint: profile?.is_verified_seller ? "Conta verificada" : "Envie seus documentos", to: "/perfil" },
             ]
           : [
