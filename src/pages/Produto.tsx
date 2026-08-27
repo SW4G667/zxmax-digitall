@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useStore, ProductVariation, Product } from "@/store/StoreContext";
-import { Shield, CheckCircle, Zap, Star, MessageSquare, Share2, Flag, Heart, Send, Eye, Minus, Plus, ThumbsUp, BadgeCheck, Clock, Package, CreditCard, Bitcoin, Expand, Search, X } from "lucide-react";
+import { Shield, CheckCircle, Zap, Star, MessageSquare, Share2, Flag, Heart, Send, Eye, Minus, Plus, ThumbsUp, BadgeCheck, Clock, Package, CreditCard, Bitcoin, Expand, Search, X, Coins } from "lucide-react";
 import { toast } from "sonner";
 import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
 import AuthScreen from "@/components/AuthScreen";
@@ -564,6 +564,16 @@ export default function ProdutoPage() {
   };
 
   const fav = isFavorite(product.id);
+
+  // Um anúncio Robux sem vendedor público confirmado não volta à página
+  // genérica: permanece no mercado próprio e não disponibiliza checkout.
+  if (isRobux && !currentOffer) {
+    return (
+      <AppShell>
+        <main className="mx-auto max-w-3xl"><nav aria-label="Navegação estrutural" className="mb-5 flex items-center gap-2 text-xs text-white/45"><Link to="/loja" className="hover:text-white">Início</Link><span>›</span><Link to="/robux" className="hover:text-white">Mercado de Robux</Link><span>›</span><span className="font-semibold text-white">Oferta indisponível</span></nav><section className="rounded-[1.6rem] border border-[#168cff]/20 bg-[#101722] p-6 text-center shadow-[0_22px_65px_rgba(0,79,158,0.12)] sm:p-10"><Coins className="mx-auto h-10 w-10 text-[#6dbdff]" /><p className="mt-5 text-[11px] font-black uppercase tracking-[0.16em] text-[#86c9ff]">Mercado de Robux</p><h1 className="mt-2 text-2xl font-black tracking-tight text-white">Esta oferta não está disponível.</h1><p className="mx-auto mt-3 max-w-md text-sm leading-6 text-white/55">O anúncio não possui uma identidade pública de vendedor válida para continuar a compra. Nenhum pedido ou pagamento foi iniciado.</p><Link to="/robux" className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-[#168cff] px-4 text-sm font-black text-white transition hover:bg-[#0875e6] active:scale-[0.97]">Ver ofertas disponíveis</Link></section></main>
+      </AppShell>
+    );
+  }
 
   // Mercado próprio de Robux: comparação de ofertas publicadas, sem métricas
   // inventadas e sem alterar o contrato de compra autorizado pelo servidor.

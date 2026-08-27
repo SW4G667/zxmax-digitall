@@ -16,6 +16,8 @@ describe("mercado de Robux", () => {
 
     expect(productPage).toContain("Mercado de Robux");
     expect(productPage).toContain("Oferta selecionada");
+    expect(productPage).toContain("Esta oferta não está disponível.");
+    expect(productPage).toContain("Nenhum pedido ou pagamento foi iniciado.");
     expect(productPage).toContain("Compare preço por unidade, mínimo, estoque e prazo.");
     expect(productPage).toContain("if (current < currentOffer.minQty) return currentOffer.minQty");
     expect(productPage).toContain("Sem avaliações registradas");
