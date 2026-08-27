@@ -318,6 +318,11 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
                 <span className="block text-[11px] text-white/40 truncate">
                   {profile?.is_verified_seller ? "Vendedor verificado" : mfaEnabled ? "Protegida com 2FA" : "Toque para gerenciar"}
                 </span>
+                <span className="mt-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-white/35">
+                  <span>ID #{profile?.public_id || state.currentUser?.publicId || "—"}</span>
+                  <span className="h-1 w-1 rounded-full bg-white/25" aria-hidden />
+                  <span>{openOrders} pedido{openOrders === 1 ? "" : "s"} em aberto</span>
+                </span>
               </span>
             </button>
           )}

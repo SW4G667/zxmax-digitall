@@ -64,6 +64,9 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
 
   const myProducts = state.products.filter((p) => p.sellerId === state.currentUser?.id);
   const mySales = state.purchases.filter((p) => p.sellerId === state.currentUser?.id);
+  const recentSales = [...mySales].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5);
+  const activeListings = myProducts.filter((product) => product.approved).length;
+  const pendingDelivery = mySales.filter((sale) => sale.status === "paid" || sale.status === "delivered_pending_confirmation").length;
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: "image" | "banner") => {
     const file = e.target.files?.[0];
@@ -167,6 +170,62 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
           <Plus className="w-4 h-4" /> Novo Produto
         </button>
       </div>
+
+      <div className="grid grid-cols-3 gap-3" aria-label="Resumo de vendas">
+        {[
+          ["Anúncios ativos", activeListings, "text-[#5aaeff]"],
+          ["Pedidos recebidos", mySales.length, "text-white"],
+          ["Em andamento", pendingDelivery, "text-[#ffbd2e]"],
+        ].map(([label, value, tone]) => (
+          <div key={String(label)} className="rounded-2xl border border-[#25252e] bg-[#15151a] px-3 py-3">
+            <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-wide text-white/35 leading-tight">{label}</p>
+            <p className={`mt-1 text-xl font-black ${tone}`}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <section className="rounded-2xl border border-[#25252e] bg-[#111114] overflow-hidden" aria-labelledby="recent-sales-title">
+        <div className="flex items-center justify-between gap-3 p-4 border-b border-[#25252e]">
+          <div>
+            <h2 id="recent-sales-title" className="font-black text-white flex items-center gap-2"><Users className="w-4 h-4 text-[#0084ff]" /> Vendas recentes</h2>
+            <p className="text-xs text-white/40 mt-1">Acesse a conversa do pedido sem expor contatos pessoais.</p>
+          </div>
+          {mySales.length > 5 && <span className="text-xs font-bold text-[#5aaeff]">Últimas 5</span>}
+        </div>
+        {recentSales.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-white/40">As vendas confirmadas aparecerão aqui com o acesso ao chat do pedido.</p>
+        ) : (
+          <div className="divide-y divide-[#25252e]">
+            {recentSales.map((sale) => {
+              const buyer = state.userDirectory?.[sale.buyerId];
+              const product = state.products.find((item) => item.id === sale.productId);
+              const awaitingDelivery = sale.status === "paid" || sale.status === "delivered_pending_confirmation";
+              return (
+                <button
+                  key={sale.id}
+                  type="button"
+                  onClick={() => onOpenChat?.(sale.id)}
+                  className="w-full p-4 text-left transition hover:bg-white/[0.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0084ff]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm text-white truncate">{product?.name || "Produto indisponível"}</p>
+                      <p className="mt-1 text-xs text-white/45 truncate">Comprador: {buyer?.name || "Usuário"} · ID público {sale.buyerPublicId || buyer?.publicId || "—"}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold ${awaitingDelivery ? "border-[#ffbd2e]/20 bg-[#ffbd2e]/10 text-[#ffbd2e]" : sale.status === "delivered" ? "border-[#00c950]/20 bg-[#00c950]/10 text-[#00c950]" : "border-[#0084ff]/20 bg-[#0084ff]/10 text-[#5aaeff]"}`}>
+                      {awaitingDelivery ? "Em andamento" : sale.status === "delivered" ? "Concluído" : "Aguardando pagamento"}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-3">
+                    <span className="text-xs font-black text-white">{formatBRL(sale.amount)}</span>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#5aaeff]"><MessageSquare className="w-3.5 h-3.5" /> Abrir chat</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {showForm && (
         <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">

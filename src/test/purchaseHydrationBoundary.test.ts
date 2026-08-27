@@ -32,6 +32,13 @@ describe("hidratação persistente de pedidos", () => {
     expect(purchases).toContain("setOrderScope(initialScope)");
   });
 
+  it("monta o modal PIX também a partir da lista, onde o botão de retomada é exibido", async () => {
+    const purchases = await source("src/components/MyPurchasesView.tsx");
+    const pixModalOccurrences = purchases.split("<PixPaymentModal charge={pixCharge}").length - 1;
+    expect(pixModalOccurrences).toBeGreaterThanOrEqual(2);
+    expect(purchases).toContain("successful PIX response only updated invisible state");
+  });
+
   it("expõe uma função de leitura que valida o token e restringe pedidos ao participante", async () => {
     const edge = await source("supabase/functions/get-my-purchases/index.ts");
     expect(edge).toContain("auth.getUser(authHeader.slice(7))");

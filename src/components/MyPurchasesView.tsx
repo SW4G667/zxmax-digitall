@@ -516,6 +516,11 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
           </div>
         )}
       </div>
+
+      {/* The pending-payment CTA can be used from the compact list without
+          selecting an order first. Keep this modal mounted in that branch too;
+          otherwise a successful PIX response only updated invisible state. */}
+      <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
     </div>
   );
 }

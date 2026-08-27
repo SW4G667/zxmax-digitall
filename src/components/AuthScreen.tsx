@@ -130,6 +130,17 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
           </div>
         </div>
 
+        <div className="mb-5 grid grid-cols-2 gap-2 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-2" aria-label="Recursos de acesso">
+          <div className="rounded-xl bg-white/[0.035] px-3 py-2.5 text-left">
+            <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-[#72b7ff]"><Shield className="h-3.5 w-3.5" /> Acesso seguro</span>
+            <p className="mt-1 text-[10px] leading-snug text-white/40">Sessão protegida e controles de conta.</p>
+          </div>
+          <div className="rounded-xl bg-white/[0.035] px-3 py-2.5 text-left">
+            <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-300/85"><Lock className="h-3.5 w-3.5" /> Tudo no site</span>
+            <p className="mt-1 text-[10px] leading-snug text-white/40">Compras e conversas ficam dentro da ZXMAX.</p>
+          </div>
+        </div>
+
         <div className="mb-6 flex gap-1 rounded-xl border border-white/[0.07] bg-white/[0.035] p-1">
           <button onClick={() => { setMode("login"); setError(""); }} className={`flex-1 rounded-lg py-2.5 text-xs font-black transition duration-150 active:scale-[0.98] ${mode === "login" ? "bg-white text-[#0b0d13] shadow-[0_5px_20px_rgba(255,255,255,0.12)]" : "text-white/45 hover:text-white"}`}>Entrar</button>
           <button onClick={() => { setMode("register"); setError(""); }} className={`flex-1 rounded-lg py-2.5 text-xs font-black transition duration-150 active:scale-[0.98] ${mode === "register" ? "bg-white text-[#0b0d13] shadow-[0_5px_20px_rgba(255,255,255,0.12)]" : "text-white/45 hover:text-white"}`}>Criar Conta</button>
