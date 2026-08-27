@@ -9,7 +9,7 @@ import UserProfileModal from "@/components/UserProfileModal";
 import AppShell from "@/components/AppShell";
 import useFavorites from "@/hooks/useFavorites";
 import { supabase } from "@/integrations/supabase/client";
-import { formatBRL, formatRobuxPackage, formatStockLabel, productMinQuantity, productStock, ROBUX_CATEGORY, robuxPackageUnits, unitPriceFromPackage } from "@/lib/catalog";
+import { formatBRL, formatRobuxPackage, formatRobuxUnitPrice, formatStockLabel, productMinQuantity, productStock, ROBUX_CATEGORY, robuxPackageUnits, unitPriceFromPackage } from "@/lib/catalog";
 import { BUYER_FEE, checkoutTotals } from "@/lib/fees";
 import CryptoPaymentModal, { CryptoCharge } from "@/components/CryptoPaymentModal";
 import { unwrapEdgeCall } from "@/lib/edgeErrors";
@@ -17,7 +17,7 @@ import { checkoutMethods, classifyPaymentMethods, paymentMethodsNotice, PaymentM
 import { friendlyQuestionError, isSchemaMissing } from "@/lib/questionErrors";
 import { containsExternalContact } from "@/lib/externalContact";
 
-// Eldorado-style seller row
+// Linha de oferta de vendedor do mercado de Robux.
 interface SellerOffer {
   id: number;
   product: Product;
@@ -279,6 +279,17 @@ export default function ProdutoPage() {
     if (!isRobux) return null;
     return sellerOffers.find((o) => o.id === productId) || sellerOffers[0];
   }, [sellerOffers, productId, isRobux]);
+
+  // A Robux offer is bought in units. Start at the real minimum whenever the
+  // buyer changes offer, rather than presenting an invalid quantity of 1.
+  useEffect(() => {
+    if (!isRobux || !currentOffer) return;
+    setQuantity((current) => {
+      if (current < currentOffer.minQty) return currentOffer.minQty;
+      if (currentOffer.stock != null && current > currentOffer.stock) return currentOffer.stock;
+      return current;
+    });
+  }, [currentOffer?.id, currentOffer?.minQty, currentOffer?.stock, isRobux]);
 
   const productReviews = useMemo(() => realReviews, [realReviews]);
 
@@ -554,146 +565,34 @@ export default function ProdutoPage() {
 
   const fav = isFavorite(product.id);
 
-  // Robux view like Eldorado.gg
+  // Mercado próprio de Robux: comparação de ofertas publicadas, sem métricas
+  // inventadas e sem alterar o contrato de compra autorizado pelo servidor.
   if (isRobux && currentOffer) {
     return (
       <AppShell>
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center gap-2 text-xs text-white/40 mb-4">
-            <Link to="/loja" className="hover:text-white">Loja</Link>
-            <span>/</span>
-            <span className="text-white">Roblox</span>
-            <span>/</span>
-            <span className="text-white font-bold">Moeda</span>
-          </div>
+        <div className="mx-auto max-w-7xl">
+          <nav aria-label="Navegação estrutural" className="mb-5 flex items-center gap-2 overflow-hidden text-xs text-white/45"><Link to="/loja" className="hover:text-white">Início</Link><span>›</span><Link to="/robux" className="hover:text-white">Mercado de Robux</Link><span>›</span><span className="truncate font-semibold text-white">Oferta selecionada</span></nav>
 
-          <div className="bg-[#ffbd2e] text-black text-xs font-bold px-4 py-2 rounded-full inline-flex items-center gap-2 mb-4">
-            Aceitamos <span className="bg-black/10 px-2 py-0.5 rounded">PIX</span> e <span className="flex items-center gap-1"><Bitcoin className="w-3 h-3" /> Crypto</span>
-          </div>
+          <section className="relative mb-6 overflow-hidden rounded-[1.6rem] border border-[#168cff]/20 bg-[#11151e] p-5 sm:p-7">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_92%_5%,rgba(0,132,255,0.2),transparent_35%),radial-gradient(circle_at_5%_100%,rgba(0,209,166,0.08),transparent_28%)]" />
+            <div className="relative flex flex-col gap-5 md:flex-row md:items-end md:justify-between"><div><p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#72bbff]">Mercado de Robux</p><h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">Compare ofertas antes de comprar.</h1><p className="mt-2 max-w-xl text-sm leading-6 text-white/55">Preço por unidade, quantidade mínima, estoque e prazo vêm de cada anúncio publicado.</p></div><div className="grid grid-cols-2 gap-2 text-xs sm:min-w-[270px]"><div className="rounded-xl border border-white/[0.08] bg-black/15 px-3 py-2.5"><p className="text-white/40">Ofertas</p><p className="mt-1 text-lg font-black text-white">{sellerOffers.length}</p></div><div className="rounded-xl border border-white/[0.08] bg-black/15 px-3 py-2.5"><p className="text-white/40">Menor valor/un.</p><p className="mt-1 text-sm font-black text-[#75c5ff]">{formatRobuxUnitPrice(sellerOffers[0]?.pricePerUnit)}</p></div></div></div>
+          </section>
 
-          <div className="grid lg:grid-cols-[1fr_360px] gap-6">
-            <div className="space-y-4">
-              {/* Seller header */}
-              <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <img src={state.userDirectory?.[currentOffer.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentOffer.sellerName}`} className="w-12 h-12 rounded-full bg-[#1a1a20] border border-[#25252e]" alt="" />
-                    <div>
-                      <p className="font-black text-white flex items-center gap-1.5">{currentOffer.sellerName} {currentOffer.verified && <BadgeCheck className="w-4 h-4 text-[#0084ff]" aria-label="Vendedor verificado" />}</p>
-                      <p className="text-xs flex items-center gap-2">
-                        {currentOffer.reviews > 0 ? (
-                          <>
-                            <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3.5 h-3.5" /> {currentOffer.positivePct}%</span>
-                            <span className="text-[#0084ff] underline cursor-pointer" onClick={() => setDetailTab("reviews")}>{currentOffer.reviews} avaliações</span>
-                          </>
-                        ) : (
-                          <span className="text-white/40">Novo • Nenhuma avaliação ainda</span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-white/40">Valor</p>
-                    <p className="font-black text-white text-lg">{formatRobuxPackage(currentOffer.product)}</p>
-                  </div>
-                </div>
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="space-y-5">
+              <section className="rounded-2xl border border-[#252b38] bg-[#12151d] p-5 sm:p-6" aria-labelledby="offer-title">
+                <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#70bcff]">Oferta selecionada</p><h2 id="offer-title" className="mt-2 text-xl font-black text-white">{currentOffer.packageUnits.toLocaleString("pt-BR")} Robux por pacote</h2><p className="mt-1 text-sm text-white/50">{formatRobuxUnitPrice(currentOffer.pricePerUnit)} por Robux · {formatRobuxPackage(currentOffer.product)}</p></div><button onClick={() => setSelectedSellerId(currentOffer.sellerId)} className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.035] p-2 text-left transition hover:border-[#168cff]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#51a9ff]"><img src={state.userDirectory?.[currentOffer.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentOffer.sellerName}`} className="h-9 w-9 rounded-full bg-[#1a1a20] object-cover" alt="" /><span className="min-w-0"><span className="flex max-w-36 items-center gap-1 truncate text-xs font-bold text-white">{currentOffer.sellerName}{currentOffer.verified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[#53afff]" aria-label="Vendedor verificado" />}</span><span className="block text-[10px] text-white/45">Ver perfil público</span></span></button></div>
 
-                {/* Quantity selector like Eldorado */}
-                <div className="mt-6 bg-[#1a1a20] border border-[#25252e] rounded-xl p-4">
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => setQuantity(Math.max(currentOffer.minQty, quantity - currentOffer.packageUnits))} className="w-12 h-12 rounded-xl bg-[#25252e] hover:bg-[#2a2a36] text-white flex items-center justify-center transition"><Minus className="w-4 h-4" /></button>
-                    <div className="flex-1 bg-[#0a0a0f] border border-[#1e1e28] rounded-xl h-12 flex items-center justify-center font-black text-white text-lg">{quantity.toLocaleString()}</div>
-                    <button onClick={() => setQuantity(currentOffer.stock != null ? Math.min(currentOffer.stock, quantity + currentOffer.packageUnits) : quantity + currentOffer.packageUnits)} className="w-12 h-12 rounded-xl bg-[#25252e] hover:bg-[#2a2a36] text-white flex items-center justify-center transition"><Plus className="w-4 h-4" /></button>
-                  </div>
-                  <div className="flex justify-between text-xs mt-3 text-white/40">
-                    <span>Qtd. mín.: {currentOffer.minQty.toLocaleString("pt-BR")}</span>
-                    <span>Estoque: {formatStockLabel(currentOffer.stock)}</span>
-                  </div>
-                </div>
+                <div className="mt-6 rounded-2xl border border-white/[0.08] bg-[#0d1017] p-4"><div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold text-white">Quantidade desejada</p><p className="mt-1 text-[11px] text-white/45">Ajuste em pacotes de {currentOffer.packageUnits.toLocaleString("pt-BR")} Robux.</p></div><p className="text-right text-xs text-white/45">Mínimo<br /><span className="font-bold text-white">{currentOffer.minQty.toLocaleString("pt-BR")}</span></p></div><div className="mt-4 grid grid-cols-[48px_1fr_48px] gap-3"><button type="button" aria-label="Diminuir quantidade" onClick={() => setQuantity(Math.max(currentOffer.minQty, quantity - currentOffer.packageUnits))} disabled={quantity <= currentOffer.minQty} className="grid h-12 place-items-center rounded-xl border border-white/[0.09] bg-white/[0.04] text-white transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-35"><Minus className="h-4 w-4" /></button><output aria-live="polite" className="grid h-12 place-items-center rounded-xl border border-[#168cff]/20 bg-[#168cff]/[0.07] text-lg font-black text-white">{quantity.toLocaleString("pt-BR")} <span className="ml-1 text-xs font-semibold text-[#8acbff]">Robux</span></output><button type="button" aria-label="Aumentar quantidade" onClick={() => setQuantity(currentOffer.stock != null ? Math.min(currentOffer.stock, quantity + currentOffer.packageUnits) : quantity + currentOffer.packageUnits)} disabled={currentOffer.stock != null && quantity >= currentOffer.stock} className="grid h-12 place-items-center rounded-xl border border-[#168cff]/30 bg-[#168cff]/10 text-[#86c9ff] transition hover:bg-[#168cff]/20 disabled:cursor-not-allowed disabled:opacity-35"><Plus className="h-4 w-4" /></button></div><div className="mt-3 grid grid-cols-2 gap-3 text-[11px]"><span className="text-white/45">Estoque: <b className="text-white">{formatStockLabel(currentOffer.stock)}</b></span><span className="text-right text-white/45">Entrega: <b className="text-white">{currentOffer.delivery}</b></span></div></div>
 
-                <div className="mt-4 space-y-3 text-sm">
-                  <div className="flex justify-between"><span className="text-white/60">Prazo de entrega</span><span className="font-bold text-white">{currentOffer.delivery}</span></div>
-                  <div className="border-t border-[#1e1e28] pt-3 flex justify-between text-lg font-black"><span className="text-white">Total: {formatBRL(total)}</span><span className="text-white/40 text-xs font-normal">inclui taxa de {formatBRL(BUYER_FEE)}</span></div>
-                </div>
+                <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3"><div className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-3"><p className="text-[10px] uppercase tracking-wide text-white/40">Valor/unidade</p><p className="mt-1 text-sm font-black text-white">{formatRobuxUnitPrice(currentOffer.pricePerUnit)}</p></div><div className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-3"><p className="text-[10px] uppercase tracking-wide text-white/40">Subtotal</p><p className="mt-1 text-sm font-black text-white">{formatBRL(subtotal)}</p></div><div className="col-span-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-3 sm:col-span-1"><p className="text-[10px] uppercase tracking-wide text-white/40">Taxa do pedido</p><p className="mt-1 text-sm font-black text-white">{formatBRL(BUYER_FEE)}</p></div></div>
+                <p className="mt-5 flex gap-2 text-xs leading-5 text-white/45"><Shield className="mt-0.5 h-4 w-4 shrink-0 text-[#63baff]" />A oferta e o valor final são revalidados no servidor antes de criar qualquer pedido.</p>
+              </section>
 
-                <button onClick={handleBuyClick} disabled={buyLoading || !sellerIdentityReady} className="w-full mt-5 bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-base transition disabled:opacity-50 disabled:cursor-not-allowed">{sellerIdentityReady ? "Comprar agora" : "Anúncio em validação"}</button>
-
-                <div className="mt-4 space-y-2.5">
-                  <div className="flex gap-2 text-xs"><Shield className="w-4 h-4 text-[#0084ff] shrink-0" /><span className="font-bold text-white">Garantia de reembolso</span><span className="text-white/40">Protegido pelo TradeShield</span></div>
-                  <div className="flex gap-2 text-xs"><Zap className="w-4 h-4 text-[#ffbd2e] shrink-0" /><span className="font-bold text-white">Checkout rápido</span><span className="flex gap-1"><span className="bg-[#00c950] text-white px-2 py-0.5 rounded text-[10px] font-bold">PIX</span><span className="bg-[#ffbd2e] text-black px-2 py-0.5 rounded text-[10px] font-bold">CRYPTO</span></span></div>
-                  <div className="flex gap-2 text-xs"><MessageSquare className="w-4 h-4 text-[#0084ff] shrink-0" /><span className="font-bold text-white">Atendimento 24 horas por dia</span><span className="text-white/40">Tira sua dúvida!</span></div>
-                </div>
-              </div>
-
-              {/* Other sellers like Eldorado */}
-              <div className="bg-[#15151a] border border-[#25252e] rounded-2xl overflow-hidden">
-                <div className="p-5 border-b border-[#1e1e28]">
-                  <h3 className="font-black text-white text-lg">Outros vendedores ({sellerOffers.length})</h3>
-                  <div className="flex gap-2 mt-4 overflow-x-auto scrollbar-hide">
-                    {[
-                      { id: "recomendado", label: "Recomendado" },
-                      { id: "barato", label: "Mais barato primeiro" },
-                      { id: "min", label: "Menor qtd. mín." },
-                    ].map((opt) => (
-                      <button key={opt.id} onClick={() => setSortBy(opt.id as any)} className={`shrink-0 px-4 py-2 rounded-full text-xs font-bold border transition ${sortBy === opt.id ? "bg-[#ffbd2e]/10 border-[#ffbd2e] text-[#ffbd2e]" : "bg-[#1a1a20] border-[#25252e] text-white/50 hover:text-white"}`}>
-                        {sortBy === opt.id && <CheckCircle className="w-3 h-3 inline mr-1" />}{opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="divide-y divide-[#1e1e28]">
-                  {sellerOffers.map((offer) => (
-                    <div key={offer.id} className={`p-4 hover:bg-[#1a1a20] transition cursor-pointer ${offer.id === productId ? "bg-[#0084ff]/5 border-l-2 border-l-[#0084ff]" : ""}`} onClick={() => navigate(`/produto/${offer.id}`)}>
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex gap-3 min-w-0 flex-1">
-                          <img src={state.userDirectory?.[offer.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${offer.sellerName}`} className="w-10 h-10 rounded-full bg-[#1a1a20] border border-[#25252e] shrink-0" alt="" />
-                          <div className="min-w-0 flex-1">
-                            <p className="font-bold text-white text-sm flex items-center gap-1 truncate">{offer.sellerName} {offer.verified && <BadgeCheck className="w-3.5 h-3.5 text-[#0084ff]" aria-label="Vendedor verificado" />}</p>
-                            <p className="text-xs flex items-center gap-2">
-                              {offer.reviews > 0 ? (
-                                <>
-                                  <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3 h-3" /> {offer.positivePct}%</span>
-                                  <span className="text-[#0084ff] underline">{offer.reviews} avaliações</span>
-                                </>
-                              ) : (
-                                <span className="text-white/40">Novo • 0 avaliações</span>
-                              )}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="font-black text-white">{formatRobuxPackage(offer.product)}</p>
-                          {offer.id === productId && <span className="text-[10px] bg-[#ffbd2e] text-black px-2 py-0.5 rounded-full font-bold">Oferta atual</span>}
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-4 mt-3 text-xs">
-                        <div><p className="text-white/40">Estoque</p><p className="font-bold text-white">{formatStockLabel(offer.stock)}</p></div>
-                        <div><p className="text-white/40">Qtd. mín.</p><p className="font-bold text-white">{offer.minQty}</p></div>
-                        <div><p className="text-white/40">Entrega</p><p className="font-bold text-white">{offer.delivery}</p></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <section className="overflow-hidden rounded-2xl border border-[#252b38] bg-[#12151d]" aria-labelledby="offers-title"><div className="border-b border-white/[0.07] p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#70bcff]">Comparar</p><h2 id="offers-title" className="mt-1 text-xl font-black text-white">Ofertas publicadas</h2></div><Link to="/robux" className="text-xs font-bold text-[#79c1ff] hover:text-white">Ver mercado completo</Link></div><div className="mt-4 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">{[{ id: "barato", label: "Menor valor/un." }, { id: "recomendado", label: "Mais avaliações" }, { id: "min", label: "Menor mínimo" }].map((option) => <button key={option.id} type="button" onClick={() => setSortBy(option.id as typeof sortBy)} aria-pressed={sortBy === option.id} className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-bold transition ${sortBy === option.id ? "border-[#168cff]/55 bg-[#168cff]/15 text-[#9dd4ff]" : "border-white/[0.09] bg-white/[0.035] text-white/55 hover:text-white"}`}>{sortBy === option.id && <CheckCircle className="mr-1 inline h-3 w-3" />}{option.label}</button>)}</div></div><div className="divide-y divide-white/[0.07]">{sellerOffers.map((offer) => { const selected = offer.id === productId; const offerPublicId = state.userDirectory?.[offer.sellerId]?.publicId; return <article key={offer.id} className={`p-4 sm:p-5 ${selected ? "bg-[#168cff]/[0.055]" : "hover:bg-white/[0.018]"}`}><div className="flex flex-wrap items-start justify-between gap-4"><button type="button" onClick={() => setSelectedSellerId(offer.sellerId)} className="flex min-w-0 items-center gap-3 text-left"><img src={state.userDirectory?.[offer.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${offer.sellerName}`} className="h-10 w-10 rounded-full bg-[#1a1a20] object-cover" alt="" /><span className="min-w-0"><span className="flex max-w-44 items-center gap-1 truncate text-sm font-bold text-white">{offer.sellerName}{offer.verified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[#53afff]" aria-label="Vendedor verificado" />}</span><span className="mt-0.5 block text-[11px] text-white/45">{offerPublicId ? `ID ${offerPublicId}` : "Perfil em validação"}</span></span></button><div className="text-right"><p className="text-xs font-black text-white">{formatRobuxUnitPrice(offer.pricePerUnit)} <span className="font-medium text-white/45">/ Robux</span></p><p className="mt-1 text-[11px] text-white/45">{formatRobuxPackage(offer.product)}</p></div></div><div className="mt-4 grid grid-cols-3 gap-2 text-xs"><div><p className="text-white/40">Estoque</p><p className="mt-1 font-bold text-white">{formatStockLabel(offer.stock)}</p></div><div><p className="text-white/40">Mínimo</p><p className="mt-1 font-bold text-white">{offer.minQty.toLocaleString("pt-BR")}</p></div><div><p className="text-white/40">Prazo</p><p className="mt-1 truncate font-bold text-white">{offer.delivery}</p></div></div><div className="mt-4 flex items-center justify-between gap-3"><p className="min-w-0 truncate text-[11px] text-white/45">{offer.reviews > 0 ? <><ThumbsUp className="mr-1 inline h-3 w-3 text-[#43d5b2]" />{offer.positivePct}% em {offer.reviews} avaliação(ões)</> : "Sem avaliações registradas"}</p>{selected ? <span className="rounded-lg border border-[#168cff]/30 bg-[#168cff]/10 px-2.5 py-1.5 text-[11px] font-bold text-[#8dcdff]">Selecionada</span> : <button type="button" onClick={() => navigate(`/produto/${offer.id}`)} className="rounded-lg border border-white/[0.12] bg-white/[0.05] px-3 py-1.5 text-[11px] font-bold text-white transition hover:border-[#168cff]/55 hover:bg-[#168cff]/10">Selecionar</button>}</div></article>; })}</div></section>
             </div>
 
-            <div className="space-y-4">
-              <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
-                <p className="text-xs uppercase font-bold text-white/30 mb-1">Preço</p>
-                <p className="text-3xl font-black text-white">{formatBRL(total)}</p>
-                <p className="text-xs text-white/40 mt-1">{quantity.toLocaleString("pt-BR")} Robux · {formatBRL(subtotal)} + {formatBRL(BUYER_FEE)}</p>
-                <button onClick={handleBuyClick} disabled={!sellerIdentityReady || buyLoading} className="w-full mt-4 bg-[#ffbd2e] text-black py-3.5 rounded-xl font-black disabled:opacity-50 disabled:cursor-not-allowed">{sellerIdentityReady ? "Comprar agora" : "Anúncio em validação"}</button>
-              </div>
-
-              <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
-                <h4 className="font-bold text-white mb-3">Vendedor</h4>
-                <button onClick={() => setSelectedSellerId(product.sellerId)} className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#1a1a20] border border-[#25252e] hover:border-[#2a2a36] transition text-left">
-                  <img src={state.userDirectory?.[product.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.seller}`} className="w-10 h-10 rounded-full" alt="" />
-                  <div className="flex-1 min-w-0"><p className="font-bold text-white text-sm truncate">{product.seller || "Vendedor"}</p><p className="text-[11px] text-white/40">{sellerIdentityReady ? `ID público: ${publicSellerId}` : "Vendedor em validação"}</p></div>
-                </button>
-              </div>
-            </div>
+            <aside className="space-y-4 lg:sticky lg:top-5"><section className="rounded-2xl border border-[#168cff]/25 bg-[#111a26] p-5 shadow-[0_20px_55px_rgba(0,91,183,0.12)]"><p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#79c1ff]">Resumo da oferta</p><p className="mt-3 text-3xl font-black text-white">{formatBRL(total)}</p><p className="mt-1 text-xs leading-5 text-white/50">{quantity.toLocaleString("pt-BR")} Robux · {formatBRL(subtotal)} de produto; inclui taxa de {formatBRL(BUYER_FEE)}.</p><button onClick={handleBuyClick} disabled={!sellerIdentityReady || buyLoading} className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-[#168cff] px-4 text-sm font-black text-white shadow-[0_10px_28px_rgba(0,132,255,0.25)] transition hover:bg-[#0875e6] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50">{sellerIdentityReady ? (buyLoading ? "Preparando pedido…" : "Comprar agora") : "Oferta em validação"}</button><p className="mt-3 text-center text-[10px] leading-4 text-white/40">As formas de pagamento só são mostradas após a disponibilidade ser consultada.</p></section><section className="rounded-2xl border border-white/[0.08] bg-white/[0.025] p-5"><h2 className="text-sm font-black text-white">Como funciona</h2><ol className="mt-4 space-y-3 text-xs leading-5 text-white/55"><li className="flex gap-2"><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#168cff]/15 text-[10px] font-black text-[#89ccff]">1</span>Compare preço por unidade, mínimo, estoque e prazo.</li><li className="flex gap-2"><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#168cff]/15 text-[10px] font-black text-[#89ccff]">2</span>Escolha uma oferta com perfil público válido.</li><li className="flex gap-2"><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#168cff]/15 text-[10px] font-black text-[#89ccff]">3</span>O pedido e os dados de pagamento são tratados no fluxo protegido.</li></ol></section></aside>
           </div>
         </div>
 

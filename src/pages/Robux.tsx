@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useStore } from "@/store/StoreContext";
-import { formatBRL, formatRobuxPackage, formatStockLabel, productMinQuantity, productStock, ROBUX_CATEGORY, robuxPackageUnits, unitPriceFromPackage } from "@/lib/catalog";
+import { formatBRL, formatRobuxPackage, formatRobuxUnitPrice, formatStockLabel, productMinQuantity, productStock, ROBUX_CATEGORY, robuxPackageUnits, unitPriceFromPackage } from "@/lib/catalog";
 import AppShell from "@/components/AppShell";
 import { ShieldCheck, Zap, BadgeCheck, Star, ThumbsUp, Search, X, Bitcoin, CreditCard } from "lucide-react";
 
@@ -189,7 +189,7 @@ export default function RobuxPage() {
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-[10px] text-white/40">por un.</p>
-                  <p className="font-black text-white">{formatBRL(offer.pricePerUnit)}</p>
+                  <p className="font-black text-white">{formatRobuxUnitPrice(offer.pricePerUnit)}</p>
                   <p className="text-[10px] text-white/40">{formatRobuxPackage({ price: offer.packagePrice, category: ROBUX_CATEGORY, variations: [{ name: `${offer.packageUnits} Robux`, price: offer.packagePrice }] })}</p>
                   <button
                     onClick={(e) => { e.stopPropagation(); navigate(`/produto/${offer.productId}`); }}

@@ -113,6 +113,19 @@ export function formatBRL(value: unknown): string {
   return `R$ ${safe.toFixed(2).replace(".", ",")}`;
 }
 
+/** A unit price can be lower than one cent. Keep enough decimals to compare
+ * Robux offers honestly while all payable totals remain rounded server-side. */
+export function formatRobuxUnitPrice(value: unknown): string {
+  const price = Number(value);
+  if (!Number.isFinite(price) || price < 0) return "—";
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  }).format(price);
+}
+
 /** How many Robux/units a listing sells for its advertised package price.
  * Read from the first variation label (`"1000 Robux"`); falls back to 1 so the
  * package price is never silently divided by an unknown quantity. */
