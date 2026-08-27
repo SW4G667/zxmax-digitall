@@ -72,6 +72,8 @@ interface AuthContextType {
   refreshAdminGate: () => void;
   signOut: (scope?: "local" | "global" | "others") => Promise<void>;
   refreshProfile: () => Promise<void>;
+  /** Revalida banimento, papel administrativo e fatores para a sessão atual. */
+  refreshAuthorization: () => Promise<void>;
   updateProfile: (data: Partial<Pick<Profile, "display_name" | "avatar_url" | "pix_key" | "document_type">>) => Promise<void>;
 }
 
@@ -326,11 +328,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (nextUser.id === prevId) {
-        // Same user (token refreshed / tab refocused): only swap the tokens.
-        // No data reload, no loading flash, admin state untouched.
+        // AAL2 verification and token refresh keep the same user id. Recheck
+        // server-backed authorization so maintenance cannot use stale roles.
         setSession(sess);
         setUser(nextUser);
         setLoading(false);
+        hydrateAccount(nextUser.id);
         return;
       }
 
@@ -565,6 +568,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (u) await fetchProfile(u.id);
   }, [fetchProfile]);
 
+  const refreshAuthorization = useCallback(async () => {
+    const u = userRef.current;
+    if (!u) return;
+    setAdminRoleResolved(false);
+    await Promise.all([
+      checkBan(u.id).catch(() => null),
+      checkAdmin(u.id).catch(() => null),
+      refreshMfaFlag().catch(() => null),
+    ]);
+  }, [checkBan, checkAdmin, refreshMfaFlag]);
+
   const updateProfileFn = useCallback(
     async (data: Partial<Pick<Profile, "display_name" | "avatar_url" | "pix_key" | "document_type">>) => {
       const u = userRef.current;
@@ -601,6 +615,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshAdminGate,
         signOut,
         refreshProfile,
+        refreshAuthorization,
         updateProfile: updateProfileFn,
       }}
     >

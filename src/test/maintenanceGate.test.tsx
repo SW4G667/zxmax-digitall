@@ -8,6 +8,7 @@ const authState = vi.hoisted(() => ({
   user: null as { id: string } | null,
   isAdmin: false,
   adminRoleResolved: false,
+  refreshAuthorization: vi.fn(),
 }));
 
 const rpcResult = vi.hoisted(() => ({
@@ -38,6 +39,7 @@ describe("MaintenanceGate", () => {
     authState.user = null;
     authState.isAdmin = false;
     authState.adminRoleResolved = false;
+    authState.refreshAuthorization.mockClear();
     rpcResult.current = { data: { maintenance: false, message: "" }, error: null };
     supabaseMock.rpc.mockClear();
   });
@@ -64,6 +66,15 @@ describe("MaintenanceGate", () => {
 
     await waitFor(() => expect(screen.getByText("Conteúdo protegido da vitrine")).toBeInTheDocument());
     expect(screen.queryByRole("heading", { name: "Estamos preparando uma experiência melhor." })).not.toBeInTheDocument();
+  });
+
+  it("revalida autorização no servidor quando uma sessão recém-logada encontra manutenção", async () => {
+    authState.user = { id: "admin-em-validacao" };
+    rpcResult.current = { data: { maintenance: true }, error: null };
+    renderGate();
+
+    expect(await screen.findByText("Validando permissões administrativas…")).toBeInTheDocument();
+    expect(authState.refreshAuthorization).toHaveBeenCalledTimes(1);
   });
 
   it("não derruba a vitrine quando a consulta pública de plataforma falha temporariamente", async () => {

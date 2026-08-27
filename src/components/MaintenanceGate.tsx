@@ -9,7 +9,7 @@ type PlatformStatus = { maintenance?: boolean; message?: string };
 
 export default function MaintenanceGate({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const { user, isAdmin, adminRoleResolved } = useAuth();
+  const { user, isAdmin, adminRoleResolved, refreshAuthorization } = useAuth();
   const [status, setStatus] = useState<PlatformStatus | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
 
@@ -23,9 +23,20 @@ export default function MaintenanceGate({ children }: { children: React.ReactNod
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    // After a successful password login or TOTP verification, Supabase may
+    // emit a session for the same user id. Ask the server to resolve role
+    // again instead of returning an administrator to the maintenance screen.
+    if (status?.maintenance && user && !adminRoleResolved) {
+      void refreshAuthorization();
+    }
+  }, [adminRoleResolved, refreshAuthorization, status?.maintenance, user?.id]);
+
   const authRoute = location.pathname === "/auth/callback" || location.pathname === "/reset-password";
   const adminAllowed = !!user && adminRoleResolved && isAdmin;
   if (authRoute || !status?.maintenance || adminAllowed) return <>{children}</>;
+
+  const validatingAdmin = !!user && !adminRoleResolved;
 
   return (
     <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[#070910] p-5 text-white">
@@ -37,7 +48,11 @@ export default function MaintenanceGate({ children }: { children: React.ReactNod
         <h1 className="mt-2 text-2xl font-black sm:text-3xl">Estamos preparando uma experiência melhor.</h1>
         <p className="mt-3 text-sm leading-6 text-white/55">{status.message || "O catálogo está temporariamente indisponível. Tente novamente em alguns instantes."}</p>
         <div className="mt-7 flex items-center justify-center gap-2 text-[11px] font-semibold text-emerald-300/90"><ShieldCheck className="h-4 w-4" /> Seus dados e pedidos permanecem protegidos.</div>
-        <button onClick={() => setAuthOpen(true)} className="mt-8 min-h-12 rounded-xl border border-white/10 bg-white/[0.055] px-5 text-sm font-bold text-white transition hover:bg-white/10 active:scale-[0.98]">Entrar como administrador</button>
+        {validatingAdmin ? (
+          <div className="mt-8 rounded-xl border border-[#168cff]/20 bg-[#168cff]/10 px-5 py-3 text-sm font-bold text-[#8bc7ff]" role="status">Validando permissões administrativas…</div>
+        ) : (
+          <button onClick={() => setAuthOpen(true)} className="mt-8 min-h-12 rounded-xl border border-white/10 bg-white/[0.055] px-5 text-sm font-bold text-white transition hover:bg-white/10 active:scale-[0.98]">Entrar como administrador</button>
+        )}
       </section>
       {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
     </main>
