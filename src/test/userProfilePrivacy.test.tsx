@@ -34,6 +34,7 @@ const storeState = vi.hoisted(() => ({
 
 vi.mock("@/store/StoreContext", () => ({ useStore: () => storeState }));
 vi.mock("@/components/CustomEmojis", () => ({ StarEmoji: () => <span>Estrela</span> }));
+vi.mock("@/integrations/supabase/client", () => ({ supabase: { from: vi.fn() } }));
 
 // eslint-disable-next-line import/first
 import UserProfileModal from "@/components/UserProfileModal";
@@ -85,5 +86,13 @@ describe("UserProfileModal — privacidade", () => {
     expect(publicProducts).toContain('select("user_id, public_id")');
     expect(publicProducts).toContain("seller_public_id: product.seller_public_id || publicIds.get");
     expect(publicProducts).not.toContain('select("user_id, email");');
+  });
+
+  it("resolve novamente o perfil público no modal e não apresenta um ID indisponível como identificador válido", async () => {
+    const profileModal = await readFile(join(process.cwd(), "src/components/UserProfileModal.tsx"), "utf8");
+    expect(profileModal).toContain('.from("profiles_public")');
+    expect(profileModal).toContain('select("public_id, display_name, avatar_url, is_verified_seller")');
+    expect(profileModal).toContain("Conta em validação");
+    expect(profileModal).not.toContain('|| "ID indisponível"');
   });
 });
