@@ -12,6 +12,7 @@ describe("mercado de Robux", () => {
 
   it("renderiza um comparador próprio de ofertas reais e inicia na quantidade mínima", async () => {
     const productPage = await readFile(join(process.cwd(), "src/pages/Produto.tsx"), "utf8");
+    const marketPage = await readFile(join(process.cwd(), "src/pages/Robux.tsx"), "utf8");
 
     expect(productPage).toContain("Mercado de Robux");
     expect(productPage).toContain("Oferta selecionada");
@@ -21,5 +22,11 @@ describe("mercado de Robux", () => {
     expect(productPage).toContain("formatRobuxUnitPrice");
     expect(productPage).not.toContain("Eldorado-style");
     expect(productPage).not.toContain("TradeShield");
+    expect(marketPage).toContain("Mercado de Robux");
+    expect(marketPage).toContain("Somente anúncios aprovados com perfil público válido aparecem neste mercado.");
+    expect(marketPage).toContain(".filter((offer) => Boolean(offer.sellerPublicId && offer.sellerName))");
+    expect(marketPage).toContain("Valor/un.");
+    expect(marketPage).toContain("ID público:");
+    expect(marketPage).toContain("Sem avaliações registradas");
   });
 });
