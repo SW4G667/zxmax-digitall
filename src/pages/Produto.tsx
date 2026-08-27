@@ -281,7 +281,9 @@ export default function ProdutoPage() {
 
   const currentOffer = useMemo(() => {
     if (!isRobux) return null;
-    return sellerOffers.find((o) => o.id === productId) || sellerOffers[0];
+    // Nunca substitua uma rota de anúncio órfão pela primeira oferta válida:
+    // isso faria a página exibir preço e vendedor de outra pessoa.
+    return sellerOffers.find((o) => o.id === productId) ?? null;
   }, [sellerOffers, productId, isRobux]);
 
   // A Robux offer is bought in units. Start at the real minimum whenever the
