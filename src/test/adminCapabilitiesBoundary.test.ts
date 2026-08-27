@@ -27,6 +27,7 @@ describe("permissões administrativas por capacidade", () => {
     expect(guards).toContain("auth.jwt() ->> 'aal'");
     expect(guards).toContain("PERFORM public.require_admin_capability('manage_tags')");
     expect(guards).toContain("PERFORM public.require_admin_capability('moderate_catalog')");
+    expect(guards).toContain("CREATE OR REPLACE FUNCTION public.require_primary_admin()");
     expect(edge).toContain('authorizationClient.rpc("has_capability"');
     expect(edge).toContain('get_webhook_logs: "view_sanitized_webhooks"');
   });
@@ -42,6 +43,12 @@ describe("permissões administrativas por capacidade", () => {
     expect(panel).not.toContain("E-mail do usuário");
     expect(view).toContain("<AdminRolePermissionsPanel />");
     expect(migration).toContain("CREATE OR REPLACE FUNCTION public.assign_user_role_by_public_id");
+    expect(migration).toContain("PERFORM public.require_primary_admin()");
+  });
+
+  it("exige sessão administrativa AAL2 também para enumerar operadores", async () => {
+    const directoryGuard = await readFile(join(process.cwd(), "supabase/migrations/20260827031500_require_aal2_for_capability_directory.sql"), "utf8");
+    expect(directoryGuard).toContain("PERFORM public.require_primary_admin()");
   });
 
   it("orienta o operador quando clicar em uma ação sem capacidade, sem tentar executá-la", async () => {
