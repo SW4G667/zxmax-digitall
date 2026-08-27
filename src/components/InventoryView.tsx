@@ -36,22 +36,23 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   };
 
   const openEdit = (p: Product) => {
+    const robuxVariation = p.category === ROBUX_CATEGORY ? p.variations?.[0] : undefined;
     setEditingId(p.id);
     setForm({
-      name: p.name,
+      name: p.category === ROBUX_CATEGORY ? "Robux" : p.name,
       category: p.category,
-      description: p.description || "",
+      description: p.category === ROBUX_CATEGORY ? "" : p.description || "",
       price: String(p.price),
       image: p.image || "",
       banner: p.banner || "",
       deliveryType: p.deliveryType,
       deliveryContent: p.deliveryContent || "",
-      stock: String(p.stock || ""),
-      minQuantity: String(p.minQuantity || ""),
+      stock: String(p.stock ?? (robuxVariation as any)?.stock ?? ""),
+      minQuantity: String(p.minQuantity ?? (robuxVariation as any)?.minQuantity ?? ""),
       deliveryTime: p.deliveryTime || "",
-      robuxAmount: p.variations?.[0]?.name ? p.variations[0].name.replace(/\D/g, "") : "",
+      robuxAmount: robuxVariation?.name ? robuxVariation.name.replace(/\D/g, "") : "",
     });
-    setVariations((p.variations || []).map((v) => ({ name: v.name, price: String(v.price) })));
+    setVariations(p.category === ROBUX_CATEGORY ? [] : (p.variations || []).map((v) => ({ name: v.name, price: String(v.price) })));
     setShowForm(true);
   };
 
@@ -71,7 +72,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: "image" | "banner") => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) { toast.error("Imagem inválida"); e.target.value = ""; return; }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) { toast.error("Envie uma imagem JPG, PNG ou WebP."); e.target.value = ""; return; }
     if (file.size > 5 * 1024 * 1024) { toast.error("Máximo 5MB"); e.target.value = ""; return; }
     setUploading(type);
     const localUrl = URL.createObjectURL(file);
@@ -81,13 +82,13 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
       const filePath = `${state.currentUser!.id}/${Date.now()}_${type}.${ext}`;
       const { error } = await supabase.storage.from("product-images").upload(filePath, file, { upsert: true, contentType: file.type });
       if (error) throw error;
-      const { data, error: signErr } = await supabase.storage.from("product-images").createSignedUrl(filePath, 60 * 60 * 24 * 365);
-      if (signErr || !data?.signedUrl) throw signErr || new Error("Falha URL");
-      setForm(f => ({ ...f, [type]: data.signedUrl }));
+      const { data } = supabase.storage.from("product-images").getPublicUrl(filePath);
+      if (!data?.publicUrl) throw new Error("Falha ao preparar a imagem");
+      setForm(f => ({ ...f, [type]: data.publicUrl }));
       toast.success("Imagem enviada!");
-    } catch (err: any) {
+    } catch {
       setForm(f => ({ ...f, [type]: "" }));
-      toast.error("Erro upload: " + (err?.message || ""));
+      toast.error("Não foi possível enviar a imagem. Atualize a página e tente novamente.");
     }
     setUploading(null);
     e.target.value = "";
@@ -96,7 +97,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!state.currentUser?.isVerified && !state.currentUser?.isAdmin) return toast.error("Verifique sua conta para anunciar.");
-    if (!form.name.trim() || !form.price.trim()) return toast.error("Preencha nome e preço.");
+    if ((!isRobuxCategory && !form.name.trim()) || !form.price.trim()) return toast.error("Preencha nome e preço.");
     const finalPrice = parsePriceInput(form.price);
     if (!isValidProductPrice(finalPrice)) return toast.error(`Informe um preço válido a partir de ${formatBRL(MIN_PRODUCT_PRICE)}. Use 2,00 ou 2.00.`);
 
@@ -113,13 +114,13 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     if (isRobuxCategory) {
       const robuxQty = Number.parseInt(form.robuxAmount, 10);
       if (!Number.isFinite(robuxQty) || robuxQty <= 0) return toast.error("Informe quantos Robux o pacote entrega.");
-      // Stock/min also live inside the variation so a missing column never hides them.
+      if (stockNum === undefined || stockNum <= 0) return toast.error("Informe o estoque disponível de Robux.");
+      if (minQtyNum === undefined || minQtyNum <= 0) return toast.error("Informe a quantidade mínima de compra de Robux.");
+      if (minQtyNum > stockNum) return toast.error("A quantidade mínima não pode exceder o estoque disponível.");
       finalVariations = [{
         name: `${robuxQty} Robux`,
         price: finalPrice,
-        ...(stockNum !== undefined ? { stock: stockNum } : {}),
-        ...(minQtyNum !== undefined ? { minQuantity: minQtyNum } : {}),
-      }, ...finalVariations];
+      }];
     }
     finalVariations = finalVariations.filter((v) => isValidProductPrice(v.price));
     if (variations.some((v) => v.name && v.price && !isValidProductPrice(parsePriceInput(v.price)))) {
@@ -128,7 +129,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
 
     if (editingId !== null) {
       const ok = await updateProduct(editingId, {
-        name: form.name, category: form.category, description: form.description,
+        name: isRobuxCategory ? "Robux" : form.name, category: form.category, description: isRobuxCategory ? "" : form.description,
         price: finalPrice, image: form.image, banner: form.banner || undefined,
         deliveryType: form.deliveryType, deliveryContent: form.deliveryContent,
         variations: finalVariations.length > 0 ? finalVariations : [],
@@ -140,7 +141,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
       toast.success("Produto atualizado!");
     } else {
       const created = await addProduct({
-        name: form.name, category: form.category, description: form.description,
+        name: isRobuxCategory ? "Robux" : form.name, category: form.category, description: isRobuxCategory ? "" : form.description,
         price: finalPrice, image: form.image, banner: form.banner || undefined,
         seller: state.currentUser!.name,
         deliveryType: form.deliveryType, deliveryContent: form.deliveryContent,
@@ -236,15 +237,16 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
             </div>
             
             <form onSubmit={handleCreate} className="space-y-4">
-              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nome do Produto" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />
+              {!isRobuxCategory && <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nome do Produto" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />}
               
-              <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none">
+              <select value={form.category} onChange={(e) => { const category = e.target.value; setForm({ ...form, category, ...(category === ROBUX_CATEGORY ? { name: "Robux", description: "", deliveryType: "manual" as const } : {}) }); if (category === ROBUX_CATEGORY) setVariations([]); }} className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none">
                 {state.config.categories.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
 
               {isRobuxCategory && (
                 <div className="bg-[#ffbd2e]/10 border border-[#ffbd2e]/20 rounded-xl p-4 space-y-3">
-                  <p className="text-xs font-black uppercase text-[#ffbd2e] flex items-center gap-2"><Coins className="w-4 h-4" /> Configuração Robux (Eldorado.gg)</p>
+                  <p className="text-xs font-black uppercase text-[#ffbd2e] flex items-center gap-2"><Coins className="w-4 h-4" /> Oferta de Robux</p>
+                  <p className="text-xs text-white/55">O título é sempre <b className="text-white">Robux</b>. Esta oferta usa um único pacote, sem descrição ou variações extras.</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-[10px] font-bold uppercase text-white/40 mb-1 block">Qtd Robux no pacote</label>
@@ -279,7 +281,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                 </>
               )}
 
-              <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Descrição detalhada" rows={3} className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm resize-none focus:border-[#0084ff] outline-none" />
+              {!isRobuxCategory && <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Descrição detalhada" rows={3} className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm resize-none focus:border-[#0084ff] outline-none" />}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

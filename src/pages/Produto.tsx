@@ -104,7 +104,12 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
     { id: "card", label: "Cartão", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-white border-white text-black" },
     { id: "boleto", label: "Boleto", icon: <Package className="w-5 h-5" />, selectedClass: "bg-white border-white text-black" },
   ];
-  const visibleMethodButtons = methodButtons.filter(({ id }) => loadingMethods || isAvailable(id));
+  const visibleMethodButtons = methodButtons.filter(({ id }) => {
+    // A disponibilidade definitiva já aplica precedência no contrato; durante
+    // o carregamento, também evitamos desenhar duas opções PIX provisórias.
+    if (loadingMethods) return id !== "vexopay_pix";
+    return isAvailable(id);
+  });
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Checkout ZXMAX" className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
@@ -188,15 +193,14 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
             {loading ? "Processando..."
               : !anyMethod && !loadingMethods ? "Nenhuma forma disponível"
               : method === "zennith_pix" || method === "vexopay_pix" ? "Pagar com PIX"
-              : method === "crypto" ? "Pagar com Crypto"
+              : method === "crypto" ? "Pagar com cripto"
               : method === "boleto" ? "Gerar boleto"
               : "Pagar com cartão"}
           </button>
 
           <div className="flex items-center justify-center gap-4 text-[11px] text-white/30">
-            <span className="flex items-center gap-1"><Shield className="w-3 h-3 text-[#00c950]" /> Garantia</span>
-            <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-[#ffbd2e]" /> Rápido</span>
-            <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-[#0084ff]" /> 24h</span>
+            <span className="flex items-center gap-1"><Shield className="w-3 h-3 text-[#00c950]" /> Pedido protegido</span>
+            <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-[#0084ff]" /> Acompanhe pelo pedido</span>
           </div>
         </div>
       </div>
@@ -219,6 +223,7 @@ export default function ProdutoPage() {
   const [cryptoCharge, setCryptoCharge] = useState<CryptoCharge | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  const [quantityDraft, setQuantityDraft] = useState("1");
   const [sortBy, setSortBy] = useState<"recomendado" | "barato" | "min">("barato");
   const [variationOpen, setVariationOpen] = useState(false);
   const [variationSearch, setVariationSearch] = useState("");
@@ -285,11 +290,23 @@ export default function ProdutoPage() {
   useEffect(() => {
     if (!isRobux || !currentOffer) return;
     setQuantity((current) => {
-      if (current < currentOffer.minQty) return currentOffer.minQty;
-      if (currentOffer.stock != null && current > currentOffer.stock) return currentOffer.stock;
-      return current;
+      const normalized = currentOffer.stock != null
+        ? Math.min(Math.max(currentOffer.minQty, current), currentOffer.stock)
+        : Math.max(currentOffer.minQty, current);
+      setQuantityDraft(String(normalized));
+      return normalized;
     });
   }, [currentOffer?.id, currentOffer?.minQty, currentOffer?.stock, isRobux]);
+
+  const applyRobuxQuantity = (candidate: number) => {
+    if (!currentOffer) return;
+    const lowerBound = currentOffer.minQty;
+    const upperBound = currentOffer.stock ?? Number.MAX_SAFE_INTEGER;
+    const parsed = Number.isFinite(candidate) ? Math.floor(candidate) : lowerBound;
+    const next = Math.min(upperBound, Math.max(lowerBound, parsed));
+    setQuantity(next);
+    setQuantityDraft(String(next));
+  };
 
   const productReviews = useMemo(() => realReviews, [realReviews]);
 
@@ -318,7 +335,6 @@ export default function ProdutoPage() {
   useEffect(() => {
     if (product) {
       setSelectedVariation(null);
-      if (isRobux) setQuantity(product.minQuantity ?? robuxPackageUnits(product));
     }
   }, [product?.id, isRobux]);
 
@@ -451,7 +467,7 @@ export default function ProdutoPage() {
         );
         if (res.errorMessage || !res.data?.address) {
           const msg = res.status === 404
-            ? "Função de Crypto (VexoPay) ainda não publicada. Avise o suporte."
+            ? "O pagamento em cripto está temporariamente indisponível. Avise o suporte."
             : res.errorMessage ?? "O provedor de cripto não devolveu o endereço.";
           toast.error(msg);
           return;
@@ -479,9 +495,7 @@ export default function ProdutoPage() {
         "Não foi possível iniciar o pagamento com cartão.",
       );
       if (res.errorMessage || !res.data?.url) {
-        // Agora a mensagem é a real da Stripe/servidor, e não mais
-        // "Edge Function returned a non-2xx status code".
-        toast.error(res.errorMessage ?? "A Stripe não devolveu o link de pagamento.");
+        toast.error(res.errorMessage ?? "O provedor não devolveu o link de pagamento.");
         return;
       }
       toast.success("Redirecionando para o pagamento seguro...");
@@ -588,7 +602,7 @@ export default function ProdutoPage() {
               <section className="rounded-2xl border border-[#252b38] bg-[#12151d] p-5 sm:p-6" aria-labelledby="offer-title">
                 <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#70bcff]">Oferta selecionada</p><h2 id="offer-title" className="mt-2 text-xl font-black text-white">{currentOffer.packageUnits.toLocaleString("pt-BR")} Robux por pacote</h2><p className="mt-1 text-sm text-white/50">{formatRobuxUnitPrice(currentOffer.pricePerUnit)} por Robux · {formatRobuxPackage(currentOffer.product)}</p></div><button onClick={() => setSelectedSellerId(currentOffer.sellerId)} className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.035] p-2 text-left transition hover:border-[#168cff]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#51a9ff]"><img src={state.userDirectory?.[currentOffer.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentOffer.sellerName}`} className="h-9 w-9 rounded-full bg-[#1a1a20] object-cover" alt="" /><span className="min-w-0"><span className="flex max-w-36 items-center gap-1 truncate text-xs font-bold text-white">{currentOffer.sellerName}{currentOffer.verified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[#53afff]" aria-label="Vendedor verificado" />}</span><span className="block text-[10px] text-white/45">Ver perfil público</span></span></button></div>
 
-                <div className="mt-6 rounded-2xl border border-white/[0.08] bg-[#0d1017] p-4"><div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold text-white">Quantidade desejada</p><p className="mt-1 text-[11px] text-white/45">Ajuste em pacotes de {currentOffer.packageUnits.toLocaleString("pt-BR")} Robux.</p></div><p className="text-right text-xs text-white/45">Mínimo<br /><span className="font-bold text-white">{currentOffer.minQty.toLocaleString("pt-BR")}</span></p></div><div className="mt-4 grid grid-cols-[48px_1fr_48px] gap-3"><button type="button" aria-label="Diminuir quantidade" onClick={() => setQuantity(Math.max(currentOffer.minQty, quantity - currentOffer.packageUnits))} disabled={quantity <= currentOffer.minQty} className="grid h-12 place-items-center rounded-xl border border-white/[0.09] bg-white/[0.04] text-white transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-35"><Minus className="h-4 w-4" /></button><output aria-live="polite" className="grid h-12 place-items-center rounded-xl border border-[#168cff]/20 bg-[#168cff]/[0.07] text-lg font-black text-white">{quantity.toLocaleString("pt-BR")} <span className="ml-1 text-xs font-semibold text-[#8acbff]">Robux</span></output><button type="button" aria-label="Aumentar quantidade" onClick={() => setQuantity(currentOffer.stock != null ? Math.min(currentOffer.stock, quantity + currentOffer.packageUnits) : quantity + currentOffer.packageUnits)} disabled={currentOffer.stock != null && quantity >= currentOffer.stock} className="grid h-12 place-items-center rounded-xl border border-[#168cff]/30 bg-[#168cff]/10 text-[#86c9ff] transition hover:bg-[#168cff]/20 disabled:cursor-not-allowed disabled:opacity-35"><Plus className="h-4 w-4" /></button></div><div className="mt-3 grid grid-cols-2 gap-3 text-[11px]"><span className="text-white/45">Estoque: <b className="text-white">{formatStockLabel(currentOffer.stock)}</b></span><span className="text-right text-white/45">Entrega: <b className="text-white">{currentOffer.delivery}</b></span></div></div>
+                <div className="mt-6 rounded-2xl border border-white/[0.08] bg-[#0d1017] p-4"><div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold text-white">Quantidade desejada</p><p className="mt-1 text-[11px] text-white/45">Digite a quantidade de Robux que deseja comprar.</p></div><p className="text-right text-xs text-white/45">Mínimo da oferta<br /><span className="font-bold text-white">{currentOffer.minQty.toLocaleString("pt-BR")}</span></p></div><div className="mt-4 grid grid-cols-[48px_1fr_48px] gap-3"><button type="button" aria-label="Diminuir quantidade" onClick={() => applyRobuxQuantity(quantity - 1)} disabled={quantity <= currentOffer.minQty} className="grid h-12 place-items-center rounded-xl border border-white/[0.09] bg-white/[0.04] text-white transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-35"><Minus className="h-4 w-4" /></button><label className="relative"><span className="sr-only">Quantidade de Robux</span><input aria-label="Quantidade de Robux" inputMode="numeric" value={quantityDraft} onChange={(event) => setQuantityDraft(event.target.value.replace(/\D/g, ""))} onBlur={() => applyRobuxQuantity(Number(quantityDraft))} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); applyRobuxQuantity(Number(quantityDraft)); } }} className="h-12 w-full rounded-xl border border-[#168cff]/30 bg-[#168cff]/[0.07] px-4 pr-20 text-center text-lg font-black text-white outline-none transition focus:border-[#60b6ff] focus:ring-2 focus:ring-[#168cff]/25" /><span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-semibold text-[#8acbff]">Robux</span></label><button type="button" aria-label="Aumentar quantidade" onClick={() => applyRobuxQuantity(quantity + 1)} disabled={currentOffer.stock != null && quantity >= currentOffer.stock} className="grid h-12 place-items-center rounded-xl border border-[#168cff]/30 bg-[#168cff]/10 text-[#86c9ff] transition hover:bg-[#168cff]/20 disabled:cursor-not-allowed disabled:opacity-35"><Plus className="h-4 w-4" /></button></div><div className="mt-3 grid grid-cols-2 gap-3 text-[11px]"><span className="text-white/45">Estoque: <b className="text-white">{formatStockLabel(currentOffer.stock)}</b></span><span className="text-right text-white/45">Entrega: <b className="text-white">{currentOffer.delivery}</b></span></div></div>
 
                 <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3"><div className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-3"><p className="text-[10px] uppercase tracking-wide text-white/40">Valor/unidade</p><p className="mt-1 text-sm font-black text-white">{formatRobuxUnitPrice(currentOffer.pricePerUnit)}</p></div><div className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-3"><p className="text-[10px] uppercase tracking-wide text-white/40">Subtotal</p><p className="mt-1 text-sm font-black text-white">{formatBRL(subtotal)}</p></div><div className="col-span-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-3 sm:col-span-1"><p className="text-[10px] uppercase tracking-wide text-white/40">Taxa do pedido</p><p className="mt-1 text-sm font-black text-white">{formatBRL(BUYER_FEE)}</p></div></div>
                 <p className="mt-5 flex gap-2 text-xs leading-5 text-white/45"><Shield className="mt-0.5 h-4 w-4 shrink-0 text-[#63baff]" />A oferta e o valor final são revalidados no servidor antes de criar qualquer pedido.</p>

@@ -19,7 +19,9 @@ describe("mercado de Robux", () => {
     expect(productPage).toContain("Esta oferta não está disponível.");
     expect(productPage).toContain("Nenhum pedido ou pagamento foi iniciado.");
     expect(productPage).toContain("Compare preço por unidade, mínimo, estoque e prazo.");
-    expect(productPage).toContain("if (current < currentOffer.minQty) return currentOffer.minQty");
+    expect(productPage).toContain("const applyRobuxQuantity");
+    expect(productPage).toContain('aria-label="Quantidade de Robux"');
+    expect(productPage).toContain("setQuantityDraft(event.target.value.replace(/\\D/g, \"\"))");
     expect(productPage).toContain("Sem avaliações registradas");
     expect(productPage).toContain("formatRobuxUnitPrice");
     expect(productPage).not.toContain("Eldorado-style");
