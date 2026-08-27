@@ -385,7 +385,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           profile?.avatar_url ||
           (authUser.user_metadata as { avatar_url?: string; picture?: string } | undefined)?.avatar_url ||
           (authUser.user_metadata as { avatar_url?: string; picture?: string } | undefined)?.picture ||
-          `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(profile?.display_name || authUser.email || "")}`,
+          `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(`zxmax-${userPublicId}`)}`,
         isAdmin,
         pixKey: profile?.pix_key || "",
         isVerified: profile?.is_verified_seller || false,
