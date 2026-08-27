@@ -925,7 +925,7 @@ function AdminProductModeration() {
     setBusyId(rejecting.id);
     const ok = await rejectProduct(rejecting.id, reason);
     setBusyId(null);
-    if (ok) toast.success("Anúncio reprovado e removido.");
+    if (ok) toast.success("Anúncio reprovado e retirado da vitrine.");
     setRejecting(null);
     setReason("");
   };
@@ -1032,7 +1032,7 @@ function AdminProductModeration() {
           <div role="alertdialog" aria-modal="true" aria-label="Confirmar reprovação" className="bg-card border border-border rounded-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-black text-foreground">Reprovar anúncio?</h3>
             <p className="text-sm text-muted-foreground">
-              <span className="font-bold text-foreground">{rejecting.name}</span> será removido definitivamente. Esta ação não pode ser desfeita e ficará registrada na auditoria.
+              <span className="font-bold text-foreground">{rejecting.name}</span> será retirado da vitrine. A decisão, com o motivo informado, ficará registrada na auditoria e será enviada ao vendedor quando o e-mail estiver configurado.
             </p>
             <label htmlFor="reject-reason" className="block text-xs font-bold uppercase text-muted-foreground">Motivo (registrado na auditoria)</label>
             <textarea

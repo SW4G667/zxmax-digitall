@@ -738,26 +738,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const approveProduct = async (id: number) => {
-    const { error } = await (supabase as any).rpc("moderate_product", { _product_id: id, _approved: true, _reason: null });
-    if (error) {
-      logProductError("approveProduct", error);
-      toast.error(productErrorMessage(error));
+    const result = await unwrapEdgeCall<{ product?: { id: number }; notification?: string }>(
+      await supabase.functions.invoke("moderate-product", { body: { productId: id, approved: true } }),
+      "Não foi possível aprovar o anúncio.",
+    );
+    if (result.errorMessage || !result.data?.product) {
+      if (result.errorMessage) toast.error(result.errorMessage);
       await loadCatalog();
       return false;
     }
-    setState((s) => ({
-      ...s,
-      products: s.products.map((p) => (p.id === id ? { ...p, approved: true } : p)),
-    }));
     await loadCatalog();
     return true;
   };
 
   const rejectProduct = async (id: number, reason?: string) => {
-    const { error } = await (supabase as any).rpc("moderate_product", { _product_id: id, _approved: false, _reason: reason?.trim() || null });
-    if (error) {
-      logProductError("rejectProduct", error);
-      toast.error(productErrorMessage(error));
+    const result = await unwrapEdgeCall<{ product?: { id: number }; notification?: string }>(
+      await supabase.functions.invoke("moderate-product", { body: { productId: id, approved: false, reason: reason?.trim() || "" } }),
+      "Não foi possível reprovar o anúncio.",
+    );
+    if (result.errorMessage || !result.data?.product) {
+      if (result.errorMessage) toast.error(result.errorMessage);
+      await loadCatalog();
       return false;
     }
     await loadCatalog();

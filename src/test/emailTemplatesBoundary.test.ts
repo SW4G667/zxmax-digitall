@@ -15,7 +15,7 @@ describe("e-mails transacionais seguros", () => {
 
   it("continua autorizando e evitando duplicação antes de acessar o provedor", async () => {
     const email = await source();
-    expect(email).toContain('if ((type === "purchase_confirmed" || type === "new_sale") && !internalCall)');
+    expect(email).toContain('if ((type === "purchase_confirmed" || type === "new_sale" || type === "product_approved" || type === "product_rejected") && !internalCall)');
     expect(email).toContain("Este tipo de notificação é processado pelo servidor.");
     expect(email).toContain("if (!internalCall && actorId !== question.author_id)");
     expect(email).toContain('.eq("status", "sent")');
