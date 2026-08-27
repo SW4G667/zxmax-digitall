@@ -46,6 +46,8 @@ describe("hidratação persistente de pedidos", () => {
     const context = await source("src/store/StoreContext.tsx");
     expect(context).toContain('action: "confirm_delivery"');
     expect(context).not.toContain('functions.invoke("mark-order-delivered"');
+    expect(context).not.toContain('action: "check_auto_release"');
+    expect(context).not.toContain("checkAutoReleaseOrders:");
     expect(context).not.toContain("markOrderDelivered:");
   });
 

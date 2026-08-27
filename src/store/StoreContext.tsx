@@ -239,7 +239,6 @@ interface StoreContextType {
   confirmDelivery: (purchaseId: number) => Promise<boolean>;
   confirmOrderReceipt: (purchaseId: number) => Promise<boolean>;
   sellerRefundOrder: (purchaseId: number, reason: string) => Promise<{ success: boolean; error?: string }>;
-  checkAutoReleaseOrders: () => Promise<void>;
   openDispute: (purchaseId: number, reason: string) => Promise<boolean>;
   reviewPurchase: (purchaseId: number, stars: number, comment: string) => Promise<boolean>;
   loadProductReviews: (productId: number) => Promise<Array<{ id: number; stars: number; comment: string; createdAt: string; buyerName: string }>>;
@@ -826,13 +825,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: false, message: result.errorMessage };
     }
     const purchases = (result.data?.purchases || []).map(mapPurchaseRow) as Purchase[];
-    // Check if any delivered_pending_confirmation order is > 3 days old and auto-release
-    const hasPendingAutoRelease = purchases.some(
-      (p) => p.status === "delivered_pending_confirmation" && p.deliveredPendingAt && (Date.now() - new Date(p.deliveredPendingAt).getTime() >= 3 * 24 * 60 * 60 * 1000)
-    );
-    if (hasPendingAutoRelease) {
-      await checkAutoReleaseOrders();
-    }
     setState((s) => ({ ...s, purchases }));
     return { ok: true };
   };
@@ -1105,12 +1097,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { success: true };
   };
 
-  const checkAutoReleaseOrders = async () => {
-    try {
-      await supabase.functions.invoke("order-action", { body: { orderId: 1, action: "check_auto_release" } });
-    } catch {}
-  };
-
   const openDispute = async (purchaseId: number, reason: string) => {
     const { data, error } = await supabase.functions.invoke("order-action", { body: { orderId: purchaseId, action: "open_dispute", reason } });
     if (error || data?.error) return false;
@@ -1301,7 +1287,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         approveWithdraw, rejectWithdraw, updateConfig, updateProfile,
         banUser, unbanUser, addTicket, replyTicket, closeTicket, resolveTicket,
         setGlobalNotice, publishNotice, updatePixKey, sendAdminChat,
-        sendPurchaseMessage, confirmDelivery, confirmOrderReceipt, sellerRefundOrder, checkAutoReleaseOrders, openDispute, reviewPurchase, loadProductReviews,
+        sendPurchaseMessage, confirmDelivery, confirmOrderReceipt, sellerRefundOrder, openDispute, reviewPurchase, loadProductReviews,
         addProductQuestion, answerProductQuestion,
         deleteNotice, refreshUserTags, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
         verifyUser, submitSellerDocument, isDark, toggleDark,
