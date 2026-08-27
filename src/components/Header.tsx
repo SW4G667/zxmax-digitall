@@ -11,9 +11,10 @@ interface Props {
   onProfileClick?: () => void;
   onAuthClick?: () => void;
   onMenuClick?: () => void;
+  menuOpen?: boolean;
 }
 
-export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Props) {
+export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuOpen = false }: Props) {
   const { state, isDark, toggleDark } = useStore();
   const { profile, user, isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -67,21 +68,13 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
   return (
     <header className="sticky top-0 z-50 bg-[#0a0a0f] border-b border-[#1e1e28]">
       <div className="max-w-7xl mx-auto px-3 sm:px-4 h-14 flex items-center gap-2 sm:gap-4">
-        <button onClick={onMenuClick} className="p-2.5 rounded-xl border border-transparent hover:border-white/10 hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff] transition shrink-0 group" title="Abrir menu" aria-label="Abrir menu principal">
-          <div className="flex flex-col gap-[4px] w-[19px]" aria-hidden>
-            <span className="block h-[2px] w-full bg-white group-hover:bg-[#0084ff] transition rounded-full" />
-            <span className="block h-[2px] w-full bg-white group-hover:bg-[#0084ff] transition rounded-full" />
-            <span className="block h-[2px] w-full bg-white group-hover:bg-[#0084ff] transition rounded-full" />
-          </div>
-        </button>
-
         <button onClick={() => navigate("/loja")} className="shrink-0 flex items-center" aria-label="Ir para a loja">
-          <h2 className="text-xl sm:text-2xl font-black tracking-tighter text-white">ZX<span className="text-[#0084ff]">MAX</span></h2>
+          <h2 className="text-lg sm:text-2xl font-black tracking-[-0.06em] text-white">ZX<span className="text-[#168cff]">MAX</span></h2>
         </button>
 
         <button
           onClick={openListing}
-          className="sm:hidden shrink-0 rounded-lg bg-[#168cff] px-2.5 py-1.5 text-[10px] font-black text-white shadow-[0_8px_20px_rgba(0,132,255,0.22)] transition hover:bg-[#0877eb] active:scale-[0.97]"
+          className="sm:hidden shrink-0 rounded-full bg-[#168cff] px-3 py-2 text-[10px] font-black text-white shadow-[0_8px_18px_rgba(0,132,255,0.18)] transition hover:bg-[#0877eb] active:scale-[0.97]"
           aria-label={user ? "Abrir meus anúncios" : "Entrar para anunciar"}
         >
           + Anunciar
@@ -93,19 +86,18 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
         </form>
 
         <div className="flex items-center gap-1 ml-auto">
-          {/* Discord small near bell as requested */}
-          <a href={state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-xl bg-[#5865F2]/10 border border-[#5865F2]/20 flex items-center justify-center hover:bg-[#5865F2]/20 transition" title="Entrar no Discord">
+          <a href={state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noopener noreferrer" className="zx-icon-action hidden xs:flex border-[#5865F2]/25 bg-[#5865F2]/10 hover:bg-[#5865F2]/20" title="Entrar no Discord">
             <DiscordIcon className="w-4 h-4 text-[#5865F2]" />
           </a>
 
-          <button onClick={() => navigate("/favoritos")} className="relative w-8 h-8 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center hover:bg-white/10 transition" title="Favoritos">
+          <button onClick={() => navigate("/favoritos")} className="zx-icon-action relative hidden sm:flex" title="Favoritos" aria-label="Favoritos">
             <Heart className={`w-4 h-4 ${favCount > 0 ? "text-[#0084ff] fill-[#0084ff]" : "text-white/40"}`} />
             {favCount > 0 && <span className="absolute -top-1 -right-1 bg-[#0084ff] text-white text-[9px] font-black min-w-[16px] h-[16px] px-1 rounded-full flex items-center justify-center">{favCount > 99 ? "99+" : favCount}</span>}
           </button>
 
           <NotificationBell />
 
-          <button onClick={toggleDark} className="w-8 h-8 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center hover:bg-white/10 transition" title="Mudar tema">
+          <button onClick={toggleDark} className="zx-icon-action hidden sm:flex" title="Mudar tema" aria-label="Mudar tema">
             {isDark ? <Sun className="w-4 h-4 text-white/40" /> : <Moon className="w-4 h-4 text-white/40" />}
           </button>
 
@@ -113,7 +105,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
             <>
               <button
                 onClick={openListing}
-                className="hidden sm:flex items-center gap-1.5 bg-[#ffbd2e] hover:bg-[#e6a829] text-black px-3.5 py-2 rounded-xl text-xs font-black transition"
+                className="hidden sm:flex items-center gap-1.5 rounded-full bg-[#168cff] px-4 py-2 text-xs font-black text-white shadow-[0_8px_18px_rgba(0,132,255,0.18)] transition hover:bg-[#0877eb] active:scale-[0.97]"
                 title="Criar um anúncio"
               >
                 + Anunciar
@@ -129,6 +121,20 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
           ) : (
             <button onClick={onAuthClick} className="bg-[#0084ff] hover:bg-[#0066cc] text-white px-4 py-2 text-xs font-black rounded-xl transition">Entrar</button>
           )}
+          <button
+            onClick={onMenuClick}
+            className={`zx-icon-action group ${menuOpen ? "border-[#168cff]/60 bg-[#168cff]/15" : ""}`}
+            title="Abrir menu"
+            aria-label="Abrir menu principal"
+            aria-expanded={menuOpen}
+            aria-controls="zxmax-main-menu"
+          >
+            <span className="flex w-[17px] flex-col gap-[3px]" aria-hidden>
+              <span className="h-[1.5px] w-full rounded-full bg-white transition group-hover:bg-[#6dbdff]" />
+              <span className="h-[1.5px] w-full rounded-full bg-white transition group-hover:bg-[#6dbdff]" />
+              <span className="h-[1.5px] w-full rounded-full bg-white transition group-hover:bg-[#6dbdff]" />
+            </span>
+          </button>
         </div>
       </div>
 

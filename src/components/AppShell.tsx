@@ -38,6 +38,7 @@ export default function AppShell({ children }: Props) {
         onProfileClick={() => setProfileOpen(true)}
         onAuthClick={() => setAuthOpen(true)}
         onMenuClick={() => setMenuOpen(true)}
+        menuOpen={menuOpen}
       />
       <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
       <SiteFooter />

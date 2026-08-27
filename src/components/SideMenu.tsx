@@ -4,7 +4,7 @@ import {
   X, Store, Package, ShoppingBag, Headset, Shield, User, Wallet, FileText,
   HelpCircle, Lock, ScrollText, Heart, ShieldCheck, TrendingUp, LogOut, LogIn,
   LayoutGrid, BadgeCheck, ClipboardCheck, Users, MessageSquare, Receipt,
-  BarChart3, KeyRound, Loader2, Flag, Settings, Tag, Sparkles, Zap,
+  BarChart3, KeyRound, Loader2, Flag, Settings, Tag, Sparkles, Zap, ChevronRight, Moon, Sun,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useStore } from "@/store/StoreContext";
@@ -44,7 +44,7 @@ const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1
 
 export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: Props) {
   const { isAdmin, isSupport, user, profile, mfaEnabled, loading, signOut } = useAuth();
-  const { state } = useStore();
+  const { state, isDark, toggleDark } = useStore();
   const { count } = useFavorites();
   const location = useLocation();
   const panelRef = useRef<HTMLElement | null>(null);
@@ -140,18 +140,7 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
       ],
     };
 
-    if (!user) {
-      return [
-        marketplace,
-        help,
-        {
-          id: "guest",
-          title: "Sua conta",
-          icon: User,
-          entries: [{ key: "login", icon: LogIn, label: "Entrar ou criar conta", hint: "Comprar e anunciar na ZXMAX", action: () => { onOpenProfile(); onClose(); } }],
-        },
-      ];
-    }
+    if (!user) return [marketplace, help];
 
     const account: MenuSection = {
       id: "account",
@@ -233,25 +222,25 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
     const active = isActive(entry.to);
     const Icon = entry.icon;
     const className = [
-      "w-full flex items-center gap-3 p-3 rounded-2xl transition text-left group",
-      "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-      active ? "bg-primary/15 border border-primary/30" : "hover:bg-white/[0.06] border border-transparent",
-      entry.danger ? "hover:bg-red-500/10" : "",
+      "zx-menu-entry group",
+      "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#168cff]",
+      active ? "zx-menu-entry-active" : "",
+      entry.danger ? "hover:bg-red-500/10 hover:border-red-400/20" : "",
     ].join(" ");
 
     const body = (
       <>
-        <span className={`p-2.5 rounded-xl transition ${entry.danger ? "bg-red-500/10 text-red-400" : active ? "bg-primary/25 text-primary" : "bg-white/[0.06] text-primary group-hover:bg-primary/15"}`}>
-          <Icon className="w-[18px] h-[18px]" />
+        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg transition ${entry.danger ? "bg-red-500/10 text-red-400" : active ? "bg-[#168cff]/20 text-[#75c5ff]" : "bg-white/[0.055] text-white/60 group-hover:bg-[#168cff]/13 group-hover:text-[#7bc6ff]"}`}>
+          <Icon className="h-4 w-4" />
         </span>
         <span className="flex-1 min-w-0">
-          <span className={`block text-[13px] font-bold leading-tight ${entry.danger ? "text-red-300" : "text-white"}`}>{entry.label}</span>
-          {entry.hint && <span className="block text-[11px] leading-tight mt-0.5 text-white/40">{entry.hint}</span>}
+          <span className={`block text-[13px] font-semibold leading-tight ${entry.danger ? "text-red-300" : "text-white/90"}`}>{entry.label}</span>
+          {entry.hint && <span className="mt-0.5 block text-[10px] leading-tight text-white/38">{entry.hint}</span>}
         </span>
         {entry.badge !== undefined && entry.badge !== 0 && entry.badge !== "" && (
           <span className="text-[11px] font-black px-2.5 py-1 rounded-full bg-primary text-white">{entry.badge}</span>
         )}
-        {active && <span className="sr-only">(página atual)</span>}
+        {active ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#6dbdff]" aria-label="Página atual" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/20 transition group-hover:text-white/55" aria-hidden />}
       </>
     );
 
@@ -283,76 +272,74 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex">
-      <div className="absolute inset-0 bg-[#050508]/80 backdrop-blur-xl" onClick={onClose} aria-hidden />
+    <div className="fixed inset-0 z-[80]">
+      <div className="absolute inset-0 bg-[#03050a]/65 backdrop-blur-[3px]" onClick={onClose} aria-hidden />
 
       <nav
+        id="zxmax-main-menu"
         ref={panelRef as React.RefObject<HTMLElement>}
         role="dialog"
         aria-modal="true"
         aria-label="Menu principal"
-        className="relative w-[88%] max-w-[360px] h-full bg-[#0a0a0f] border-r border-white/10 flex flex-col overflow-hidden animate-slide-in-bottom shadow-[20px_0_60px_rgba(0,0,0,0.8)]"
+        className="zx-menu-panel absolute right-3 top-[4.15rem] flex w-[calc(100%-1.5rem)] max-w-[380px] flex-col overflow-hidden sm:right-5 sm:top-[4.45rem]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="absolute top-0 left-0 w-full h-[300px] bg-gradient-to-b from-primary/10 via-primary/[0.03] to-transparent pointer-events-none" aria-hidden />
-
-        <div className="relative z-10 p-6 pb-4 shrink-0">
-          <div className="flex items-center justify-between">
+        <div className="relative shrink-0 border-b border-white/[0.07] bg-[#11131a] px-4 py-3.5">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-black tracking-tighter text-white">ZX<span className="text-primary">MAX</span></h2>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/30 mt-1 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-success" aria-hidden /> Marketplace Seguro
-              </p>
+              <p className="text-[10px] font-black uppercase tracking-[0.17em] text-[#70bcff]">Navegação</p>
+              <h2 className="mt-0.5 text-base font-black tracking-[-0.045em] text-white">ZX<span className="text-[#58b5ff]">MAX</span></h2>
             </div>
-            <button ref={closeRef} onClick={onClose} aria-label="Fechar menu" className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary transition text-white/60 hover:text-white">
+            <button ref={closeRef} onClick={onClose} aria-label="Fechar menu" className="zx-icon-action h-9 w-9">
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {loading && (
-            <p className="mt-6 flex items-center gap-2 text-[12px] text-white/40" role="status">
+            <p className="mt-4 flex items-center gap-2 text-[12px] text-white/40" role="status">
               <Loader2 className="w-4 h-4 animate-spin" /> Carregando sua conta…
             </p>
           )}
 
           {!loading && user && (
-            <button onClick={() => { onOpenProfile(); onClose(); }} className="w-full mt-6 flex items-center gap-3 p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 hover:bg-white/[0.06] hover:border-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary transition text-left group">
-              <img src={profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(profile?.display_name || "zxmax")}`} alt="" className="w-12 h-12 rounded-xl object-cover bg-primary/10 border border-white/10" />
+            <button onClick={() => { onOpenProfile(); onClose(); }} className="mt-4 flex w-full items-center gap-3 rounded-xl border border-white/[0.09] bg-white/[0.035] p-3 text-left transition hover:border-[#168cff]/35 hover:bg-white/[0.055] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#168cff]">
+              <img src={profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(profile?.display_name || "zxmax")}`} alt="" className="h-11 w-11 rounded-full border border-white/10 bg-[#168cff]/10 object-cover" />
               <span className="flex-1 min-w-0">
-                <span className="block text-[13px] font-bold text-white truncate">{profile?.display_name || "Minha conta"}</span>
-                <span className="block text-[11px] text-white/40 truncate">
-                  {profile?.is_verified_seller ? "Vendedor verificado" : mfaEnabled ? "Protegida com 2FA" : "Toque para gerenciar"}
+                <span className="block text-[13px] font-bold text-white truncate">Olá, {profile?.display_name || "sua conta"}</span>
+                <span className="mt-0.5 block text-[10px] text-white/42 truncate">
+                  {profile?.is_verified_seller ? "Vendedor verificado" : mfaEnabled ? "Conta protegida com 2FA" : "Gerenciar perfil e segurança"}
                 </span>
-                <span className="mt-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-white/35">
-                  <span>ID #{profile?.public_id || state.currentUser?.publicId || "—"}</span>
-                  <span className="h-1 w-1 rounded-full bg-white/25" aria-hidden />
-                  <span>{openOrders} pedido{openOrders === 1 ? "" : "s"} em aberto</span>
+                <span className="mt-1.5 flex items-center gap-2 text-[9px] font-bold uppercase tracking-wide text-white/32">
+                  <span>ID #{profile?.public_id || state.currentUser?.publicId || "—"}</span><span className="h-1 w-1 rounded-full bg-white/25" aria-hidden /><span>{openOrders} em aberto</span>
                 </span>
               </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-white/30" aria-hidden />
+            </button>
+          )}
+
+          {!loading && !user && (
+            <button onClick={() => { onOpenProfile(); onClose(); }} className="mt-4 flex w-full items-center justify-between rounded-xl bg-[#168cff] px-4 py-3 text-left text-sm font-black text-white shadow-[0_9px_22px_rgba(0,132,255,0.2)] transition hover:bg-[#0877eb] active:scale-[0.98]">
+              <span className="flex items-center gap-2"><LogIn className="h-4 w-4" /> Entrar ou criar conta</span><ChevronRight className="h-4 w-4" aria-hidden />
             </button>
           )}
         </div>
 
-        <div className="relative z-10 flex-1 overflow-y-auto px-3 pb-6 space-y-6 scrollbar-hide">
+        <div className="flex-1 space-y-5 overflow-y-auto px-3 py-4 scrollbar-hide">
           {sections.map((section) => (
             <section key={section.id} aria-labelledby={`menu-${section.id}`}>
-              <h3 id={`menu-${section.id}`} className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20 px-3 mb-3 flex items-center gap-2">
-                {section.icon && <section.icon className="w-3 h-3" />} {section.title}
+              <h3 id={`menu-${section.id}`} className="mb-2 flex items-center gap-2 px-2 text-[9px] font-black uppercase tracking-[0.18em] text-white/30">
+                {section.icon && (() => { const SectionIcon = section.icon; return <SectionIcon className="h-3 w-3 text-[#5eb8ff]/75" />; })()} {section.title}
               </h3>
               <ul className="space-y-1">{section.entries.map(renderEntry)}</ul>
             </section>
           ))}
-
-          <div className="pt-2 px-3">
-            <div className="rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 p-4">
-              <p className="text-xs font-bold text-white flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-primary" /> Compra Protegida</p>
-              <p className="text-[11px] text-white/50 mt-1 leading-relaxed">Seu dinheiro fica retido até você confirmar a entrega.</p>
-            </div>
-          </div>
         </div>
 
-        <div className="p-4 border-t border-white/5 shrink-0">
-          <p className="text-[10px] text-white/20 text-center font-mono">ZXMAX · Marketplace de produtos digitais</p>
+        <div className="flex shrink-0 items-center justify-between border-t border-white/[0.07] bg-[#0d0f15] px-4 py-3">
+          <span className="text-[10px] font-semibold text-white/35">Preferência visual</span>
+          <button type="button" onClick={toggleDark} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-white/60 transition hover:bg-white/[0.06] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#168cff]">
+            {isDark ? <Moon className="h-3.5 w-3.5 text-[#7bc6ff]" /> : <Sun className="h-3.5 w-3.5 text-[#ffcd70]" />}{isDark ? "Tema escuro" : "Tema claro"}
+          </button>
         </div>
       </nav>
     </div>

@@ -8,14 +8,18 @@ describe("hierarquia móvel de conta", () => {
   it("mantém no menu um resumo com dados públicos e contagem real de pedidos", async () => {
     const menu = await source("src/components/SideMenu.tsx");
     expect(menu).toContain('ID #{profile?.public_id || state.currentUser?.publicId || "—"}');
-    expect(menu).toContain("pedido{openOrders === 1 ? \"\" : \"s\"} em aberto");
+    expect(menu).toContain("{openOrders} em aberto");
+    expect(menu).toContain('id="zxmax-main-menu"');
+    expect(menu).toContain("Preferência visual");
     expect(menu).not.toContain("profile?.email");
   });
 
-  it("apresenta no login apenas orientações próprias de segurança e uso interno", async () => {
+  it("apresenta no login uma hierarquia própria e direta de acesso", async () => {
     const auth = await source("src/components/AuthScreen.tsx");
-    expect(auth).toContain("Acesso seguro");
-    expect(auth).toContain("Tudo no site");
-    expect(auth).toContain("Compras e conversas ficam dentro da ZXMAX.");
+    expect(auth).toContain("Área da conta");
+    expect(auth).toContain("Acompanhe pedidos, anúncios e conversas em um só lugar.");
+    expect(auth).toContain("Continuar com Discord");
+    expect(auth).toContain("zx-auth-panel");
+    expect(auth).not.toContain("Erro ao iniciar login com Discord: ");
   });
 });
