@@ -24,20 +24,25 @@ const escapeHtml = (value: unknown) => String(value ?? "")
 const formatBRL = (value: unknown) => `R$ ${Number(value || 0).toFixed(2).replace(".", ",")}`;
 
 const shell = (eyebrow: string, title: string, copy: string, details: string, cta: string, href: string) => `
-  <div style="margin:0;padding:32px 16px;background:#080b12;font-family:Arial,Helvetica,sans-serif;color:#edf3ff">
-    <div style="max-width:600px;margin:0 auto;border:1px solid #253149;border-radius:22px;overflow:hidden;background:#101522">
-      <div style="padding:26px 30px 22px;background:radial-gradient(circle at top right,#123f7f,transparent 52%),#111827">
-        <div style="font-size:25px;line-height:1;font-weight:900;letter-spacing:-1.5px">ZX<span style="color:#168cff">MAX</span></div>
-        <div style="margin-top:14px;color:#74b8ff;font-size:11px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase">${escapeHtml(eyebrow)}</div>
-        <h1 style="margin:8px 0 0;font-size:25px;line-height:1.2;color:#fff">${escapeHtml(title)}</h1>
-      </div>
-      <div style="padding:28px 30px 32px">
-        <p style="margin:0;color:#b7c0d2;font-size:15px;line-height:1.6">${copy}</p>
-        <div style="margin:22px 0;padding:18px;border-radius:14px;border:1px solid #26354d;background:#0b101a;color:#eaf2ff;font-size:14px;line-height:1.65">${details}</div>
-        <a href="${escapeHtml(href)}" style="display:inline-block;border-radius:12px;background:#168cff;color:#fff;padding:14px 20px;text-decoration:none;font-size:14px;font-weight:800">${escapeHtml(cta)}</a>
-        <p style="margin:27px 0 0;color:#718098;font-size:12px;line-height:1.55">Esta é uma notificação automática da ZXMAX. Seus dados de contato não são exibidos ao outro usuário.</p>
-      </div>
-    </div>
+  <div style="margin:0;padding:0;width:100%;background:#070b13;font-family:Arial,Helvetica,sans-serif;color:#edf3ff">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${escapeHtml(`${eyebrow} · ${title}`)}</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;padding:32px 16px;background:radial-gradient(circle at 100% 0,#0b376e 0,transparent 34%),#070b13">
+      <tr><td align="center">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;overflow:hidden;border:1px solid #26354d;border-radius:22px;background:#101722">
+          <tr><td style="padding:28px 30px 24px;background:linear-gradient(135deg,#111a2b,#0c1420 58%,#102d56)">
+            <div style="font-size:26px;line-height:1;font-weight:900;letter-spacing:-1.5px;color:#ffffff">ZX<span style="color:#1f91ff">MAX</span></div>
+            <div style="display:inline-block;margin-top:18px;border:1px solid #1e5f9f;border-radius:999px;padding:7px 10px;background:#0d2540;color:#81c4ff;font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase">${escapeHtml(eyebrow)}</div>
+            <h1 style="margin:12px 0 0;color:#ffffff;font-size:26px;line-height:1.2;letter-spacing:-.4px">${escapeHtml(title)}</h1>
+          </td></tr>
+          <tr><td style="padding:30px">
+            <p style="margin:0;color:#c3cede;font-size:15px;line-height:1.7">${copy}</p>
+            <div style="margin:24px 0;border:1px solid #273955;border-radius:14px;background:#0a101a;padding:18px;color:#edf3ff;font-size:14px;line-height:1.7">${details}</div>
+            <a href="${escapeHtml(href)}" aria-label="${escapeHtml(cta)}" style="display:inline-block;border-radius:12px;background:#168cff;color:#ffffff;padding:14px 20px;text-decoration:none;font-size:14px;font-weight:800">${escapeHtml(cta)} <span aria-hidden="true">→</span></a>
+            <div style="margin-top:28px;border-top:1px solid #26354d;padding-top:18px;color:#8696ad;font-size:12px;line-height:1.6">Esta é uma notificação automática da ZXMAX. Seus dados de contato não são exibidos ao outro usuário. Para sua segurança, conclua qualquer ação somente dentro da plataforma.</div>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
   </div>
 `;
 
@@ -75,6 +80,7 @@ serve(async (req) => {
     let recipient = "";
     let subject = "";
     let html = "";
+    let text = "";
 
     if (type === "new_question") {
       const questionId = Number(body.questionId);
@@ -92,7 +98,7 @@ serve(async (req) => {
       recipient = product.seller_email || sellerProfile?.email || "";
       if (!recipient) return json({ error: "Destinatário indisponível." }, 409);
       logId = questionId;
-      subject = `Nova pergunta sobre ${escapeHtml(product.name)}`;
+      subject = `Nova pergunta sobre ${String(product.name || "seu produto")}`;
       html = shell(
         "Nova pergunta",
         "Você recebeu uma nova pergunta",
@@ -101,6 +107,7 @@ serve(async (req) => {
         "Responder pergunta",
         `${SITE_URL}/produto/${question.product_id}#perguntas`,
       );
+      text = `Nova pergunta sobre ${String(product.name || "seu produto")}\n\nPergunta: ${String(question.body || "")}\n\nResponda dentro da ZXMAX: ${SITE_URL}/produto/${question.product_id}#perguntas`;
     } else {
       const purchaseId = Number(body.purchaseId);
       if (!Number.isInteger(purchaseId) || purchaseId <= 0) return json({ error: "Pedido inválido." }, 400);
@@ -126,9 +133,11 @@ serve(async (req) => {
       if (type === "purchase_confirmed") {
         subject = `Pagamento confirmado — ${productName}`;
         html = shell("Pagamento confirmado", "Seu pedido está protegido", `O pagamento do seu pedido foi confirmado. Acompanhe a entrega e converse pelo chat seguro da ZXMAX.`, details, "Abrir pedido e chat", `${SITE_URL}/minhas-compras?order=${purchaseId}`);
+        text = `Pagamento confirmado\n\nProduto: ${productName}${purchase.variation_name ? `\nVariação: ${purchase.variation_name}` : ""}\nValor confirmado: ${formatBRL(purchase.amount)}\n\nAcompanhe o pedido: ${SITE_URL}/minhas-compras?order=${purchaseId}`;
       } else {
         subject = `Nova venda — ${productName}`;
         html = shell("Nova venda", "Você realizou uma venda", `O pagamento foi confirmado e o pedido está pronto para atendimento dentro da ZXMAX.`, details, "Ir ao chat do pedido", `${SITE_URL}/minhas-compras?order=${purchaseId}`);
+        text = `Nova venda\n\nProduto: ${productName}${purchase.variation_name ? `\nVariação: ${purchase.variation_name}` : ""}\nValor confirmado: ${formatBRL(purchase.amount)}\n\nAcesse o pedido: ${SITE_URL}/minhas-compras?order=${purchaseId}`;
       }
     }
 
@@ -145,7 +154,7 @@ serve(async (req) => {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: EMAIL_FROM, to: [recipient], subject, html }),
+      body: JSON.stringify({ from: EMAIL_FROM, to: [recipient], subject, html, text }),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
