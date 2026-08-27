@@ -30,7 +30,11 @@ function validMethods(value: unknown): value is Record<PaymentMethodId, boolean>
 export function classifyPaymentMethods(result: EdgeCallResult<{ methods?: unknown; fees?: unknown; v?: number }>): PaymentMethodsState {
   if (result.errorMessage === null && result.data && validMethods(result.data.methods)) {
     const rawFees = result.data.fees && typeof result.data.fees === "object" ? result.data.fees as Record<string, unknown> : {};
-    return { status: "ok", methods: result.data.methods, fees: { zennith_pix: safeFee(rawFees.zennith_pix), vexopay_pix: safeFee(rawFees.vexopay_pix) } };
+    const raw = result.data.methods;
+    // Defesa em profundidade para uma configuração legada: o cliente nunca
+    // apresenta dois PIX. A função Edge aplica a mesma precedência.
+    const methods = { ...raw, vexopay_pix: raw.zennith_pix ? false : raw.vexopay_pix };
+    return { status: "ok", methods, fees: { zennith_pix: safeFee(rawFees.zennith_pix), vexopay_pix: safeFee(rawFees.vexopay_pix) } };
   }
   if (result.status === 401) return { status: "session" };
   if (result.status === 503) return { status: "network" };

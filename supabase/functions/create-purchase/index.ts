@@ -57,6 +57,18 @@ serve(async (req) => {
 
     const { data: gatewayRows } = await admin.from("app_settings").select("key,value").in("key", ["zennithpay", "vexopay", "stripe"]);
     const gateway = (key: string) => (gatewayRows || []).find((row: any) => row.key === key)?.value || {};
+    const zennith = gateway("zennithpay") as Record<string, unknown>;
+    const zennithReady = Boolean(Deno.env.get("ZENNITH_API_KEY"));
+    const vexopay = gateway("vexopay") as Record<string, unknown>;
+    const vexopayReady = Boolean(Deno.env.get("VEXOPAY_CLIENT_ID") && Deno.env.get("VEXOPAY_CLIENT_SECRET"));
+    const selectedPix = zennithReady && zennith.pixEnabled === true
+      ? "zennith_pix"
+      : vexopayReady && vexopay.pixEnabled === true
+        ? "vexopay_pix"
+        : null;
+    if ((paymentMethod === "zennith_pix" || paymentMethod === "vexopay_pix") && paymentMethod !== selectedPix) {
+      return json({ error: "PIX indisponível no momento. Tente novamente mais tarde." }, 503);
+    }
     const configuredFee = paymentMethod === "zennith_pix"
       ? Number(gateway("zennithpay").pixFee)
       : paymentMethod === "vexopay_pix"
@@ -71,10 +83,8 @@ serve(async (req) => {
     if (paymentMethod === "boleto" && (!stripeReady || stripe.boletoEnabled !== true)) {
       return json({ error: "Boleto indisponível no momento. Escolha PIX ou tente mais tarde." }, 503);
     }
-    const vexopay = gateway("vexopay") as Record<string, unknown>;
-    const vexopayReady = Boolean(Deno.env.get("VEXOPAY_CLIENT_ID") && Deno.env.get("VEXOPAY_CLIENT_SECRET"));
     if (paymentMethod === "vexopay_pix" && (!vexopayReady || vexopay.pixEnabled !== true)) {
-      return json({ error: "PIX via VexoPay indisponível no momento. Escolha outro método ou tente mais tarde." }, 503);
+      return json({ error: "PIX indisponível no momento. Tente novamente mais tarde." }, 503);
     }
     if (paymentMethod === "crypto" && (!vexopayReady || vexopay.cryptoEnabled !== true)) {
       return json({ error: "Pagamento em Crypto indisponível no momento. Escolha outro método ou tente mais tarde." }, 503);

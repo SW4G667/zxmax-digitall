@@ -80,7 +80,16 @@ export default function IntegrationsPanel() {
   useEffect(() => { void load(); }, []);
 
   const update = (id: Provider["id"], key: keyof GatewayConfig, value: string | boolean) => {
-    setConfigs((current) => ({ ...current, [id]: { ...current[id], [key]: value } }));
+    setConfigs((current) => {
+      const next = { ...current, [id]: { ...current[id], [key]: value } };
+      // A interface acompanha a regra do servidor: habilitar PIX em um
+      // provedor desmarca imediatamente o outro, sem interferir em Crypto.
+      if (key === "pixEnabled" && value === true) {
+        const other = id === "zennithpay" ? "vexopay" : "zennithpay";
+        next[other] = { ...next[other], pixEnabled: false };
+      }
+      return next;
+    });
   };
 
   const save = async (provider: Provider) => {
@@ -155,7 +164,7 @@ export default function IntegrationsPanel() {
     <section className="space-y-5">
       <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
         <div className="flex gap-2 font-semibold"><ShieldCheck className="h-5 w-5 shrink-0" />Segredos permanecem fora do navegador</div>
-        <p className="mt-1 text-amber-100/80">Este painel só administra disponibilidade e taxas. Chaves de gateways são lidas exclusivamente como secrets pelas funções Edge.</p>
+        <p className="mt-1 text-amber-100/80">Este painel só administra disponibilidade e taxas. Escolha no máximo um provedor de PIX; ao habilitar um, o outro é desativado. Chaves de gateways são lidas exclusivamente como secrets pelas funções Edge.</p>
       </div>
       {PROVIDERS.map((provider) => {
         const config = configs[provider.id];
@@ -174,7 +183,7 @@ export default function IntegrationsPanel() {
               <label className="space-y-1 text-sm font-medium">Taxa PIX para o comprador (R$)<input type="number" min="0" max="1000" step="0.01" value={config.pixFee ?? 0} onChange={(event) => update(provider.id, "pixFee", event.target.value)} className="w-full rounded-lg border border-input bg-background px-3 py-2" /></label>
             </div>
             <div className="mt-4 flex flex-wrap gap-x-6 gap-y-3 text-sm">
-              <label className="flex items-center gap-2"><input type="checkbox" checked={config.pixEnabled === true} onChange={(event) => update(provider.id, "pixEnabled", event.target.checked)} />Oferecer PIX via {provider.id === "zennithpay" ? "ZennithPay" : "VexoPay"}</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={config.pixEnabled === true} onChange={(event) => update(provider.id, "pixEnabled", event.target.checked)} />Usar como PIX único</label>
               {provider.supportsCrypto && <label className="flex items-center gap-2"><input type="checkbox" checked={config.cryptoEnabled === true} onChange={(event) => update(provider.id, "cryptoEnabled", event.target.checked)} />Oferecer Crypto via VexoPay</label>}
             </div>
             <div className="mt-5 flex flex-wrap gap-3"><button type="button" onClick={() => void save(provider)} disabled={busy !== null} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">{busy === `${provider.id}:save` ? "Salvando…" : "Salvar configuração"}</button><button type="button" onClick={() => void test(provider)} disabled={!ready || busy !== null} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-bold disabled:opacity-50"><KeyRound className="h-4 w-4" />{busy === `${provider.id}:test` ? "Testando…" : "Testar no servidor"}</button></div>

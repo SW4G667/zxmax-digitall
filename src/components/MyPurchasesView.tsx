@@ -54,7 +54,7 @@ function StageStepper({ status }: { status: Purchase["status"] }) {
 }
 
 export default function MyPurchasesView({ initialSelectedId }: { initialSelectedId?: number | null }) {
-  const { state, confirmDelivery, openDispute, reviewPurchase, savePixCharge, markPurchasePaid } = useStore();
+  const { state, confirmDelivery, openDispute, reviewPurchase, savePixCharge, refreshPurchases } = useStore();
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(initialSelectedId || null);
 
@@ -133,7 +133,7 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
       );
       if (res.errorMessage) {
         if (res.status === 404 || /not found/i.test(res.errorMessage)) {
-          throw new Error(`Função de PIX (${provider === "vexopay_pix" ? "VexoPay" : "ZennithPay"}) ainda não publicada no Supabase. Avise o admin.`);
+          throw new Error("PIX temporariamente indisponível. Avise o suporte.");
         }
         throw new Error(res.errorMessage);
       }
@@ -152,8 +152,8 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
   };
 
   const handlePixPaid = async () => {
-    if (resumeId != null) markPurchasePaid(resumeId);
-    toast.success("Pagamento confirmado!");
+    void refreshPurchases();
+    toast.success("Pagamento confirmado. Atualizando o pedido...");
   };
 
   const handleDispute = async () => {

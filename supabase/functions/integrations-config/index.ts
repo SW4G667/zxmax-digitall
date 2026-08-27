@@ -52,11 +52,17 @@ serve(async (req) => {
       discordEnabled = settings?.external?.discord === true;
     } catch { /* indisponibilidade de status não deve afetar pagamentos */ }
 
+    // PIX é uma única forma de pagamento para o comprador. Se uma configuração
+    // legada deixar ambos ativos, Zennith tem precedência determinística até o
+    // administrador salvar a escolha exclusiva no painel.
+    const zennithPixActive = zennithReady && zennith.pixEnabled === true;
+    const vexopayPixActive = vexoReady && vexopay.pixEnabled === true;
+    const selectedPix = zennithPixActive ? "zennith_pix" : vexopayPixActive ? "vexopay_pix" : null;
     if (action === "payment_methods") return json({
       v: 3,
       methods: {
-        zennith_pix: zennithReady && zennith.pixEnabled === true,
-        vexopay_pix: vexoReady && vexopay.pixEnabled === true,
+        zennith_pix: selectedPix === "zennith_pix",
+        vexopay_pix: selectedPix === "vexopay_pix",
         crypto: vexoReady && vexopay.cryptoEnabled === true,
         card: stripeReady && stripe.cardEnabled === true,
         boleto: stripeReady && stripe.boletoEnabled === true,
@@ -102,6 +108,17 @@ serve(async (req) => {
         };
       const { error: saveError } = await admin.from("app_settings").upsert({ key: provider, value: next }, { onConflict: "key" });
       if (saveError) return json({ error: "Não foi possível salvar a configuração." }, 400);
+      // Ao escolher PIX em um provedor, desligue o PIX no outro. Crypto segue
+      // independente da escolha de PIX e não é afetado por esta operação.
+      if (provider !== "stripe" && next.pixEnabled === true) {
+        const otherProvider = provider === "zennithpay" ? "vexopay" : "zennithpay";
+        const otherCurrent = row(otherProvider as "zennithpay" | "vexopay");
+        const { error: otherSaveError } = await admin.from("app_settings").upsert({
+          key: otherProvider,
+          value: { ...otherCurrent, pixEnabled: false },
+        }, { onConflict: "key" });
+        if (otherSaveError) return json({ error: "Não foi possível manter a seleção PIX exclusiva." }, 400);
+      }
       await admin.from("admin_audit_log").insert({ actor_id: user.id, action: "gateway.config_updated", target_table: "app_settings", target_id: provider, metadata: provider === "stripe" ? { cardEnabled: next.cardEnabled, boletoEnabled: next.boletoEnabled, boletoExpiresAfterDays: next.boletoExpiresAfterDays } : { pixEnabled: next.pixEnabled, pixFee: next.pixFee, cryptoEnabled: (next as any).cryptoEnabled ?? false } });
       return json({ saved: true });
     }

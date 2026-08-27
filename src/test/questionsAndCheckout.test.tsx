@@ -167,7 +167,7 @@ describe("Produto Robux — regressão de taxa", () => {
     const buyButtons = screen.getAllByRole("button", { name: /comprar agora/i });
     expect(buyButtons.length).toBeGreaterThan(0);
     await act(async () => { buyButtons[0].click(); });
-    expect(await screen.findByText("Pagar com PIX · Zennith")).toBeTruthy();
+    expect(await screen.findByText("Pagar com PIX")).toBeTruthy();
   });
 });
 
@@ -275,17 +275,17 @@ describe("Checkout — Tarefa C/D", () => {
     },
   });
 
-  it("métodos ativos: PIX Zennith selecionável com taxa específica", async () => {
+  it("método PIX único selecionável com taxa específica", async () => {
     storeState.current = baseStore({ state: { currentUser: { id: "buyer-uuid", name: "Comprador" } } });
     db.edgeResult.current = { data: { v: 3, methods: { zennith_pix: true, vexopay_pix: false, crypto: false, card: false, boleto: false }, fees: { zennith_pix: 0.9 } }, error: null };
     renderProduto();
     await waitFor(() => expect(screen.getByText("COMPRAR")).toBeTruthy());
     await openCheckout();
-    await waitFor(() => expect(screen.getByText("Pagar com PIX · Zennith")).toBeTruthy());
-    const pixButton = screen.getByText("PIX · Zennith").closest("button")!;
+    await waitFor(() => expect(screen.getByText("Pagar com PIX")).toBeTruthy());
+    const pixButton = screen.getByText("PIX").closest("button")!;
     expect(pixButton.getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByText("Cartão (Stripe)").closest("button")!.getAttribute("aria-pressed")).toBe("false");
-    expect((screen.getByText("Pagar com PIX · Zennith") as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText("Cartão")).toBeNull();
+    expect((screen.getByText("Pagar com PIX") as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByText("R$ 5,90")).toBeTruthy();
     expect(screen.getByText(/\+ R\$ 0,90/)).toBeTruthy();
   });
@@ -296,7 +296,7 @@ describe("Checkout — Tarefa C/D", () => {
     renderProduto();
     await openCheckout();
     await waitFor(() => expect(screen.getByText("Nenhuma forma disponível")).toBeTruthy());
-    expect(screen.getByText("PIX · Zennith").closest("button")!.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByText("PIX")).toBeNull();
     expect(screen.queryByText(/CPF para pagamento/i)).toBeNull();
     expect((screen.getByText("Nenhuma forma disponível") as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/Só aparecem habilitadas as formas realmente configuradas/i)).toBeTruthy();
@@ -308,7 +308,7 @@ describe("Checkout — Tarefa C/D", () => {
     renderProduto();
     await openCheckout();
     await waitFor(() => expect(screen.getByText("Nenhuma forma disponível")).toBeTruthy());
-    expect(screen.getByText("PIX · Zennith").closest("button")!.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByText("PIX")).toBeNull();
     expect((screen.getByText("Nenhuma forma disponível") as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -326,7 +326,7 @@ describe("Checkout — Tarefa C/D", () => {
     db.edgeResult.current = { data: { v: 3, methods: { zennith_pix: true, vexopay_pix: false, crypto: false, card: false, boleto: false }, fees: { zennith_pix: 0.9 } }, error: null };
     renderProduto();
     await openCheckout();
-    await waitFor(() => expect(screen.getByText("Pagar com PIX · Zennith")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Pagar com PIX")).toBeTruthy());
     const dialog = screen.getByRole("dialog", { name: /checkout zxmax/i });
     const panel = dialog.firstElementChild as HTMLElement;
     expect(panel.className).toContain("overflow-y-auto");

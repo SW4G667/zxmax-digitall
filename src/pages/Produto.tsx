@@ -98,12 +98,13 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
   };
 
   const methodButtons: Array<{ id: CheckoutMethod; label: string; icon: React.ReactNode; selectedClass: string }> = [
-    { id: "zennith_pix", label: "PIX · Zennith", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-[#0084ff] border-[#0084ff] text-white" },
-    { id: "vexopay_pix", label: "PIX · Vexo", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-[#00c950] border-[#00c950] text-black" },
+    { id: "zennith_pix", label: "PIX", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-[#0084ff] border-[#0084ff] text-white" },
+    { id: "vexopay_pix", label: "PIX", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-[#0084ff] border-[#0084ff] text-white" },
     { id: "crypto", label: "Crypto", icon: <Bitcoin className="w-5 h-5" />, selectedClass: "bg-[#ffbd2e] border-[#ffbd2e] text-black" },
-    { id: "card", label: "Cartão (Stripe)", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-white border-white text-black" },
-    { id: "boleto", label: "Boleto (Stripe)", icon: <Package className="w-5 h-5" />, selectedClass: "bg-white border-white text-black" },
+    { id: "card", label: "Cartão", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-white border-white text-black" },
+    { id: "boleto", label: "Boleto", icon: <Package className="w-5 h-5" />, selectedClass: "bg-white border-white text-black" },
   ];
+  const visibleMethodButtons = methodButtons.filter(({ id }) => loadingMethods || isAvailable(id));
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Checkout ZXMAX" className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
@@ -113,14 +114,14 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
       >
         <div className="p-6 border-b border-[#1e1e28] sticky top-0 bg-[#15151a] z-10">
           <h3 className="font-black text-white text-lg">Checkout ZXMAX</h3>
-          <p className="text-xs text-white/40 mt-1">{product.name} • {quantity.toLocaleString("pt-BR")} {product.category === ROBUX_CATEGORY ? "Robux" : "un."}{method ? ` • ${method.toUpperCase()}` : ""}</p>
+          <p className="text-xs text-white/40 mt-1">{product.name} • {quantity.toLocaleString("pt-BR")} {product.category === ROBUX_CATEGORY ? "Robux" : "un."}</p>
         </div>
 
         <div className="p-6 space-y-5">
           <div>
             <p className="text-xs font-bold uppercase text-white/30 mb-2">Forma de pagamento</p>
             <div className="grid grid-cols-2 gap-2">
-              {methodButtons.map(({ id, label, icon, selectedClass }) => {
+              {visibleMethodButtons.map(({ id, label, icon, selectedClass }) => {
                 const selectable = !loadingMethods && isAvailable(id);
                 const selected = selectable && method === id;
                 return (
@@ -186,8 +187,7 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
           <button onClick={handleConfirm} disabled={loading || loadingMethods || !method || !isAvailable(method)} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
             {loading ? "Processando..."
               : !anyMethod && !loadingMethods ? "Nenhuma forma disponível"
-              : method === "zennith_pix" ? "Pagar com PIX · Zennith"
-              : method === "vexopay_pix" ? "Pagar com PIX · Vexo"
+              : method === "zennith_pix" || method === "vexopay_pix" ? "Pagar com PIX"
               : method === "crypto" ? "Pagar com Crypto"
               : method === "boleto" ? "Gerar boleto"
               : "Pagar com cartão"}
@@ -234,6 +234,9 @@ export default function ProdutoPage() {
 
   const productId = Number(id);
   const product = state.products.find((p) => p.id === productId);
+  const publicSellerId = product
+    ? (product.sellerPublicId || state.userDirectory?.[product.sellerId]?.publicId || null)
+    : null;
 
   const isRobux = product?.category === ROBUX_CATEGORY;
 
@@ -417,8 +420,8 @@ export default function ProdutoPage() {
         );
         if (res.errorMessage || !res.data?.qrCodeText) {
           const msg = res.status === 404
-            ? `Função de PIX (${method === "zennith_pix" ? "ZennithPay" : "VexoPay"}) ainda não publicada. Avise o suporte.`
-            : res.errorMessage ?? "O provedor de PIX não devolveu o código. Tente novamente.";
+            ? "O PIX está temporariamente indisponível. Avise o suporte."
+            : res.errorMessage ?? "Não foi possível gerar o código PIX. Tente novamente.";
           toast.error(msg);
           return;
         }
@@ -483,13 +486,6 @@ export default function ProdutoPage() {
   const handlePixPaid = async () => {
     void refreshPurchases();
     toast.success("Pagamento confirmado!");
-    try {
-      const latest = state.purchases.find((p) => p.productId === product.id && p.buyerId === state.currentUser?.id);
-      if (latest) {
-        await supabase.functions.invoke("send-email", { body: { type: "purchase_confirmed", purchaseId: latest.id } });
-        await supabase.functions.invoke("send-email", { body: { type: "new_sale", purchaseId: latest.id } });
-      }
-    } catch {}
   };
 
   const handleSendQuestion = async () => {
@@ -689,7 +685,7 @@ export default function ProdutoPage() {
                 <h4 className="font-bold text-white mb-3">Vendedor</h4>
                 <button onClick={() => setSelectedSellerId(product.sellerId)} className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#1a1a20] border border-[#25252e] hover:border-[#2a2a36] transition text-left">
                   <img src={state.userDirectory?.[product.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.seller}`} className="w-10 h-10 rounded-full" alt="" />
-                  <div className="flex-1 min-w-0"><p className="font-bold text-white text-sm truncate">{product.seller}</p><p className="text-[11px] text-white/40">ID: {product.sellerPublicId || "—"}</p></div>
+                  <div className="flex-1 min-w-0"><p className="font-bold text-white text-sm truncate">{product.seller}</p><p className="text-[11px] text-white/40">ID público: {publicSellerId || "Indisponível"}</p></div>
                 </button>
               </div>
             </div>
@@ -857,7 +853,7 @@ export default function ProdutoPage() {
 
           <aside className="lg:sticky lg:top-20 space-y-4">
             <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5"><p className="text-[11px] uppercase font-bold text-white/35">Preço</p><p className="text-3xl font-black text-white mt-1">{formatBRL(selectedVariation?.price ?? product.price)}</p>{variationRequired && <div className="relative mt-4"><button onClick={() => setVariationOpen((open) => !open)} className="w-full flex justify-between items-center rounded-xl bg-[#0a0a0f] border border-[#25252e] px-3 py-3 text-sm text-left text-white"><span>{selectedVariation?.name || "Escolha uma variação"}</span><span className="text-white/40">⌄</span></button>{variationOpen && <div className="absolute z-20 mt-2 w-full rounded-xl overflow-hidden bg-[#111114] border border-[#25252e] shadow-2xl"><div className="p-2 border-b border-[#25252e]"><label className="sr-only" htmlFor="variation-search">Buscar variação</label><div className="flex items-center gap-2 px-2"><Search className="w-4 h-4 text-white/40"/><input id="variation-search" autoFocus value={variationSearch} onChange={(event) => setVariationSearch(event.target.value)} placeholder="Buscar variação" className="w-full bg-transparent py-2 text-sm text-white outline-none"/></div></div><div className="max-h-56 overflow-auto">{filteredVariations.map((variation) => <button key={variation.name} onClick={() => { setSelectedVariation(variation); setVariationOpen(false); setVariationSearch(""); }} className="w-full p-3 text-left hover:bg-white/5 border-b border-[#1e1e28]"><span className="block font-bold text-white">{variation.name}</span><span className="text-xs text-[#5aaeff]">{formatBRL(variation.price)} · estoque: não informado</span></button>)}{!filteredVariations.length && <p className="p-3 text-sm text-white/40">Nenhuma variação encontrada.</p>}</div></div>}</div>}<p className="text-xs text-white/40 mt-2">{variationRequired && !selectedVariation ? "Escolha uma variação para comprar." : "Taxas e total serão detalhados no checkout."}</p><button onClick={handleBuyClick} disabled={buyLoading || (variationRequired && !selectedVariation)} className="w-full mt-4 bg-[#ffbd2e] hover:bg-[#e6a829] disabled:opacity-40 disabled:cursor-not-allowed text-black py-3.5 rounded-xl font-black text-sm">COMPRAR</button></section>
-            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5"><h2 className="font-black text-white">Vendedor</h2><button onClick={() => setSelectedSellerId(product.sellerId)} className="w-full text-left flex gap-3 mt-4"><img src={seller?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(product.seller)}`} alt="" className="w-12 h-12 rounded-full bg-[#1a1a20]"/><div><p className="font-bold text-white">{product.seller}</p><p className="text-xs text-white/40 mt-1">{sellerReviews.length ? `${sellerReviews.length} avaliações` : "Novo"}</p></div></button><dl className="mt-4 text-xs divide-y divide-[#1e1e28]"><div className="flex justify-between py-2"><dt className="text-white/40">Membro desde</dt><dd className="text-white">—</dd></div><div className="flex justify-between py-2"><dt className="text-white/40">Avaliações positivas</dt><dd className="text-white">{sellerPositive === null ? "—" : `${sellerPositive}%`}</dd></div><div className="flex justify-between py-2"><dt className="text-white/40">Último acesso</dt><dd className="text-white">—</dd></div></dl></section>
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5"><h2 className="font-black text-white">Vendedor</h2><button onClick={() => setSelectedSellerId(product.sellerId)} className="w-full text-left flex gap-3 mt-4"><img src={seller?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(product.seller)}`} alt="" className="w-12 h-12 rounded-full bg-[#1a1a20]"/><div><p className="font-bold text-white">{product.seller}</p><p className="text-xs text-white/40 mt-1">ID público: {publicSellerId || "Indisponível"}</p><p className="text-xs text-white/40 mt-1">{sellerReviews.length ? `${sellerReviews.length} avaliações` : "Novo"}</p></div></button><dl className="mt-4 text-xs divide-y divide-[#1e1e28]"><div className="flex justify-between py-2"><dt className="text-white/40">Membro desde</dt><dd className="text-white">—</dd></div><div className="flex justify-between py-2"><dt className="text-white/40">Avaliações positivas</dt><dd className="text-white">{sellerPositive === null ? "—" : `${sellerPositive}%`}</dd></div><div className="flex justify-between py-2"><dt className="text-white/40">Último acesso</dt><dd className="text-white">—</dd></div></dl></section>
             <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5"><h2 className="font-black text-white">Verificações</h2><div className="mt-3 space-y-2 text-sm">{[["E-mail", null], ["Telefone", null], ["Documentos", seller?.isVerified ? true : null]].map(([label, verified]) => <div key={String(label)} className="flex justify-between"><span className="text-white/55">{String(label)}</span><span className={verified === true ? "text-[#00c950]" : "text-white/40"}>{verified === true ? "Verificado" : "—"}</span></div>)}</div></section>
             <section className="bg-[#0084ff]/10 border border-[#0084ff]/30 rounded-2xl p-5 flex gap-3"><Shield className="w-6 h-6 text-[#5aaeff] shrink-0"/><div><h2 className="font-black text-white text-sm">Entrega garantida</h2><p className="text-xs text-white/55 mt-1">Pagamento e entrega acompanham o pedido dentro da ZXMAX.</p></div></section>
           </aside>
