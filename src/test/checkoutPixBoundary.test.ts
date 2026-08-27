@@ -44,4 +44,13 @@ describe("checkout PIX exclusivo e neutro", () => {
     expect(purchases).not.toContain("markPurchasePaid");
     expect(purchases).toContain("void refreshPurchases()");
   });
+
+  it("não devolve detalhes ou marca do gateway em erros de geração PIX ao comprador", async () => {
+    const zennith = await source("supabase/functions/create-zennith-pix/index.ts");
+    const vexo = await source("supabase/functions/create-evopay-pix/index.ts");
+    expect(zennith).toContain('code: "pix_provider_unavailable"');
+    expect(zennith).not.toContain('error: `Não foi possível gerar o PIX: ${detail');
+    expect(vexo).toContain('error: "PIX temporariamente indisponível."');
+    expect(vexo).not.toContain('error: "Não foi possível gerar o PIX via VexoPay."');
+  });
 });

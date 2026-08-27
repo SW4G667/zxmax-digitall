@@ -123,9 +123,6 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
               : {
                 purchaseId: purchase.id,
                 productName: purchase.variationName ? `${product?.name} - ${purchase.variationName}` : product?.name,
-                amount: purchase.amount,
-                buyerEmail: state.currentUser.email,
-                buyerName: state.currentUser.name,
               },
           },
         ),

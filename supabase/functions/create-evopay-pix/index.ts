@@ -20,7 +20,7 @@ serve(async (req) => {
     const config = (setting?.value || {}) as Record<string, unknown>;
     const enabled = config.pixEnabled === true;
     const baseUrl = "https://www.vexopay.com.br/api";
-    if (!enabled || !clientId || !clientSecret) return json({ error: "O PIX via VexoPay está temporariamente indisponível.", code: "vexopay_not_configured" }, 400);
+    if (!enabled || !clientId || !clientSecret) return json({ error: "PIX temporariamente indisponível.", code: "pix_not_configured" }, 400);
 
     const body = await req.json().catch(() => ({}));
     const purchaseId = Number(body.purchaseId);
@@ -43,11 +43,11 @@ serve(async (req) => {
       body: JSON.stringify({ amount: Number(purchase.amount), payerName: profile?.display_name || authData.user.email?.split("@")[0] || "Comprador", payerDocument: document, description: String(product?.name || `Pedido #${purchase.id}`).slice(0, 120) }),
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) return json({ error: "A VexoPay não conseguiu gerar este PIX. Tente novamente mais tarde." }, 400);
+    if (!response.ok) return json({ error: "Não foi possível gerar o PIX neste momento. Tente novamente mais tarde.", code: "pix_provider_unavailable" }, 400);
     const node = payload?.data ?? payload?.invoice ?? payload ?? {};
     const qrCodeText = node.copyPaste ?? node.qrCodeText ?? node.qrCode ?? node.qrcode ?? node.qr_code ?? node.pixCopiaECola ?? node.payload ?? node.emv;
     const transactionId = node.transactionId ?? node.id ?? node.txid ?? node.transaction_id ?? node.chargeId ?? node.charge_id;
-    if (typeof qrCodeText !== "string" || !qrCodeText || !transactionId) return json({ error: "A VexoPay não devolveu os dados do PIX." }, 400);
+    if (typeof qrCodeText !== "string" || !qrCodeText || !transactionId) return json({ error: "Não foi possível gerar o código PIX neste momento. Tente novamente.", code: "pix_code_unavailable" }, 400);
     const expiresAt = typeof node.expiresAt === "string" ? node.expiresAt : typeof node.expires_at === "string" ? node.expires_at : new Date(Date.now() + 60 * 60 * 1000).toISOString();
     const chargeId = `vexo:${transactionId}`;
     await admin.from("purchases").update({ evopay_charge_id: chargeId, pix_qr_code: qrCodeText, pix_expires_at: expiresAt, updated_at: new Date().toISOString() }).eq("id", purchaseId);
@@ -55,6 +55,6 @@ serve(async (req) => {
     return json({ id: chargeId, status: String(node.status || "PENDING"), amount: Number(purchase.amount), qrCodeText, expiresAt, qrCodeUrl: typeof node.qrCodeUrl === "string" ? node.qrCodeUrl : null });
   } catch (error: any) {
     console.error("create-vexopay-pix", error?.message || error);
-    return json({ error: "Não foi possível gerar o PIX via VexoPay." }, 500);
+    return json({ error: "Não foi possível gerar o PIX neste momento. Tente novamente mais tarde." }, 500);
   }
 });

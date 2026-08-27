@@ -109,7 +109,7 @@ serve(async (req) => {
     if (!resp.ok) {
       const detail = String(data?.detail || data?.error || data?.message || `ZennithPay ${resp.status}`);
       console.error("create-zennith-pix failed", resp.status, data);
-      return json({ error: `Não foi possível gerar o PIX: ${detail.slice(0, 180)}` }, 400);
+      return json({ error: "Não foi possível gerar o PIX neste momento. Tente novamente mais tarde.", code: "pix_provider_unavailable" }, 400);
     }
 
     const node = (data?.data && typeof data.data === "object" ? data.data : data) as Record<string, unknown>;
@@ -117,7 +117,7 @@ serve(async (req) => {
       node.pix_copy_paste || node.pixCopyPaste || node.copy_paste || node.emv || node.qr_code || "",
     );
     if (!qrCodeText) {
-      return json({ error: "A ZennithPay não devolveu o código Pix. Tente novamente." }, 400);
+      return json({ error: "Não foi possível gerar o código PIX neste momento. Tente novamente.", code: "pix_code_unavailable" }, 400);
     }
 
     const chargeId = `zennith:${referenceId}`;
