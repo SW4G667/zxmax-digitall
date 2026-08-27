@@ -54,7 +54,8 @@ describe("hidratação persistente de pedidos", () => {
   it("mantém a visão do vendedor limitada à identidade pública do comprador e ao chat do pedido", async () => {
     const purchases = await source("src/components/MyPurchasesView.tsx");
     const inventory = await source("src/components/InventoryView.tsx");
-    expect(purchases).toContain("Comprador #${selected.buyerPublicId || \"—\"}");
+    expect(purchases).toContain("Comprador: ${selectedBuyer?.name || \"Usuário\"} · #${selected.buyerPublicId || \"—\"}");
+    expect(purchases).toContain("Comprador: {buyer?.name || \"Usuário\"} · #{p.buyerPublicId || \"—\"}");
     expect(inventory).toContain("ID público: {s.buyerPublicId || buyer?.publicId || \"—\"}");
     expect(inventory).toContain("Toque para abrir o chat seguro do pedido.");
     expect(inventory).not.toContain("<p className=\"font-bold text-sm text-white\">{s.buyerEmail}</p>");

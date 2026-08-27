@@ -149,9 +149,10 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
   const selected = selectedId ? state.purchases.find((p) => p.id === selectedId) : null;
   const selectedProduct = selected ? state.products.find((p) => p.id === selected.productId) : null;
   const selectedAsSeller = !!selected && selected.sellerId === state.currentUser?.id;
+  const selectedBuyer = selected ? state.userDirectory?.[selected.buyerId] : undefined;
   const selectedCounterparty = selected
     ? (selectedAsSeller
-      ? `Comprador #${selected.buyerPublicId || "—"}`
+      ? `Comprador: ${selectedBuyer?.name || "Usuário"} · #${selected.buyerPublicId || "—"}`
       : `Vendedor: ${selectedProduct?.seller || "—"}`)
     : "";
 
@@ -447,6 +448,7 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
         )}
         {filtered.map((p) => {
           const prod = state.products.find((pr) => pr.id === p.productId);
+          const buyer = state.userDirectory?.[p.buyerId];
           return (
             <div key={p.id} className="glass-card p-4 sm:p-5 hover:border-primary/40 transition">
               <div className="flex items-start gap-4">
@@ -457,7 +459,7 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
                       <h4 className="font-bold text-foreground truncate">{prod?.name}</h4>
                       {p.variationName && <p className="text-[10px] text-primary font-bold">Opção: {p.variationName}</p>}
                       <p className="text-xs text-muted-foreground mt-0.5">Pedido #{p.id} · {new Date(p.createdAt).toLocaleDateString("pt-BR")}</p>
-                      {p.sellerId === state.currentUser?.id && <p className="text-[11px] text-primary mt-1">Comprador #{p.buyerPublicId || "—"}</p>}
+                      {p.sellerId === state.currentUser?.id && <p className="text-[11px] text-primary mt-1">Comprador: {buyer?.name || "Usuário"} · #{p.buyerPublicId || "—"}</p>}
                     </div>
                     <Badge className={`${statusMap[p.status].cls} shrink-0`}>{statusMap[p.status].label}</Badge>
                   </div>
