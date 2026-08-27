@@ -94,6 +94,12 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
 
   const selected = selectedId ? state.purchases.find((p) => p.id === selectedId) : null;
   const selectedProduct = selected ? state.products.find((p) => p.id === selected.productId) : null;
+  const selectedAsSeller = !!selected && selected.sellerId === state.currentUser?.id;
+  const selectedCounterparty = selected
+    ? (selectedAsSeller
+      ? `Comprador #${selected.buyerPublicId || "—"}`
+      : `Vendedor: ${selectedProduct?.seller || "—"}`)
+    : "";
 
   const handlePayPix = async (purchase: Purchase, e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -201,7 +207,9 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
             <p className="text-xs text-muted-foreground">
               {state.currentUser?.isAdmin
                 ? `Comprador: ${selected.buyerEmail} · Vendedor: ${selected.sellerEmail}`
-                : <>Vendedor: <span className="text-primary font-semibold">{selectedProduct.seller}</span></>}
+                : selectedAsSeller
+                  ? selectedCounterparty
+                  : <>Vendedor: <span className="text-primary font-semibold">{selectedProduct.seller}</span></>}
             </p>
             <p className="text-sm font-black text-foreground mt-0.5">R$ {selected.amount.toFixed(2)}</p>
           </div>
@@ -316,7 +324,7 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
           <h1 className="text-3xl md:text-4xl font-black text-foreground">Minhas Compras</h1>
           <ShoppingBagEmoji className="w-8 h-8" />
         </div>
-        <p className="text-muted-foreground">Acompanhe seus pedidos e acesse seus produtos.</p>
+        <p className="text-muted-foreground">Acompanhe suas compras e vendas, com status, entrega e chat protegido por pedido.</p>
       </div>
 
       <div className="bg-card rounded-2xl px-4 py-3 mb-8 border border-border/40 flex items-center gap-3">
@@ -337,6 +345,7 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
                       <h4 className="font-bold text-foreground truncate">{prod?.name}</h4>
                       {p.variationName && <p className="text-[10px] text-primary font-bold">Opção: {p.variationName}</p>}
                       <p className="text-xs text-muted-foreground mt-0.5">Pedido #{p.id} · {new Date(p.createdAt).toLocaleDateString("pt-BR")}</p>
+                      {p.sellerId === state.currentUser?.id && <p className="text-[11px] text-primary mt-1">Comprador #{p.buyerPublicId || "—"}</p>}
                     </div>
                     <Badge className={`${statusMap[p.status].cls} shrink-0`}>{statusMap[p.status].label}</Badge>
                   </div>

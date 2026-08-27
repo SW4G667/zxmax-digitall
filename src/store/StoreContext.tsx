@@ -814,7 +814,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshPurchases = async () => {
-    const { data } = await (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,payment_provider,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at,delivered_pending_at,refund_reason,refunded_at,seller_released,released_at").order("created_at", { ascending: false });
+    const { data, error } = await (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,payment_provider,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at,delivered_pending_at,refund_reason,refunded_at,seller_released,released_at").order("created_at", { ascending: false });
+    if (error) {
+      console.warn("[zxmax:purchases:load]", error.message || error);
+      return;
+    }
     if (!data) return;
     const purchases = (data as any[]).map(mapPurchaseRow) as Purchase[];
     // Check if any delivered_pending_confirmation order is > 3 days old and auto-release
@@ -826,6 +830,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     setState((s) => ({ ...s, purchases }));
   };
+
+  // Orders must be rehydrated from the RLS-protected source after every
+  // session restoration. Previously the normal /minhas-compras entry only
+  // retained the optimistic state created in this browser tab, so a reload
+  // appeared to erase a legitimate pending purchase.
+  useEffect(() => {
+    if (!authUserId) {
+      setState((s) => (s.purchases.length ? { ...s, purchases: [] } : s));
+      return;
+    }
+    void refreshPurchases();
+  }, [authUserId]);
 
   const markOrderDelivered = async (orderId: number) => {
     const { data, error } = await supabase.functions.invoke("mark-order-delivered", { body: { orderId } });

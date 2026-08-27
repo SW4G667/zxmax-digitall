@@ -275,12 +275,18 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
               <button onClick={() => setShowSales(null)} className="text-white/40 hover:text-white"><X className="w-5 h-5" /></button>
             </div>
             <div className="space-y-3">
-              {salesForProduct.length === 0 ? <p className="text-center text-white/40 py-10 text-sm">Nenhuma venda</p> : salesForProduct.map(s => (
+              {salesForProduct.length === 0 ? <p className="text-center text-white/40 py-10 text-sm">Nenhuma venda confirmada para este anúncio.</p> : salesForProduct.map(s => {
+                const buyer = state.userDirectory?.[s.buyerId];
+                return (
                 <div key={s.id} onClick={() => { if(onOpenChat) { onOpenChat(s.id); setShowSales(null); } }} className="p-4 bg-[#1a1a20] border border-[#25252e] rounded-xl hover:border-[#0084ff]/30 cursor-pointer transition">
-                  <p className="font-bold text-sm text-white">{s.buyerEmail}</p>
-                  <p className="text-xs text-white/40">R$ {s.amount.toFixed(2)} • {new Date(s.createdAt).toLocaleDateString()}</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div><p className="font-bold text-sm text-white">{buyer?.name || "Comprador"}</p><p className="text-xs text-[#5aaeff] mt-0.5">ID público: {s.buyerPublicId || buyer?.publicId || "—"}</p></div>
+                    <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-[#0084ff]/10 text-[#5aaeff] border border-[#0084ff]/20">{s.status === "pending" ? "Aguardando pagamento" : s.status === "delivered" ? "Concluído" : "Em andamento"}</span>
+                  </div>
+                  <p className="text-xs text-white/40 mt-2">Pedido #{s.id} · {formatBRL(s.amount)} · {new Date(s.createdAt).toLocaleDateString()}</p>
+                  <p className="text-[11px] text-white/30 mt-2">Toque para abrir o chat seguro do pedido.</p>
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         </div>
