@@ -26,6 +26,9 @@ describe("hidratação persistente de pedidos", () => {
     expect(purchases).toContain("A lista anterior foi preservada.");
     expect(purchases).toContain("Atualizar");
     expect(purchases).toContain("void refreshOrderList();");
+    expect(purchases).toContain('useState<"all" | "purchases" | "sales">("all")');
+    expect(purchases).toContain('label: "Compras"');
+    expect(purchases).toContain('label: "Vendas"');
   });
 
   it("expõe uma função de leitura que valida o token e restringe pedidos ao participante", async () => {

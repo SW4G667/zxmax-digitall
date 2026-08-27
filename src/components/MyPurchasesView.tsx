@@ -75,6 +75,7 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
   const [loadingPix, setLoadingPix] = useState<number | null>(null);
   const [syncState, setSyncState] = useState<"loading" | "ready" | "error">("loading");
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [orderScope, setOrderScope] = useState<"all" | "purchases" | "sales">("all");
   const refreshPurchasesRef = useRef(refreshPurchases);
   refreshPurchasesRef.current = refreshPurchases;
 
@@ -107,8 +108,20 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
     : state.purchases.filter(
         (p) => p.buyerId === state.currentUser?.id || p.sellerId === state.currentUser?.id
       );
+  const myPurchases = visiblePurchases.filter((p) => p.buyerId === state.currentUser?.id);
+  const mySales = visiblePurchases.filter((p) => p.sellerId === state.currentUser?.id);
+  const scopedPurchases = orderScope === "purchases"
+    ? myPurchases
+    : orderScope === "sales"
+      ? mySales
+      : visiblePurchases;
+  const availableScopes = [
+    { id: "all" as const, label: state.currentUser?.isAdmin ? "Todos" : "Todos", count: visiblePurchases.length },
+    ...(myPurchases.length ? [{ id: "purchases" as const, label: "Compras", count: myPurchases.length }] : []),
+    ...(mySales.length ? [{ id: "sales" as const, label: "Vendas", count: mySales.length }] : []),
+  ];
   const q = search.trim().toLowerCase();
-  const filtered = visiblePurchases.filter((p) => {
+  const filtered = scopedPurchases.filter((p) => {
     if (!q) return true;
     // Procura no nome do produto, ID e variação. O e-mail só integra a busca
     // administrativa; participantes não precisam dele para localizar pedidos.
@@ -122,7 +135,7 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
     ].join(" ").toLowerCase();
     return hay.includes(q);
   }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const purchaseSummary = visiblePurchases.reduce(
+  const purchaseSummary = scopedPurchases.reduce(
     (summary, purchase) => {
       summary.total += 1;
       if (purchase.status === "pending") summary.pending += 1;
@@ -400,13 +413,33 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
         </div>
       )}
 
+      {availableScopes.length > 1 && (
+        <div className="mb-5 flex items-center gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Tipo de pedido">
+          {availableScopes.map((scope) => {
+            const active = orderScope === scope.id;
+            return (
+              <button
+                key={scope.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setOrderScope(scope.id)}
+                className={`shrink-0 rounded-xl border px-3.5 py-2 text-xs font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${active ? "border-primary/40 bg-primary/15 text-primary" : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/30"}`}
+              >
+                {scope.label} <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-primary/20" : "bg-muted"}`}>{scope.count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div className="bg-card rounded-2xl px-4 py-3 mb-8 border border-border/40 flex items-center gap-3">
         <Search className="w-4 h-4 text-muted-foreground" />
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome do produto..." className="bg-transparent border-none focus:ring-0 outline-none text-sm w-full text-foreground" />
       </div>
 
       <div className="grid gap-4">
-        {syncState === "loading" && visiblePurchases.length === 0 && (
+        {syncState === "loading" && scopedPurchases.length === 0 && (
           <div className="glass-card p-8 flex items-center gap-3 text-muted-foreground" role="status">
             <Loader2 className="w-5 h-5 animate-spin text-primary" />
             <span className="text-sm font-medium">Sincronizando seus pedidos com segurança...</span>
@@ -474,7 +507,7 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
         {syncState !== "loading" && filtered.length === 0 && (
           <div className="text-center py-20 bg-card rounded-3xl border-2 border-dashed border-border">
             <p className="text-3xl mb-3">🛍️</p>
-            <p className="text-muted-foreground font-medium">{search ? "Nenhum pedido corresponde à sua busca." : "Você ainda não tem pedidos vinculados a esta conta."}</p>
+            <p className="text-muted-foreground font-medium">{search ? "Nenhum pedido corresponde à sua busca." : orderScope === "sales" ? "Você ainda não tem vendas neste perfil." : orderScope === "purchases" ? "Você ainda não tem compras neste perfil." : "Você ainda não tem pedidos vinculados a esta conta."}</p>
           </div>
         )}
       </div>
