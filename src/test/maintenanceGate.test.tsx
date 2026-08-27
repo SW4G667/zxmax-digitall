@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 const authState = vi.hoisted(() => ({
   user: null as { id: string } | null,
@@ -70,5 +72,13 @@ describe("MaintenanceGate", () => {
 
     await waitFor(() => expect(screen.getByText("Conteúdo protegido da vitrine")).toBeInTheDocument());
     expect(screen.queryByRole("heading", { name: "Estamos preparando uma experiência melhor." })).not.toBeInTheDocument();
+  });
+});
+
+describe("descoberta do modo de manutenção", () => {
+  it("mantém um atalho administrativo explícito para a operação da plataforma", async () => {
+    const source = await readFile(resolve(process.cwd(), "src/components/SideMenu.tsx"), "utf8");
+    expect(source).toContain('label: "Operação e manutenção"');
+    expect(source).toContain('to: "/admin?tab=config"');
   });
 });

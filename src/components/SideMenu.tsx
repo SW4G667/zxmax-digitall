@@ -200,7 +200,7 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
           { key: "admin-tags", icon: Tag, label: "Tags de usuários", hint: "Selos persistentes por ID público", to: "/admin?tab=tags" },
           { key: "admin-roles", icon: Users, label: "Cargos e permissões", hint: "Acesso auditado no banco", to: "/admin?tab=roles" },
           { key: "admin-apis", icon: KeyRound, label: "APIs e credenciais", to: "/admin?tab=apis" },
-          { key: "admin-config", icon: Settings, label: "Taxas e configurações", to: "/admin?tab=config" },
+          { key: "admin-config", icon: Settings, label: "Operação e manutenção", hint: "Taxas, limites e modo de manutenção", to: "/admin?tab=config" },
           { key: "admin-security", icon: ShieldCheck, label: "Segurança do painel", hint: mfaEnabled ? "2FA ativo" : "Ative o 2FA", to: "/admin?tab=security" },
         ],
       });
