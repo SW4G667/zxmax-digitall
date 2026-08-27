@@ -596,7 +596,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       seller_id: authUser.id,
       seller_public_id: state.currentUser.publicId,
       seller_name: state.currentUser.name,
-      seller_email: state.currentUser.email,
       name: p.name.trim(),
       price,
       category: p.category,
@@ -620,7 +619,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       { ...base, ...optionalColumns },
       base,
       (() => { const { approved, ...rest } = base; return rest; })(),
-      (() => { const { approved, seller_email, ...rest } = base; return rest; })(),
     ];
 
     let created: { id: number; approved: boolean } | null = null;
@@ -669,6 +667,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const updateProduct = async (id: number, p: Partial<Omit<Product, "id" | "sellerId">>) => {
     const existing = state.products.find((pr) => pr.id === id);
     if (!existing) return false;
+    const actorId = authUserRef.current?.id;
+    if (!actorId) {
+      toast.error("Sua sessão expirou. Entre novamente para editar o anúncio.");
+      return false;
+    }
+    if (!isAdmin && existing.sellerId !== actorId) {
+      toast.error("Você não tem permissão para editar este anúncio.");
+      return false;
+    }
     // If price or delivery content changed, send back to review - but admin edits stay approved
     const essentialChanged =
       (p.price !== undefined && p.price !== existing.price) ||
@@ -756,6 +763,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
 
   const deleteProduct = async (id: number): Promise<{ paused: boolean }> => {
+    const product = state.products.find((item) => item.id === id);
+    const actorId = authUserRef.current?.id;
+    if (!product || !actorId || (!isAdmin && product.sellerId !== actorId)) {
+      toast.error("Você não tem permissão para remover este anúncio.");
+      return { paused: false };
+    }
     // If product has orders, pause (unapprove) instead of deleting to preserve history
     const hasOrders = state.purchases.some((pu) => pu.productId === id);
     if (hasOrders) {

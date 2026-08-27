@@ -1,0 +1,31 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const source = async (path: string) => readFile(join(process.cwd(), path), "utf8");
+
+describe("superfícies legítimas de e-mail", () => {
+  it("monta os painéis administrativos somente após sessão, papel e gate administrativo", async () => {
+    const index = await source("src/pages/Index.tsx");
+    const admin = await source("src/components/AdminView.tsx");
+    const extra = await source("src/components/AdminExtraPanels.tsx");
+    const more = await source("src/components/AdminMorePanels.tsx");
+
+    expect(index).toContain('view === "admin" && user && isAdmin && (adminGateUnlocked ? <AdminView /> : <AdminLoginGate />)');
+    expect(admin).toContain('useAuth()');
+    expect(admin).toContain('action: "get_webhook_logs"');
+    expect(extra).toContain("p.buyerEmail");
+    expect(more).toContain("p.buyerEmail");
+  });
+
+  it("mantém os dados de pedido em rota autenticada e não pesquisa e-mail de contraparte para participante comum", async () => {
+    const index = await source("src/pages/Index.tsx");
+    const purchases = await source("src/components/MyPurchasesView.tsx");
+    const inventory = await source("src/components/InventoryView.tsx");
+
+    expect(index).toContain('view === "purchases" && user && <MyPurchasesView');
+    expect(purchases).toContain("p.buyerId === state.currentUser?.id || p.sellerId === state.currentUser?.id");
+    expect(purchases).toContain("state.currentUser?.isAdmin ? [p.buyerEmail || \"\", p.sellerEmail || \"\"] : []");
+    expect(inventory).toContain("p.sellerId === state.currentUser?.id");
+  });
+});

@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  *  - o erro devolvido pelo banco vira uma mensagem específica (nunca só
  *    "Tente novamente") e nunca vaza detalhe técnico;
  *  - uma falha não deixa produto-fantasma no catálogo;
- *  - o cliente não decide `approved`, `seller_id`, vendas nem estoque;
+ *  - o cliente não decide `approved`, `seller_id`, vendas, estoque ou e-mail de contato;
  *  - o sucesso recarrega o catálogo a partir do banco.
  */
 
@@ -194,6 +194,7 @@ describe("addProduct — o cliente não decide privilégios", () => {
     expect(payload.seller_id).toBe("seller-uuid");
     expect(payload).not.toHaveProperty("sales");
     expect(payload).not.toHaveProperty("rating");
+    expect(payload).not.toHaveProperty("seller_email");
   });
 
   it("a aprovação exibida vem da resposta do banco, não do estado local", async () => {

@@ -66,17 +66,6 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
           clearInterval(interval);
           onPaid();
 
-          // Trigger transactional emails (idempotent)
-          if (purchaseId) {
-            try {
-              await supabase.functions.invoke("send-email", {
-                body: { type: "purchase_confirmed", purchaseId },
-              });
-              await supabase.functions.invoke("send-email", {
-                body: { type: "new_sale", purchaseId },
-              });
-            } catch {}
-          }
         } else if (data?.status === "EXPIRED" || data?.status === "CANCELED" || data?.status === "FAILED") {
           clearInterval(interval);
           toast.error("O pagamento expirou ou foi cancelado. Gere um novo PIX.");

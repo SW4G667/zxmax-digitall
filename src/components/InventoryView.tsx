@@ -62,8 +62,8 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     else toast.success("Produto excluído.");
   };
 
-  const myProducts = state.products.filter((p) => p.sellerId === state.currentUser?.id || p.sellerEmail === state.currentUser?.email);
-  const mySales = state.purchases.filter((p) => p.sellerId === state.currentUser?.id || p.sellerEmail === state.currentUser?.email);
+  const myProducts = state.products.filter((p) => p.sellerId === state.currentUser?.id);
+  const mySales = state.purchases.filter((p) => p.sellerId === state.currentUser?.id);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: "image" | "banner") => {
     const file = e.target.files?.[0];
@@ -139,7 +139,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
       const created = await addProduct({
         name: form.name, category: form.category, description: form.description,
         price: finalPrice, image: form.image, banner: form.banner || undefined,
-        seller: state.currentUser!.name, sellerEmail: state.currentUser!.email,
+        seller: state.currentUser!.name,
         deliveryType: form.deliveryType, deliveryContent: form.deliveryContent,
         variations: finalVariations.length > 0 ? finalVariations : undefined,
         stock: stockNum,

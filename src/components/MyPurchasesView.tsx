@@ -80,16 +80,14 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
   const q = search.trim().toLowerCase();
   const filtered = visiblePurchases.filter((p) => {
     if (!q) return true;
-    // Procura no nome do produto (se existir), e-mail e ID. Nunca crasha se o
-    // produto ainda não carregou — o comprador/seller precisa continuar vendo
-    // a compra mesmo que o catálogo esteja incompleto.
+    // Procura no nome do produto, ID e variação. O e-mail só integra a busca
+    // administrativa; participantes não precisam dele para localizar pedidos.
     const product = state.products.find((pr) => pr.id === p.productId);
     const hay = [
       product?.name || "",
-      p.buyerEmail || "",
-      p.sellerEmail || "",
       String(p.id),
       p.variationName || "",
+      ...(state.currentUser?.isAdmin ? [p.buyerEmail || "", p.sellerEmail || ""] : []),
     ].join(" ").toLowerCase();
     return hay.includes(q);
   }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -156,12 +154,6 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
   const handlePixPaid = async () => {
     if (resumeId != null) markPurchasePaid(resumeId);
     toast.success("Pagamento confirmado!");
-    if (resumeId) {
-      try {
-        await supabase.functions.invoke("send-email", { body: { type: "purchase_confirmed", purchaseId: resumeId } });
-        await supabase.functions.invoke("send-email", { body: { type: "new_sale", purchaseId: resumeId } });
-      } catch {}
-    }
   };
 
   const handleDispute = async () => {

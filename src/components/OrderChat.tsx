@@ -39,8 +39,8 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
   const me = state.currentUser?.id;
 
   const purchase = propPurchase || state.purchases.find((p) => p.id === orderId) || null;
-  const isSeller = me ? purchase?.sellerId === me || purchase?.sellerEmail === state.currentUser?.email : false;
-  const isBuyer = me ? purchase?.buyerId === me || purchase?.buyerEmail === state.currentUser?.email : false;
+  const isSeller = !!me && purchase?.sellerId === me;
+  const isBuyer = !!me && purchase?.buyerId === me;
   const isAdmin = state.currentUser?.isAdmin || false;
 
   const signImages = async (rows: OrderMessage[]) => {

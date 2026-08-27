@@ -23,15 +23,14 @@ export default function NotificationBell() {
   }, []);
 
   if (!state.currentUser) return null;
+  const userId = state.currentUser.id;
   const email = state.currentUser.email;
 
   // Purchase notifications
   const purchaseNotifs = state.purchases
     .filter((p) => {
-      const product = state.products.find((pr) => pr.id === p.productId);
-      if (!product) return false;
-      const isSeller = product.sellerEmail === email;
-      const isBuyer = p.buyerEmail === email;
+      const isSeller = p.sellerId === userId;
+      const isBuyer = p.buyerId === userId;
       if (!isSeller && !isBuyer) return false;
       if (isSeller && (p.status === "paid" || p.reviewed)) return true;
       if (isBuyer && p.status === "delivered" && !p.reviewed) return true;
@@ -42,7 +41,7 @@ export default function NotificationBell() {
   // Global: support ticket replies + global notices
   const ticketNotifs = state.tickets
     .filter((t) => {
-      if (t.userEmail === email) {
+      if (t.userId === userId) {
         return t.messages.some((m) => m.from !== email);
       }
       return false;
