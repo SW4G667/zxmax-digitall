@@ -528,7 +528,7 @@ export default function ProdutoPage() {
     }
     toast.success("Pergunta enviada ao vendedor.");
     if (createdQuestion?.id) {
-      void supabase.functions.invoke("send-email", { body: { type: "new_question", questionId: createdQuestion.id } });
+      void supabase.functions.invoke("notify-product-event", { body: { eventType: "product_question", eventId: createdQuestion.id } });
     }
     setQuestion("");
     await loadQuestions();

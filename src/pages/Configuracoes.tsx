@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, KeyRound, Loader2, LogOut, MonitorOff, ShieldCheck, UserRound, WalletCards } from "lucide-react";
+import { ArrowLeft, BellRing, KeyRound, Loader2, LogOut, MonitorOff, ShieldCheck, UserRound, WalletCards } from "lucide-react";
 import { toast } from "sonner";
 import AppShell from "@/components/AppShell";
 import LoadingScreen from "@/components/LoadingScreen";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import DiscordWebhookSettings from "@/components/DiscordWebhookSettings";
 
 const inputClass = "w-full rounded-xl border border-[#292c36] bg-[#0c0e14] px-3.5 py-3 text-sm text-white outline-none transition placeholder:text-white/28 focus:border-[#1b96ff] focus:ring-2 focus:ring-[#168cff]/15";
 
@@ -64,9 +65,10 @@ export default function Configuracoes() {
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#75c5ff]">Minha conta</p>
           <h1 className="mt-2 text-2xl font-black tracking-[-0.05em] text-white sm:text-3xl">Configurações e segurança</h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/52">Atualize a senha, proteja as sessões e acesse seus dados e operações sem expor informações publicamente.</p>
+          <nav className="mt-5 flex flex-wrap gap-2" aria-label="Seções das configurações"><a href="#seguranca" className="rounded-full border border-white/[0.12] bg-white/[0.04] px-3 py-1.5 text-xs font-bold text-white/72 transition hover:border-[#75c5ff]/40 hover:text-white">Segurança</a><a href="#atalhos" className="rounded-full border border-white/[0.12] bg-white/[0.04] px-3 py-1.5 text-xs font-bold text-white/72 transition hover:border-[#75c5ff]/40 hover:text-white">Conta</a><a href="#integracoes" className="inline-flex items-center gap-1.5 rounded-full border border-[#5865f2]/35 bg-[#5865f2]/10 px-3 py-1.5 text-xs font-bold text-[#c3c7ff] transition hover:bg-[#5865f2]/18"><BellRing className="h-3.5 w-3.5" />Integrações</a></nav>
         </header>
 
-        <div className="mt-5 grid gap-5 lg:grid-cols-[1.2fr_.8fr]">
+        <div id="seguranca" className="mt-5 grid gap-5 lg:grid-cols-[1.2fr_.8fr]">
           <section className="rounded-2xl border border-white/[0.08] bg-[#11131a] p-5 sm:p-6" aria-labelledby="password-title">
             <div className="flex items-start gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#168cff]/12 text-[#76c5ff]"><KeyRound className="h-5 w-5" /></span><div><h2 id="password-title" className="font-black text-white">Senha da conta</h2><p className="mt-1 text-xs leading-relaxed text-white/45">Escolha uma senha longa e exclusiva. A senha não é salva nem exibida nesta página.</p></div></div>
             <form onSubmit={handlePasswordUpdate} className="mt-6 space-y-4">
@@ -83,7 +85,7 @@ export default function Configuracoes() {
           </section>
         </div>
 
-        <section className="mt-5 rounded-2xl border border-white/[0.08] bg-[#11131a] p-5 sm:p-6" aria-labelledby="shortcuts-title">
+        <section id="atalhos" className="mt-5 rounded-2xl border border-white/[0.08] bg-[#11131a] p-5 sm:p-6" aria-labelledby="shortcuts-title">
           <h2 id="shortcuts-title" className="font-black text-white">Atalhos da conta</h2>
           <p className="mt-1 text-xs text-white/45">Cada área apresenta somente dados aos quais sua sessão já tem autorização.</p>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -93,6 +95,7 @@ export default function Configuracoes() {
             <Link to="/sacar" className="group rounded-xl border border-white/[0.08] bg-white/[0.025] p-4 transition hover:border-[#168cff]/35 hover:bg-[#168cff]/7"><LogOut className="h-5 w-5 text-[#76c5ff]" /><h3 className="mt-3 text-sm font-black text-white">Saldo e saques</h3><p className="mt-1 text-xs leading-relaxed text-white/43">Solicitações de saque seguem validação e processamento no servidor.</p></Link>
           </div>
         </section>
+        <DiscordWebhookSettings />
         <button type="button" onClick={() => { void signOut(); navigate("/"); }} className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-red-300 transition hover:text-red-200"><LogOut className="h-4 w-4" /> Sair desta conta</button>
       </main>
     </AppShell>

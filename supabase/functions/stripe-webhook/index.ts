@@ -80,6 +80,18 @@ serve(async (req) => {
         await fetch(`${supabaseUrl}/functions/v1/send-email`, { method: "POST", headers, body: JSON.stringify({ type: "purchase_confirmed", purchaseId }) });
         await fetch(`${supabaseUrl}/functions/v1/send-email`, { method: "POST", headers, body: JSON.stringify({ type: "new_sale", purchaseId }) });
       } catch { /* e-mail nunca altera o resultado do pagamento */ }
+      try {
+        const { data: purchase } = await admin.from("purchases").select("seller_id").eq("id", purchaseId).maybeSingle();
+        if (purchase?.seller_id) {
+          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+          const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+          await fetch(`${supabaseUrl}/functions/v1/deliver-discord-webhook`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
+            body: JSON.stringify({ userId: purchase.seller_id, eventType: "sale_confirmed", eventId: purchaseId }),
+          });
+        }
+      } catch { /* Discord nunca altera a confirmação financeira */ }
     } else if (eventType === "checkout.session.async_payment_failed") {
       logStatus = "payment_failed";
     }

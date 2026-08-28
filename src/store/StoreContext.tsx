@@ -1113,7 +1113,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toast.error("Escreva um comentário com pelo menos 3 caracteres.");
       return false;
     }
-    const { error } = await (supabase as any).rpc("create_product_review", {
+    const { data: createdReview, error } = await (supabase as any).rpc("create_product_review", {
       _purchase_id: purchaseId,
       _stars: stars,
       _comment: cleanComment,
@@ -1129,6 +1129,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         : (error?.message || "Não foi possível enviar a avaliação. Tente novamente.");
       toast.error(msg);
       return false;
+    }
+    if (createdReview?.id) {
+      void supabase.functions.invoke("notify-product-event", { body: { eventType: "product_review", eventId: createdReview.id } });
     }
     // Atualiza o estado local imediatamente e re-lê o catálogo para os agregados.
     setState((s) => ({

@@ -191,7 +191,7 @@ describe("Perguntas — Tarefa B", () => {
     await clickSend();
     await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("Pergunta enviada ao vendedor."));
     expect(supabaseMock.rpc).toHaveBeenCalledWith("ask_product_question", { _product_id: 41, _body: "Aceita pagamento no PIX?" });
-    expect(supabaseMock.functions.invoke).toHaveBeenCalledWith("send-email", { body: { type: "new_question", questionId: 77 } });
+    expect(supabaseMock.functions.invoke).toHaveBeenCalledWith("notify-product-event", { body: { eventType: "product_question", eventId: 77 } });
   });
 
   it("contato externo é bloqueado com a mensagem do banco (validação no servidor)", async () => {
@@ -221,6 +221,7 @@ describe("Perguntas — Tarefa B", () => {
     await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
     expect(toastMock.success).not.toHaveBeenCalledWith("Pergunta enviada ao vendedor.");
     expect(String(toastMock.error.mock.calls.at(-1)?.[0] || "")).not.toMatch(/schema cache|ask_product_question|PGRST/i);
+    expect(supabaseMock.functions.invoke).not.toHaveBeenCalledWith("notify-product-event", expect.anything());
     expect(supabaseMock.functions.invoke).not.toHaveBeenCalledWith("send-email", expect.anything());
   });
 
