@@ -32,6 +32,20 @@ describe("notificações de moderação", () => {
     expect(email).toContain("charge_id: idempotencyKey || result.id || null");
   });
 
+  it("notifica retirada administrativa somente por chamada interna depois da decisão auditada", async () => {
+    const edge = await source("supabase/functions/admin-remove-product/index.ts");
+    const email = await source("supabase/functions/send-email/index.ts");
+    const migration = await source("supabase/migrations/20260827084500_admin_remove_product_by_id.sql");
+
+    expect(edge).toContain('type: "product_removed"');
+    expect(edge).toContain("Authorization: `Bearer ${serviceRoleKey}`");
+    expect(edge).toContain("notification = delivery.sent === true");
+    expect(email).toContain('"product_removed"');
+    expect(email).toContain("type === \"product_removed\") && !internalCall");
+    expect(email).toContain("name: String(body.productName");
+    expect(migration).toContain("'seller_id', target_product.seller_id");
+  });
+
   it("não expõe erros brutos de armazenamento ao enviar anexo no chat", async () => {
     const chat = await source("src/components/OrderChat.tsx");
 

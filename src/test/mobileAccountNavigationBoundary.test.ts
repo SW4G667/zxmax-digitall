@@ -11,6 +11,8 @@ describe("hierarquia móvel de conta", () => {
     expect(menu).toContain("{openOrders} em aberto");
     expect(menu).toContain('id="zxmax-main-menu"');
     expect(menu).toContain("Preferência visual");
+    expect(menu).toContain('label: "Transações"');
+    expect(menu).toContain('to: "/minhas-compras?scope=sales"');
     expect(menu).not.toContain("profile?.email");
   });
 

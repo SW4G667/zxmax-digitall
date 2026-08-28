@@ -150,6 +150,7 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
         { key: "profile", icon: User, label: "Meu perfil", hint: "Dados, verificação e segurança", to: "/perfil" },
         { key: "settings", icon: Settings, label: "Configurações", hint: "Senha, sessões e preferências", to: "/configuracoes" },
         { key: "orders", icon: ShoppingBag, label: "Meus pedidos", hint: "Compras, entregas e chat", view: "purchases", to: "/minhas-compras", badge: openOrders },
+        { key: "transactions", icon: Receipt, label: "Transações", hint: "Histórico de compras e vendas", to: "/minhas-compras" },
         { key: "support", icon: Headset, label: "Suporte", hint: "Falar com a equipe", view: "support", to: "/suporte" },
         { key: "wallet", icon: Wallet, label: "Saldo e saques", hint: "Receber por Pix", view: "withdraw", to: "/sacar" },
       ],
@@ -164,6 +165,7 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
         ...(isSeller
           ? [
               { key: "sales", icon: Receipt, label: "Pedidos e entregas", hint: "Vendas aguardando entrega", to: "/minhas-compras?scope=sales", badge: sellerOrders },
+              { key: "sales-history", icon: BarChart3, label: "Histórico de vendas", hint: "Transações como vendedor", to: "/minhas-compras?scope=sales" },
               { key: "verify", icon: BadgeCheck, label: "Verificação de vendedor", hint: profile?.is_verified_seller ? "Conta verificada" : "Envie seus documentos", to: "/perfil" },
             ]
           : [

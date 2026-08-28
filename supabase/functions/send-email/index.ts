@@ -11,7 +11,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   headers: { ...corsHeaders, "Content-Type": "application/json" },
 });
 
-type EmailType = "purchase_confirmed" | "new_sale" | "new_question" | "product_approved" | "product_rejected";
+type EmailType = "purchase_confirmed" | "new_sale" | "new_question" | "product_approved" | "product_rejected" | "product_removed";
 type EmailPayload = {
   type: EmailType;
   purchaseId?: number;
@@ -19,6 +19,8 @@ type EmailPayload = {
   productId?: number;
   moderationKey?: string;
   reason?: string;
+  productName?: string;
+  sellerId?: string;
 };
 
 const escapeHtml = (value: unknown) => String(value ?? "")
@@ -79,12 +81,12 @@ serve(async (req) => {
   try {
     const body = (await req.json().catch(() => ({}))) as EmailPayload;
     const type = body.type;
-    if (!(["purchase_confirmed", "new_sale", "new_question", "product_approved", "product_rejected"] as const).includes(type)) {
+    if (!(["purchase_confirmed", "new_sale", "new_question", "product_approved", "product_rejected", "product_removed"] as const).includes(type)) {
       return json({ error: "Tipo de notificação inválido." }, 400);
     }
     // Payment confirmation and sale notices originate only after a verified
     // provider webhook. A buyer or seller must not be able to resend them.
-    if ((type === "purchase_confirmed" || type === "new_sale" || type === "product_approved" || type === "product_rejected") && !internalCall) {
+    if ((type === "purchase_confirmed" || type === "new_sale" || type === "product_approved" || type === "product_rejected" || type === "product_removed") && !internalCall) {
       return json({ error: "Este tipo de notificação é processado pelo servidor." }, 403);
     }
 
@@ -121,18 +123,16 @@ serve(async (req) => {
         `${SITE_URL}/produto/${question.product_id}#perguntas`,
       );
       text = `Nova pergunta sobre ${String(product.name || "seu produto")}\n\nPergunta: ${String(question.body || "")}\n\nResponda dentro da ZXMAX: ${SITE_URL}/produto/${question.product_id}#perguntas`;
-    } else if (type === "product_approved" || type === "product_rejected") {
+    } else if (type === "product_approved" || type === "product_rejected" || type === "product_removed") {
       const productId = Number(body.productId);
       const moderationKey = String(body.moderationKey || "").trim().slice(0, 200);
       const reason = String(body.reason || "").trim().replace(/\s+/g, " ").slice(0, 500);
       if (!Number.isInteger(productId) || productId <= 0 || !moderationKey) return json({ error: "Notificação de moderação inválida." }, 400);
-      if (type === "product_rejected" && reason.length < 3) return json({ error: "Motivo de moderação inválido." }, 400);
-      const { data: product, error } = await admin
-        .from("products")
-        .select("id, name, seller_id")
-        .eq("id", productId)
-        .maybeSingle();
-      if (error || !product?.seller_id) return json({ error: "Anúncio não encontrado." }, 404);
+      if ((type === "product_rejected" || type === "product_removed") && reason.length < 3) return json({ error: "Motivo de moderação inválido." }, 400);
+      const { data: product, error } = type === "product_removed"
+        ? { data: { name: String(body.productName || "").trim().slice(0, 160), seller_id: String(body.sellerId || "").trim() }, error: null }
+        : await admin.from("products").select("id, name, seller_id").eq("id", productId).maybeSingle();
+      if (error || !product?.seller_id || !product?.name) return json({ error: "Anúncio não encontrado." }, 404);
       const { data: sellerProfile } = await admin.from("profiles").select("email").eq("user_id", product.seller_id).maybeSingle();
       recipient = sellerProfile?.email || "";
       if (!recipient) return json({ error: "Destinatário indisponível." }, 409);
@@ -140,15 +140,17 @@ serve(async (req) => {
       idempotencyKey = moderationKey;
       const productName = String(product.name || "seu anúncio");
       const approved = type === "product_approved";
-      subject = `${approved ? "Anúncio aprovado" : "Anúncio reprovado"} — ${productName}`;
+      const removed = type === "product_removed";
+      subject = `${approved ? "Anúncio aprovado" : removed ? "Anúncio retirado" : "Anúncio reprovado"} — ${productName}`;
       const details = approved
         ? `<strong style="color:#fff">Produto</strong><br>${escapeHtml(productName)}<br><br><strong style="color:#fff">Status</strong><br><span style="color:#83efb6">Aprovado e disponível na vitrine</span>`
         : `<strong style="color:#fff">Produto</strong><br>${escapeHtml(productName)}<br><br><strong style="color:#fff">Motivo informado pela moderação</strong><br>${escapeHtml(reason)}`;
       html = shell(
-        approved ? "Anúncio aprovado" : "Anúncio reprovado",
-        approved ? "Seu anúncio foi aprovado" : "Seu anúncio precisa de ajustes",
+        approved ? "Anúncio aprovado" : removed ? "Anúncio retirado" : "Anúncio reprovado",
+        approved ? "Seu anúncio foi aprovado" : removed ? "Seu anúncio foi retirado" : "Seu anúncio precisa de ajustes",
         approved
           ? "Sua publicação passou pela revisão e já pode ser encontrada na ZXMAX."
+          : removed ? "Uma revisão administrativa retirou este anúncio da vitrine. Consulte o motivo e ajuste a publicação antes de reenviá-la."
           : "Seu anúncio foi retirado da vitrine. Ajuste o que for necessário e publique novamente quando estiver de acordo com as regras.",
         details,
         approved ? "Ver meus anúncios" : "Revisar meus anúncios",
@@ -156,7 +158,7 @@ serve(async (req) => {
       );
       text = approved
         ? `Seu anúncio foi aprovado.\n\nProduto: ${productName}\nStatus: aprovado e disponível na vitrine.\n\nAcesse seus anúncios: ${SITE_URL}/minhas-compras?scope=sales`
-        : `Seu anúncio foi reprovado.\n\nProduto: ${productName}\nMotivo: ${reason}\n\nRevise seus anúncios: ${SITE_URL}/minhas-compras?scope=sales`;
+        : `Seu anúncio foi ${removed ? "retirado" : "reprovado"}.\n\nProduto: ${productName}\nMotivo: ${reason}\n\nRevise seus anúncios: ${SITE_URL}/minhas-compras?scope=sales`;
     } else {
       const purchaseId = Number(body.purchaseId);
       if (!Number.isInteger(purchaseId) || purchaseId <= 0) return json({ error: "Pedido inválido." }, 400);
@@ -208,10 +210,10 @@ serve(async (req) => {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      await admin.from("webhook_logs").insert({ source: "email", event_type: type, status: `error_${response.status}`, order_id: logId, charge_id: idempotencyKey, payload: { recipient: type === "new_sale" || type === "new_question" || type === "product_approved" || type === "product_rejected" ? "seller" : "buyer", subject }, error: "provider_rejected" });
+      await admin.from("webhook_logs").insert({ source: "email", event_type: type, status: `error_${response.status}`, order_id: logId, charge_id: idempotencyKey, payload: { recipient: type === "new_sale" || type === "new_question" || type === "product_approved" || type === "product_rejected" || type === "product_removed" ? "seller" : "buyer", subject }, error: "provider_rejected" });
       return json({ error: "Não foi possível entregar a notificação." }, 502);
     }
-    await admin.from("webhook_logs").insert({ source: "email", event_type: type, status: "sent", order_id: logId, charge_id: idempotencyKey || result.id || null, payload: { recipient: type === "new_sale" || type === "new_question" || type === "product_approved" || type === "product_rejected" ? "seller" : "buyer", subject, resend_id: result.id || null }, error: null });
+    await admin.from("webhook_logs").insert({ source: "email", event_type: type, status: "sent", order_id: logId, charge_id: idempotencyKey || result.id || null, payload: { recipient: type === "new_sale" || type === "new_question" || type === "product_approved" || type === "product_rejected" || type === "product_removed" ? "seller" : "buyer", subject, resend_id: result.id || null }, error: null });
     return json({ sent: true, id: result.id });
   } catch (error) {
     console.error("send-email failure", error instanceof Error ? error.message : "unknown");

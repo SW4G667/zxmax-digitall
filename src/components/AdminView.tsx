@@ -892,12 +892,16 @@ export default function AdminView() {
 /** Fila de moderação: pré-visualização completa, busca, motivo de reprovação e
  * confirmação para a ação destrutiva. Toda decisão fica em `admin_audit_log`. */
 function AdminProductModeration() {
-  const { state, approveProduct, rejectProduct } = useStore();
+  const { state, approveProduct, rejectProduct, refreshProducts } = useStore();
   const [query, setQuery] = useState("");
   const [preview, setPreview] = useState<Product | null>(null);
   const [rejecting, setRejecting] = useState<Product | null>(null);
   const [reason, setReason] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [removeId, setRemoveId] = useState("");
+  const [removeReason, setRemoveReason] = useState("");
+  const [confirmingRemoval, setConfirmingRemoval] = useState(false);
+  const [removalBusy, setRemovalBusy] = useState(false);
   const PAGE = 10;
   const [shown, setShown] = useState(PAGE);
 
@@ -930,6 +934,32 @@ function AdminProductModeration() {
     setReason("");
   };
 
+  const openAdminRemoval = (event: React.FormEvent) => {
+    event.preventDefault();
+    const id = Number(removeId);
+    if (!Number.isInteger(id) || id <= 0) return toast.error("Informe um ID numérico de anúncio.");
+    if (removeReason.trim().length < 3) return toast.error("Informe um motivo de ao menos 3 caracteres.");
+    setConfirmingRemoval(true);
+  };
+
+  const handleAdminRemoval = async () => {
+    const productId = Number(removeId);
+    if (!Number.isInteger(productId) || productId <= 0) return;
+    setRemovalBusy(true);
+    const { data, error } = await supabase.functions.invoke("admin-remove-product", {
+      body: { productId, reason: removeReason.trim() },
+    });
+    setRemovalBusy(false);
+    if (error || data?.error || !["deleted", "paused"].includes(String(data?.product?.status || ""))) {
+      return toast.error("Não foi possível retirar este anúncio. Nenhuma confirmação foi aplicada.");
+    }
+    await refreshProducts();
+    toast.success(data.product.status === "paused" ? "Anúncio retirado da vitrine e preservado por ter pedidos." : "Anúncio removido com registro de auditoria.");
+    setConfirmingRemoval(false);
+    setRemoveId("");
+    setRemoveReason("");
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -942,6 +972,18 @@ function AdminProductModeration() {
           className="w-full sm:w-80 p-2.5 rounded-xl bg-background border border-border text-foreground text-sm outline-none focus:border-primary"
         />
       </div>
+
+      <form onSubmit={openAdminRemoval} className="rounded-2xl border border-destructive/25 bg-destructive/5 p-4 space-y-3" aria-label="Retirar anúncio por ID">
+        <div>
+          <p className="text-sm font-bold text-foreground">Retirar anúncio por ID</p>
+          <p className="text-xs text-muted-foreground mt-1">Ação administrativa auditada. Anúncios com pedidos são retirados da vitrine, sem apagar o histórico.</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-[12rem_1fr_auto]">
+          <input value={removeId} onChange={(e) => setRemoveId(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="ID do anúncio" aria-label="ID do anúncio para retirada" className="p-2.5 rounded-xl bg-background border border-border text-foreground text-sm outline-none focus:border-destructive" />
+          <input value={removeReason} onChange={(e) => setRemoveReason(e.target.value.slice(0, 500))} placeholder="Motivo para o vendedor" aria-label="Motivo da retirada" className="p-2.5 rounded-xl bg-background border border-border text-foreground text-sm outline-none focus:border-destructive" />
+          <button type="submit" className="px-4 py-2.5 rounded-xl bg-destructive text-white text-sm font-bold">Revisar retirada</button>
+        </div>
+      </form>
 
       {filtered.length === 0 ? (
         <div className="bg-card rounded-3xl p-10 text-center border-2 border-dashed border-border">
@@ -957,7 +999,7 @@ function AdminProductModeration() {
               <div className="flex-1 min-w-0">
                 <h4 className="font-bold text-foreground truncate">{p.name}</h4>
                 <p className="text-xs text-muted-foreground truncate">
-                  #{p.id} · {p.category} · {p.seller} ({sellerEmail(p)})
+                  ID do anúncio #{p.id} · {p.category} · {p.seller} ({sellerEmail(p)})
                 </p>
                 <p className="text-sm font-black text-primary mt-1">
                   {formatBRL(p.price)}
@@ -1045,6 +1087,20 @@ function AdminProductModeration() {
               <button onClick={() => void handleReject()} disabled={!reason.trim() || busyId === rejecting.id} className="flex-1 bg-destructive text-white py-3 rounded-xl font-bold text-sm disabled:opacity-40">
                 Confirmar reprovação
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmingRemoval && (
+        <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => !removalBusy && setConfirmingRemoval(false)}>
+          <div role="alertdialog" aria-modal="true" aria-label="Confirmar retirada administrativa" className="bg-card border border-destructive/35 rounded-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-black text-foreground">Confirmar retirada do anúncio #{removeId}?</h3>
+            <p className="text-sm text-muted-foreground">A decisão será auditada. Se houver pedidos, o anúncio ficará indisponível em vez de ter seu histórico apagado. O motivo será usado somente na notificação autorizada ao vendedor.</p>
+            <div className="rounded-xl bg-muted/60 p-3 text-sm text-foreground break-words"><span className="text-xs font-bold uppercase text-muted-foreground">Motivo</span><br />{removeReason}</div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setConfirmingRemoval(false)} disabled={removalBusy} className="flex-1 bg-muted text-foreground py-3 rounded-xl font-bold text-sm">Cancelar</button>
+              <button type="button" onClick={() => void handleAdminRemoval()} disabled={removalBusy} className="flex-1 bg-destructive text-white py-3 rounded-xl font-bold text-sm disabled:opacity-40">{removalBusy ? "Retirando…" : "Confirmar retirada"}</button>
             </div>
           </div>
         </div>

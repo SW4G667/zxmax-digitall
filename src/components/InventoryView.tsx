@@ -369,7 +369,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                 <img src={p.image} className="w-16 h-16 rounded-xl object-cover bg-[#0a0a0f]" alt="" />
                 <div className="flex-1 min-w-0">
                   <h4 className="font-bold text-white truncate text-sm">{p.name}</h4>
-                  <p className="text-xs text-white/40">{p.category} • {p.sales} vendas</p>
+                  <p className="text-xs text-white/40">ID do anúncio #{p.id} • {p.category} • {p.sales} vendas</p>
                   <p className="text-sm font-black text-white mt-1">
                     {p.category === ROBUX_CATEGORY ? formatRobuxPackage(p) : formatBRL(p.price)}
                     <span className="text-white/40 font-normal"> · Estoque: {formatStockLabel(productStock(p))}</span>

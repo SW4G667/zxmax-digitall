@@ -27,4 +27,25 @@ describe("remoção persistente de anúncios", () => {
     expect(migration).toContain("GET DIAGNOSTICS deleted_count = ROW_COUNT");
     expect(migration).toContain("REVOKE ALL ON FUNCTION public.remove_product(bigint) FROM PUBLIC, anon");
   });
+
+  it("exige admin com AAL2 para retirada administrativa por ID e confirma o resultado na interface", async () => {
+    const migration = await source("supabase/migrations/20260827084500_admin_remove_product_by_id.sql");
+    const notificationMigration = await source("supabase/migrations/20260827090000_return_admin_removal_seller.sql");
+    const edge = await source("supabase/functions/admin-remove-product/index.ts");
+    const admin = await source("src/components/AdminView.tsx");
+    const inventory = await source("src/components/InventoryView.tsx");
+
+    expect(migration).toContain("public.has_role(auth.uid(), 'admin'::public.app_role)");
+    expect(migration).toContain("auth.jwt() ->> 'aal'");
+    expect(migration).toContain("'product.removed_by_admin'");
+    expect(migration).toContain("'status', action_status");
+    expect(notificationMigration).toContain("'seller_id', target_product.seller_id");
+    expect(edge).toContain('rpc("admin_remove_product"');
+    expect(edge).toContain("Autenticação obrigatória.");
+    expect(admin).toContain('aria-label="Retirar anúncio por ID"');
+    expect(admin).toContain('supabase.functions.invoke("admin-remove-product"');
+    expect(admin).toContain("await refreshProducts();");
+    expect(admin).toContain("ID do anúncio #");
+    expect(inventory).toContain("ID do anúncio #{p.id}");
+  });
 });
