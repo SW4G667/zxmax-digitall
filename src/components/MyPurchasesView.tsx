@@ -10,6 +10,7 @@ import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
 import { supabase } from "@/integrations/supabase/client";
 import { unwrapEdgeCall } from "@/lib/edgeErrors";
 import { useAuth } from "@/hooks/useAuth";
+import { formatBRL } from "@/lib/catalog";
 
 const statusMap: Record<Purchase["status"], { label: string; cls: string }> = {
   pending: { label: "Aguardando pagamento", cls: "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30" },
@@ -144,9 +145,10 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
       if (purchase.status === "pending") summary.pending += 1;
       if (["paid", "delivered_pending_confirmation"].includes(purchase.status)) summary.inProgress += 1;
       if (purchase.status === "delivered") summary.done += 1;
+      summary.amount += Number.isFinite(purchase.amount) ? purchase.amount : 0;
       return summary;
     },
-    { total: 0, pending: 0, inProgress: 0, done: 0 },
+    { total: 0, pending: 0, inProgress: 0, done: 0, amount: 0 },
   );
 
   const selected = selectedId ? state.purchases.find((p) => p.id === selectedId) : null;
@@ -393,12 +395,13 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5" aria-label="Resumo dos pedidos">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5" aria-label="Resumo dos pedidos">
         {[
           ["Total", purchaseSummary.total, "text-foreground"],
           ["Aguardando pagamento", purchaseSummary.pending, "text-yellow-600 dark:text-yellow-400"],
           ["Em andamento", purchaseSummary.inProgress, "text-primary"],
           ["Concluídos", purchaseSummary.done, "text-emerald-600 dark:text-emerald-400"],
+          ["Valor no recorte", formatBRL(purchaseSummary.amount), "text-foreground"],
         ].map(([label, value, color]) => (
           <div key={String(label)} className="rounded-2xl border border-border/50 bg-card/70 px-4 py-3">
             <p className="text-[10px] uppercase tracking-wide font-bold text-muted-foreground truncate">{label}</p>
