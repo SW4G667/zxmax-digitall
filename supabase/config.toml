@@ -1,4 +1,4 @@
-project_id = "dbekdedzgkfgtlytrnyw"
+project_id = "szvkktvubyhulzipcxfk"
 
 [functions.discord-callback]
 verify_jwt = false
@@ -26,3 +26,30 @@ verify_jwt = false
 
 [functions.integrations-config]
 verify_jwt = false
+
+[functions.create-zennith-pix]
+verify_jwt = false
+
+[functions.zennith-webhook]
+verify_jwt = false
+
+[functions.zennith-withdraw]
+verify_jwt = true
+
+[functions.create-vexopay-crypto]
+verify_jwt = false
+
+[functions.vexopay-webhook]
+verify_jwt = false
+
+[functions.security-event]
+verify_jwt = false
+
+[functions.send-email]
+verify_jwt = true
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.admin-verify]
+verify_jwt = true

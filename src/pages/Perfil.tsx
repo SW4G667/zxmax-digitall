@@ -3,10 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, Shield, Upload, Loader2, CheckCircle2, Clock, XCircle, LogOut } from "lucide-react";
+import { ArrowLeft, Shield, Upload, Loader2, CheckCircle2, Clock, XCircle, LogOut, Camera } from "lucide-react";
 import TwoFactorPanel from "@/components/TwoFactorPanel";
 import LoadingScreen from "@/components/LoadingScreen";
 import AppShell from "@/components/AppShell";
+import { useStore } from "@/store/StoreContext";
 
 const STATUS_META: Record<string, { label: string; className: string; icon: any }> = {
   none: { label: "Não verificado", className: "bg-[#1a1a20] text-white/40 border border-[#25252e]", icon: Shield },
@@ -25,9 +26,18 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const inputClass = "w-full p-3 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-sm text-white outline-none focus:border-[#0084ff] focus:ring-1 focus:ring-[#0084ff]/20";
+const AVATAR_FILE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+
+function avatarExtension(type: string) {
+  if (type === "image/png") return "png";
+  if (type === "image/webp") return "webp";
+  return "jpg";
+}
 
 function PerfilInner() {
   const { user, profile, loading, refreshProfile, isAdmin, signOut } = useAuth();
+  const { state } = useStore();
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
@@ -41,6 +51,8 @@ function PerfilInner() {
     pix_key: "",
   });
   const [saving, setSaving] = useState(false);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [selfie, setSelfie] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
 
@@ -57,6 +69,16 @@ function PerfilInner() {
       pix_key: profile.pix_key || "",
     });
   }, [profile]);
+
+  useEffect(() => {
+    if (!avatarFile) {
+      setAvatarPreview(null);
+      return;
+    }
+    const previewUrl = URL.createObjectURL(avatarFile);
+    setAvatarPreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [avatarFile]);
 
   const status = ((profile as any)?.verification_status as string) || "none";
   const meta = STATUS_META[status] || STATUS_META.none;
@@ -78,16 +100,41 @@ function PerfilInner() {
     return null;
   };
 
+  const handleAvatarChange = (file: File | null) => {
+    if (!file) return;
+    if (!AVATAR_FILE_TYPES.has(file.type)) {
+      toast.error("Use uma imagem JPG, PNG ou WebP.");
+      return;
+    }
+    if (file.size > AVATAR_MAX_BYTES) {
+      toast.error("A foto de perfil deve ter no máximo 2 MB.");
+      return;
+    }
+    setAvatarFile(file);
+  };
+
   const handleSave = async () => {
     const err = validate(false);
     if (err) return toast.error(err);
     if (!user) return;
     setSaving(true);
     try {
+      let avatarUrl = profile?.avatar_url || null;
+      if (avatarFile) {
+        if (!profile?.public_id) throw new Error("Perfil público indisponível. Recarregue a página e tente novamente.");
+        const path = `${profile.public_id}/perfil.${avatarExtension(avatarFile.type)}`;
+        const { error: uploadError } = await supabase.storage
+          .from("avatars")
+          .upload(path, avatarFile, { upsert: true, cacheControl: "3600", contentType: avatarFile.type });
+        if (uploadError) throw uploadError;
+        const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+        avatarUrl = `${data.publicUrl}?v=${Date.now()}`;
+      }
       const { error } = await supabase
         .from("profiles")
         .update({
           display_name: form.display_name.trim(),
+          avatar_url: avatarUrl,
           full_name: form.full_name.trim(),
           cpf: form.cpf.replace(/\D/g, ""),
           birth_date: form.birth_date || null,
@@ -99,9 +146,10 @@ function PerfilInner() {
         .eq("user_id", user.id);
       if (error) throw error;
       await refreshProfile();
-      toast.success("Dados salvos!");
-    } catch (e: any) {
-      toast.error("Erro ao salvar: " + (e?.message || ""));
+      setAvatarFile(null);
+      toast.success(avatarFile ? "Perfil e foto atualizados!" : "Dados salvos!");
+    } catch {
+      toast.error("Não foi possível salvar o perfil. Tente novamente.");
     }
     setSaving(false);
   };
@@ -171,6 +219,13 @@ function PerfilInner() {
     );
   }
 
+  const defaultAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(`zxmax-${profile?.public_id || "perfil"}`)}`;
+  const shownAvatar = avatarPreview || profile?.avatar_url || defaultAvatar;
+  const myListings = state.products.filter((product) => product.sellerId === user.id);
+  const activeListings = myListings.filter((product) => product.approved).length;
+  const reviewCount = myListings.reduce((total, product) => total + Number(product.reviewCount || 0), 0);
+  const receivedSales = state.purchases.filter((purchase) => purchase.sellerId === user.id).length;
+
   return (
     <AppShell>
       <div className="max-w-3xl mx-auto">
@@ -180,10 +235,10 @@ function PerfilInner() {
 
         <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6 mb-5">
           <div className="flex items-center gap-4">
-            <img src={profile?.avatar_url || ""} alt="Avatar" className="w-16 h-16 rounded-2xl object-cover bg-[#0084ff]/10 border border-white/10" />
+            <img src={shownAvatar} alt="Foto de perfil" className="w-16 h-16 rounded-2xl object-cover bg-[#0084ff]/10 border border-white/10" />
             <div className="min-w-0">
               <h1 className="text-xl font-black text-white truncate">{profile?.display_name || "Meu perfil"}</h1>
-              <p className="text-[11px] text-white/30 font-mono">ID: {profile?.public_id ?? "—"}</p>
+              <p className="text-[11px] text-white/30 font-mono">ID público permanente: {profile?.public_id ?? "—"}</p>
             </div>
             <span className={`ml-auto shrink-0 text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 border ${meta.className}`}>
               <StatusIcon className="w-3 h-3" /> {meta.label}
@@ -194,9 +249,33 @@ function PerfilInner() {
           )}
         </div>
 
+        <section className="mb-5 grid grid-cols-3 gap-3" aria-label="Resumo público da atividade">
+          {[
+            ["Anúncios no ar", activeListings, "/meus-produtos"],
+            ["Vendas recebidas", receivedSales, "/minhas-compras?scope=sales"],
+            ["Avaliações", reviewCount, "/meus-produtos"],
+          ].map(([label, value, href]) => (
+            <a key={String(label)} href={String(href)} className="rounded-2xl border border-[#25252e] bg-[#15151a] px-3 py-4 transition hover:border-[#0084ff]/40 hover:bg-[#0084ff]/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]">
+              <span className="block text-[9px] font-black uppercase tracking-wide text-white/35 leading-tight">{String(label)}</span>
+              <span className="mt-1 block text-xl font-black text-white">{String(value)}</span>
+            </a>
+          ))}
+        </section>
+
         <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6 mb-5">
           <h2 className="font-bold text-white mb-1">Dados pessoais</h2>
-          <p className="text-xs text-white/40 mb-5">Dados privados, visíveis só para você e moderação.</p>
+          <p className="text-xs text-white/40 mb-5">Nome e foto aparecem publicamente; os demais dados são visíveis só para você e moderação.</p>
+          <div className="flex items-center gap-4 rounded-2xl border border-[#25252e] bg-[#0a0a0f] p-4 mb-5">
+            <img src={shownAvatar} alt="Prévia da foto de perfil" className="w-14 h-14 rounded-2xl object-cover bg-[#0084ff]/10 border border-white/10" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-white">Foto pública</p>
+              <p className="text-xs text-white/40 mt-1 truncate">{avatarFile ? avatarFile.name : "JPG, PNG ou WebP · até 2 MB"}</p>
+            </div>
+            <label htmlFor="avatar-upload" className="shrink-0 inline-flex items-center gap-2 cursor-pointer rounded-xl border border-[#0084ff]/30 bg-[#0084ff]/10 px-3 py-2 text-xs font-bold text-[#55aaff] hover:bg-[#0084ff]/20 transition">
+              <Camera className="w-4 h-4" /> Alterar foto
+            </label>
+            <input id="avatar-upload" type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => handleAvatarChange(event.target.files?.[0] || null)} />
+          </div>
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="Nome de exibição"><input className={inputClass} value={form.display_name} onChange={set("display_name")} /></Field>
             <Field label="Nome completo"><input className={inputClass} value={form.full_name} onChange={set("full_name")} placeholder="Como no documento" /></Field>

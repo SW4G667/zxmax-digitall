@@ -1,100 +1,88 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useStore } from "@/store/StoreContext";
-import { Search, Shield, CheckCircle, Zap, Flame } from "lucide-react";
+import { Search, Shield, CheckCircle, Zap, Flame, RefreshCw, AlertTriangle, PackageOpen, SlidersHorizontal, BadgeCheck } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import AuthScreen from "@/components/AuthScreen";
 import UserProfileModal from "@/components/UserProfileModal";
+import { formatBRL, ROBUX_CATEGORY, robuxPackageUnits, storefrontProducts } from "@/lib/catalog";
+
+const PAGE_SIZE = 20;
+
+type SortKey = "relevancia" | "recentes" | "menor" | "maior" | "vendidos";
+
+const SORT_OPTIONS: { id: SortKey; label: string }[] = [
+  { id: "relevancia", label: "Relevância" },
+  { id: "recentes", label: "Mais recentes" },
+  { id: "menor", label: "Menor preço" },
+  { id: "maior", label: "Maior preço" },
+  { id: "vendidos", label: "Mais vendidos" },
+];
+
+function ProductSkeleton() {
+  return (
+    <div className="bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden">
+      <div className="aspect-[4/3] bg-white/5 animate-pulse" />
+      <div className="p-3 space-y-2">
+        <div className="h-3 rounded bg-white/5 animate-pulse" />
+        <div className="h-3 w-2/3 rounded bg-white/5 animate-pulse" />
+        <div className="h-4 w-1/2 rounded bg-white/5 animate-pulse" />
+      </div>
+    </div>
+  );
+}
 
 export default function StoreView() {
-  const { state } = useStore();
+  const { state, catalogStatus, refreshProducts } = useStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [category, setCategory] = useState("Todos");
+  const [sort, setSort] = useState<SortKey>("relevancia");
+  const [maxPrice, setMaxPrice] = useState<number | null>(null);
+  const [deliveryFilter, setDeliveryFilter] = useState<"todos" | "auto" | "manual">("todos");
+  const [onlyVerified, setOnlyVerified] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [visible, setVisible] = useState(PAGE_SIZE);
   const [selectedSellerId, setSelectedSellerId] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
 
-  const [fallbackProducts, setFallbackProducts] = useState<any[]>([]);
+  // The catalog comes exclusively from the store, which already owns retries and
+  // degraded-schema handling. No second data path here: a silent REST fallback
+  // is what used to hide real Supabase failures behind an empty grid.
+  const approved = useMemo(
+    () => storefrontProducts(state.products, state.currentUser?.id),
+    [state.products, state.currentUser?.id],
+  );
+  // Robux lives on its own /robux storefront; keep it out of the common grid.
+  const nonRobux = useMemo(
+    () => approved.filter((p) => p.category !== ROBUX_CATEGORY),
+    [approved],
+  );
+  // Robux has its own dedicated storefront at /robux (Eldorado-style); it must
+  // NOT appear in the common store listing.
+  const categories = useMemo(
+    () => ["Todos", ...state.config.categories.filter((c) => c !== ROBUX_CATEGORY)],
+    [state.config.categories],
+  );
 
-  // Fallback: if no products for anon, try direct REST fetch to products_public view
   useEffect(() => {
-    if (state.products.length === 0) {
-      const fetchPublic = async () => {
-        try {
-          const url = import.meta.env.VITE_SUPABASE_URL;
-          const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-          if (!url || !key) return;
-          // Try products_public view via REST
-          const resp = await fetch(`${url}/rest/v1/products_public?select=*&order=created_at.desc&limit=100`, {
-            headers: { apikey: key, Authorization: `Bearer ${key}` },
-          });
-          const data = await resp.json();
-          if (Array.isArray(data) && data.length > 0) {
-            console.log("Fallback REST products_public loaded:", data.length);
-            setFallbackProducts(data.map((p: any) => ({
-              id: Number(p.id),
-              name: p.name,
-              price: Number(p.price),
-              category: p.category,
-              seller: p.seller_name,
-              sellerId: p.seller_id,
-              sellerPublicId: p.seller_public_id,
-              sales: p.sales || 0,
-              rating: Number(p.rating || 0),
-              image: p.image,
-              banner: p.banner,
-              description: p.description,
-              approved: p.approved,
-              deliveryType: p.delivery_type,
-              variations: p.variations || [],
-              questions: p.questions || [],
-              stock: p.stock || 500,
-              minQuantity: p.min_quantity || 100,
-              deliveryTime: p.delivery_time || "11 min - 1 h",
-            })));
-          } else {
-            // If still empty, try products table with approved=true via REST
-            const resp2 = await fetch(`${url}/rest/v1/products?select=*&approved=eq.true&order=created_at.desc&limit=100`, {
-              headers: { apikey: key, Authorization: `Bearer ${key}` },
-            });
-            const data2 = await resp2.json();
-            if (Array.isArray(data2) && data2.length > 0) {
-              setFallbackProducts(data2.map((p: any) => ({
-                id: Number(p.id),
-                name: p.name,
-                price: Number(p.price),
-                category: p.category,
-                seller: p.seller_name,
-                sellerId: p.seller_id,
-                sales: p.sales || 0,
-                rating: Number(p.rating || 0),
-                image: p.image,
-                description: p.description,
-                approved: p.approved,
-                deliveryType: p.delivery_type,
-              })));
-            }
-          }
-        } catch (e) {
-          console.error("Fallback fetch failed", e);
-        }
-      };
-      void fetchPublic();
-    }
-  }, [state.products.length]);
-
-  const approved = useMemo(() => {
-    const all = state.products.length > 0 ? state.products : fallbackProducts;
-    return all;
-  }, [state.products, fallbackProducts]);
-  const categories = useMemo(() => ["Todos", ...state.config.categories], [state.config.categories]);
+    const timer = setTimeout(() => setDebouncedSearch(search.trim().toLowerCase()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const cat = params.get("cat");
     const q = params.get("q");
+    const sortParam = params.get("sort") as SortKey | null;
+    const deliveryParam = params.get("delivery");
+    const verifiedParam = params.get("verified");
     if (cat && categories.includes(cat)) setCategory(cat);
     if (q) setSearch(q);
+    if (sortParam && SORT_OPTIONS.some((option) => option.id === sortParam)) setSort(sortParam);
+    if (deliveryParam === "auto" || deliveryParam === "manual") setDeliveryFilter(deliveryParam);
+    setOnlyVerified(verifiedParam === "1");
   }, [location.search, categories]);
 
   useEffect(() => {
@@ -109,18 +97,49 @@ export default function StoreView() {
     return () => window.removeEventListener("zxmax:search", onSearch as EventListener);
   }, []);
 
-  const filtered = useMemo(() => {
-    return approved.filter((p) => {
-      const q = search.toLowerCase().trim();
-      const matchSearch = !q || p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q) || (p.description || "").toLowerCase().includes(q);
-      const matchCat = category === "Todos" || p.category === category;
-      return matchSearch && matchCat;
-    });
-  }, [approved, search, category]);
+  useEffect(() => { setVisible(PAGE_SIZE); }, [debouncedSearch, category, sort, maxPrice, deliveryFilter, onlyVerified]);
 
-  const trending = useMemo(() => {
-    return [...approved].sort((a, b) => b.sales - a.sales).slice(0, 4);
-  }, [approved]);
+  const priceCeiling = useMemo(() => {
+    const highest = nonRobux.reduce((max, p) => Math.max(max, Number(p.price) || 0), 0);
+    return Math.max(10, Math.ceil(highest));
+  }, [nonRobux]);
+
+  const isVerifiedSeller = useCallback(
+    (sellerId: string) => !!state.userDirectory?.[sellerId]?.isVerified,
+    [state.userDirectory],
+  );
+
+  const filtered = useMemo(() => {
+    const q = debouncedSearch;
+    const result = nonRobux.filter((p) => {
+      const matchSearch = !q
+        || p.name.toLowerCase().includes(q)
+        || p.category.toLowerCase().includes(q)
+        || (p.seller || "").toLowerCase().includes(q)
+        || (p.description || "").toLowerCase().includes(q);
+      const matchCat = category === "Todos" || p.category === category;
+      const matchPrice = maxPrice === null || Number(p.price) <= maxPrice;
+      const matchDelivery = deliveryFilter === "todos" || p.deliveryType === deliveryFilter;
+      const matchVerified = !onlyVerified || isVerifiedSeller(p.sellerId);
+      const inStock = p.stock === undefined || p.stock === null || p.stock > 0;
+      return matchSearch && matchCat && matchPrice && matchDelivery && matchVerified && inStock;
+    });
+
+    const sorted = [...result];
+    switch (sort) {
+      case "recentes": sorted.reverse(); break;
+      case "menor": sorted.sort((a, b) => Number(a.price) - Number(b.price)); break;
+      case "maior": sorted.sort((a, b) => Number(b.price) - Number(a.price)); break;
+      case "vendidos": sorted.sort((a, b) => b.sales - a.sales); break;
+      default:
+        // Relevance: sellers with sales and a rating first, then newest ids.
+        sorted.sort((a, b) => (b.sales * 2 + b.rating) - (a.sales * 2 + a.rating) || b.id - a.id);
+    }
+    return sorted;
+  }, [nonRobux, debouncedSearch, category, maxPrice, deliveryFilter, onlyVerified, sort, isVerifiedSeller]);
+
+  const page = filtered.slice(0, visible);
+  const trending = useMemo(() => [...nonRobux].sort((a, b) => b.sales - a.sales).filter((p) => p.sales > 0).slice(0, 4), [nonRobux]);
 
   const handleCategorySelect = (cat: string) => {
     setCategory(cat);
@@ -140,23 +159,36 @@ export default function StoreView() {
     navigate(`/loja?${params.toString()}`, { replace: true });
   };
 
-  const isRobuxCategory = category === "Robux e Gift Cards";
+  const clearFilters = () => {
+    setMaxPrice(null); setDeliveryFilter("todos"); setOnlyVerified(false);
+    setSort("relevancia"); setCategory("Todos"); handleSearch("");
+  };
+
+  const isFirstLoad = catalogStatus === "loading" && approved.length === 0;
+  const hasActiveFilters = maxPrice !== null || deliveryFilter !== "todos" || onlyVerified || !!debouncedSearch || category !== "Todos";
+
+  const priceLabel = (p: (typeof approved)[number]) => {
+    if (p.category !== ROBUX_CATEGORY) return formatBRL(p.price);
+    const units = robuxPackageUnits(p);
+    return units > 1 ? `${formatBRL(p.price)} / ${units.toLocaleString("pt-BR")}` : formatBRL(p.price);
+  };
 
   return (
     <div className="space-y-5">
-      {/* Top filters - GGMAX style, clean pills, no squares */}
-      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+      {/* Top filters — compact controls keep the catalog scannable on mobile. */}
+      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1" role="tablist" aria-label="Categorias">
         <button
-          onClick={() => handleCategorySelect("Robux e Gift Cards")}
-          className={`shrink-0 px-5 py-2.5 rounded-full text-sm font-black tracking-wide transition-all ${
-            isRobuxCategory ? "bg-[#ffbd2e] text-black" : "bg-[#1a1a20] border border-[#25252e] text-white hover:border-[#ffbd2e]/30"
-          }`}
+          onClick={() => navigate("/robux")}
+          className="shrink-0 px-5 py-2.5 rounded-full text-sm font-black tracking-wide bg-[#ffbd2e] text-black hover:bg-[#e6a829] transition-all flex items-center gap-1.5"
         >
           R$ ROBUX
+          <span className="text-[10px] uppercase bg-black/15 px-1.5 py-0.5 rounded-full">Ver loja</span>
         </button>
         {categories.map((cat) => (
           <button
             key={cat}
+            role="tab"
+            aria-selected={category === cat}
             onClick={() => handleCategorySelect(cat)}
             className={`shrink-0 px-4 py-2.5 rounded-full text-xs font-bold transition-all whitespace-nowrap ${
               category === cat ? "bg-white text-black" : "bg-[#1a1a20] border border-[#25252e] text-white/60 hover:text-white hover:border-white/20"
@@ -165,29 +197,36 @@ export default function StoreView() {
             {cat}
           </button>
         ))}
+        <button onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters} className={`shrink-0 px-3.5 py-2.5 rounded-full text-xs font-bold border transition flex items-center gap-1.5 ${showFilters ? "bg-[#0084ff] border-[#0084ff] text-white" : "bg-[#1a1a20] border-[#25252e] text-white/70 hover:text-white hover:border-white/20"}`}>
+          <SlidersHorizontal className="w-3.5 h-3.5" /> Filtros
+        </button>
       </div>
 
-      {/* Hero - GGMAX minimal */}
+      {/* Hero */}
       <div className="bg-[#111114] border border-[#1e1e28] rounded-2xl p-6 md:p-8">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="bg-[#1a1a20] border border-[#25252e] px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide text-white/50">Marketplace #1 do Brasil</span>
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <span className="bg-[#1a1a20] border border-[#25252e] px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide text-white/50">Marketplace de produtos digitais</span>
           <span className="bg-[#00c950]/10 border border-[#00c950]/20 px-3 py-1 rounded-full text-[10px] font-bold text-[#00c950] flex items-center gap-1"><Shield className="w-3 h-3" /> Compra Protegida</span>
         </div>
         <h1 className="text-2xl md:text-4xl font-black tracking-tight text-white mb-2 leading-tight">
           Encontre tudo para <span className="text-[#0084ff]">dominar</span> no digital
         </h1>
-        <p className="text-white/40 text-sm mb-5">Robux, bots, contas, scripts e muito mais com entrega imediata.</p>
-        
+        <p className="text-white/40 text-sm mb-5">Robux, bots, contas, scripts e muito mais com entrega rápida.</p>
+
         <div className="flex items-center bg-white rounded-xl px-4 py-3 max-w-xl">
-          <Search className="w-5 h-5 text-black/30" />
+          <Search className="w-5 h-5 text-black/30" aria-hidden />
+          <label htmlFor="store-search" className="sr-only">Buscar produtos</label>
           <input
-            type="text"
+            id="store-search"
+            type="search"
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
             placeholder="Buscar Robux, bots, contas, scripts..."
             className="bg-transparent border-none focus:ring-0 focus:outline-none text-sm w-full ml-3 text-black placeholder:text-black/40"
           />
-          <button onClick={() => handleSearch(search)} className="ml-2 bg-[#0084ff] hover:bg-[#0066cc] text-white px-5 py-2 rounded-lg text-sm font-bold transition">Buscar</button>
+          <button onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters} className="ml-2 bg-[#0084ff] hover:bg-[#0066cc] text-white px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-1.5">
+            <SlidersHorizontal className="w-4 h-4" /> Ajustar
+          </button>
         </div>
 
         <div className="flex flex-wrap gap-2 mt-5">
@@ -197,23 +236,62 @@ export default function StoreView() {
         </div>
       </div>
 
+      {/* Filters panel */}
+      {showFilters && (
+        <div className="bg-[#111114] border border-[#1e1e28] rounded-2xl p-4 grid gap-4 md:grid-cols-4">
+          <div>
+            <label htmlFor="sort" className="text-[10px] font-black uppercase tracking-wide text-white/30 block mb-1.5">Ordenar por</label>
+            <select id="sort" value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="w-full p-2.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none">
+              {SORT_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="price" className="text-[10px] font-black uppercase tracking-wide text-white/30 block mb-1.5">
+              Até {maxPrice === null ? "qualquer valor" : formatBRL(maxPrice)}
+            </label>
+            <input
+              id="price" type="range" min={2} max={priceCeiling} step={1}
+              value={maxPrice ?? priceCeiling}
+              onChange={(e) => { const v = Number(e.target.value); setMaxPrice(v >= priceCeiling ? null : v); }}
+              className="w-full accent-[#0084ff]"
+            />
+          </div>
+          <div>
+            <label htmlFor="delivery" className="text-[10px] font-black uppercase tracking-wide text-white/30 block mb-1.5">Entrega</label>
+            <select id="delivery" value={deliveryFilter} onChange={(e) => setDeliveryFilter(e.target.value as typeof deliveryFilter)} className="w-full p-2.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none">
+              <option value="todos">Todas</option>
+              <option value="auto">Automática</option>
+              <option value="manual">Manual</option>
+            </select>
+          </div>
+          <div className="flex flex-col justify-between">
+            <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
+              <input type="checkbox" checked={onlyVerified} onChange={(e) => setOnlyVerified(e.target.checked)} className="accent-[#0084ff] w-4 h-4" />
+              Somente vendedores verificados
+            </label>
+            {hasActiveFilters && (
+              <button onClick={clearFilters} className="mt-2 text-xs font-bold text-[#0084ff] hover:underline text-left">Limpar filtros</button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Em alta */}
-      {category === "Todos" && !search && trending.length > 0 && (
+      {category === "Todos" && !debouncedSearch && trending.length > 0 && (
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <Flame className="w-4 h-4 text-[#ff4444]" />
+            <Flame className="w-4 h-4 text-[#ff4444]" aria-hidden />
             <h2 className="text-sm font-black text-white uppercase tracking-wide">Em alta</h2>
-            <span className="text-[10px] bg-[#ff4444] text-white px-2 py-0.5 rounded-full font-black">HOT</span>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
             {trending.map((p) => (
-              <div key={`trend-${p.id}`} onClick={() => navigate(`/produto/${p.id}`)} className="bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden cursor-pointer hover:border-[#2a2a36] transition group">
-                <div className="aspect-[4/3] bg-[#1a1a20] overflow-hidden"><img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" /></div>
-                <div className="p-3">
+              <button key={`trend-${p.id}`} onClick={() => navigate(`/produto/${p.id}`)} className="text-left bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden cursor-pointer hover:border-[#2a2a36] focus:outline-none focus:ring-2 focus:ring-[#0084ff] transition group">
+                <div className="aspect-[4/3] bg-[#1a1a20] overflow-hidden"><img src={p.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-300" loading="lazy" /></div>
+                <div className="p-2.5 sm:p-3">
                   <p className="text-xs font-bold text-white truncate">{p.name}</p>
-                  <p className="text-sm font-black text-white mt-1">R$ {p.price.toFixed(2)}</p>
+                  <p className="mt-2 inline-flex rounded-lg border border-[#0084ff]/25 bg-[#0084ff]/10 px-2 py-1 text-xs font-black text-[#45a7ff]">{priceLabel(p)}</p>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -221,29 +299,94 @@ export default function StoreView() {
 
       {/* Products */}
       <div>
-        <h2 className="text-sm font-bold text-white mb-3">{category === "Todos" ? (search ? `Resultados para "${search}"` : "Todos os produtos") : category} <span className="text-white/30">({filtered.length})</span></h2>
+        <div className="flex items-center justify-between mb-3 gap-3">
+          <div>
+          <h2 className="text-sm font-bold text-white">
+            {category === "Todos" ? (debouncedSearch ? `Resultados para "${search}"` : "Todos os produtos") : category}{" "}
+            {!isFirstLoad && <span className="text-white/30">({filtered.length})</span>}
+          </h2>
+          <p className="mt-0.5 text-[11px] text-white/35">Produtos publicados, entrega e vendedor sinalizados em cada anúncio.</p>
+          </div>
+          <button
+            onClick={() => void refreshProducts()}
+            className="text-white/40 hover:text-white text-xs font-bold flex items-center gap-1.5 transition"
+            aria-label="Atualizar catálogo"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${catalogStatus === "loading" ? "animate-spin" : ""}`} /> Atualizar
+          </button>
+        </div>
 
-        {filtered.length === 0 ? (
+        {isFirstLoad ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3" aria-busy="true" aria-live="polite">
+            {Array.from({ length: 10 }).map((_, i) => <ProductSkeleton key={i} />)}
+            <span className="sr-only">Carregando produtos…</span>
+          </div>
+        ) : catalogStatus === "error" && approved.length === 0 ? (
+          <div className="text-center py-16 bg-[#111114] border border-[#ef4444]/20 rounded-2xl" role="alert">
+            <AlertTriangle className="w-8 h-8 mx-auto text-[#ef4444] mb-3" aria-hidden />
+            <p className="text-white font-bold text-sm">Não conseguimos carregar o catálogo</p>
+            <p className="text-xs text-white/40 mt-1 max-w-sm mx-auto">Isso é uma falha de conexão com o servidor, não uma loja vazia. Tente novamente em instantes.</p>
+            <button onClick={() => void refreshProducts()} className="mt-4 bg-[#0084ff] hover:bg-[#0066cc] text-white px-5 py-2.5 rounded-xl text-sm font-bold transition">
+              Tentar novamente
+            </button>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="text-center py-16 bg-[#111114] border border-[#1e1e28] rounded-2xl">
-            <p className="text-white font-bold text-sm">Nenhum produto encontrado</p>
-            <p className="text-xs text-white/40 mt-1">Tente outra categoria</p>
+            <PackageOpen className="w-8 h-8 mx-auto text-white/20 mb-3" aria-hidden />
+            <p className="text-white font-bold text-sm">
+              {hasActiveFilters ? "Nenhum produto para esses filtros" : "Ainda não há anúncios publicados"}
+            </p>
+            <p className="text-xs text-white/40 mt-1">
+              {hasActiveFilters ? "Ajuste a busca ou limpe os filtros." : "Assim que a moderação aprovar os primeiros anúncios, eles aparecem aqui."}
+            </p>
+            {hasActiveFilters && (
+              <button onClick={clearFilters} className="mt-4 bg-[#1a1a20] border border-[#25252e] hover:border-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition">
+                Limpar filtros
+              </button>
+            )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {filtered.map((p) => (
-              <div key={p.id} onClick={() => navigate(`/produto/${p.id}`)} className="bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden cursor-pointer hover:border-[#2a2a36] transition group">
-                <div className="relative aspect-[4/3] bg-[#1a1a20] overflow-hidden">
-                  <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" loading="lazy" />
-                  {p.sales > 50 && <span className="absolute top-2 left-2 bg-[#ef4444] text-white text-[9px] px-2 py-0.5 rounded-full font-black">HOT</span>}
-                </div>
-                <div className="p-3">
-                  <h3 className="font-bold text-white text-xs leading-tight line-clamp-2 min-h-[32px]">{p.name}</h3>
-                  <p className="text-[11px] text-white/40 mt-1 truncate">por <span className="text-[#0084ff]">{p.seller}</span></p>
-                  <p className="text-sm font-black text-white mt-2">R$ {p.price.toFixed(2)}</p>
-                </div>
+          <>
+            {catalogStatus === "error" && (
+              <p className="mb-3 text-[11px] text-[#ffbd2e] flex items-center gap-1.5" role="status">
+                <AlertTriangle className="w-3.5 h-3.5" /> Conexão instável — mostrando os últimos anúncios carregados.
+              </p>
+            )}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3">
+              {page.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => navigate(`/produto/${p.id}`)}
+                  className="text-left bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden cursor-pointer hover:border-[#2a2a36] focus:outline-none focus:ring-2 focus:ring-[#0084ff] transition group flex flex-col"
+                >
+                  <div className="relative aspect-[4/3] bg-[#1a1a20] overflow-hidden">
+                    <img src={p.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-300" loading="lazy" />
+                    <div className="absolute top-2 left-2 flex gap-1">
+                      {!p.approved && <span className="bg-[#ffbd2e] text-black text-[9px] px-2 py-0.5 rounded-full font-black">EM ANÁLISE</span>}
+                      {p.deliveryType === "auto" && <span className="bg-[#00c950] text-white text-[9px] px-2 py-0.5 rounded-full font-black">AUTO</span>}
+                    </div>
+                  </div>
+                  <div className="p-2.5 sm:p-3 flex flex-col flex-1">
+                    <p className="mb-1 text-[9px] font-black uppercase tracking-wide text-white/35 truncate">{p.category}</p>
+                    <h3 className="font-bold text-white text-xs leading-tight line-clamp-2 min-h-[32px]">{p.name}</h3>
+                    <p className="text-[11px] text-white/40 mt-1 truncate flex items-center gap-1">
+                      por <span className="text-[#0084ff]">{p.seller}</span>
+                      {isVerifiedSeller(p.sellerId) && <BadgeCheck className="w-3 h-3 text-[#0084ff] shrink-0" aria-label="Vendedor verificado" />}
+                    </p>
+                    <p className="mt-2 inline-flex self-start rounded-lg border border-[#0084ff]/25 bg-[#0084ff]/10 px-2 py-1 text-xs font-black text-[#45a7ff]">{priceLabel(p)}</p>
+                    {p.sales > 0 && <p className="text-[10px] text-white/30 mt-1">{p.sales} vendas</p>}
+                  </div>
+                </button>
+              ))}
+            </div>
+            {visible < filtered.length && (
+              <div className="flex justify-center mt-5">
+                <button onClick={() => setVisible((v) => v + PAGE_SIZE)} className="bg-[#1a1a20] border border-[#25252e] hover:border-white/20 text-white px-6 py-3 rounded-xl text-sm font-bold transition">
+                  Carregar mais ({filtered.length - visible})
+                </button>
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </div>
 

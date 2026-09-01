@@ -1,182 +1,60 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
-
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
+    const auth = req.headers.get("Authorization");
+    if (!auth?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
+    const url = Deno.env.get("SUPABASE_URL")!;
+    const userClient = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!);
+    const { data: authData } = await userClient.auth.getUser(auth.slice(7));
+    if (!authData.user) return json({ error: "Unauthorized" }, 401);
+    const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const clientId = String(Deno.env.get("VEXOPAY_CLIENT_ID") || "").trim();
+    const clientSecret = String(Deno.env.get("VEXOPAY_CLIENT_SECRET") || "").trim();
+    const { data: setting } = await admin.from("app_settings").select("value").eq("key", "vexopay").maybeSingle();
+    const config = (setting?.value || {}) as Record<string, unknown>;
+    const enabled = config.pixEnabled === true;
+    const baseUrl = "https://www.vexopay.com.br/api";
+    if (!enabled || !clientId || !clientSecret) return json({ error: "PIX temporariamente indisponível.", code: "pix_not_configured" }, 400);
 
-    // Validate the caller is authenticated and use the verified identity only.
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-    );
-    const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: userError } = await supabase.auth.getUser(token);
-    if (userError || !userData.user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    let apiKey = Deno.env.get("EVOPAY_API_KEY");
-    let setting: { value: any } | null = null;
-    try {
-      const { data } = await serviceClient.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
-      setting = data as { value: any } | null;
-      if (setting?.value?.mode === "manual" && setting?.value?.apiKey) {
-        apiKey = setting.value.apiKey;
-      }
-    } catch (_e) { /* fallback to secret */ }
-    if (!apiKey) throw new Error("EVOPAY_API_KEY não configurada");
-
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const purchaseId = Number(body.purchaseId);
-    if (!purchaseId || Number.isNaN(purchaseId)) throw new Error("Pedido inválido");
-
-    const { data: purchase, error: purchaseError } = await serviceClient
-      .from("purchases")
-      .select("id, product_id, buyer_id, buyer_email, status, amount, evopay_charge_id, pix_qr_code, pix_expires_at")
-      .eq("id", purchaseId)
-      .maybeSingle();
-
-    if (purchaseError || !purchase) throw new Error("Pedido não encontrado");
-    if (purchase.buyer_id !== userData.user.id) throw new Error("Você só pode pagar seus próprios pedidos");
-    if (purchase.status !== "pending") throw new Error("Este pedido não está pendente");
-
-    const existingExpiresAt = purchase.pix_expires_at ? new Date(purchase.pix_expires_at).getTime() : 0;
-    if (purchase.evopay_charge_id && purchase.pix_qr_code && existingExpiresAt > Date.now()) {
-      return new Response(JSON.stringify({
-        id: purchase.evopay_charge_id,
-        status: "PENDING",
-        amount: Number(purchase.amount),
-        qrCodeText: purchase.pix_qr_code,
-        expiresAt: purchase.pix_expires_at,
-        qrCodeUrl: `https://api.evopay.cash/v1/pix/qr-code/${purchase.evopay_charge_id}`,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 });
+    if (!Number.isInteger(purchaseId) || purchaseId <= 0) return json({ error: "Pedido inválido" }, 400);
+    const { data: purchase } = await admin.from("purchases").select("id,product_id,buyer_id,buyer_email,status,amount,evopay_charge_id,pix_qr_code,pix_expires_at,payment_provider").eq("id", purchaseId).maybeSingle();
+    if (!purchase || purchase.buyer_id !== authData.user.id) return json({ error: "Pedido não encontrado" }, 404);
+    if (purchase.status !== "pending") return json({ error: "Este pedido não está pendente" }, 400);
+    if (purchase.payment_provider && purchase.payment_provider !== "vexopay_pix") return json({ error: "O pedido foi criado para outro método de pagamento." }, 400);
+    const activeCharge = purchase.pix_expires_at ? new Date(purchase.pix_expires_at).getTime() > Date.now() : false;
+    if (activeCharge && String(purchase.evopay_charge_id || "").startsWith("vexo:") && purchase.pix_qr_code) {
+      return json({ id: purchase.evopay_charge_id, status: "PENDING", amount: Number(purchase.amount), qrCodeText: purchase.pix_qr_code, expiresAt: purchase.pix_expires_at, qrCodeUrl: null });
     }
-
-    const value = Number(purchase.amount);
-    const { data: product } = await serviceClient
-      .from("products")
-      .select("name")
-      .eq("id", purchase.product_id)
-      .maybeSingle();
-    const productName = product?.name || `Pedido #${purchase.id}`;
-    const buyerEmail = userData.user.email || purchase.buyer_email;
-    if (!productName || !value || value < 2 || !buyerEmail) {
-      throw new Error("Dados incompletos para a cobrança PIX (mínimo R$2)");
-    }
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    // If the admin hasn't set a webhook token yet, auto-generate a strong one
-    // and persist it. This avoids breaking the whole PIX flow on a fresh deploy.
-    let webhookToken: string | undefined = setting?.value?.webhookToken;
-    if (!webhookToken) {
-      const bytes = new Uint8Array(32);
-      crypto.getRandomValues(bytes);
-      webhookToken = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
-      const nextValue = { ...(setting?.value || {}), webhookToken };
-      const { error: upsertErr } = await serviceClient
-        .from("app_settings")
-        .upsert({ key: "evopay", value: nextValue }, { onConflict: "key" });
-      if (upsertErr) {
-        console.error("Could not persist webhook token", upsertErr);
-        throw new Error("Não foi possível configurar o webhook de pagamento. Contate o admin.");
-      }
-      setting = { value: nextValue };
-    }
-    const callbackUrl = `${supabaseUrl}/functions/v1/evopay-webhook?token=${encodeURIComponent(webhookToken)}`;
-    const { data: buyerProfile } = await serviceClient.from("profiles").select("display_name,cpf").eq("user_id", userData.user.id).maybeSingle();
-    const buyerDocument = String(buyerProfile?.cpf || "").replace(/\D/g, "");
-    if (![11, 14].includes(buyerDocument.length)) throw new Error("Cadastre um CPF válido no perfil antes de pagar");
-
-    const payload = {
-      amount: value,
-      callbackUrl,
-      generatedName: buyerProfile?.display_name || buyerEmail.split("@")[0],
-      generatedEmail: buyerEmail,
-      generatedDocument: buyerDocument,
-      expiresIn: 3600,
-      clientReference: String(purchaseId ?? `order_${Date.now()}`),
-    };
-
-    console.log("Creating EvoPay PIX charge:", JSON.stringify(payload));
-
-    const response = await fetch("https://api.evopay.cash/v1/pix", {
+    const { data: profile } = await admin.from("profiles").select("display_name").eq("user_id", authData.user.id).maybeSingle();
+    const document = String(body.payerDocument || "").replace(/\D/g, "");
+    if (![11, 14].includes(document.length)) return json({ error: "Informe um CPF/CNPJ válido para gerar o PIX" }, 400);
+    const { data: product } = await admin.from("products").select("name").eq("id", purchase.product_id).maybeSingle();
+    const response = await fetch(`${baseUrl}/gateway/pix-create`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json", Accept: "application/json", ci: clientId, cs: clientSecret },
+      body: JSON.stringify({ amount: Number(purchase.amount), payerName: profile?.display_name || authData.user.email?.split("@")[0] || "Comprador", payerDocument: document, description: String(product?.name || `Pedido #${purchase.id}`).slice(0, 120) }),
     });
-
-    const data = await response.json();
-    console.log("EvoPay response", response.status, JSON.stringify(data));
-
-    // Log the charge creation attempt for admin debugging
-    try {
-      await serviceClient.from("webhook_logs").insert({
-        source: "evopay",
-        event_type: "CREATE_PIX",
-        status: response.ok ? "created" : `error_${response.status}`,
-        order_id: purchaseId ? Number(purchaseId) : null,
-        charge_id: data?.id || null,
-        payload: data,
-        error: response.ok ? null : (typeof (data?.message || data?.error) === "string" ? (data.message || data.error) : JSON.stringify(data)),
-      });
-    } catch (_e) { /* ignore logging failure */ }
-
-    if (!response.ok) {
-      const msg = data?.message || data?.error || "Erro ao criar cobrança PIX";
-      throw new Error(`EvoPay (${response.status}): ${typeof msg === "string" ? msg : JSON.stringify(msg)}`);
-    }
-
-    const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
-    await serviceClient.from("purchases").update({
-      evopay_charge_id: data.id,
-      pix_qr_code: data.qrCodeText,
-      pix_expires_at: expiresAt,
-      updated_at: new Date().toISOString(),
-    }).eq("id", purchaseId);
-
-    return new Response(
-      JSON.stringify({
-        id: data.id,
-        status: data.status,
-        amount: data.amount,
-        qrCodeText: data.qrCodeText,
-        expiresAt,
-        qrCodeUrl: data.qrCodeUrl || (data.id ? `https://api.evopay.cash/v1/pix/qr-code/${data.id}` : null),
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
-    );
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return json({ error: "Não foi possível gerar o PIX neste momento. Tente novamente mais tarde.", code: "pix_provider_unavailable" }, 400);
+    const node = payload?.data ?? payload?.invoice ?? payload ?? {};
+    const qrCodeText = node.copyPaste ?? node.qrCodeText ?? node.qrCode ?? node.qrcode ?? node.qr_code ?? node.pixCopiaECola ?? node.payload ?? node.emv;
+    const transactionId = node.transactionId ?? node.id ?? node.txid ?? node.transaction_id ?? node.chargeId ?? node.charge_id;
+    if (typeof qrCodeText !== "string" || !qrCodeText || !transactionId) return json({ error: "Não foi possível gerar o código PIX neste momento. Tente novamente.", code: "pix_code_unavailable" }, 400);
+    const expiresAt = typeof node.expiresAt === "string" ? node.expiresAt : typeof node.expires_at === "string" ? node.expires_at : new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const chargeId = `vexo:${transactionId}`;
+    await admin.from("purchases").update({ evopay_charge_id: chargeId, pix_qr_code: qrCodeText, pix_expires_at: expiresAt, updated_at: new Date().toISOString() }).eq("id", purchaseId);
+    await admin.from("webhook_logs").insert({ source: "vexopay", event_type: "CREATE_PIX", status: "created", order_id: purchaseId, charge_id: String(transactionId), payload: { amount: Number(purchase.amount) } });
+    return json({ id: chargeId, status: String(node.status || "PENDING"), amount: Number(purchase.amount), qrCodeText, expiresAt, qrCodeUrl: typeof node.qrCodeUrl === "string" ? node.qrCodeUrl : null });
   } catch (error: any) {
-    console.error("create-evopay-pix error:", error.message || error);
-    return new Response(
-      JSON.stringify({ error: error.message || "Erro desconhecido ao criar cobrança" }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
-    );
+    console.error("create-vexopay-pix", error?.message || error);
+    return json({ error: "Não foi possível gerar o PIX neste momento. Tente novamente mais tarde." }, 500);
   }
 });

@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ZXMAX GGMAX - Real marketplace style, not AI */
+/* Superfícies e controles próprios da ZXMAX. */
 @layer base {
   :root {
     --background: 0 0% 98%;
@@ -68,7 +68,6 @@
 }
 
 @layer components {
-  /* GGMAX solid cards, not glassy AI */
   .glass-card {
     @apply bg-[#15151a] border border-[#25252e] rounded-xl;
     box-shadow: 0 1px 0 0 rgba(255,255,255,0.03) inset;
@@ -114,6 +113,50 @@
     background: #111114;
     border: 1px solid #1e1e28;
   }
+
+  .zx-icon-action {
+    @apply flex h-9 w-9 items-center justify-center rounded-full border border-white/[0.11] bg-white/[0.025] text-white/65 transition;
+  }
+  .zx-icon-action:hover { background: rgba(255,255,255,0.075); border-color: rgba(255,255,255,0.2); color: #fff; }
+  .zx-icon-action:active { transform: scale(.96); }
+
+  .zx-menu-panel {
+    max-height: calc(100dvh - 5.25rem);
+    border: 1px solid rgba(255,255,255,.13);
+    border-radius: 1.35rem;
+    background: #0d0f15;
+    box-shadow: 0 24px 60px rgba(0,0,0,.52), 0 1px 0 rgba(255,255,255,.04) inset;
+    animation: menu-pop-in .2s cubic-bezier(.23,1,.32,1) both;
+    transform-origin: top right;
+  }
+
+  .zx-menu-entry {
+    @apply flex w-full items-center gap-2.5 rounded-xl border border-transparent px-2.5 py-2.5 text-left transition;
+  }
+  .zx-menu-entry:hover { background: rgba(255,255,255,.045); border-color: rgba(255,255,255,.07); }
+  .zx-menu-entry-active { background: rgba(22,140,255,.12); border-color: rgba(22,140,255,.28); }
+
+  .zx-auth-panel {
+    border: 1px solid rgba(255,255,255,.13);
+    border-radius: 1.25rem;
+    background: #101218;
+    padding: 1.5rem;
+    box-shadow: 0 28px 74px rgba(0,0,0,.62), 0 1px 0 rgba(255,255,255,.035) inset;
+  }
+  .zx-auth-close {
+    @apply grid h-9 w-9 place-items-center rounded-lg border border-white/[0.1] bg-white/[0.025] text-white/60 transition;
+  }
+  .zx-auth-close:hover { background: rgba(255,255,255,.075); color: #fff; }
+  .zx-auth-field { display: block; }
+  .zx-auth-field > span { display: block; margin: 0 0 .4rem .1rem; color: rgba(255,255,255,.56); font-size: .68rem; font-weight: 750; letter-spacing: .02em; }
+  .zx-auth-field input { width: 100%; border: 1px solid rgba(255,255,255,.12); border-radius: .75rem; background: #0b0d12; padding: .8rem .9rem; color: #fff; font-size: .875rem; outline: none; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+  .zx-auth-field input::placeholder { color: rgba(255,255,255,.24); }
+  .zx-auth-field input:focus { border-color: rgba(76,172,255,.78); background: #0d1119; box-shadow: 0 0 0 3px rgba(22,140,255,.12); }
+  .zx-auth-submit { @apply flex w-full items-center justify-center gap-2 rounded-xl bg-[#168cff] py-3.5 text-sm font-black text-white transition disabled:cursor-not-allowed disabled:opacity-50; box-shadow: 0 10px 22px rgba(0,132,255,.22); }
+  .zx-auth-submit:hover { background: #0877eb; }
+  .zx-auth-submit:active { transform: scale(.98); }
+  .zx-auth-discord { @apply flex w-full items-center justify-center gap-2 rounded-xl border border-[#6f7eea]/45 bg-[#5865F2]/[0.06] p-3 text-sm font-bold text-[#c5cbff] transition; }
+  .zx-auth-discord:hover { background: rgba(88,101,242,.15); border-color: rgba(145,156,255,.72); color: #fff; }
 }
 
 @layer utilities {
@@ -136,6 +179,15 @@
   from { transform: translateX(-100%); }
   to { transform: translateX(0); }
 }
+@keyframes menu-pop-in {
+  from { opacity: 0; transform: translateY(-8px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
 
 .animate-fade-in-up { animation: fade-in-up 0.2s ease-out both; }
 .animate-slide-in-bottom { animation: slide-in-bottom 0.25s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-up, .animate-slide-in-bottom, .zx-menu-panel { animation: none; }
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}

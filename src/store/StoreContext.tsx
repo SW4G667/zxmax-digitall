@@ -2,6 +2,20 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  LEGACY_PRODUCT_COLUMNS,
+  MIN_PRODUCT_PRICE,
+  mergeCatalog,
+  normalizeProductPrice,
+  parsePriceInput,
+  productMinQuantity,
+  productStock,
+  sanitizePrice,
+  SAFE_PRODUCT_COLUMNS,
+} from "@/lib/catalog";
+import { WITHDRAW_FEE, WITHDRAW_MIN, withdrawTotals } from "@/lib/fees";
+import { logProductError, productErrorMessage } from "@/lib/productErrors";
+import { unwrapEdgeCall } from "@/lib/edgeErrors";
 
 export interface User {
   id: string;
@@ -31,11 +45,13 @@ export interface AdminChatMessage {
 export interface ProductVariation {
   name: string;
   price: number;
+  stock?: number;
+  minQuantity?: number;
 }
 
 export interface ProductQuestion {
   id: number;
-  userEmail: string;
+  userEmail?: string;
   userName: string;
   text: string;
   date: string;
@@ -49,7 +65,7 @@ export interface Product {
   price: number;
   category: string;
   seller: string;
-  sellerEmail: string;
+  sellerEmail?: string;
   sellerId: string;
   sellerPublicId?: string;
   sales: number;
@@ -65,8 +81,12 @@ export interface Product {
   stock?: number;
   minQuantity?: number;
   deliveryTime?: string;
+  reviewCount?: number;
+  reviewAvg?: number;
+  reviewPositive?: number;
   sellerRating?: number;
   sellerReviews?: number;
+  createdAt?: string;
 }
 
 export interface PurchaseMessage {
@@ -84,9 +104,11 @@ export interface Purchase {
   sellerEmail: string;
   sellerId: string;
   sellerPublicId?: string;
-  status: "pending" | "paid" | "delivered" | "dispute" | "cancelled";
+  status: "pending" | "paid" | "delivered_pending_confirmation" | "delivered" | "dispute" | "cancelled" | "refunded";
   createdAt: string;
+  updatedAt?: string;
   amount: number;
+  paymentProvider?: "zennith_pix" | "vexopay_pix" | "crypto" | "card" | "boleto";
   messages: PurchaseMessage[];
   reviewed?: boolean;
   reviewStars?: number;
@@ -95,6 +117,11 @@ export interface Purchase {
   evopayChargeId?: string;
   pixQrCode?: string;
   pixExpiresAt?: string;
+  deliveredPendingAt?: string;
+  refundReason?: string;
+  refundedAt?: string;
+  sellerReleased?: boolean;
+  releasedAt?: string;
 }
 
 export interface Withdrawal {
@@ -121,7 +148,7 @@ export interface SupportTicket {
 }
 
 export interface UserTag {
-  id: number;
+  id: string;
   name: string;
   color: string; // hex or hsl
 }
@@ -152,16 +179,6 @@ export interface AppConfig {
   discordLink: string;
   categories: string[];
   globalNotice: string;
-  authMode: "automatic" | "manual";
-  discordClientId: string;
-  discordClientSecret: string;
-  discordRedirectUri: string;
-  discordScopes: string;
-  discordMode: "automatic" | "manual";
-  discordServerLink: string;
-  evopayApiKey: string;
-  evopayMode: "automatic" | "manual";
-  evopayWebhookUrl: string;
   rules: string;
 }
 
@@ -176,7 +193,7 @@ interface AppState {
   globalNotices: GlobalNotice[];
   adminChat: AdminChatMessage[];
   userTags: UserTag[];
-  userTagAssignments: Record<string, number[]>; // email -> tagIds
+  userTagAssignments: Record<string, string[]>; // public ID -> tag UUIDs
   userBalances: Record<string, number>;
   userEarnings: Record<string, number>;
   sellerDocuments: SellerDocument[];
@@ -187,16 +204,19 @@ interface StoreContextType {
   state: AppState;
   login: (email: string, name: string) => void;
   logout: () => void;
-  addProduct: (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => void;
+  addProduct: (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => Promise<boolean>;
   updateProduct: (id: number, p: Partial<Omit<Product, "id" | "sellerId">>) => Promise<boolean>;
   approveProduct: (id: number) => Promise<boolean>;
-  rejectProduct: (id: number) => Promise<boolean>;
+  rejectProduct: (id: number, reason?: string) => Promise<boolean>;
   refreshProducts: () => Promise<void>;
-  deleteProduct: (id: number) => Promise<{ paused: boolean }>;
-  buyProduct: (id: number, variation?: ProductVariation) => Promise<number | null>;
+  /** Real network state of the catalog, so the store can show a skeleton, an
+   * error with retry, or a truthful empty state instead of a silent zero. */
+  catalogStatus: CatalogStatus;
+  deleteProduct: (id: number) => Promise<{ ok: boolean; paused: boolean }>;
+  buyProduct: (id: number, variation?: ProductVariation, quantity?: number, paymentMethod?: string) => Promise<number | null>;
   savePixCharge: (purchaseId: number, charge: { evopayId: string; qrCodeText: string; expiresAt: string }) => void;
-  refreshPurchases: () => Promise<void>;
-  markOrderDelivered: (orderId: number) => Promise<boolean>;
+  /** Atualiza pedidos sem descartar a última lista válida quando a rede falha. */
+  refreshPurchases: () => Promise<{ ok: boolean; message?: string }>;
   markPurchasePaid: (purchaseId: number) => void;
   approvePurchase: (id: number) => void;
   revertPurchase: (id: number) => void;
@@ -215,21 +235,23 @@ interface StoreContextType {
   publishNotice: (text: string) => void;
   updatePixKey: (key: string) => void;
   sendAdminChat: (from: string, text: string) => void;
-  sendPurchaseMessage: (purchaseId: number, from: string, text: string) => void;
+  sendPurchaseMessage: (purchaseId: number, from: string, text: string) => Promise<boolean>;
   confirmDelivery: (purchaseId: number) => Promise<boolean>;
+  confirmOrderReceipt: (purchaseId: number) => Promise<boolean>;
+  sellerRefundOrder: (purchaseId: number, reason: string) => Promise<{ success: boolean; error?: string }>;
   openDispute: (purchaseId: number, reason: string) => Promise<boolean>;
-  reviewPurchase: (purchaseId: number, stars: number, comment: string) => void;
+  reviewPurchase: (purchaseId: number, stars: number, comment: string) => Promise<boolean>;
+  loadProductReviews: (productId: number) => Promise<Array<{ id: number; stars: number; comment: string; createdAt: string; buyerName: string }>>;
   addProductQuestion: (productId: number, text: string) => void;
   answerProductQuestion: (productId: number, questionId: number, answer: string) => void;
   deleteNotice: (id: number) => void;
-  createUserTag: (name: string, color: string) => void;
-  deleteUserTag: (id: number) => void;
-  assignUserTag: (email: string, tagId: number) => void;
-  unassignUserTag: (email: string, tagId: number) => void;
+  refreshUserTags: () => Promise<void>;
+  createUserTag: (name: string, color: string) => Promise<boolean>;
+  deleteUserTag: (id: string) => Promise<boolean>;
+  assignUserTag: (publicId: string, tagId: string) => Promise<boolean>;
+  unassignUserTag: (publicId: string, tagId: string) => Promise<boolean>;
   verifyUser: (userId: string) => Promise<boolean>;
-  saveGatewaySettings: (settings: { evopayApiKey?: string; evopayMode?: string }) => Promise<boolean>;
   submitSellerDocument: (filePath: string, fileName: string) => void;
-  reviewSellerDocument: (documentId: string, status: "approved" | "rejected") => void;
   isDark: boolean;
   toggleDark: () => void;
 }
@@ -240,18 +262,10 @@ const defaultConfig: AppConfig = {
   discordLink: "https://discord.gg/zxmax",
   categories: ["Robux e Gift Cards", "Bots Discord", "Contas", "Scripts", "Assinaturas", "Designs Digitais", "Serviços Online", "Consultoria Virtual", "Keys de Software", "Arquivos", "Jogos e Itens"],
   globalNotice: "",
-  authMode: "automatic",
-  discordClientId: "",
-  discordClientSecret: "",
-  discordRedirectUri: typeof window !== "undefined" ? window.location.origin + "/" : "",
-  discordScopes: "identify email",
-  discordMode: "automatic",
-  discordServerLink: "https://discord.gg/zxmax",
-  evopayApiKey: "",
-  evopayMode: "automatic",
-  evopayWebhookUrl: typeof window !== "undefined" ? `https://dbekdedzgkfgtlytrnyw.supabase.co/functions/v1/evopay-webhook` : "",
   rules: "1- Proibido estelionato(golpe).\n2-Proibido lavagem de dinheiro no sistema de saque do site.\n3-Proibido venda de conteúdo adulto, cp, gore ou qualquer conteúdo doloso\n\n**(Toda regra quebrada resultará a suspensão do usuário de 1 semana a permanente sem receber dinheiro de vendas durante a suspensão.)**",
 };
+
+export type CatalogStatus = "loading" | "ready" | "error";
 
 const StoreContext = createContext<StoreContextType | null>(null);
 
@@ -286,15 +300,17 @@ const publicIdFromProfile = (profile: any, fallback: string) => String(profile?.
 const mapPurchaseRow = (p: any): Purchase => ({
   id: Number(p.id),
   productId: Number(p.product_id),
-  buyerEmail: p.buyer_email,
+  buyerEmail: p.buyer_email || "",
   buyerId: p.buyer_id,
   buyerPublicId: p.buyer_public_id,
-  sellerEmail: p.seller_email,
+  sellerEmail: p.seller_email || "",
   sellerId: p.seller_id,
   sellerPublicId: p.seller_public_id,
   status: p.status,
   createdAt: p.created_at,
+  updatedAt: p.updated_at || undefined,
   amount: Number(p.amount),
+  paymentProvider: p.payment_provider || undefined,
   messages: p.messages || [],
   reviewed: p.reviewed,
   reviewStars: p.review_stars || undefined,
@@ -303,23 +319,43 @@ const mapPurchaseRow = (p: any): Purchase => ({
   evopayChargeId: p.evopay_charge_id || undefined,
   pixQrCode: p.pix_qr_code || undefined,
   pixExpiresAt: p.pix_expires_at || undefined,
+  deliveredPendingAt: p.delivered_pending_at || undefined,
+  refundReason: p.refund_reason || undefined,
+  refundedAt: p.refunded_at || undefined,
+  sellerReleased: !!p.seller_released,
+  releasedAt: p.released_at || undefined,
 });
 
-const inferPixType = (key: string): string => {
-  const k = (key || "").trim();
-  if (k.includes("@")) return "email";
-  const digits = k.replace(/\D/g, "");
-  if (/^\+?\d{12,13}$/.test(k.replace(/[\s()-]/g, "")) || (digits.length >= 12 && digits.length <= 13)) return "phone";
-  if (digits.length === 11) return "cpf";
-  if (digits.length === 14) return "cnpj";
-  return "random";
+/** Persist stock/minQuantity inside variation JSON so a missing column never hides them. */
+const mapVariation = (v: ProductVariation) => {
+  const out: Record<string, unknown> = { name: v.name, price: sanitizePrice(v.price) };
+  const stock = Number(v.stock);
+  if (Number.isFinite(stock) && stock >= 0) out.stock = Math.trunc(stock);
+  const minQ = Number(v.minQuantity);
+  if (Number.isFinite(minQ) && minQ > 0) out.minQuantity = Math.trunc(minQ);
+  return out;
 };
 
+const mapWithdrawalRow = (w: any): Withdrawal => ({
+  id: Number(w.id),
+  userEmail: w.user_email || "",
+  userId: w.user_id,
+  amount: Number(w.amount),
+  method: w.method === "instant" ? "instant" : "normal",
+  status: w.status,
+  createdAt: w.created_at,
+  pixKey: w.pix_key || undefined,
+  rejectionReason: w.rejection_reason || undefined,
+  providerTxId: w.provider_tx || w.provider_tx_id || undefined,
+  retryOf: w.retry_of ?? null,
+});
+
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const { user: authUser, profile, isAdmin, signOut } = useAuth();
+  const { user: authUser, profile, isAdmin, isSupport, sessionReady, signOut } = useAuth();
   const [state, setState] = useState<AppState>(loadState);
+  const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>("loading");
   const [isDark, setIsDark] = useState<boolean>(() => {
-    // GGMAX-style: dark theme is the default. Only opt OUT via theme toggle.
+    // Dark marketplace is the default. Only opt OUT via theme toggle.
     const stored = localStorage.getItem("zxmax_dark");
     return stored === null ? true : stored === "true";
   });
@@ -345,7 +381,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         name: profile?.display_name || authUser.email?.split("@")[0] || "Usuário",
         balance: state.userBalances[authUser.id] || 0,
         earnings: state.userEarnings[authUser.id] || 0,
-        avatar: profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(profile?.display_name || authUser.email || "")}`,
+        avatar:
+          profile?.avatar_url ||
+          (authUser.user_metadata as { avatar_url?: string; picture?: string } | undefined)?.avatar_url ||
+          (authUser.user_metadata as { avatar_url?: string; picture?: string } | undefined)?.picture ||
+          `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(`zxmax-${userPublicId}`)}`,
         isAdmin,
         pixKey: profile?.pix_key || "",
         isVerified: profile?.is_verified_seller || false,
@@ -374,180 +414,131 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [authUserId, profile, isAdmin, state.userBalances, state.userEarnings]);
 
   useEffect(() => {
-    const authUser = authUserRef.current;
     void (async () => {
-      const profileSource = isAdmin ? "profiles" : "profiles_public";
-      const profileSelect = isAdmin
-        ? "user_id, public_id, email, display_name, avatar_url, is_verified_seller"
-        : "user_id, public_id, display_name, avatar_url, is_verified_seller";
-      const { data: profiles } = await (supabase as any).from(profileSource).select(profileSelect);
+      const { data: profiles } = await (supabase as any)
+        .from("profiles_public")
+        .select("user_id, public_id, display_name, avatar_url, is_verified_seller");
       const directory = ((profiles || []) as any[]).reduce((acc, p) => {
-        acc[p.user_id] = { userId: p.user_id, publicId: String(p.public_id || ""), email: p.email || "", name: p.display_name || p.email?.split("@")[0] || "Usuário", avatar: p.avatar_url || undefined, isVerified: !!p.is_verified_seller };
+        acc[p.user_id] = { userId: p.user_id, publicId: String(p.public_id || ""), email: "", name: p.display_name || "Usuário", avatar: p.avatar_url || undefined, isVerified: !!p.is_verified_seller };
         return acc;
       }, {} as Record<string, UserDirectoryEntry>);
 
-      const { data: docs } = authUser
-        ? await (supabase as any).from("seller_documents").select("id, user_id, file_path, file_name, status, created_at").order("created_at", { ascending: false })
-        : { data: [] };
-      const sellerDocuments = ((docs || []) as any[]).map((d) => ({
-        id: d.id,
-        userId: d.user_id,
-        userPublicId: directory[d.user_id]?.publicId || d.user_id,
-        userEmail: directory[d.user_id]?.email || "",
-        filePath: d.file_path,
-        fileName: d.file_name || "Documento",
-        status: d.status || "pending",
-        createdAt: d.created_at,
-      }));
-
-      setState((s) => ({ ...s, userDirectory: { ...(s.userDirectory || {}), ...directory }, sellerDocuments }));
+      setState((s) => ({ ...s, userDirectory: { ...(s.userDirectory || {}), ...directory } }));
     })();
-  }, [authUserId, isAdmin]);
+  }, [authUserId]);
 
-  // Load admin-configurable gateway settings (only readable by admins via RLS)
-  useEffect(() => {
-    if (!authUserId || !isAdmin) return;
-    void (async () => {
-      const { data } = await (supabase as any).from("app_settings").select("key, value").eq("key", "evopay").maybeSingle();
-      if (data?.value) {
-        setState((s) => ({
-          ...s,
-          config: {
-            ...s.config,
-            evopayMode: data.value.mode || s.config.evopayMode,
-            evopayApiKey: data.value.apiKey || s.config.evopayApiKey,
-          },
-        }));
+  const refreshUserTags = React.useCallback(async () => {
+    if (!isAdmin && !isSupport) {
+      setState((s) => ({ ...s, userTags: [], userTagAssignments: {} }));
+      return;
+    }
+    const { data, error } = await (supabase as any).rpc("get_admin_user_tags");
+    if (error) {
+      console.warn("[zxmax:tags:load]", error);
+      return;
+    }
+    const tags = Array.isArray(data?.tags)
+      ? data.tags.map((tag: any) => ({ id: String(tag.id), name: String(tag.name || ""), color: String(tag.color || "#8b5cf6") }))
+      : [];
+    const assignments = data?.assignments && typeof data.assignments === "object"
+      ? Object.fromEntries(Object.entries(data.assignments).map(([publicId, tagIds]) => [publicId, Array.isArray(tagIds) ? tagIds.map(String) : []]))
+      : {};
+    setState((s) => ({ ...s, userTags: tags, userTagAssignments: assignments }));
+  }, [isAdmin, isSupport]);
+
+  useEffect(() => { void refreshUserTags(); }, [refreshUserTags]);
+
+  /** Runs a products query and, if the database has not received the latest
+   * migrations yet, retries without the newer optional columns. Without this a
+   * single missing column (`stock`, `min_quantity`, `delivery_time`) makes
+   * PostgREST reject the whole select — which is exactly how the storefront
+   * ended up showing "Todos os produtos (0)". */
+  const selectProducts = React.useCallback(
+    async (
+      table: "products" | "products_public",
+      apply: (query: any) => any = (query) => query,
+    ): Promise<{ rows: any[]; failed: boolean }> => {
+      const columnSets = table === "products_public"
+        // The view is already restricted to safe, approved rows, so `*` is safe
+        // and works no matter which migration generation created it.
+        ? ["*"]
+        : [SAFE_PRODUCT_COLUMNS, LEGACY_PRODUCT_COLUMNS];
+      let lastError: unknown = null;
+      for (const columns of columnSets) {
+        const { data, error } = await apply(
+          (supabase as any).from(table).select(columns).order("created_at", { ascending: false }),
+        );
+        if (!error) return { rows: data || [], failed: false };
+        lastError = error;
       }
-    })();
-  }, [authUserId, isAdmin]);
-
-
+      logProductError(`loadCatalog:${table}`, lastError);
+      return { rows: [], failed: true };
+    },
+    [],
+  );
 
   const loadCatalog = React.useCallback(async () => {
     const authUser = authUserRef.current;
-    const withTimeout = <T,>(p: Promise<T>, ms = 4000): Promise<T | null> =>
-      Promise.race([
-        p,
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
-      ]) as Promise<T | null>;
-
+    setCatalogStatus((current) => (current === "ready" ? current : "loading"));
+    let rows: any[] = [];
+    let failed = false;
     try {
-      // Public catalog must work 100% - anon uses public-products edge function (service_role) to bypass RLS issues
-      let dbProducts: any[] = [];
-      
-      if (!authUser) {
-        // Anon: Use public-products edge function first (service_role, always works)
-        try {
-          const { data, error } = await supabase.functions.invoke("public-products", {});
-          if (!error && data?.products && data.products.length > 0) {
-            dbProducts = data.products;
-            console.log("Anon public-products edge loaded:", dbProducts.length);
-          } else {
-            console.log("public-products edge empty or error, trying products_public view", error, data);
-            // Fallback to products_public view
-            const { data: viewData, error: viewError } = await (supabase as any)
-              .from("products_public")
-              .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
-              .order("created_at", { ascending: false });
-            
-            if (!viewError && viewData && viewData.length > 0) {
-              dbProducts = viewData;
-              console.log("Anon products_public loaded:", dbProducts.length);
-            } else {
-              console.error("Anon view error:", viewError);
-              // Last fallback: products table with approved filter
-              const { data: fallbackData } = await (supabase as any)
-                .from("products")
-                .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
-                .eq("approved", true)
-                .order("created_at", { ascending: false });
-              if (fallbackData) dbProducts = fallbackData as any[];
-            }
-          }
-        } catch (e) {
-          console.error("Anon load failed", e);
-          // Try direct view as last resort
-          try {
-            const { data: viewData } = await (supabase as any).from("products_public").select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at").order("created_at", { ascending: false });
-            if (viewData) dbProducts = viewData as any[];
-          } catch {}
-        }
-      } else {
-        // Authenticated: try products table (RLS allows approved OR own OR admin)
-        const result = await withTimeout(
-          (supabase as any)
-            .from("products")
-            .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at,stock,min_quantity,delivery_time")
-            .order("created_at", { ascending: false }),
-          5000
-        );
-        dbProducts = (result as any)?.data || [];
-        
-        // If empty for auth user, try public view as fallback
-        if (dbProducts.length === 0) {
-          const { data: publicData } = await (supabase as any)
-            .from("products_public")
-            .select("id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at")
-            .order("created_at", { ascending: false });
-          if (publicData && publicData.length > 0) dbProducts = publicData as any[];
+      const publicResult = await selectProducts("products_public");
+      failed = publicResult.failed;
+      rows = publicResult.rows;
+      if (!rows.length) {
+        // Service-role read model: only used when the direct read produced
+        // nothing, and it still returns approved rows only.
+        const edge = await supabase.functions.invoke("public-products", {});
+        if (!edge.error && Array.isArray(edge.data?.products)) {
+          rows = edge.data.products;
+          failed = false;
+        } else if (edge.error) {
+          logProductError("loadCatalog:public-products", edge.error);
         }
       }
-
-      const results = await Promise.all([
-        Promise.resolve({ data: dbProducts } as any),
-        authUser
-          ? withTimeout((supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false }), 5000)
-          : Promise.resolve({ data: [] } as any),
-        authUser ? withTimeout((supabase as any).from("withdrawals").select("*").order("created_at", { ascending: false }), 5000) : Promise.resolve({ data: [] } as any),
-        authUser ? withTimeout((supabase as any).from("product_delivery").select("product_id,delivery_content"), 5000) : Promise.resolve({ data: [] } as any),
-      ]);
-
-      const dbPurchases = (results[1] as any)?.data || [];
-      const dbWithdrawals = (results[2] as any)?.data || [];
-      const deliveryRows = (results[3] as any)?.data || [];
-
-      const deliveryByProduct = new Map(((deliveryRows || []) as any[]).map((d) => [Number(d.product_id), d.delivery_content || undefined]));
-      const products = ((dbProducts || []) as any[]).map((p) => ({ 
-        id: Number(p.id), 
-        name: p.name, 
-        price: Number(p.price), 
-        category: p.category, 
-        seller: p.seller_name, 
-        sellerEmail: "", 
-        sellerId: p.seller_id, 
-        sellerPublicId: p.seller_public_id, 
-        sales: p.sales || 0, 
-        rating: Number(p.rating || 0), 
-        image: p.image, 
-        banner: p.banner || undefined, 
-        description: p.description, 
-        approved: p.approved, 
-        deliveryType: p.delivery_type, 
-        deliveryContent: deliveryByProduct.get(Number(p.id)), 
-        variations: p.variations || [], 
-        questions: p.questions || [],
-        stock: p.stock || Math.floor((p.sales || 0) * 137 + 500),
-        minQuantity: p.min_quantity || p.minQuantity || 100,
-        deliveryTime: p.delivery_time || p.deliveryTime || "11 min - 1 h",
-        sellerRating: 99.4,
-        sellerReviews: Math.floor((p.sales || 0) * 12 + 100),
-      })) as Product[];
-      const purchases = ((dbPurchases || []) as any[]).map(mapPurchaseRow) as Purchase[];
-      const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "", rejectionReason: w.rejection_reason || "", providerTxId: w.provider_tx_id || "", retryOf: w.retry_of ?? null })) as Withdrawal[];
-      setState((s) => ({
-        ...s,
-        products,
-        purchases,
-        withdrawals,
-      }));
-    } catch (e) {
-      console.error("loadCatalog failed", e);
-      if (authUserRef.current) {
-        setTimeout(() => void loadCatalog(), 3000);
+      if (!rows.length) {
+        const fallback = await selectProducts("products", (query) => query.eq("approved", true));
+        failed = failed || fallback.failed;
+        rows = fallback.rows;
       }
+      if (authUser) {
+        // Sellers always keep sight of their own pending listings.
+        const own = await selectProducts("products", (query) => query.eq("seller_id", authUser.id));
+        failed = failed || own.failed;
+        rows = [...rows, ...own.rows];
+        if (isAdmin) {
+          const all = await selectProducts("products");
+          failed = failed || all.failed;
+          rows = [...rows, ...all.rows];
+        }
+      }
+      const unique = [...new Map(rows.map((row) => [Number(row.id), row])).values()];
+      const products = unique.map((p: any) => {
+        const price = normalizeProductPrice({ price: Number(p.price), category: p.category, variations: p.variations });
+        return {
+          id: Number(p.id), name: p.name, price, category: p.category,
+          seller: p.seller_name, sellerId: p.seller_id,
+          sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0),
+          image: p.image, banner: p.banner || undefined, description: p.description, approved: !!p.approved,
+          deliveryType: p.delivery_type, variations: p.variations || [], questions: p.questions || [],
+          stock: productStock({ stock: p.stock, variations: p.variations }) ?? undefined,
+          minQuantity: productMinQuantity({ minQuantity: p.min_quantity, variations: p.variations, category: p.category }) ?? undefined,
+          deliveryTime: p.delivery_time || undefined,
+          reviewCount: Number.isFinite(Number(p.review_count)) ? Number(p.review_count) : undefined,
+          reviewAvg: Number.isFinite(Number(p.review_avg)) ? Number(p.review_avg) : undefined,
+          reviewPositive: Number.isFinite(Number(p.review_positive)) ? Number(p.review_positive) : undefined,
+          sellerRating: undefined, sellerReviews: undefined, createdAt: p.created_at || undefined,
+        };
+      }) as Product[];
+      setState((old) => ({ ...old, products: mergeCatalog(products, old.products, { failed }) }));
+      setCatalogStatus(failed ? "error" : "ready");
+    } catch (error) {
+      logProductError("loadCatalog", error);
+      setState((old) => ({ ...old, products: mergeCatalog([], old.products, { failed: true }) }));
+      setCatalogStatus("error");
     }
-  }, [authUserId]);
+  }, [authUserId, isAdmin, selectProducts]);
 
   useEffect(() => {
     void loadCatalog();
@@ -578,27 +569,115 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, currentUser: null }));
   };
 
-  const addProduct = (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => {
-    if (!state.currentUser) return;
-    // Admin products are always auto-approved, even if state is stale, check isAdmin from auth
-    const initialApproved = !!state.currentUser.isAdmin || isAdmin;
-    const newProduct = { ...p, id: Date.now(), sales: 0, rating: 0, approved: initialApproved, sellerId: state.currentUser.id, sellerPublicId: state.currentUser.publicId };
-    void (async () => {
-      const { data } = await (supabase as any).from("products").insert({ seller_id: newProduct.sellerId, seller_public_id: newProduct.sellerPublicId, seller_email: newProduct.sellerEmail, seller_name: newProduct.seller, name: newProduct.name, price: newProduct.price, category: newProduct.category, image: newProduct.image, banner: newProduct.banner || null, description: newProduct.description, approved: initialApproved, delivery_type: newProduct.deliveryType, variations: newProduct.variations || [], questions: newProduct.questions || [] }).select("id").maybeSingle();
-      if (data?.id) {
-        await (supabase as any).from("product_delivery").upsert({ product_id: Number(data.id), delivery_type: newProduct.deliveryType, delivery_content: newProduct.deliveryContent || null });
-        setState((s) => ({ ...s, products: s.products.map((pr) => (pr.id === newProduct.id ? { ...pr, id: Number(data.id) } : pr)) }));
+  const addProduct = async (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">): Promise<boolean> => {
+    const authUser = authUserRef.current;
+    if (!state.currentUser || !authUser) {
+      toast.error("Sua sessão expirou. Entre novamente para publicar o anúncio.");
+      return false;
+    }
+
+    // Client-side guards first, so obvious problems never reach the database
+    // and the seller gets a precise message instead of a generic failure.
+    const price = parsePriceInput(p.price);
+    if (!p.name?.trim()) { toast.error("Informe o nome do anúncio."); return false; }
+    if (price < MIN_PRODUCT_PRICE) {
+      toast.error(`O preço mínimo é R$ ${MIN_PRODUCT_PRICE.toFixed(2).replace(".", ",")}.`);
+      return false;
+    }
+    if (!state.currentUser.isVerified && !isAdmin) {
+      toast.error("Sua conta ainda não está verificada como vendedor. Conclua a verificação para anunciar.");
+      return false;
+    }
+
+    // `approved` is decided by the database (trigger + RLS). We only send the
+    // intent; a seller sending `true` is rejected server-side, never trusted.
+    const base: Record<string, unknown> = {
+      seller_id: authUser.id,
+      seller_public_id: state.currentUser.publicId,
+      seller_name: state.currentUser.name,
+      name: p.name.trim(),
+      price,
+      category: p.category,
+      image: p.image,
+      banner: p.banner || null,
+      description: p.description || "",
+      delivery_type: p.deliveryType,
+      variations: (p.variations || []).map(mapVariation),
+      questions: [],
+      approved: isAdmin,
+    };
+    const optionalColumns = {
+      ...(p.stock !== undefined ? { stock: p.stock } : {}),
+      ...(p.minQuantity !== undefined ? { min_quantity: p.minQuantity } : {}),
+      ...(p.deliveryTime ? { delivery_time: p.deliveryTime } : {}),
+    };
+
+    // Attempt order narrows the payload only for *schema/grant* problems on
+    // older databases. Every other error is reported as-is.
+    const attempts: Record<string, unknown>[] = [
+      { ...base, ...optionalColumns },
+      base,
+      (() => { const { approved, ...rest } = base; return rest; })(),
+    ];
+
+    let created: { id: number; approved: boolean } | null = null;
+    let lastError: any = null;
+    for (const payload of attempts) {
+      const { data, error } = await (supabase as any)
+        .from("products")
+        .insert(payload)
+        .select("id,approved")
+        .maybeSingle();
+      if (!error && data?.id) {
+        created = { id: Number(data.id), approved: !!data.approved };
+        break;
       }
-    })();
-    setState((s) => ({
-      ...s,
-      products: [...s.products, newProduct],
-    }));
+      lastError = error;
+      logProductError("addProduct:insert", error);
+      // Only a missing column / column-grant problem justifies a narrower retry.
+      const code = String(error?.code ?? "");
+      // Falha de autorização não é incompatibilidade de schema. Reenviar sem
+      // estoque/mínimo nesse caso fazia uma oferta parecer salva com valores
+      // antigos. Só deployments sem coluna podem usar o payload reduzido.
+      const retriable = code === "42703" || code === "PGRST204";
+      if (!retriable) break;
+    }
+
+    if (!created) {
+      toast.error(productErrorMessage(lastError));
+      return false;
+    }
+
+    // Delivery content lives in `product_delivery`, never in the public table.
+    if (p.deliveryContent || p.deliveryType === "auto") {
+      const { error: deliveryError } = await (supabase as any)
+        .from("product_delivery")
+        .upsert({ product_id: created.id, delivery_type: p.deliveryType, delivery_content: p.deliveryContent || null });
+      if (deliveryError) {
+        logProductError("addProduct:delivery", deliveryError);
+        toast.warning("Anúncio criado, mas o conteúdo de entrega automática não foi salvo. Edite o anúncio para tentar de novo.");
+      }
+    }
+
+    // Reload from the database so the seller sees the row that really exists
+    // (with the approval state the server decided), not an optimistic guess.
+    await loadCatalog();
+    toast.success(created.approved ? "Anúncio publicado!" : "Anúncio criado! Aguardando aprovação da moderação.");
+    return true;
   };
 
   const updateProduct = async (id: number, p: Partial<Omit<Product, "id" | "sellerId">>) => {
     const existing = state.products.find((pr) => pr.id === id);
     if (!existing) return false;
+    const actorId = authUserRef.current?.id;
+    if (!actorId) {
+      toast.error("Sua sessão expirou. Entre novamente para editar o anúncio.");
+      return false;
+    }
+    if (!isAdmin && existing.sellerId !== actorId) {
+      toast.error("Você não tem permissão para editar este anúncio.");
+      return false;
+    }
     // If price or delivery content changed, send back to review - but admin edits stay approved
     const essentialChanged =
       (p.price !== undefined && p.price !== existing.price) ||
@@ -608,11 +687,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (p.name !== undefined) dbPayload.name = p.name;
     if (p.category !== undefined) dbPayload.category = p.category;
     if (p.description !== undefined) dbPayload.description = p.description;
-    if (p.price !== undefined) dbPayload.price = p.price;
+    if (p.price !== undefined) {
+      const price = parsePriceInput(p.price);
+      if (price < MIN_PRODUCT_PRICE) {
+        toast.error(`O preço mínimo é R$ ${MIN_PRODUCT_PRICE.toFixed(2).replace(".", ",")}.`);
+        return false;
+      }
+      dbPayload.price = price;
+    }
     if (p.image !== undefined && p.image) dbPayload.image = p.image;
     if (p.banner !== undefined) dbPayload.banner = p.banner || null;
     if (p.deliveryType !== undefined) dbPayload.delivery_type = p.deliveryType;
-    if (p.variations !== undefined) dbPayload.variations = p.variations || [];
+    if (p.variations !== undefined) dbPayload.variations = (p.variations || []).map(mapVariation);
     if (p.stock !== undefined) dbPayload.stock = p.stock;
     if (p.minQuantity !== undefined) dbPayload.min_quantity = p.minQuantity;
     if (p.deliveryTime !== undefined) dbPayload.delivery_time = p.deliveryTime;
@@ -621,10 +707,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     else if (isAdmin) dbPayload.approved = true;
     
     try {
-      const { error } = await (supabase as any).from("products").update(dbPayload).eq("id", id);
+      // Older deployments have column-level grants without the optional stock
+      // fields. Retry the core product update instead of rejecting the edit.
+      let { error } = await (supabase as any).from("products").update(dbPayload).eq("id", id);
+      const code = String(error?.code ?? "");
+      if ((code === "42703" || code === "PGRST204") && ("stock" in dbPayload || "min_quantity" in dbPayload || "delivery_time" in dbPayload)) {
+        const { stock, min_quantity, delivery_time, ...safePayload } = dbPayload;
+        ({ error } = await (supabase as any).from("products").update(safePayload).eq("id", id));
+      }
       if (error) {
-        console.error("updateProduct error", error);
-        toast.error("Erro ao atualizar: " + error.message);
+        logProductError("updateProduct", error);
+        toast.error(productErrorMessage(error));
         return false;
       }
       if (p.deliveryContent !== undefined || p.deliveryType !== undefined) {
@@ -634,65 +727,81 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ...s,
         products: s.products.map((pr) => (pr.id === id ? { ...pr, ...p, approved: isAdmin ? true : (essentialChanged ? false : pr.approved) } : pr)),
       }));
+      // Re-read so the seller sees exactly what the database accepted.
+      await loadCatalog();
       return true;
     } catch (e: any) {
-      console.error("updateProduct exception", e);
-      toast.error("Erro ao atualizar produto: " + (e?.message || "tente novamente"));
+      logProductError("updateProduct:exception", e);
+      toast.error(productErrorMessage(e));
       return false;
     }
   };
 
   const approveProduct = async (id: number) => {
-    const { error } = await (supabase as any).from("products").update({ approved: true }).eq("id", id).select("id").maybeSingle();
-    if (error) {
-      toast.error("Não foi possível aprovar o anúncio: " + error.message);
+    const result = await unwrapEdgeCall<{ product?: { id: number }; notification?: string }>(
+      await supabase.functions.invoke("moderate-product", { body: { productId: id, approved: true } }),
+      "Não foi possível aprovar o anúncio.",
+    );
+    if (result.errorMessage || !result.data?.product) {
+      if (result.errorMessage) toast.error(result.errorMessage);
       await loadCatalog();
       return false;
     }
-    setState((s) => ({
-      ...s,
-      products: s.products.map((p) => (p.id === id ? { ...p, approved: true } : p)),
-    }));
     await loadCatalog();
     return true;
   };
 
-  const rejectProduct = async (id: number) => {
-    const { error } = await (supabase as any).from("products").delete().eq("id", id);
-    if (error) {
-      toast.error("Não foi possível remover o anúncio: " + error.message);
+  const rejectProduct = async (id: number, reason?: string) => {
+    const result = await unwrapEdgeCall<{ product?: { id: number }; notification?: string }>(
+      await supabase.functions.invoke("moderate-product", { body: { productId: id, approved: false, reason: reason?.trim() || "" } }),
+      "Não foi possível reprovar o anúncio.",
+    );
+    if (result.errorMessage || !result.data?.product) {
+      if (result.errorMessage) toast.error(result.errorMessage);
+      await loadCatalog();
       return false;
     }
-    setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
+    await loadCatalog();
     return true;
   };
 
 
-  const deleteProduct = async (id: number): Promise<{ paused: boolean }> => {
-    // If product has orders, pause (unapprove) instead of deleting to preserve history
-    const hasOrders = state.purchases.some((pu) => pu.productId === id);
-    if (hasOrders) {
-      await (supabase as any).from("products").update({ approved: false }).eq("id", id);
-      setState((s) => ({ ...s, products: s.products.map((p) => (p.id === id ? { ...p, approved: false } : p)) }));
-      return { paused: true };
+  const deleteProduct = async (id: number): Promise<{ ok: boolean; paused: boolean }> => {
+    const product = state.products.find((item) => item.id === id);
+    const actorId = authUserRef.current?.id;
+    if (!product || !actorId || (!isAdmin && product.sellerId !== actorId)) {
+      toast.error("Você não tem permissão para remover este anúncio.");
+      return { ok: false, paused: false };
     }
-    await (supabase as any).from("products").delete().eq("id", id);
-    setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id) }));
-    return { paused: false };
+    const { data, error } = await (supabase as any).rpc("remove_product", { _product_id: id });
+    const status = data && typeof data === "object" ? data.status : null;
+    if (error || (status !== "deleted" && status !== "paused")) {
+      if (error) logProductError("deleteProduct", error);
+      toast.error(error ? productErrorMessage(error) : "Não foi possível confirmar a remoção do anúncio. Atualize a página e tente novamente.");
+      await loadCatalog();
+      return { ok: false, paused: false };
+    }
+    // Só informar sucesso depois de reidratar o catálogo persistido no servidor.
+    await loadCatalog();
+    return { ok: true, paused: status === "paused" };
   };
 
-  const buyProduct = async (id: number, variation?: ProductVariation) => {
+  const buyProduct = async (id: number, variation?: ProductVariation, quantity?: number, paymentMethod?: string) => {
     const product = state.products.find((p) => p.id === id);
     if (!product || !state.currentUser) return null;
-    const { data, error } = await supabase.functions.invoke("create-purchase", {
-      body: { productId: id, variationName: variation?.name || null },
-    });
-    if (error || data?.error || !data?.purchase) {
-      const message = data?.error || error?.message || "Não foi possível registrar a compra.";
-      toast.error(message);
+    // unwrapEdgeCall lê o corpo real da resposta: sem isso toda falha virava
+    // "Edge Function returned a non-2xx status code" na tela do comprador.
+    const res = await unwrapEdgeCall<{ purchase: any }>(
+      await supabase.functions.invoke("create-purchase", {
+        body: { productId: id, variationName: variation?.name || null, quantity: quantity ?? 1, paymentMethod },
+      }),
+      "Não foi possível registrar a compra. Tente novamente.",
+    );
+    if (res.errorMessage || !res.data?.purchase) {
+      toast.error(res.errorMessage ?? "Não foi possível registrar a compra. Tente novamente.");
       return null;
     }
-    const finalPurchase = mapPurchaseRow(data.purchase);
+    const finalPurchase = mapPurchaseRow(res.data.purchase);
     setState((s) => ({ ...s, purchases: [...s.purchases, finalPurchase] }));
     return finalPurchase.id;
   };
@@ -707,38 +816,125 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshPurchases = async () => {
-    const { data } = await (supabase as any).from("purchases").select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at").order("created_at", { ascending: false });
-    if (!data) return;
-    const purchases = (data as any[]).map(mapPurchaseRow) as Purchase[];
+    if (!authUserRef.current || !sessionReady) {
+      return { ok: false, message: "A sessão ainda está sendo verificada." };
+    }
+    const result = await unwrapEdgeCall<{ purchases?: any[] }>(
+      await supabase.functions.invoke("get-my-purchases", { body: {} }),
+      "Não foi possível carregar seus pedidos.",
+    );
+    if (result.errorMessage) {
+      console.warn("[zxmax:purchases:load]", result.errorMessage);
+      return { ok: false, message: result.errorMessage };
+    }
+    const purchases = (result.data?.purchases || []).map(mapPurchaseRow) as Purchase[];
     setState((s) => ({ ...s, purchases }));
+    return { ok: true };
   };
 
-  const markOrderDelivered = async (orderId: number) => {
-    const { data, error } = await supabase.functions.invoke("mark-order-delivered", { body: { orderId } });
-    if (error || data?.error) return false;
-    setState((s) => ({
-      ...s,
-      purchases: s.purchases.map((p) => (p.id === orderId ? { ...p, status: "delivered" as const } : p)),
-    }));
-    return true;
-  };
+  // Orders must be rehydrated from the RLS-protected source after every
+  // session restoration. Previously the normal /minhas-compras entry only
+  // retained the optimistic state created in this browser tab, so a reload
+  // appeared to erase a legitimate pending purchase.
+  useEffect(() => {
+    if (!authUserId && sessionReady) {
+      setState((s) => (s.purchases.length ? { ...s, purchases: [] } : s));
+      return;
+    }
+    if (!authUserId || !sessionReady) return;
+    void refreshPurchases();
+  }, [authUserId, sessionReady]);
 
   const markPurchasePaid = (id: number) => {
     void refreshPurchases();
   };
 
   const approvePurchase = (id: number) => {
-    void supabase.functions.invoke("order-action", { body: { orderId: id, action: "approve" } }).then(() => refreshPurchases());
+    void (async () => {
+      try {
+        const res = await unwrapEdgeCall<{ success?: boolean; status?: string }>(
+          await supabase.functions.invoke("order-action", { body: { orderId: id, action: "approve" } }),
+          "Não foi possível aprovar o pedido.",
+        );
+        if (res.errorMessage) {
+          toast.error(res.errorMessage);
+          return;
+        }
+        toast.success(`Pedido #${id} aprovado.`);
+        void refreshPurchases();
+      } catch (e: any) {
+        toast.error(e?.message || "Erro ao aprovar pedido.");
+      }
+    })();
   };
 
   const revertPurchase = (id: number) => {
-    void supabase.functions.invoke("order-action", { body: { orderId: id, action: "revert" } }).then(() => refreshPurchases());
+    void (async () => {
+      try {
+        const res = await unwrapEdgeCall<{ success?: boolean; status?: string }>(
+          await supabase.functions.invoke("order-action", { body: { orderId: id, action: "revert" } }),
+          "Não foi possível reverter o pedido.",
+        );
+        if (res.errorMessage) {
+          toast.error(res.errorMessage);
+          return;
+        }
+        toast.success(`Pedido #${id} revertido.`);
+        void refreshPurchases();
+      } catch (e: any) {
+        toast.error(e?.message || "Erro ao reverter pedido.");
+      }
+    })();
   };
+
+  const refreshWithdrawals = React.useCallback(async () => {
+    const authUser = authUserRef.current;
+    if (!authUser) {
+      setState((s) => ({ ...s, withdrawals: [] }));
+      return;
+    }
+    const { data, error } = await (supabase as any)
+      .from("withdrawals")
+      .select("id,user_id,user_email,amount,method,status,created_at,pix_key,rejection_reason,provider_tx,retry_of,fee,net_amount")
+      .order("created_at", { ascending: false });
+    if (error) {
+      console.error("[zxmax:withdrawals]", error);
+      return;
+    }
+    setState((s) => ({ ...s, withdrawals: ((data || []) as any[]).map(mapWithdrawalRow) }));
+  }, []);
+
+  const refreshBalance = React.useCallback(async () => {
+    const authUser = authUserRef.current;
+    if (!authUser) return;
+    const { data, error } = await (supabase as any).rpc("withdrawable_balance", { _user_id: authUser.id });
+    if (error) {
+      console.error("[zxmax:balance]", error);
+      return;
+    }
+    const balance = Number(data);
+    if (!Number.isFinite(balance)) return;
+    setState((s) => ({
+      ...s,
+      userBalances: { ...s.userBalances, [authUser.id]: balance },
+      userEarnings: { ...s.userEarnings, [authUser.id]: balance },
+    }));
+  }, []);
+
+  useEffect(() => {
+    if (!authUserId) {
+      setState((s) => ({ ...s, withdrawals: [] }));
+      return;
+    }
+    void refreshWithdrawals();
+    void refreshBalance();
+  }, [authUserId, refreshWithdrawals, refreshBalance]);
 
   const requestWithdraw = async (method: "normal" | "instant", options?: { retryOf?: number }) => {
     if (!state.currentUser || state.currentUser.balance <= 0) return;
-    const fee = method === "instant" ? (state.currentUser.balance * state.config.instantFee) / 100 : 0;
-    const amount = Number((state.currentUser.balance - fee).toFixed(2));
+    const totals = withdrawTotals(state.currentUser.balance);
+    if (!totals.canWithdraw) throw new Error(totals.reason || `O saque mínimo é R$ ${WITHDRAW_MIN.toFixed(2).replace(".", ",")}.`);
+    const amount = totals.balance;
     // Idempotency: the same user + amount + method within the same minute never
     // creates two withdrawals, even if the request is retried on a flaky network.
     const minuteBucket = new Date().toISOString().slice(0, 16);
@@ -750,35 +946,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       _retry_of: options?.retryOf ?? null,
     });
     if (error) throw new Error(error.message || "Não foi possível solicitar o saque");
-    await loadCatalog();
+    await Promise.all([refreshWithdrawals(), refreshBalance()]);
   };
 
   const approveWithdraw = async (id: number) => {
     const withdrawal = state.withdrawals.find((w) => w.id === id);
-    let providerTx: string | null = null;
-    if (withdrawal?.pixKey) {
-      const pixType = inferPixType(withdrawal.pixKey);
-      const { data, error } = await supabase.functions.invoke("evopay-withdraw", {
+    if (!withdrawal?.pixKey) throw new Error("Este saque não tem chave Pix cadastrada.");
+    const net = Math.round((Number(withdrawal.amount) - WITHDRAW_FEE) * 100) / 100;
+    const res = await unwrapEdgeCall<{ id?: string; status?: string; error?: string }>(
+      await supabase.functions.invoke("zennith-withdraw", {
         body: {
-          amount: withdrawal.amount,
+          amount: net > 0 ? net : Number(withdrawal.amount),
           pixKey: withdrawal.pixKey,
-          pixType,
-          description: "Saque ZXMAX",
-          // stable reference => gateway-side idempotency on retries
-          clientReference: `withdraw_${id}`,
+          clientReference: `zxmax-withdraw-${id}`,
         },
-      });
-      if (error || data?.error) {
-        throw new Error(data?.error || error?.message || "Erro ao processar saque na EvoPay");
+      }),
+      "Erro ao processar saque na ZennithPay.",
+    );
+    if (res.errorMessage || !res.data) {
+      // 404 = function ainda não publicada — mensagem honesta em vez de falha genérica.
+      if (res.status === 404 || /not found/i.test(res.errorMessage || "")) {
+        throw new Error("Função de saque ZennithPay ainda não publicada no Supabase. Publique as edges antes de aprovar saques.");
       }
-      providerTx = data?.id ? String(data.id) : null;
+      throw new Error(res.errorMessage || "Erro ao processar saque na ZennithPay");
     }
+    const data = res.data;
+    const providerTx = data?.id ? String(data.id) : null;
     const { error: rpcError } = await (supabase as any).rpc("approve_withdrawal", {
       _id: id,
       _provider_tx: providerTx,
     });
     if (rpcError) throw new Error(rpcError.message || "Erro ao aprovar o saque");
-    await loadCatalog();
+    await Promise.all([refreshWithdrawals(), refreshBalance()]);
   };
 
   const rejectWithdraw = async (id: number, reason?: string) => {
@@ -787,7 +986,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       _reason: reason || "",
     });
     if (error) throw new Error(error.message || "Erro ao recusar o saque");
-    await loadCatalog();
+    await refreshWithdrawals();
   };
 
   const updateConfig = (c: Partial<AppConfig>) =>
@@ -801,34 +1000,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         : null,
     }));
 
-  const resolveUserId = async (identifier: string) => {
-    const normalized = identifier.trim();
-    if (!normalized) return null;
-    if (/^[0-9]+$/.test(normalized)) {
-      const { data } = await (supabase as any).from("profiles").select("user_id").eq("public_id", Number(normalized)).maybeSingle();
-      return (data as any)?.user_id || null;
-    }
-    if (normalized.includes("@")) {
-      const { data } = await (supabase as any).from("profiles").select("user_id").eq("email", normalized.toLowerCase()).maybeSingle();
-      return (data as any)?.user_id || null;
-    }
-    return normalized;
-  };
-
   const banUser = async (identifier: string, reason = "Violação das regras da plataforma") => {
     const normalized = identifier.trim();
     if (!normalized) return false;
-    const userId = await resolveUserId(normalized);
-    if (!userId) return false;
-
-    const { error } = await supabase.from("bans").insert({
-      user_id: userId,
-      banned_by: authUser?.id || userId,
-      reason,
-      active: true,
-    });
-    if (error) {
-      toast.error(error.message.includes("administradora") ? "Não é possível banir uma conta administradora." : "Erro ao banir: " + error.message);
+    const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "ban_user", identifier: normalized, reason } });
+    if (error || data?.error) {
+      toast.error("Não foi possível concluir o banimento. Tente novamente.");
       return false;
     }
 
@@ -842,11 +1019,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const unbanUser = async (identifier: string) => {
     const normalized = identifier.trim();
     if (!normalized) return false;
-    const userId = await resolveUserId(normalized);
-    if (!userId) return false;
-
-    const { error } = await supabase.from("bans").update({ active: false }).eq("user_id", userId).eq("active", true);
-    if (error) return false;
+    const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "unban_user", identifier: normalized } });
+    if (error || data?.error) return false;
 
     setState((s) => ({ ...s, bannedUsers: s.bannedUsers.filter((e) => e !== normalized) }));
     return true;
@@ -889,26 +1063,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       tickets: s.tickets.map((t) => (t.id === id ? { ...t, status: "closed" as const } : t)),
     }));
 
-  const sendPurchaseMessage = (purchaseId: number, from: string, text: string) =>
-    setState((s) => {
-      const nextPurchases = s.purchases.map((p) =>
-        p.id === purchaseId
-          ? { ...p, messages: [...(p.messages || []), { from, text, date: new Date().toISOString() }] }
-          : p
-      );
-      const updated = nextPurchases.find((p) => p.id === purchaseId);
-      if (updated) void (supabase as any).from("purchases").update({ messages: updated.messages }).eq("id", purchaseId);
-      return {
-      ...s,
-      purchases: nextPurchases,
-      };
+  const sendPurchaseMessage = async (purchaseId: number, _from: string, text: string) => {
+    const { data, error } = await supabase.functions.invoke("order-action", {
+      body: { orderId: purchaseId, action: "send_message", message: text },
     });
+    if (error || data?.error) return false;
+    await refreshPurchases();
+    return true;
+  };
 
   const confirmDelivery = async (purchaseId: number) => {
     const { data, error } = await supabase.functions.invoke("order-action", { body: { orderId: purchaseId, action: "confirm_delivery" } });
     if (error || data?.error) return false;
     await refreshPurchases();
     return true;
+  };
+
+  const confirmOrderReceipt = async (purchaseId: number) => {
+    const { data, error } = await supabase.functions.invoke("order-action", { body: { orderId: purchaseId, action: "confirm_receipt" } });
+    if (error || data?.error) return false;
+    await refreshPurchases();
+    return true;
+  };
+
+  const sellerRefundOrder = async (purchaseId: number, reason: string): Promise<{ success: boolean; error?: string }> => {
+    const res = await unwrapEdgeCall<{ success: boolean; error?: string; status?: string }>(
+      await supabase.functions.invoke("order-action", {
+        body: { orderId: purchaseId, action: "seller_refund", reason },
+      }),
+      "Não foi possível processar o reembolso. Tente novamente.",
+    );
+    if (res.errorMessage) {
+      return { success: false, error: res.errorMessage };
+    }
+    await refreshPurchases();
+    return { success: true };
   };
 
   const openDispute = async (purchaseId: number, reason: string) => {
@@ -918,13 +1107,64 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const reviewPurchase = (purchaseId: number, stars: number, comment: string) =>
+  const reviewPurchase = async (purchaseId: number, stars: number, comment: string): Promise<boolean> => {
+    const cleanComment = (comment || "").trim();
+    if (cleanComment.length < 3) {
+      toast.error("Escreva um comentário com pelo menos 3 caracteres.");
+      return false;
+    }
+    const { data: createdReview, error } = await (supabase as any).rpc("create_product_review", {
+      _purchase_id: purchaseId,
+      _stars: stars,
+      _comment: cleanComment,
+    });
+    if (error) {
+      // Detalhe técnico só no console; o usuário recebe texto seguro e fixo.
+      console.error("[zxmax:review]", error);
+      const code = String(error?.code ?? "");
+      const msg = code === "42501" ? "Faça login para avaliar."
+        : code === "P0001" ? "Só é possível avaliar após a confirmação do recebimento."
+        : code === "23505" ? "Você já avaliou este pedido."
+        : code === "22023" ? "Avaliação inválida. Confira as estrelas e o comentário."
+        : (error?.message || "Não foi possível enviar a avaliação. Tente novamente.");
+      toast.error(msg);
+      return false;
+    }
+    if (createdReview?.id) {
+      void supabase.functions.invoke("notify-product-event", { body: { eventType: "product_review", eventId: createdReview.id } });
+    }
+    // Atualiza o estado local imediatamente e re-lê o catálogo para os agregados.
     setState((s) => ({
       ...s,
       purchases: s.purchases.map((p) =>
-        p.id === purchaseId ? { ...p, reviewed: true, reviewStars: stars, reviewComment: comment } : p
+        p.id === purchaseId ? { ...p, reviewed: true, reviewStars: stars, reviewComment: cleanComment } : p
       ),
     }));
+    await loadCatalog();
+    return true;
+  };
+
+  const loadProductReviews = async (productId: number) => {
+    const { data, error } = await (supabase as any)
+      .from("product_reviews")
+      .select("id, stars, comment, created_at, buyer_id")
+      .eq("product_id", productId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error) {
+      console.error("[zxmax:reviews:load]", error);
+      return [];
+    }
+    const reviews = (data || []) as Array<{ id: number; stars: number; comment: string; created_at: string; buyer_id: string }>;
+    // Resolve nomes dos compradores a partir do diretório (sem expor e-mails).
+    return reviews.map((r) => ({
+      id: r.id,
+      stars: r.stars,
+      comment: r.comment,
+      createdAt: r.created_at,
+      buyerName: state.userDirectory?.[r.buyer_id]?.name || "Comprador",
+    }));
+  };
 
   const setGlobalNotice = (notice: string) => updateConfig({ globalNotice: notice });
 
@@ -982,48 +1222,39 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const deleteNotice = (id: number) =>
     setState((s) => ({ ...s, globalNotices: (s.globalNotices || []).filter((n) => n.id !== id) }));
 
-  const createUserTag = (name: string, color: string) => {
-    if (!name.trim()) return;
-    const tag: UserTag = { id: Date.now(), name: name.trim(), color };
-    setState((s) => ({ ...s, userTags: [...(s.userTags || []), tag] }));
+  const createUserTag = async (name: string, color: string) => {
+    const { error } = await (supabase as any).rpc("create_admin_user_tag", { _name: name.trim(), _color: color });
+    if (error) { console.warn("[zxmax:tags:create]", error); return false; }
+    await refreshUserTags();
+    return true;
   };
 
-  const deleteUserTag = (id: number) =>
-    setState((s) => {
-      const newAssignments: Record<string, number[]> = {};
-      Object.entries(s.userTagAssignments || {}).forEach(([email, ids]) => {
-        const filtered = ids.filter((tid) => tid !== id);
-        if (filtered.length) newAssignments[email] = filtered;
-      });
-      return {
-        ...s,
-        userTags: (s.userTags || []).filter((t) => t.id !== id),
-        userTagAssignments: newAssignments,
-      };
-    });
+  const deleteUserTag = async (id: string) => {
+    const { error } = await (supabase as any).rpc("delete_admin_user_tag", { _tag_id: id });
+    if (error) { console.warn("[zxmax:tags:delete]", error); return false; }
+    await refreshUserTags();
+    return true;
+  };
 
-  const assignUserTag = (email: string, tagId: number) =>
-    setState((s) => {
-      const current = s.userTagAssignments?.[email] || [];
-      if (current.includes(tagId)) return s;
-      return {
-        ...s,
-        userTagAssignments: { ...(s.userTagAssignments || {}), [email]: [...current, tagId] },
-      };
-    });
+  const assignUserTag = async (publicId: string, tagId: string) => {
+    const normalized = Number(publicId);
+    if (!Number.isSafeInteger(normalized) || normalized <= 0) return false;
+    const { error } = await (supabase as any).rpc("assign_admin_user_tag", { _public_id: normalized, _tag_id: tagId });
+    if (error) { console.warn("[zxmax:tags:assign]", error); return false; }
+    await refreshUserTags();
+    return true;
+  };
 
-  const unassignUserTag = (email: string, tagId: number) =>
-    setState((s) => {
-      const current = s.userTagAssignments?.[email] || [];
-      const filtered = current.filter((id) => id !== tagId);
-      const next = { ...(s.userTagAssignments || {}) };
-      if (filtered.length) next[email] = filtered;
-      else delete next[email];
-      return { ...s, userTagAssignments: next };
-    });
+  const unassignUserTag = async (publicId: string, tagId: string) => {
+    const normalized = Number(publicId);
+    if (!Number.isSafeInteger(normalized) || normalized <= 0) return false;
+    const { error } = await (supabase as any).rpc("unassign_admin_user_tag", { _public_id: normalized, _tag_id: tagId });
+    if (error) { console.warn("[zxmax:tags:unassign]", error); return false; }
+    await refreshUserTags();
+    return true;
+  };
 
   const verifyUser = async (userId: string): Promise<boolean> => {
-    // Try via admin-verify edge function (service_role) first
     try {
       const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "verify_user", userId } });
       if (!error && !data?.error) {
@@ -1037,30 +1268,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
         return true;
       }
-    } catch {}
-
-    // Fallback direct (requires RLS fix migration)
-    try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ is_verified_seller: true, verification_status: "approved", verification_notes: null } as any)
-        .eq("user_id", userId);
-      if (!error) {
-        setState(s => ({
-          ...s,
-          currentUser: s.currentUser?.id === userId ? { ...s.currentUser, isVerified: true } : s.currentUser,
-          userDirectory: {
-            ...(s.userDirectory || {}),
-            ...(s.userDirectory?.[userId] ? { [userId]: { ...s.userDirectory[userId], isVerified: true } } : {}),
-          },
-        }));
-        return true;
-      }
-      console.error("verifyUser direct error", error);
-      return false;
     } catch {
       return false;
     }
+    return false;
   };
 
   const submitSellerDocument = (filePath: string, fileName: string) => {
@@ -1070,29 +1281,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState(s => ({ ...s, sellerDocuments: [doc, ...(s.sellerDocuments || [])] }));
   };
 
-  const reviewSellerDocument = (documentId: string, status: "approved" | "rejected") => {
-    void (supabase as any).from("seller_documents").update({ status, reviewed_by: authUser?.id, reviewed_at: new Date().toISOString() }).eq("id", documentId);
-    setState(s => ({ ...s, sellerDocuments: (s.sellerDocuments || []).map(d => d.id === documentId ? { ...d, status } : d) }));
-  };
-
-  const saveGatewaySettings = async (settings: { evopayApiKey?: string; evopayMode?: string }): Promise<boolean> => {
-    const { data: existing } = await (supabase as any).from("app_settings").select("value").eq("key", "evopay").maybeSingle();
-    const value: Record<string, any> = { ...(existing?.value || {}) };
-    if (settings.evopayMode !== undefined) value.mode = settings.evopayMode;
-    if (settings.evopayApiKey !== undefined && settings.evopayApiKey !== "") value.apiKey = settings.evopayApiKey;
-    const { error } = await (supabase as any).from("app_settings").upsert({ key: "evopay", value }, { onConflict: "key" });
-    if (error) return false;
-    setState((s) => ({
-      ...s,
-      config: {
-        ...s.config,
-        evopayMode: (settings.evopayMode as any) ?? s.config.evopayMode,
-        evopayApiKey: settings.evopayApiKey ?? s.config.evopayApiKey,
-      },
-    }));
-    return true;
-  };
-
   const toggleDark = () => setIsDark((d) => !d);
 
   return (
@@ -1100,14 +1288,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       value={{
         state, login, logout, addProduct, updateProduct, approveProduct, rejectProduct, deleteProduct,
         refreshProducts: loadCatalog,
-        buyProduct, savePixCharge, refreshPurchases, markOrderDelivered, markPurchasePaid, approvePurchase, revertPurchase, requestWithdraw,
+        catalogStatus,
+        buyProduct, savePixCharge, refreshPurchases, markPurchasePaid, approvePurchase, revertPurchase, requestWithdraw,
         approveWithdraw, rejectWithdraw, updateConfig, updateProfile,
         banUser, unbanUser, addTicket, replyTicket, closeTicket, resolveTicket,
         setGlobalNotice, publishNotice, updatePixKey, sendAdminChat,
-        sendPurchaseMessage, confirmDelivery, openDispute, reviewPurchase,
+        sendPurchaseMessage, confirmDelivery, confirmOrderReceipt, sellerRefundOrder, openDispute, reviewPurchase, loadProductReviews,
         addProductQuestion, answerProductQuestion,
-        deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
-        verifyUser, saveGatewaySettings, submitSellerDocument, reviewSellerDocument, isDark, toggleDark,
+        deleteNotice, refreshUserTags, createUserTag, deleteUserTag, assignUserTag, unassignUserTag,
+        verifyUser, submitSellerDocument, isDark, toggleDark,
       }}
     >
       {children}

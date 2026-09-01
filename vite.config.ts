@@ -12,6 +12,20 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    // Preview local (Arena): permite servir um mock do Supabase na MESMA origem
+    // do dev server, evitando CORS/bloqueio de porta no navegador. Só é ativado
+    // com MOCK_SUPABASE_PROXY definido; produção não é afetada.
+    ...(process.env.MOCK_SUPABASE_PROXY
+      ? {
+          proxy: {
+            "/__sb": {
+              target: process.env.MOCK_SUPABASE_PROXY,
+              changeOrigin: true,
+              rewrite: (p: string) => p.replace(/^\/__sb/, ""),
+            },
+          },
+        }
+      : {}),
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {

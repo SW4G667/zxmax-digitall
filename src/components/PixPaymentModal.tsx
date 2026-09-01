@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { X, Copy, Check, Loader2 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -66,17 +67,6 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
           clearInterval(interval);
           onPaid();
 
-          // Trigger transactional emails (idempotent)
-          if (purchaseId) {
-            try {
-              await supabase.functions.invoke("send-email", {
-                body: { type: "purchase_confirmed", purchaseId },
-              });
-              await supabase.functions.invoke("send-email", {
-                body: { type: "new_sale", purchaseId },
-              });
-            } catch {}
-          }
         } else if (data?.status === "EXPIRED" || data?.status === "CANCELED" || data?.status === "FAILED") {
           clearInterval(interval);
           toast.error("O pagamento expirou ou foi cancelado. Gere um novo PIX.");
@@ -107,8 +97,6 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
     }
   };
 
-  const qrImg = charge.qrCodeUrl || `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(charge.qrCodeText)}`;
-
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-foreground/50 backdrop-blur-sm" onClick={onClose}>
       <div className="glass-card w-full max-w-md p-7 bg-card animate-fade-in-up max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -132,7 +120,9 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
             <p className="text-center text-xs text-muted-foreground mb-5">Escaneie o QR Code ou copie o código abaixo</p>
 
             <div className="flex justify-center mb-5">
-              <img src={qrImg} alt="QR Code PIX" className="w-56 h-56 rounded-2xl bg-white p-2 shadow-md" />
+              <div className="rounded-2xl bg-white p-3 shadow-md" role="img" aria-label="QR Code PIX gerado a partir do código de pagamento">
+                <QRCodeSVG value={charge.qrCodeText} size={224} level="M" includeMargin />
+              </div>
             </div>
 
             <div className="bg-muted rounded-xl p-3 mb-3">

@@ -12,7 +12,7 @@ export default function SupportView() {
   const [reply, setReply] = useState("");
   const [showNewTicket, setShowNewTicket] = useState(false);
 
-  const myTickets = state.tickets.filter((t) => t.userEmail === state.currentUser?.email);
+  const myTickets = state.tickets.filter((t) => t.userId === state.currentUser?.id);
   const active = myTickets.find((t) => t.id === selectedTicket);
 
   const handleCreate = () => {

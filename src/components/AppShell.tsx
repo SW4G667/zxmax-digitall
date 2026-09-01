@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Header from "@/components/Header";
 import SideMenu from "@/components/SideMenu";
 import BottomNav from "@/components/BottomNav";
 import ProfileModal from "@/components/ProfileModal";
 import AuthScreen from "@/components/AuthScreen";
+import SiteFooter from "@/components/SiteFooter";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 
@@ -29,14 +30,18 @@ export default function AppShell({ children }: Props) {
   const [authOpen, setAuthOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  useEffect(() => { if (!user) { setProfileOpen(false); setMenuOpen(false); } }, [user]);
+
   return (
     <div className="bg-gradient-page min-h-screen pb-24">
       <Header
         onProfileClick={() => setProfileOpen(true)}
         onAuthClick={() => setAuthOpen(true)}
         onMenuClick={() => setMenuOpen(true)}
+        menuOpen={menuOpen}
       />
       <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
+      <SiteFooter />
       <BottomNav />
       <SideMenu
         open={menuOpen}

@@ -1,55 +1,63 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useStore, Purchase } from "@/store/StoreContext";
 import { ShoppingBagEmoji, StarEmoji } from "@/components/CustomEmojis";
-import { Search, ShieldAlert, Copy, ArrowLeft, QrCode, MessageSquare, Eye, PackageCheck, CircleDot, CheckCircle2 } from "lucide-react";
+import { Search, ShieldAlert, Copy, ArrowLeft, QrCode, MessageSquare, Eye, PackageCheck, CircleDot, CheckCircle2, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import OrderChat from "@/components/OrderChat";
 import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
 import { supabase } from "@/integrations/supabase/client";
+import { unwrapEdgeCall } from "@/lib/edgeErrors";
+import { useAuth } from "@/hooks/useAuth";
+import { formatBRL } from "@/lib/catalog";
 
 const statusMap: Record<Purchase["status"], { label: string; cls: string }> = {
   pending: { label: "Aguardando pagamento", cls: "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30" },
   paid: { label: "Pago", cls: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" },
-  delivered: { label: "Entregue", cls: "bg-primary/20 text-primary border-primary/30" },
+  delivered_pending_confirmation: { label: "Entregue (Aguardando comprador)", cls: "bg-primary/20 text-primary border-primary/30" },
+  delivered: { label: "Concluído", cls: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" },
   dispute: { label: "Em disputa", cls: "bg-destructive/20 text-destructive border-destructive/30" },
   cancelled: { label: "Cancelado", cls: "bg-muted text-muted-foreground border-border" },
+  refunded: { label: "Reembolsado", cls: "bg-amber-500/20 text-amber-500 border-amber-500/30" },
 };
 
-const STAGES: { key: Purchase["status"] | "concluded"; label: string }[] = [
-  { key: "pending", label: "Pago" },       // 1) pagamento confirmado
-  { key: "paid", label: "Entregue" },      // 2) produto entregue
-  { key: "delivered", label: "Concluído" },// 3) comprador confirma
-  { key: "concluded", label: "Finalizado" },
-];
-
 function StageStepper({ status }: { status: Purchase["status"] }) {
-  const order: Purchase["status"][] = ["pending", "paid", "delivered", "dispute", "cancelled"];
-  let activeIdx = order.indexOf(status);
-  if (status === "cancelled" || status === "dispute") activeIdx = -1; // show warning state separately
+  if (status === "cancelled" || status === "dispute" || status === "refunded") return null;
+
+  const donePaid = status !== "pending";
+  const doneDelivered = status === "delivered_pending_confirmation" || status === "delivered";
+  const doneConcluded = status === "delivered";
+
   return (
     <div className="flex items-center gap-1 mt-2">
-      {["Pago", "Entregue", "Concluído"].map((label, i) => {
-        const done = activeIdx > i || (status === "delivered" && i <= 2);
-        const current = activeIdx === i;
-        return (
-          <div key={label} className="flex items-center gap-1 flex-1 min-w-0">
-            <div className={`flex items-center justify-center w-5 h-5 rounded-full border text-[10px] font-black shrink-0
-              ${done ? "bg-primary border-primary text-primary-foreground" : current ? "border-primary text-primary animate-pulse-ring" : "border-border text-muted-foreground"}`}>
-              {done ? <CheckCircle2 className="w-3 h-3" /> : i + 1}
-            </div>
-            <span className={`text-[10px] font-bold truncate ${done || current ? "text-foreground" : "text-muted-foreground"}`}>{label}</span>
-            {i < 2 && <div className={`h-[2px] flex-1 rounded-full ${done ? "bg-primary" : "bg-border"}`} />}
-          </div>
-        );
-      })}
+      <div className="flex items-center gap-1 flex-1 min-w-0">
+        <div className={`flex items-center justify-center w-5 h-5 rounded-full border text-[10px] font-black shrink-0 ${donePaid ? "bg-primary border-primary text-primary-foreground" : "border-border text-muted-foreground"}`}>
+          {donePaid ? <CheckCircle2 className="w-3 h-3" /> : "1"}
+        </div>
+        <span className={`text-[10px] font-bold truncate ${donePaid ? "text-foreground" : "text-muted-foreground"}`}>Pago</span>
+        <div className={`h-[2px] flex-1 rounded-full ${doneDelivered ? "bg-primary" : "bg-border"}`} />
+      </div>
+      <div className="flex items-center gap-1 flex-1 min-w-0">
+        <div className={`flex items-center justify-center w-5 h-5 rounded-full border text-[10px] font-black shrink-0 ${doneDelivered ? "bg-primary border-primary text-primary-foreground" : "border-border text-muted-foreground"}`}>
+          {doneDelivered ? <CheckCircle2 className="w-3 h-3" /> : "2"}
+        </div>
+        <span className={`text-[10px] font-bold truncate ${doneDelivered ? "text-foreground" : "text-muted-foreground"}`}>Entregue</span>
+        <div className={`h-[2px] flex-1 rounded-full ${doneConcluded ? "bg-primary" : "bg-border"}`} />
+      </div>
+      <div className="flex items-center gap-1 flex-1 min-w-0">
+        <div className={`flex items-center justify-center w-5 h-5 rounded-full border text-[10px] font-black shrink-0 ${doneConcluded ? "bg-primary border-primary text-primary-foreground" : "border-border text-muted-foreground"}`}>
+          {doneConcluded ? <CheckCircle2 className="w-3 h-3" /> : "3"}
+        </div>
+        <span className={`text-[10px] font-bold truncate ${doneConcluded ? "text-foreground" : "text-muted-foreground"}`}>Concluído</span>
+      </div>
     </div>
   );
 }
 
-export default function MyPurchasesView({ initialSelectedId }: { initialSelectedId?: number | null }) {
-  const { state, confirmDelivery, openDispute, reviewPurchase, savePixCharge, markPurchasePaid } = useStore();
+export default function MyPurchasesView({ initialSelectedId, initialScope = "all" }: { initialSelectedId?: number | null; initialScope?: "all" | "purchases" | "sales" }) {
+  const { state, confirmDelivery, openDispute, reviewPurchase, savePixCharge, refreshPurchases } = useStore();
+  const { sessionReady } = useAuth();
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(initialSelectedId || null);
 
@@ -58,6 +66,9 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
       setSelectedId(initialSelectedId);
     }
   }, [initialSelectedId]);
+  useEffect(() => {
+    setOrderScope(initialScope);
+  }, [initialScope]);
   const [disputeReason, setDisputeReason] = useState("");
   const [showDisputeForm, setShowDisputeForm] = useState(false);
   const [rating, setRating] = useState(5);
@@ -66,23 +77,98 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
   const [pixCharge, setPixCharge] = useState<PixCharge | null>(null);
   const [resumeId, setResumeId] = useState<number | null>(null);
   const [loadingPix, setLoadingPix] = useState<number | null>(null);
+  const [syncState, setSyncState] = useState<"loading" | "ready" | "error">("loading");
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [orderScope, setOrderScope] = useState<"all" | "purchases" | "sales">(initialScope);
+  const refreshPurchasesRef = useRef(refreshPurchases);
+  refreshPurchasesRef.current = refreshPurchases;
+
+  const refreshOrderList = useCallback(async (notify = false) => {
+    if (!sessionReady) {
+      setSyncState("loading");
+      return;
+    }
+    setSyncState("loading");
+    setSyncMessage(null);
+    const result = await refreshPurchasesRef.current();
+    if (!result.ok) {
+      setSyncState("error");
+      setSyncMessage(result.message || "Não foi possível atualizar seus pedidos agora.");
+      if (notify) toast.error("Não foi possível atualizar seus pedidos.");
+      return;
+    }
+    setSyncState("ready");
+    if (notify) toast.success("Pedidos atualizados.");
+  }, [sessionReady]);
+
+  // Segunda camada de defesa: a tela também atualiza ao ser aberta. Isso cobre
+  // navegação direta para /minhas-compras após o SDK terminar de restaurar o JWT.
+  useEffect(() => {
+    void refreshOrderList();
+  }, [refreshOrderList]);
 
   const visiblePurchases = state.currentUser?.isAdmin
     ? state.purchases
     : state.purchases.filter(
         (p) => p.buyerId === state.currentUser?.id || p.sellerId === state.currentUser?.id
       );
-  const filtered = visiblePurchases.filter((p) => {
+  const myPurchases = visiblePurchases.filter((p) => p.buyerId === state.currentUser?.id);
+  const mySales = visiblePurchases.filter((p) => p.sellerId === state.currentUser?.id);
+  const scopedPurchases = orderScope === "purchases"
+    ? myPurchases
+    : orderScope === "sales"
+      ? mySales
+      : visiblePurchases;
+  const availableScopes = [
+    { id: "all" as const, label: state.currentUser?.isAdmin ? "Todos" : "Todos", count: visiblePurchases.length },
+    ...(myPurchases.length ? [{ id: "purchases" as const, label: "Compras", count: myPurchases.length }] : []),
+    ...(mySales.length ? [{ id: "sales" as const, label: "Vendas", count: mySales.length }] : []),
+  ];
+  const q = search.trim().toLowerCase();
+  const filtered = scopedPurchases.filter((p) => {
+    if (!q) return true;
+    // Procura no nome do produto, ID e variação. O e-mail só integra a busca
+    // administrativa; participantes não precisam dele para localizar pedidos.
     const product = state.products.find((pr) => pr.id === p.productId);
-    return product?.name.toLowerCase().includes(search.toLowerCase());
+    const hay = [
+      product?.name || "",
+      String(p.id),
+      p.variationName || "",
+      String(p.buyerPublicId || ""),
+      String(p.sellerPublicId || ""),
+    ].join(" ").toLowerCase();
+    return hay.includes(q);
   }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const purchaseSummary = scopedPurchases.reduce(
+    (summary, purchase) => {
+      summary.total += 1;
+      if (purchase.status === "pending") summary.pending += 1;
+      if (["paid", "delivered_pending_confirmation"].includes(purchase.status)) summary.inProgress += 1;
+      if (purchase.status === "delivered") summary.done += 1;
+      summary.amount += Number.isFinite(purchase.amount) ? purchase.amount : 0;
+      return summary;
+    },
+    { total: 0, pending: 0, inProgress: 0, done: 0, amount: 0 },
+  );
 
   const selected = selectedId ? state.purchases.find((p) => p.id === selectedId) : null;
   const selectedProduct = selected ? state.products.find((p) => p.id === selected.productId) : null;
+  const selectedAsSeller = !!selected && selected.sellerId === state.currentUser?.id;
+  const selectedBuyer = selected ? state.userDirectory?.[selected.buyerId] : undefined;
+  const selectedCounterparty = selected
+    ? (selectedAsSeller
+      ? `Comprador: ${selectedBuyer?.name || "Usuário"} · #${selected.buyerPublicId || "—"}`
+      : `Vendedor: ${selectedProduct?.seller || "—"}`)
+    : "";
 
   const handlePayPix = async (purchase: Purchase, e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (!state.currentUser) return;
+    const provider = purchase.paymentProvider || "zennith_pix";
+    if (provider !== "zennith_pix" && provider !== "vexopay_pix") {
+      toast.error("Este pedido não pode ser retomado como PIX. Volte ao método de pagamento original.");
+      return;
+    }
     const product = state.products.find((p) => p.id === purchase.productId);
     const expired = purchase.pixExpiresAt ? new Date(purchase.pixExpiresAt).getTime() < Date.now() : true;
     setResumeId(purchase.id);
@@ -94,16 +180,27 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
     // Generate a new Pix
     setLoadingPix(purchase.id);
     try {
-      const { data, error } = await supabase.functions.invoke("create-evopay-pix", {
-        body: {
-          purchaseId: purchase.id,
-          productName: purchase.variationName ? `${product?.name} - ${purchase.variationName}` : product?.name,
-          amount: purchase.amount,
-          buyerEmail: state.currentUser.email,
-          buyerName: state.currentUser.name,
-        },
-      });
-      if (error) throw error;
+      const res = await unwrapEdgeCall<{ id: string; qrCodeText: string; qrCodeUrl?: string; expiresAt?: string; amount?: number }>(
+        await supabase.functions.invoke(
+          provider === "vexopay_pix" ? "create-evopay-pix" : "create-zennith-pix",
+          {
+            body: provider === "vexopay_pix"
+              ? { purchaseId: purchase.id }
+              : {
+                purchaseId: purchase.id,
+                productName: purchase.variationName ? `${product?.name} - ${purchase.variationName}` : product?.name,
+              },
+          },
+        ),
+        "Erro ao gerar PIX.",
+      );
+      if (res.errorMessage) {
+        if (res.status === 404 || /not found/i.test(res.errorMessage)) {
+          throw new Error("PIX temporariamente indisponível. Avise o suporte.");
+        }
+        throw new Error(res.errorMessage);
+      }
+      const data = res.data;
       if (data?.qrCodeText) {
         savePixCharge(purchase.id, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
         setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? purchase.amount, qrCodeUrl: data.qrCodeUrl, purchaseId: purchase.id });
@@ -118,14 +215,8 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
   };
 
   const handlePixPaid = async () => {
-    if (resumeId != null) markPurchasePaid(resumeId);
-    toast.success("Pagamento confirmado!");
-    if (resumeId) {
-      try {
-        await supabase.functions.invoke("send-email", { body: { type: "purchase_confirmed", purchaseId: resumeId } });
-        await supabase.functions.invoke("send-email", { body: { type: "new_sale", purchaseId: resumeId } });
-      } catch {}
-    }
+    void refreshPurchases();
+    toast.success("Pagamento confirmado. Atualizando o pedido...");
   };
 
   const handleDispute = async () => {
@@ -140,14 +231,16 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
     setDisputeReason("");
   };
 
-  const handleReview = () => {
+  const handleReview = async () => {
     if (!selectedId || !comment.trim()) {
       toast.error("Por favor, escreva um comentário.");
       return;
     }
-    reviewPurchase(selectedId, rating, comment);
-    toast.success("Avaliação enviada!");
-    setShowReview(false);
+    const ok = await reviewPurchase(selectedId, rating, comment);
+    if (ok) {
+      toast.success("Avaliação enviada!");
+      setShowReview(false);
+    }
   };
 
   const handleConfirm = async () => {
@@ -173,8 +266,10 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
             <h3 className="font-bold text-foreground truncate">{selectedProduct.name}</h3>
             <p className="text-xs text-muted-foreground">
               {state.currentUser?.isAdmin
-                ? `Comprador: ${selected.buyerEmail} · Vendedor: ${selected.sellerEmail}`
-                : <>Vendedor: <span className="text-primary font-semibold">{selectedProduct.seller}</span></>}
+                ? `Comprador #${selected.buyerPublicId || "—"} · Vendedor #${selected.sellerPublicId || "—"}`
+                : selectedAsSeller
+                  ? selectedCounterparty
+                  : <>Vendedor: <span className="text-primary font-semibold">{selectedProduct.seller}</span></>}
             </p>
             <p className="text-sm font-black text-foreground mt-0.5">R$ {selected.amount.toFixed(2)}</p>
           </div>
@@ -284,13 +379,66 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
 
   return (
     <div className="animate-fade-in-up">
-      <div className="mb-10">
-        <div className="flex items-center gap-3 mb-2">
-          <h1 className="text-3xl md:text-4xl font-black text-foreground">Minhas Compras</h1>
-          <ShoppingBagEmoji className="w-8 h-8" />
+      <div className="mb-7">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <h1 className="text-3xl md:text-4xl font-black text-foreground">Meus pedidos</h1>
+              <ShoppingBagEmoji className="w-8 h-8" />
+            </div>
+            <p className="text-muted-foreground">Acompanhe suas compras e vendas, com status, entrega e chat protegido por pedido.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void refreshOrderList(true)} disabled={syncState === "loading"} className="shrink-0 gap-2">
+            {syncState === "loading" ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Atualizar
+          </Button>
         </div>
-        <p className="text-muted-foreground">Acompanhe seus pedidos e acesse seus produtos.</p>
       </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5" aria-label="Resumo dos pedidos">
+        {[
+          ["Total", purchaseSummary.total, "text-foreground"],
+          ["Aguardando pagamento", purchaseSummary.pending, "text-yellow-600 dark:text-yellow-400"],
+          ["Em andamento", purchaseSummary.inProgress, "text-primary"],
+          ["Concluídos", purchaseSummary.done, "text-emerald-600 dark:text-emerald-400"],
+          ["Valor no recorte", formatBRL(purchaseSummary.amount), "text-foreground"],
+        ].map(([label, value, color]) => (
+          <div key={String(label)} className="rounded-2xl border border-border/50 bg-card/70 px-4 py-3">
+            <p className="text-[10px] uppercase tracking-wide font-bold text-muted-foreground truncate">{label}</p>
+            <p className={`mt-1 text-2xl leading-none font-black ${color}`}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {syncState === "error" && (
+        <div role="alert" className="mb-5 flex items-start justify-between gap-4 rounded-2xl border border-destructive/30 bg-destructive/5 p-4">
+          <div>
+            <p className="font-bold text-sm text-foreground">Não foi possível sincronizar os pedidos agora.</p>
+            <p className="mt-1 text-xs text-muted-foreground">{syncMessage} A lista anterior foi preservada. Tente atualizar novamente.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void refreshOrderList(true)} className="shrink-0">Tentar de novo</Button>
+        </div>
+      )}
+
+      {availableScopes.length > 1 && (
+        <div className="mb-5 flex items-center gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Tipo de pedido">
+          {availableScopes.map((scope) => {
+            const active = orderScope === scope.id;
+            return (
+              <button
+                key={scope.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setOrderScope(scope.id)}
+                className={`shrink-0 rounded-xl border px-3.5 py-2 text-xs font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${active ? "border-primary/40 bg-primary/15 text-primary" : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/30"}`}
+              >
+                {scope.label} <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-primary/20" : "bg-muted"}`}>{scope.count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="bg-card rounded-2xl px-4 py-3 mb-8 border border-border/40 flex items-center gap-3">
         <Search className="w-4 h-4 text-muted-foreground" />
@@ -298,8 +446,15 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
       </div>
 
       <div className="grid gap-4">
+        {syncState === "loading" && scopedPurchases.length === 0 && (
+          <div className="glass-card p-8 flex items-center gap-3 text-muted-foreground" role="status">
+            <Loader2 className="w-5 h-5 animate-spin text-primary" />
+            <span className="text-sm font-medium">Sincronizando seus pedidos com segurança...</span>
+          </div>
+        )}
         {filtered.map((p) => {
           const prod = state.products.find((pr) => pr.id === p.productId);
+          const buyer = state.userDirectory?.[p.buyerId];
           return (
             <div key={p.id} className="glass-card p-4 sm:p-5 hover:border-primary/40 transition">
               <div className="flex items-start gap-4">
@@ -310,6 +465,7 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
                       <h4 className="font-bold text-foreground truncate">{prod?.name}</h4>
                       {p.variationName && <p className="text-[10px] text-primary font-bold">Opção: {p.variationName}</p>}
                       <p className="text-xs text-muted-foreground mt-0.5">Pedido #{p.id} · {new Date(p.createdAt).toLocaleDateString("pt-BR")}</p>
+                      {p.sellerId === state.currentUser?.id && <p className="text-[11px] text-primary mt-1">Comprador: {buyer?.name || "Usuário"} · #{p.buyerPublicId || "—"}</p>}
                     </div>
                     <Badge className={`${statusMap[p.status].cls} shrink-0`}>{statusMap[p.status].label}</Badge>
                   </div>
@@ -356,13 +512,18 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
           );
         })}
 
-        {filtered.length === 0 && (
+        {syncState !== "loading" && filtered.length === 0 && (
           <div className="text-center py-20 bg-card rounded-3xl border-2 border-dashed border-border">
             <p className="text-3xl mb-3">🛍️</p>
-            <p className="text-muted-foreground font-medium">Você ainda não fez nenhuma compra.</p>
+            <p className="text-muted-foreground font-medium">{search ? "Nenhum pedido corresponde à sua busca." : orderScope === "sales" ? "Você ainda não tem vendas neste perfil." : orderScope === "purchases" ? "Você ainda não tem compras neste perfil." : "Você ainda não tem pedidos vinculados a esta conta."}</p>
           </div>
         )}
       </div>
+
+      {/* The pending-payment CTA can be used from the compact list without
+          selecting an order first. Keep this modal mounted in that branch too;
+          otherwise a successful PIX response only updated invisible state. */}
+      <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
     </div>
   );
 }

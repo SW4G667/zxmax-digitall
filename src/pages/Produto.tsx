@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useStore, ProductVariation, Product } from "@/store/StoreContext";
-import { Shield, CheckCircle, Zap, Star, MessageSquare, Share2, Flag, Heart, ShoppingCart, Send, Eye, Minus, Plus, ThumbsUp, BadgeCheck, Clock, Package, CreditCard, Bitcoin } from "lucide-react";
+import { Shield, CheckCircle, Zap, Star, MessageSquare, Share2, Flag, Heart, Send, Eye, Minus, Plus, ThumbsUp, BadgeCheck, Clock, Package, CreditCard, Bitcoin, Expand, Search, X, Coins } from "lucide-react";
 import { toast } from "sonner";
 import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
 import AuthScreen from "@/components/AuthScreen";
@@ -9,122 +9,197 @@ import UserProfileModal from "@/components/UserProfileModal";
 import AppShell from "@/components/AppShell";
 import useFavorites from "@/hooks/useFavorites";
 import { supabase } from "@/integrations/supabase/client";
+import { formatBRL, formatRobuxPackage, formatRobuxUnitPrice, formatStockLabel, productMinQuantity, productStock, ROBUX_CATEGORY, robuxPackageUnits, unitPriceFromPackage } from "@/lib/catalog";
+import CryptoPaymentModal, { CryptoCharge } from "@/components/CryptoPaymentModal";
+import { unwrapEdgeCall } from "@/lib/edgeErrors";
+import { checkoutMethods, classifyPaymentMethods, paymentMethodsNotice, PaymentMethodsState } from "@/lib/paymentMethods";
+import { friendlyQuestionError, isSchemaMissing } from "@/lib/questionErrors";
+import { containsExternalContact } from "@/lib/externalContact";
 
-// Eldorado-style seller row
+// Linha de oferta de vendedor do mercado de Robux.
 interface SellerOffer {
   id: number;
   product: Product;
   pricePerUnit: number;
-  stock: number;
+  packageUnits: number;
+  packagePrice: number;
+  stock: number | null;
   minQty: number;
   delivery: string;
   sellerName: string;
   sellerId: string;
   rating: number;
   reviews: number;
+  positivePct: number;
   verified: boolean;
 }
 
-function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePercent }: { product: Product; quantity: number; onClose: () => void; onConfirm: (method: string, cpf: string) => void; loading: boolean; feePercent: number }) {
-  const [method, setMethod] = useState<"pix" | "crypto" | "card" | "boleto">("pix");
-  const [cpf, setCpf] = useState("");
-  const [available, setAvailable] = useState<Record<string, boolean>>({ pix: true, crypto: true, card: true, boleto: true });
-  const unitPrice = product.price;
-  const subtotal = unitPrice * quantity;
-  const fee = subtotal * (feePercent / 100);
-  const total = subtotal + fee;
+type CheckoutMethod = "zennith_pix" | "vexopay_pix" | "crypto" | "card" | "boleto";
 
+const METHOD_ORDER: CheckoutMethod[] = ["zennith_pix", "vexopay_pix", "crypto", "card", "boleto"];
+
+function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConfirm, loading }: { product: Product; quantity: number; unitPrice: number; subtotal: number; onClose: () => void; onConfirm: (method: string, cpf: string, network?: string) => void; loading: boolean }) {
+  // Sem método selecionado até sabermos o que está ativo: nunca deixamos PIX
+  // "escolhido" visualmente quando ele não está disponível.
+  const [method, setMethod] = useState<CheckoutMethod | null>(null);
+  const [cpf, setCpf] = useState("");
+  const [methodsState, setMethodsState] = useState<PaymentMethodsState>({ status: "loading" });
+  const [methodsRetry, setMethodsRetry] = useState(0);
+  const [network, setNetwork] = useState("TRC20");
+  const fee = method && methodsState.status === "ok" ? Number(methodsState.fees[method] || 0) : 0;
+  const total = Math.round((subtotal + fee) * 100) / 100;
+
+  // Pergunta ao servidor quais meios estão REALMENTE configurados. Falhas de
+  // consulta (função antiga publicada, settings ilegíveis, rede) NÃO viram
+  // "tudo indisponível": cada causa tem estado e mensagem próprios.
   useEffect(() => {
-    // Check gateway health - if fails, mark as unavailable
-    const checkHealth = async () => {
-      try {
-        const { data } = await supabase.functions.invoke("integrations-config", { body: { action: "get" } });
-        const evopayOk = !!data?.integrations?.evopay?.apiKey_masked || !!data?.integrations?.vexopay?.clientId;
-        const stripeOk = !!data?.integrations?.stripe?.secretKey_masked;
-        setAvailable({
-          pix: evopayOk || true, // PIX fallback true, will show error if fails
-          crypto: !!data?.integrations?.vexopay?.clientId || !!data?.integrations?.vexopay?.clientId_masked || true,
-          card: stripeOk || true,
-          boleto: stripeOk || true,
-        });
-      } catch {
-        // Keep all available, will handle error on confirm
-      }
-    };
-    void checkHealth();
-  }, []);
+    let active = true;
+    void (async () => {
+      const result = await unwrapEdgeCall<{ methods?: Record<string, boolean>; v?: number }>(
+        await supabase.functions.invoke("integrations-config", { body: { action: "payment_methods" } }),
+        "Não foi possível consultar as formas de pagamento.",
+      );
+      if (!active) return;
+      const next = classifyPaymentMethods(result);
+      if (!active) return;
+      setMethodsState(next);
+    })();
+    return () => { active = false; };
+  }, [methodsRetry]);
+
+  const loadingMethods = methodsState.status === "loading";
+  const available = checkoutMethods(methodsState);
+  const isAvailable = (id: CheckoutMethod) => !!available?.[id];
+  const anyMethod = !!available && Object.values(available).some(Boolean);
+  const notice = paymentMethodsNotice(methodsState);
+
+  // Só escolhe automaticamente quando existe algo realmente ativo.
+  useEffect(() => {
+    if (!available) return;
+    if (method && available[method]) return;
+    const first = METHOD_ORDER.find((m) => available[m]);
+    setMethod(first ?? null);
+  }, [available, method]);
 
   const handleConfirm = () => {
+    if (!method || !isAvailable(method)) {
+      toast.error("Nenhuma forma de pagamento disponível para este pedido agora.");
+      return;
+    }
     const cleanCpf = cpf.replace(/\D/g, "");
-    if (method === "pix" || method === "crypto") {
+    if (method === "zennith_pix" || method === "vexopay_pix" || method === "crypto") {
       if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
         toast.error("Digite um CPF/CNPJ válido (11 ou 14 dígitos) para PIX/Crypto");
         return;
       }
     }
-    onConfirm(method, cleanCpf);
+    onConfirm(method, cleanCpf, method === "crypto" ? network : undefined);
   };
 
+  const methodButtons: Array<{ id: CheckoutMethod; label: string; icon: React.ReactNode; selectedClass: string }> = [
+    { id: "zennith_pix", label: "PIX", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-[#0084ff] border-[#0084ff] text-white" },
+    { id: "vexopay_pix", label: "PIX", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-[#0084ff] border-[#0084ff] text-white" },
+    { id: "crypto", label: "Crypto", icon: <Bitcoin className="w-5 h-5" />, selectedClass: "bg-[#ffbd2e] border-[#ffbd2e] text-black" },
+    { id: "card", label: "Cartão", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-white border-white text-black" },
+    { id: "boleto", label: "Boleto", icon: <Package className="w-5 h-5" />, selectedClass: "bg-white border-white text-black" },
+  ];
+  const visibleMethodButtons = methodButtons.filter(({ id }) => {
+    // A disponibilidade definitiva já aplica precedência no contrato; durante
+    // o carregamento, também evitamos desenhar duas opções PIX provisórias.
+    if (loadingMethods) return id !== "vexopay_pix";
+    return isAvailable(id);
+  });
+
   return (
-    <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#15151a] border border-[#25252e] rounded-2xl w-full max-w-md overflow-hidden animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
-        <div className="p-6 border-b border-[#1e1e28]">
+    <div role="dialog" aria-modal="true" aria-label="Checkout ZXMAX" className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-[#15151a] border border-[#25252e] rounded-2xl w-full max-w-md overflow-y-auto overscroll-contain max-h-[calc(100dvh-2rem)] animate-fade-in-up my-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-6 border-b border-[#1e1e28] sticky top-0 bg-[#15151a] z-10">
           <h3 className="font-black text-white text-lg">Checkout ZXMAX</h3>
-          <p className="text-xs text-white/40 mt-1">{product.name} • {quantity} unidades • {method.toUpperCase()}</p>
+          <p className="text-xs text-white/40 mt-1">{product.name} • {quantity.toLocaleString("pt-BR")} {product.category === ROBUX_CATEGORY ? "Robux" : "un."}</p>
         </div>
-        
+
         <div className="p-6 space-y-5">
           <div>
             <p className="text-xs font-bold uppercase text-white/30 mb-2">Forma de pagamento</p>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setMethod("pix")} disabled={!available.pix} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "pix" ? "bg-[#0084ff] border-[#0084ff] text-white" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${!available.pix ? "opacity-40 cursor-not-allowed" : ""}`}>
-                <CreditCard className="w-5 h-5" />
-                <span className="text-xs font-bold">PIX</span>
-                {!available.pix && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
-              </button>
-              <button onClick={() => setMethod("crypto")} disabled={!available.crypto} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "crypto" ? "bg-[#ffbd2e] border-[#ffbd2e] text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${!available.crypto ? "opacity-40 cursor-not-allowed" : ""}`}>
-                <Bitcoin className="w-5 h-5" />
-                <span className="text-xs font-bold">Crypto</span>
-                {!available.crypto && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
-              </button>
-              <button onClick={() => setMethod("card")} disabled={!available.card} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "card" ? "bg-white border-white text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${!available.card ? "opacity-40 cursor-not-allowed" : ""}`}>
-                <CreditCard className="w-5 h-5" />
-                <span className="text-xs font-bold">Cartão (Stripe)</span>
-                {!available.card && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
-              </button>
-              <button onClick={() => setMethod("boleto")} disabled={!available.boleto} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${method === "boleto" ? "bg-white border-white text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${!available.boleto ? "opacity-40 cursor-not-allowed" : ""}`}>
-                <Package className="w-5 h-5" />
-                <span className="text-xs font-bold">Boleto (Stripe)</span>
-                {!available.boleto && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
-              </button>
+              {visibleMethodButtons.map(({ id, label, icon, selectedClass }) => {
+                const selectable = !loadingMethods && isAvailable(id);
+                const selected = selectable && method === id;
+                return (
+                  <button
+                    key={id}
+                    onClick={() => selectable && setMethod(id)}
+                    disabled={!selectable}
+                    aria-pressed={selected}
+                    className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition relative ${selected ? selectedClass : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"} ${selectable ? "" : "opacity-40 cursor-not-allowed"}`}
+                  >
+                    {icon}
+                    <span className="text-xs font-bold">{label}</span>
+                    {!loadingMethods && methodsState.status === "ok" && !isAvailable(id) && <span className="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1 rounded">Indisponível</span>}
+                  </button>
+                );
+              })}
             </div>
-            <p className="text-[10px] text-white/30 mt-2">Se alguma forma estiver com problemas, fica indisponível automaticamente. Configure credenciais Stripe em Admin → APIs.</p>
+            {loadingMethods ? (
+              <p className="text-[10px] text-white/30 mt-2" aria-live="polite">Verificando formas de pagamento disponíveis…</p>
+            ) : notice ? (
+              <div className="mt-2 flex items-start justify-between gap-3">
+                <p className="text-[11px] text-[#ffbd2e]" aria-live="polite" role="status">{notice.message}</p>
+                {notice.retryable && (
+                  <button onClick={() => setMethodsRetry((n) => n + 1)} className="shrink-0 text-[11px] font-bold text-[#5aaeff] hover:text-white">Tentar novamente</button>
+                )}
+              </div>
+            ) : (
+              <p className="text-[10px] text-white/30 mt-2">Só aparecem habilitadas as formas realmente configuradas na plataforma.</p>
+            )}
           </div>
 
-          <div>
-            <p className="text-xs font-bold uppercase text-white/30 mb-2">CPF para pagamento</p>
-            <input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />
-            <p className="text-[10px] text-white/30 mt-1">Obrigatório para PIX e Crypto (VexoPay exige documento)</p>
-          </div>
+          {anyMethod && (
+            <div>
+              <p className="text-xs font-bold uppercase text-white/30 mb-2">CPF para pagamento{method === "card" || method === "boleto" ? " (opcional)" : ""}</p>
+              <input value={cpf} onChange={(e) => setCpf(e.target.value)} inputMode="numeric" placeholder="000.000.000-00" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />
+              <p className="text-[10px] text-white/30 mt-1">Obrigatório para PIX e Crypto</p>
+            </div>
+          )}
 
           <div className="bg-[#0a0a0f] border border-[#1e1e28] rounded-xl p-4 space-y-2">
-            <div className="flex justify-between text-xs"><span className="text-white/40">Preço unitário</span><span className="text-white">R$ {unitPrice.toFixed(5)} / un</span></div>
+            <div className="flex justify-between text-xs"><span className="text-white/40">Preço unitário</span><span className="text-white">{formatBRL(unitPrice * (product.category === ROBUX_CATEGORY ? robuxPackageUnits(product) : 1))} / {product.category === ROBUX_CATEGORY ? `${robuxPackageUnits(product).toLocaleString("pt-BR")} Robux` : "un."}</span></div>
             <div className="flex justify-between text-xs"><span className="text-white/40">Quantidade</span><span className="text-white">{quantity}</span></div>
-            <div className="flex justify-between text-xs"><span className="text-white/40">Subtotal</span><span className="text-white">R$ {subtotal.toFixed(2)}</span></div>
-            <div className="flex justify-between text-xs"><span className="text-white/40">Taxa plataforma ({feePercent}%)</span><span className="text-[#ffbd2e]">+ R$ {fee.toFixed(2)}</span></div>
+            <div className="flex justify-between text-xs"><span className="text-white/40">Subtotal</span><span className="text-white">{formatBRL(subtotal)}</span></div>
+            {method === "crypto" && (
+              <div>
+                <p className="text-xs font-bold uppercase text-white/30 mb-2">Rede</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {["TRC20", "USDC_TRC20", "BTC", "TRX"].map((net) => (
+                    <button key={net} type="button" onClick={() => setNetwork(net)} className={`p-2 rounded-xl border text-xs font-bold ${network === net ? "bg-[#ffbd2e] border-[#ffbd2e] text-black" : "bg-[#1a1a20] border-[#25252e] text-white/60"}`}>
+                      {net === "TRC20" ? "USDT TRC20" : net.replace("_", " ")}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-between text-xs"><span className="text-white/40">Taxa do método</span><span className="text-[#ffbd2e]">+ {formatBRL(fee)}</span></div>
             <div className="h-px bg-[#1e1e28] my-2" />
-            <div className="flex justify-between font-black"><span className="text-white">Total</span><span className="text-white text-lg">R$ {total.toFixed(2)}</span></div>
-            <p className="text-[10px] text-white/30">Taxa vai para o admin. Produto continua R$ {subtotal.toFixed(2)} para o vendedor.</p>
+            <div className="flex justify-between font-black"><span className="text-white">Total</span><span className="text-white text-lg">{formatBRL(total)}</span></div>
+            <p className="text-[10px] text-white/30">A taxa é definida para o método selecionado. O vendedor recebe {formatBRL(subtotal)}.</p>
           </div>
 
-          <button onClick={handleConfirm} disabled={loading} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 transition">
-            {loading ? "Processando..." : method === "pix" ? "Pagar com PIX" : "Pagar com Crypto"}
+          <button onClick={handleConfirm} disabled={loading || loadingMethods || !method || !isAvailable(method)} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
+            {loading ? "Processando..."
+              : !anyMethod && !loadingMethods ? "Nenhuma forma disponível"
+              : method === "zennith_pix" || method === "vexopay_pix" ? "Pagar com PIX"
+              : method === "crypto" ? "Pagar com cripto"
+              : method === "boleto" ? "Gerar boleto"
+              : "Pagar com cartão"}
           </button>
 
           <div className="flex items-center justify-center gap-4 text-[11px] text-white/30">
-            <span className="flex items-center gap-1"><Shield className="w-3 h-3 text-[#00c950]" /> Garantia</span>
-            <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-[#ffbd2e]" /> Rápido</span>
-            <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-[#0084ff]" /> 24h</span>
+            <span className="flex items-center gap-1"><Shield className="w-3 h-3 text-[#00c950]" /> Pedido protegido</span>
+            <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-[#0084ff]" /> Acompanhe pelo pedido</span>
           </div>
         </div>
       </div>
@@ -135,7 +210,7 @@ function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePerc
 export default function ProdutoPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { state, addProductQuestion, buyProduct, refreshPurchases, savePixCharge } = useStore();
+  const { state, buyProduct, refreshPurchases, savePixCharge, catalogStatus, refreshProducts, loadProductReviews, addProductQuestion, answerProductQuestion } = useStore();
   const { isFavorite, toggle } = useFavorites();
   const [selectedVariation, setSelectedVariation] = useState<ProductVariation | null>(null);
   const [detailTab, setDetailTab] = useState<"info" | "reviews" | "questions">("info");
@@ -144,35 +219,57 @@ export default function ProdutoPage() {
   const [authOpen, setAuthOpen] = useState(false);
   const [buyLoading, setBuyLoading] = useState(false);
   const [pixCharge, setPixCharge] = useState<PixCharge | null>(null);
+  const [cryptoCharge, setCryptoCharge] = useState<CryptoCharge | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [quantity, setQuantity] = useState(2000);
+  const [quantity, setQuantity] = useState(1);
+  const [quantityDraft, setQuantityDraft] = useState("1");
   const [sortBy, setSortBy] = useState<"recomendado" | "barato" | "min">("barato");
+  const [variationOpen, setVariationOpen] = useState(false);
+  const [variationSearch, setVariationSearch] = useState("");
+  const [imageOpen, setImageOpen] = useState(false);
+  const [remoteQuestions, setRemoteQuestions] = useState<Array<{ id: number; body: string; answer: string | null; created_at: string; answered_at: string | null }>>([]);
+  const [questionsStatus, setQuestionsStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [questionsShown, setQuestionsShown] = useState(5);
+  const [sendingQuestion, setSendingQuestion] = useState(false);
+  const [answerDrafts, setAnswerDrafts] = useState<Record<number, string>>({});
+  const [sendingAnswer, setSendingAnswer] = useState<number | null>(null);
+  const [realReviews, setRealReviews] = useState<Array<{ id: number; stars: number; comment: string; createdAt: string; buyerName: string }>>([]);
+  const [reviewsStatus, setReviewsStatus] = useState<"loading" | "ready" | "unavailable">("loading");
 
   const productId = Number(id);
   const product = state.products.find((p) => p.id === productId);
+  const publicSellerId = product
+    ? (product.sellerPublicId || state.userDirectory?.[product.sellerId]?.publicId || null)
+    : null;
+  const sellerIdentityReady = Boolean(publicSellerId);
 
-  const isRobux = product?.category === "Robux e Gift Cards";
+  const isRobux = product?.category === ROBUX_CATEGORY;
 
   // For Robux, aggregate all sellers in same category as offers
   const sellerOffers: SellerOffer[] = useMemo(() => {
     if (!isRobux) return [];
-    const robuxProducts = state.products.filter((p) => p.category === "Robux e Gift Cards" && p.approved);
+    const robuxProducts = state.products.filter((p) => p.category === ROBUX_CATEGORY && p.approved && (p.sellerPublicId || state.userDirectory?.[p.sellerId]?.publicId));
     const offers: SellerOffer[] = robuxProducts.map((p) => {
-      // Real reviews from purchases, not fake 100
-      const realReviews = state.purchases.filter((pu) => pu.productId === p.id && pu.reviewed);
-      const realRating = realReviews.length > 0 ? realReviews.reduce((a, r) => a + (r.reviewStars || 0), 0) / realReviews.length : 0;
+      // Real review aggregates persisted on the product row (reviews migration);
+      // before it exists these are undefined and the UI shows "Novo • 0 avaliações".
+      const reviewCount = p.reviewCount ?? 0;
+      const rating = reviewCount > 0 ? Number((p.reviewAvg ?? 0).toFixed(1)) : 0;
+      const positivePct = reviewCount > 0 && p.reviewPositive ? Math.round((p.reviewPositive / reviewCount) * 100) : 0;
       return {
         id: p.id,
         product: p,
-        pricePerUnit: p.price,
-        stock: p.stock || 500,
-        minQty: p.minQuantity || 100,
-        delivery: p.deliveryTime || "11 min - 1 h",
+        pricePerUnit: unitPriceFromPackage(p),
+        packageUnits: robuxPackageUnits(p),
+        packagePrice: p.price,
+        stock: productStock(p),
+        minQty: productMinQuantity(p) ?? robuxPackageUnits(p),
+        delivery: p.deliveryTime || "Combinado com o vendedor",
         sellerName: p.seller,
         sellerId: p.sellerId,
-        rating: realReviews.length > 0 ? Number((realRating * 20).toFixed(1)) : 0, // 0 until someone reviews
-        reviews: realReviews.length, // 0 initially, not 100 fake
-        verified: true,
+        rating,
+        reviews: reviewCount,
+        positivePct,
+        verified: !!state.userDirectory?.[p.sellerId]?.isVerified,
       };
     });
     // Sort
@@ -180,126 +277,230 @@ export default function ProdutoPage() {
     else if (sortBy === "min") offers.sort((a, b) => a.minQty - b.minQty);
     else offers.sort((a, b) => b.reviews - a.reviews);
     return offers;
-  }, [state.products, isRobux, sortBy, state.purchases]);
+  }, [state.products, state.userDirectory, isRobux, sortBy, state.purchases]);
 
   const currentOffer = useMemo(() => {
     if (!isRobux) return null;
-    return sellerOffers.find((o) => o.id === productId) || sellerOffers[0];
+    // Nunca substitua uma rota de anúncio órfão pela primeira oferta válida:
+    // isso faria a página exibir preço e vendedor de outra pessoa.
+    return sellerOffers.find((o) => o.id === productId) ?? null;
   }, [sellerOffers, productId, isRobux]);
 
-  const productReviews = useMemo(() => {
-    if (!product) return [];
-    return state.purchases.filter((p) => p.productId === product.id && p.reviewed);
-  }, [product, state.purchases]);
+  // A Robux offer is bought in units. Start at the real minimum whenever the
+  // buyer changes offer, rather than presenting an invalid quantity of 1.
+  useEffect(() => {
+    if (!isRobux || !currentOffer) return;
+    setQuantity((current) => {
+      const normalized = currentOffer.stock != null
+        ? Math.min(Math.max(currentOffer.minQty, current), currentOffer.stock)
+        : Math.max(currentOffer.minQty, current);
+      setQuantityDraft(String(normalized));
+      return normalized;
+    });
+  }, [currentOffer?.id, currentOffer?.minQty, currentOffer?.stock, isRobux]);
 
-  const avgRating = productReviews.length > 0 ? (productReviews.reduce((a, r) => a + (r.reviewStars || 0), 0) / productReviews.length).toFixed(1) : null;
-  const productQuestions = product?.questions || [];
+  const applyRobuxQuantity = (candidate: number) => {
+    if (!currentOffer) return;
+    const lowerBound = currentOffer.minQty;
+    const upperBound = currentOffer.stock ?? Number.MAX_SAFE_INTEGER;
+    const parsed = Number.isFinite(candidate) ? Math.floor(candidate) : lowerBound;
+    const next = Math.min(upperBound, Math.max(lowerBound, parsed));
+    setQuantity(next);
+    setQuantityDraft(String(next));
+  };
+
+  const productReviews = useMemo(() => realReviews, [realReviews]);
+
+  // Aggregate comes from the persisted server stats (reviews migration). Honest
+  // empty state: Product with 0 reviews shows "—" and "Sem avaliações ainda".
+  const reviewCount = product?.reviewCount ?? 0;
+  const avgRating = reviewCount > 0 ? (product?.reviewAvg ?? 0).toFixed(1) : null;
+
+  useEffect(() => {
+    let active = true;
+    if (!productId) return;
+    setReviewsStatus("loading");
+    void (async () => {
+      const reviews = await loadProductReviews(productId);
+      if (!active) return;
+      setRealReviews(reviews);
+      setReviewsStatus(reviews.length > 0 ? "ready" : "ready");
+    })();
+    return () => { active = false; };
+  }, [productId, loadProductReviews]);
+  const legacyQuestions = product?.questions || [];
+  const productQuestions = remoteQuestions.length > 0
+    ? remoteQuestions.map((q) => ({ id: q.id, userName: "Comprador", text: q.body, date: q.created_at, answer: q.answer || undefined, answerDate: q.answered_at || undefined }))
+    : legacyQuestions;
 
   useEffect(() => {
     if (product) {
       setSelectedVariation(null);
-      if (isRobux) setQuantity(product.minQuantity || 2000);
     }
   }, [product?.id, isRobux]);
 
+  const loadQuestions = React.useCallback(async () => {
+    if (!productId) return;
+    setQuestionsStatus("loading");
+    const { data, error } = await (supabase as any)
+      .from("product_questions")
+      .select("id,body,answer,created_at,answered_at")
+      .eq("product_id", productId)
+      .order("created_at", { ascending: false });
+    if (error) {
+      friendlyQuestionError(error, "load");
+      setRemoteQuestions([]);
+      // Tabela nova ainda não publicada: usa o JSON `products.questions` que já existe.
+      setQuestionsStatus("ready");
+      return;
+    }
+    setRemoteQuestions(data || []);
+    setQuestionsStatus("ready");
+  }, [productId]);
+
+  useEffect(() => { void loadQuestions(); }, [loadQuestions]);
+
   if (!product) {
+    if (catalogStatus === "loading") {
+      return (
+        <AppShell>
+          <div className="max-w-7xl mx-auto grid lg:grid-cols-[1fr_360px] gap-6" aria-busy="true" aria-live="polite">
+            <div className="space-y-4">
+              <div className="h-72 rounded-2xl bg-white/5 animate-pulse" />
+              <div className="h-40 rounded-2xl bg-white/5 animate-pulse" />
+            </div>
+            <div className="h-48 rounded-2xl bg-white/5 animate-pulse" />
+            <span className="sr-only">Carregando produto…</span>
+          </div>
+        </AppShell>
+      );
+    }
     return (
       <AppShell>
         <div className="text-center py-20">
-          <p className="text-white font-bold">Produto não encontrado</p>
-          <button onClick={() => navigate("/loja")} className="bg-[#0084ff] text-white px-6 py-3 rounded-xl font-bold text-sm mt-4">Voltar para a loja</button>
+          <p className="text-white font-bold">
+            {catalogStatus === "error" ? "Não conseguimos carregar este produto agora." : "Produto não encontrado"}
+          </p>
+          <p className="text-white/40 text-sm mt-1">
+            {catalogStatus === "error"
+              ? "Verifique sua conexão e tente novamente."
+              : "Ele pode ter sido removido ou ainda estar em análise."}
+          </p>
+          <div className="flex gap-2 justify-center mt-4">
+            {catalogStatus === "error" && (
+              <button onClick={() => void refreshProducts()} className="bg-white/10 hover:bg-white/15 text-white px-6 py-3 rounded-xl font-bold text-sm">Tentar novamente</button>
+            )}
+            <button onClick={() => navigate("/loja")} className="bg-[#0084ff] text-white px-6 py-3 rounded-xl font-bold text-sm">Voltar para a loja</button>
+          </div>
         </div>
       </AppShell>
     );
   }
 
-  const unitPrice = selectedVariation ? selectedVariation.price : product.price;
+  // For Robux the advertised price is the PACKAGE price. The per-unit value is
+  // derived for display and for quantity maths, and is never written back.
+  const packageUnits = robuxPackageUnits(product);
+  // Robux sempre usa o preço proporcional do único pacote canônico. Variações
+  // continuam sendo uma opção exclusiva de anúncios comuns.
+  const unitPrice = isRobux
+    ? unitPriceFromPackage(product)
+    : (selectedVariation?.price ?? product.price);
   const displayQuantity = isRobux ? quantity : 1;
-  const subtotal = unitPrice * displayQuantity;
-  const feePercent = state.config.commission || 10;
-  const total = subtotal * (1 + feePercent / 100);
+  const subtotal = Math.round(unitPrice * displayQuantity * 100) / 100;
 
   const handleBuyClick = () => {
     if (!state.currentUser) {
       setAuthOpen(true);
       return;
     }
-    if (isRobux && quantity < (currentOffer?.minQty || 100)) {
-      toast.error(`Quantidade mínima: ${currentOffer?.minQty || 100}`);
+    if (!sellerIdentityReady) {
+      toast.error("Este anúncio está em validação e não está disponível para compra.");
       return;
     }
-    if (subtotal < 2) {
-      toast.error("Valor mínimo R$ 2,00");
+    const minQty = currentOffer?.minQty ?? packageUnits;
+    if (isRobux && quantity < minQty) {
+      toast.error(`Quantidade mínima: ${minQty.toLocaleString("pt-BR")}`);
+      return;
+    }
+    if (isRobux && currentOffer?.stock != null && quantity > currentOffer.stock) {
+      toast.error(`Estoque disponível: ${currentOffer.stock.toLocaleString("pt-BR")}`);
       return;
     }
     setCheckoutOpen(true);
   };
 
-  const handleCheckoutConfirm = async (method: string, cpf: string) => {
+  const handleCheckoutConfirm = async (method: string, cpf: string, network?: string) => {
     setBuyLoading(true);
+    let purchaseId: number | null = null;
     try {
-      // Save CPF to profile
-      if (state.currentUser) {
-        await supabase.from("profiles").update({ cpf } as any).eq("user_id", state.currentUser.id);
+      purchaseId = await buyProduct(product.id, isRobux ? undefined : (selectedVariation || undefined), displayQuantity, method);
+      if (!purchaseId) return; // buyProduct já explicou o motivo
+
+      if (method === "zennith_pix" || method === "vexopay_pix") {
+        const res = await unwrapEdgeCall<{ id: string; qrCodeText: string; qrCodeUrl?: string; expiresAt?: string; amount?: number }>(
+          await supabase.functions.invoke(method === "zennith_pix" ? "create-zennith-pix" : "create-evopay-pix", {
+            body: { purchaseId, productName: !isRobux && selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name, buyerName: state.currentUser?.name, payerDocument: cpf || undefined },
+          }),
+          "Não foi possível gerar o PIX. Tente novamente.",
+        );
+        if (res.errorMessage || !res.data?.qrCodeText) {
+          const msg = res.status === 404
+            ? "O PIX está temporariamente indisponível. Avise o suporte."
+            : res.errorMessage ?? "Não foi possível gerar o código PIX. Tente novamente.";
+          toast.error(msg);
+          return;
+        }
+        savePixCharge(purchaseId, { evopayId: res.data.id, qrCodeText: res.data.qrCodeText, expiresAt: res.data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
+        setPixCharge({ evopayId: res.data.id, qrCodeText: res.data.qrCodeText, amount: Number(res.data.amount ?? subtotal), qrCodeUrl: res.data.qrCodeUrl, purchaseId });
+        setCheckoutOpen(false);
+        return;
       }
 
-      const purchaseId = await buyProduct(product.id, selectedVariation || undefined);
-      if (!purchaseId) throw new Error("Falha ao criar pedido");
-
-      if (method === "pix") {
-        const { data, error } = await supabase.functions.invoke("create-evopay-pix", {
-          body: {
-            purchaseId,
-            productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name,
-            amount: subtotal,
-            buyerName: state.currentUser?.name,
-          },
-        });
-        if (error) throw error;
-        if (data?.qrCodeText) {
-          savePixCharge(purchaseId, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
-          setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: total, qrCodeUrl: data.qrCodeUrl, purchaseId });
-          setCheckoutOpen(false);
-        } else {
-          toast.error("Erro ao gerar PIX: " + (data?.error || "tente novamente"));
+      if (method === "crypto") {
+        const res = await unwrapEdgeCall<{ id?: string; address?: string; qrCode?: string; amount?: number; network?: string; expiresAt?: string }>(
+          await supabase.functions.invoke("create-vexopay-crypto", {
+            body: { purchaseId, network: network || "TRC20", description: product.name },
+          }),
+          "Não foi possível gerar a cobrança em cripto.",
+        );
+        if (res.errorMessage || !res.data?.address) {
+          const msg = res.status === 404
+            ? "O pagamento em cripto está temporariamente indisponível. Avise o suporte."
+            : res.errorMessage ?? "O provedor de cripto não devolveu o endereço.";
+          toast.error(msg);
+          return;
         }
-      } else if (method === "crypto") {
-        const { data, error } = await supabase.functions.invoke("create-vexopay-crypto", {
-          body: {
-            purchaseId,
-            amount: total,
-            network: "TRC20",
-            description: product.name,
-          },
+        setCryptoCharge({
+          id: String(res.data.id || ""),
+          address: String(res.data.address),
+          amount: subtotal,
+          cryptoAmount: res.data.amount,
+          qrCode: res.data.qrCode,
+          network: String(res.data.network || network || "TRC20"),
+          expiresAt: res.data.expiresAt,
+          purchaseId,
         });
-        if (error) throw error;
-        if (data?.address || data?.qrCode) {
-          toast.success("Crypto criada! Envie exatamente R$ " + total.toFixed(2) + " para o endereço.");
-          setCheckoutOpen(false);
-          if (data.qrCode) window.open(data.qrCode, "_blank");
-        } else {
-          toast.error("Erro Crypto: " + (data?.error || "tente novamente"));
-        }
-      } else {
-        // Stripe card/boleto
-        const { data, error } = await supabase.functions.invoke("create-stripe-checkout", {
-          body: {
-            purchaseId,
-            amount: total,
-            productName: product.name,
-            paymentMethod: method,
-          },
-        });
-        if (error) throw error;
-        if (data?.url) {
-          toast.success("Redirecionando para Stripe...");
-          window.location.href = data.url;
-        } else {
-          toast.error("Erro Stripe: " + (data?.error || "configure credenciais em Admin → APIs"));
-        }
+        setCheckoutOpen(false);
+        return;
       }
+
+      // Cartão e boleto (Stripe). O valor cobrado é revalidado no servidor a
+      // partir do pedido — o que enviamos aqui é só o nome do produto.
+      const res = await unwrapEdgeCall<{ url: string }>(
+        await supabase.functions.invoke("create-stripe-checkout", {
+          body: { purchaseId, productName: product.name, paymentMethod: method },
+        }),
+        "Não foi possível iniciar o pagamento com cartão.",
+      );
+      if (res.errorMessage || !res.data?.url) {
+        toast.error(res.errorMessage ?? "O provedor não devolveu o link de pagamento.");
+        return;
+      }
+      toast.success("Redirecionando para o pagamento seguro...");
+      window.location.href = res.data.url;
     } catch (err: any) {
-      toast.error(err.message || "Erro ao processar compra");
+      console.error("[zxmax:checkout]", err);
+      toast.error("Erro inesperado ao processar a compra. Tente novamente.");
     } finally {
       setBuyLoading(false);
     }
@@ -308,22 +509,56 @@ export default function ProdutoPage() {
   const handlePixPaid = async () => {
     void refreshPurchases();
     toast.success("Pagamento confirmado!");
-    try {
-      const latest = state.purchases.find((p) => p.productId === product.id && p.buyerId === state.currentUser?.id);
-      if (latest) {
-        await supabase.functions.invoke("send-email", { body: { type: "purchase_confirmed", purchaseId: latest.id } });
-      }
-    } catch {}
   };
 
-  const handleSendQuestion = () => {
-    if (!question.trim()) return;
-    // Sanitize: remove emojis that shouldn't appear in chat
-    const clean = question.trim().replace(/[^\p{L}\p{N}\p{P}\p{Z}\n]/gu, "");
-    if (!clean) return toast.error("Pergunta inválida");
-    addProductQuestion(product.id, clean);
-    toast.success("Pergunta enviada!");
+  const handleSendQuestion = async () => {
+    if (!state.currentUser) { setAuthOpen(true); return; }
+    const clean = question.trim();
+    if (clean.length < 3) { toast.error("Escreva uma pergunta com pelo menos 3 caracteres."); return; }
+    if (containsExternalContact(clean)) {
+      toast.error("Não é permitido enviar contatos externos (WhatsApp, Discord, e-mail, links ou telefone).");
+      return;
+    }
+    setSendingQuestion(true);
+    const { data: createdQuestion, error } = await (supabase as any).rpc("ask_product_question", { _product_id: product.id, _body: clean });
+    setSendingQuestion(false);
+    if (error) {
+      toast.error(friendlyQuestionError(error, "ask"));
+      return;
+    }
+    toast.success("Pergunta enviada ao vendedor.");
+    if (createdQuestion?.id) {
+      void supabase.functions.invoke("notify-product-event", { body: { eventType: "product_question", eventId: createdQuestion.id } });
+    }
     setQuestion("");
+    await loadQuestions();
+  };
+
+  const handleAnswerQuestion = async (questionId: number) => {
+    const clean = (answerDrafts[questionId] || "").trim();
+    if (clean.length < 1) { toast.error("Escreva a resposta antes de enviar."); return; }
+    setSendingAnswer(questionId);
+    const { error } = await (supabase as any).rpc("answer_product_question", { _question_id: questionId, _answer: clean });
+    if (error && isSchemaMissing(error)) {
+      const next = (product.questions || []).map((item) =>
+        item.id === questionId ? { ...item, answer: clean, answerDate: new Date().toISOString() } : item,
+      );
+      const upErr = await persistLegacyQuestions(next);
+      setSendingAnswer(null);
+      if (upErr) {
+        toast.error(friendlyQuestionError(upErr, "answer"));
+        return;
+      }
+      answerProductQuestion(product.id, questionId, clean);
+      toast.success("Resposta publicada.");
+      setAnswerDrafts((drafts) => ({ ...drafts, [questionId]: "" }));
+      return;
+    }
+    setSendingAnswer(null);
+    if (error) { toast.error(friendlyQuestionError(error, "answer")); return; }
+    toast.success("Resposta publicada.");
+    setAnswerDrafts((drafts) => ({ ...drafts, [questionId]: "" }));
+    await loadQuestions();
   };
 
   const handleShare = async () => {
@@ -337,255 +572,220 @@ export default function ProdutoPage() {
 
   const fav = isFavorite(product.id);
 
-  // Robux view like Eldorado.gg
+  // Um anúncio Robux sem vendedor público confirmado não volta à página
+  // genérica: permanece no mercado próprio e não disponibiliza checkout.
+  if (isRobux && !currentOffer) {
+    return (
+      <AppShell>
+        <main className="mx-auto max-w-3xl"><nav aria-label="Navegação estrutural" className="mb-5 flex items-center gap-2 text-xs text-white/45"><Link to="/loja" className="hover:text-white">Início</Link><span>›</span><Link to="/robux" className="hover:text-white">Mercado de Robux</Link><span>›</span><span className="font-semibold text-white">Oferta indisponível</span></nav><section className="rounded-[1.6rem] border border-[#168cff]/20 bg-[#101722] p-6 text-center shadow-[0_22px_65px_rgba(0,79,158,0.12)] sm:p-10"><Coins className="mx-auto h-10 w-10 text-[#6dbdff]" /><p className="mt-5 text-[11px] font-black uppercase tracking-[0.16em] text-[#86c9ff]">Mercado de Robux</p><h1 className="mt-2 text-2xl font-black tracking-tight text-white">Esta oferta não está disponível.</h1><p className="mx-auto mt-3 max-w-md text-sm leading-6 text-white/55">O anúncio não possui uma identidade pública de vendedor válida para continuar a compra. Nenhum pedido ou pagamento foi iniciado.</p><Link to="/robux" className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-[#168cff] px-4 text-sm font-black text-white transition hover:bg-[#0875e6] active:scale-[0.97]">Ver ofertas disponíveis</Link></section></main>
+      </AppShell>
+    );
+  }
+
+  // Mercado próprio de Robux: comparação de ofertas publicadas, sem métricas
+  // inventadas e sem alterar o contrato de compra autorizado pelo servidor.
   if (isRobux && currentOffer) {
     return (
       <AppShell>
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center gap-2 text-xs text-white/40 mb-4">
-            <Link to="/loja" className="hover:text-white">Loja</Link>
-            <span>/</span>
-            <span className="text-white">Roblox</span>
-            <span>/</span>
-            <span className="text-white font-bold">Moeda</span>
-          </div>
+        <div className="mx-auto max-w-7xl">
+          <nav aria-label="Navegação estrutural" className="mb-5 flex items-center gap-2 overflow-hidden text-xs text-white/45"><Link to="/loja" className="hover:text-white">Início</Link><span>›</span><Link to="/robux" className="hover:text-white">Mercado de Robux</Link><span>›</span><span className="truncate font-semibold text-white">Oferta selecionada</span></nav>
 
-          <div className="bg-[#ffbd2e] text-black text-xs font-bold px-4 py-2 rounded-full inline-flex items-center gap-2 mb-4">
-            Agora aceitamos <span className="italic">PayPal</span> e <span className="flex items-center gap-1"><Bitcoin className="w-3 h-3" /> Crypto</span>
-          </div>
+          <section className="relative mb-6 overflow-hidden rounded-[1.6rem] border border-[#168cff]/20 bg-[#11151e] p-5 sm:p-7">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_92%_5%,rgba(0,132,255,0.2),transparent_35%),radial-gradient(circle_at_5%_100%,rgba(0,209,166,0.08),transparent_28%)]" />
+            <div className="relative flex flex-col gap-5 md:flex-row md:items-end md:justify-between"><div><p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#72bbff]">Mercado de Robux</p><h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">Compare ofertas antes de comprar.</h1><p className="mt-2 max-w-xl text-sm leading-6 text-white/55">Preço por unidade, quantidade mínima, estoque e prazo vêm de cada anúncio publicado.</p></div><div className="grid grid-cols-2 gap-2 text-xs sm:min-w-[270px]"><div className="rounded-xl border border-white/[0.08] bg-black/15 px-3 py-2.5"><p className="text-white/40">Ofertas</p><p className="mt-1 text-lg font-black text-white">{sellerOffers.length}</p></div><div className="rounded-xl border border-white/[0.08] bg-black/15 px-3 py-2.5"><p className="text-white/40">Menor valor/un.</p><p className="mt-1 text-sm font-black text-[#75c5ff]">{formatRobuxUnitPrice(sellerOffers[0]?.pricePerUnit)}</p></div></div></div>
+          </section>
 
-          <div className="grid lg:grid-cols-[1fr_360px] gap-6">
-            <div className="space-y-4">
-              {/* Seller header */}
-              <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <img src={state.userDirectory?.[currentOffer.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentOffer.sellerName}`} className="w-12 h-12 rounded-full bg-[#1a1a20] border border-[#25252e]" alt="" />
-                    <div>
-                      <p className="font-black text-white flex items-center gap-1.5">{currentOffer.sellerName} <BadgeCheck className="w-4 h-4 text-[#0084ff]" /></p>
-                      <p className="text-xs flex items-center gap-2">
-                        {currentOffer.reviews > 0 ? (
-                          <>
-                            <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3.5 h-3.5" /> {currentOffer.rating}%</span>
-                            <span className="text-[#0084ff] underline cursor-pointer" onClick={() => setDetailTab("reviews")}>{currentOffer.reviews} avaliações</span>
-                          </>
-                        ) : (
-                          <span className="text-white/40">Novo • Nenhuma avaliação ainda</span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-white/40">Valor</p>
-                    <p className="font-black text-white text-lg">R$ {currentOffer.pricePerUnit.toFixed(5)} <span className="text-sm font-normal text-white/40">/ unidade</span></p>
-                  </div>
-                </div>
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="space-y-5">
+              <section className="rounded-2xl border border-[#252b38] bg-[#12151d] p-5 sm:p-6" aria-labelledby="offer-title">
+                <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#70bcff]">Oferta selecionada</p><h2 id="offer-title" className="mt-2 text-xl font-black text-white">{currentOffer.packageUnits.toLocaleString("pt-BR")} Robux por pacote</h2><p className="mt-1 text-sm text-white/50">{formatRobuxUnitPrice(currentOffer.pricePerUnit)} por Robux · {formatRobuxPackage(currentOffer.product)}</p></div><button onClick={() => setSelectedSellerId(currentOffer.sellerId)} className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.035] p-2 text-left transition hover:border-[#168cff]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#51a9ff]"><img src={state.userDirectory?.[currentOffer.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentOffer.sellerName}`} className="h-9 w-9 rounded-full bg-[#1a1a20] object-cover" alt="" /><span className="min-w-0"><span className="flex max-w-36 items-center gap-1 truncate text-xs font-bold text-white">{currentOffer.sellerName}{currentOffer.verified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[#53afff]" aria-label="Vendedor verificado" />}</span><span className="block text-[10px] text-white/45">Ver perfil público</span></span></button></div>
 
-                {/* Quantity selector like Eldorado */}
-                <div className="mt-6 bg-[#1a1a20] border border-[#25252e] rounded-xl p-4">
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => setQuantity(Math.max(currentOffer.minQty, quantity - 100))} className="w-12 h-12 rounded-xl bg-[#25252e] hover:bg-[#2a2a36] text-white flex items-center justify-center transition"><Minus className="w-4 h-4" /></button>
-                    <div className="flex-1 bg-[#0a0a0f] border border-[#1e1e28] rounded-xl h-12 flex items-center justify-center font-black text-white text-lg">{quantity.toLocaleString()}</div>
-                    <button onClick={() => setQuantity(Math.min(currentOffer.stock, quantity + 100))} className="w-12 h-12 rounded-xl bg-[#25252e] hover:bg-[#2a2a36] text-white flex items-center justify-center transition"><Plus className="w-4 h-4" /></button>
-                  </div>
-                  <div className="flex justify-between text-xs mt-3 text-white/40">
-                    <span>Qtd. mín.: {currentOffer.minQty} unidade</span>
-                    <span>Em estoque: {currentOffer.stock.toLocaleString()} unidade</span>
-                  </div>
-                </div>
+                <div className="mt-6 rounded-2xl border border-white/[0.08] bg-[#0d1017] p-4"><div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold text-white">Quantidade desejada</p><p className="mt-1 text-[11px] text-white/45">Digite a quantidade de Robux que deseja comprar.</p></div><p className="text-right text-xs text-white/45">Mínimo da oferta<br /><span className="font-bold text-white">{currentOffer.minQty.toLocaleString("pt-BR")}</span></p></div><div className="mt-4 grid grid-cols-[48px_1fr_48px] gap-3"><button type="button" aria-label="Diminuir quantidade" onClick={() => applyRobuxQuantity(quantity - 1)} disabled={quantity <= currentOffer.minQty} className="grid h-12 place-items-center rounded-xl border border-white/[0.09] bg-white/[0.04] text-white transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-35"><Minus className="h-4 w-4" /></button><label className="relative"><span className="sr-only">Quantidade de Robux</span><input aria-label="Quantidade de Robux" inputMode="numeric" value={quantityDraft} onChange={(event) => setQuantityDraft(event.target.value.replace(/\D/g, ""))} onBlur={() => applyRobuxQuantity(Number(quantityDraft))} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); applyRobuxQuantity(Number(quantityDraft)); } }} className="h-12 w-full rounded-xl border border-[#168cff]/30 bg-[#168cff]/[0.07] px-4 pr-20 text-center text-lg font-black text-white outline-none transition focus:border-[#60b6ff] focus:ring-2 focus:ring-[#168cff]/25" /><span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-semibold text-[#8acbff]">Robux</span></label><button type="button" aria-label="Aumentar quantidade" onClick={() => applyRobuxQuantity(quantity + 1)} disabled={currentOffer.stock != null && quantity >= currentOffer.stock} className="grid h-12 place-items-center rounded-xl border border-[#168cff]/30 bg-[#168cff]/10 text-[#86c9ff] transition hover:bg-[#168cff]/20 disabled:cursor-not-allowed disabled:opacity-35"><Plus className="h-4 w-4" /></button></div><div className="mt-3 grid grid-cols-2 gap-3 text-[11px]"><span className="text-white/45">Estoque: <b className="text-white">{formatStockLabel(currentOffer.stock)}</b></span><span className="text-right text-white/45">Entrega: <b className="text-white">{currentOffer.delivery}</b></span></div></div>
 
-                <div className="mt-4 space-y-3 text-sm">
-                  <div className="flex justify-between"><span className="text-white/60">Prazo de entrega</span><span className="font-bold text-white">{currentOffer.delivery}</span></div>
-                  <div className="border-t border-[#1e1e28] pt-3 flex justify-between text-lg font-black"><span className="text-white">Total: R$ {total.toFixed(2)}</span><span className="text-white/40 text-xs font-normal">taxa {feePercent}% inclusa</span></div>
-                </div>
+                <div className="mt-5 grid grid-cols-2 gap-3"><div className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-3"><p className="text-[10px] uppercase tracking-wide text-white/40">Valor/unidade</p><p className="mt-1 text-sm font-black text-white">{formatRobuxUnitPrice(currentOffer.pricePerUnit)}</p></div><div className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-3"><p className="text-[10px] uppercase tracking-wide text-white/40">Subtotal</p><p className="mt-1 text-sm font-black text-white">{formatBRL(subtotal)}</p></div></div>
+                <p className="mt-5 flex gap-2 text-xs leading-5 text-white/45"><Shield className="mt-0.5 h-4 w-4 shrink-0 text-[#63baff]" />A taxa e o valor mínimo final dependem da forma de pagamento selecionada e são revalidados no servidor antes de criar qualquer pedido.</p>
+              </section>
 
-                <button onClick={handleBuyClick} disabled={buyLoading} className="w-full mt-5 bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-base transition disabled:opacity-50">Comprar agora</button>
-
-                <div className="mt-4 space-y-2.5">
-                  <div className="flex gap-2 text-xs"><Shield className="w-4 h-4 text-[#0084ff] shrink-0" /><span className="font-bold text-white">Garantia de reembolso</span><span className="text-white/40">Protegido pelo TradeShield</span></div>
-                  <div className="flex gap-2 text-xs"><Zap className="w-4 h-4 text-[#ffbd2e] shrink-0" /><span className="font-bold text-white">Checkout rápido</span><span className="flex gap-1"><span className="bg-[#00c950] text-white px-2 py-0.5 rounded text-[10px] font-bold">PIX</span><span className="bg-black border border-white/10 text-white px-2 py-0.5 rounded text-[10px]">Apple Pay</span><span className="bg-[#0084ff] text-white px-2 py-0.5 rounded text-[10px]">G Pay</span><span className="bg-[#ffbd2e] text-black px-2 py-0.5 rounded text-[10px]">PayPal</span></span></div>
-                  <div className="flex gap-2 text-xs"><MessageSquare className="w-4 h-4 text-[#0084ff] shrink-0" /><span className="font-bold text-white">Atendimento 24 horas por dia</span><span className="text-white/40">Tira sua dúvida!</span></div>
-                </div>
-              </div>
-
-              {/* Other sellers like Eldorado */}
-              <div className="bg-[#15151a] border border-[#25252e] rounded-2xl overflow-hidden">
-                <div className="p-5 border-b border-[#1e1e28]">
-                  <h3 className="font-black text-white text-lg">Outros vendedores ({sellerOffers.length})</h3>
-                  <div className="flex gap-2 mt-4 overflow-x-auto scrollbar-hide">
-                    {[
-                      { id: "recomendado", label: "Recomendado" },
-                      { id: "barato", label: "Mais barato primeiro" },
-                      { id: "min", label: "Menor qtd. mín." },
-                    ].map((opt) => (
-                      <button key={opt.id} onClick={() => setSortBy(opt.id as any)} className={`shrink-0 px-4 py-2 rounded-full text-xs font-bold border transition ${sortBy === opt.id ? "bg-[#ffbd2e]/10 border-[#ffbd2e] text-[#ffbd2e]" : "bg-[#1a1a20] border-[#25252e] text-white/50 hover:text-white"}`}>
-                        {sortBy === opt.id && <CheckCircle className="w-3 h-3 inline mr-1" />}{opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="divide-y divide-[#1e1e28]">
-                  {sellerOffers.map((offer) => (
-                    <div key={offer.id} className={`p-4 hover:bg-[#1a1a20] transition cursor-pointer ${offer.id === productId ? "bg-[#0084ff]/5 border-l-2 border-l-[#0084ff]" : ""}`} onClick={() => navigate(`/produto/${offer.id}`)}>
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex gap-3 min-w-0 flex-1">
-                          <img src={state.userDirectory?.[offer.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${offer.sellerName}`} className="w-10 h-10 rounded-full bg-[#1a1a20] border border-[#25252e] shrink-0" alt="" />
-                          <div className="min-w-0 flex-1">
-                            <p className="font-bold text-white text-sm flex items-center gap-1 truncate">{offer.sellerName} <BadgeCheck className="w-3.5 h-3.5 text-[#0084ff]" /></p>
-                            <p className="text-xs flex items-center gap-2">
-                              {offer.reviews > 0 ? (
-                                <>
-                                  <span className="flex items-center gap-1 text-[#00c950]"><ThumbsUp className="w-3 h-3" /> {offer.rating}%</span>
-                                  <span className="text-[#0084ff] underline">{offer.reviews} avaliações</span>
-                                </>
-                              ) : (
-                                <span className="text-white/40">Novo • 0 avaliações</span>
-                              )}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="font-black text-white">R$ {offer.pricePerUnit.toFixed(5)} <span className="text-xs font-normal text-white/40">/ un</span></p>
-                          {offer.id === productId && <span className="text-[10px] bg-[#ffbd2e] text-black px-2 py-0.5 rounded-full font-bold">Oferta atual</span>}
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-4 mt-3 text-xs">
-                        <div><p className="text-white/40">Estoque</p><p className="font-bold text-white">{offer.stock.toLocaleString()}</p></div>
-                        <div><p className="text-white/40">Qtd. mín.</p><p className="font-bold text-white">{offer.minQty}</p></div>
-                        <div><p className="text-white/40">Entrega</p><p className="font-bold text-white">{offer.delivery}</p></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <section className="overflow-hidden rounded-2xl border border-[#252b38] bg-[#12151d]" aria-labelledby="offers-title"><div className="border-b border-white/[0.07] p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#70bcff]">Comparar</p><h2 id="offers-title" className="mt-1 text-xl font-black text-white">Ofertas publicadas</h2></div><Link to="/robux" className="text-xs font-bold text-[#79c1ff] hover:text-white">Ver mercado completo</Link></div><div className="mt-4 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">{[{ id: "barato", label: "Menor valor/un." }, { id: "recomendado", label: "Mais avaliações" }, { id: "min", label: "Menor mínimo" }].map((option) => <button key={option.id} type="button" onClick={() => setSortBy(option.id as typeof sortBy)} aria-pressed={sortBy === option.id} className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-bold transition ${sortBy === option.id ? "border-[#168cff]/55 bg-[#168cff]/15 text-[#9dd4ff]" : "border-white/[0.09] bg-white/[0.035] text-white/55 hover:text-white"}`}>{sortBy === option.id && <CheckCircle className="mr-1 inline h-3 w-3" />}{option.label}</button>)}</div></div><div className="divide-y divide-white/[0.07]">{sellerOffers.map((offer) => { const selected = offer.id === productId; const offerPublicId = state.userDirectory?.[offer.sellerId]?.publicId; return <article key={offer.id} className={`p-4 sm:p-5 ${selected ? "bg-[#168cff]/[0.055]" : "hover:bg-white/[0.018]"}`}><div className="flex flex-wrap items-start justify-between gap-4"><button type="button" onClick={() => setSelectedSellerId(offer.sellerId)} className="flex min-w-0 items-center gap-3 text-left"><img src={state.userDirectory?.[offer.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${offer.sellerName}`} className="h-10 w-10 rounded-full bg-[#1a1a20] object-cover" alt="" /><span className="min-w-0"><span className="flex max-w-44 items-center gap-1 truncate text-sm font-bold text-white">{offer.sellerName}{offer.verified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[#53afff]" aria-label="Vendedor verificado" />}</span><span className="mt-0.5 block text-[11px] text-white/45">{offerPublicId ? `ID ${offerPublicId}` : "Perfil em validação"}</span></span></button><div className="text-right"><p className="text-xs font-black text-white">{formatRobuxUnitPrice(offer.pricePerUnit)} <span className="font-medium text-white/45">/ Robux</span></p><p className="mt-1 text-[11px] text-white/45">{formatRobuxPackage(offer.product)}</p></div></div><div className="mt-4 grid grid-cols-3 gap-2 text-xs"><div><p className="text-white/40">Estoque</p><p className="mt-1 font-bold text-white">{formatStockLabel(offer.stock)}</p></div><div><p className="text-white/40">Mínimo</p><p className="mt-1 font-bold text-white">{offer.minQty.toLocaleString("pt-BR")}</p></div><div><p className="text-white/40">Prazo</p><p className="mt-1 truncate font-bold text-white">{offer.delivery}</p></div></div><div className="mt-4 flex items-center justify-between gap-3"><p className="min-w-0 truncate text-[11px] text-white/45">{offer.reviews > 0 ? <><ThumbsUp className="mr-1 inline h-3 w-3 text-[#43d5b2]" />{offer.positivePct}% em {offer.reviews} avaliação(ões)</> : "Sem avaliações registradas"}</p>{selected ? <span className="rounded-lg border border-[#168cff]/30 bg-[#168cff]/10 px-2.5 py-1.5 text-[11px] font-bold text-[#8dcdff]">Selecionada</span> : <button type="button" onClick={() => navigate(`/produto/${offer.id}`)} className="rounded-lg border border-white/[0.12] bg-white/[0.05] px-3 py-1.5 text-[11px] font-bold text-white transition hover:border-[#168cff]/55 hover:bg-[#168cff]/10">Selecionar</button>}</div></article>; })}</div></section>
             </div>
 
-            <div className="space-y-4">
-              <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
-                <p className="text-xs uppercase font-bold text-white/30 mb-1">Preço</p>
-                <p className="text-3xl font-black text-white">R$ {total.toFixed(2)}</p>
-                <p className="text-xs text-white/40 mt-1">R$ {unitPrice.toFixed(5)} / unidade × {quantity} + taxa {feePercent}%</p>
-                <button onClick={handleBuyClick} className="w-full mt-4 bg-[#ffbd2e] text-black py-3.5 rounded-xl font-black">Comprar agora</button>
-              </div>
-
-              <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
-                <h4 className="font-bold text-white mb-3">Vendedor</h4>
-                <button onClick={() => setSelectedSellerId(product.sellerId)} className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#1a1a20] border border-[#25252e] hover:border-[#2a2a36] transition text-left">
-                  <img src={state.userDirectory?.[product.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.seller}`} className="w-10 h-10 rounded-full" alt="" />
-                  <div className="flex-1 min-w-0"><p className="font-bold text-white text-sm truncate">{product.seller}</p><p className="text-[11px] text-white/40">ID: {product.sellerPublicId || "—"}</p></div>
-                </button>
-              </div>
-            </div>
+            <aside className="space-y-4 lg:sticky lg:top-5"><section className="rounded-2xl border border-[#168cff]/25 bg-[#111a26] p-5 shadow-[0_20px_55px_rgba(0,91,183,0.12)]"><p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#79c1ff]">Resumo da oferta</p><p className="mt-3 text-3xl font-black text-white">{formatBRL(subtotal)}</p><p className="mt-1 text-xs leading-5 text-white/50">{quantity.toLocaleString("pt-BR")} Robux · subtotal do produto. A taxa aplicável aparece ao escolher a forma de pagamento.</p><button onClick={handleBuyClick} disabled={!sellerIdentityReady || buyLoading} className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-[#168cff] px-4 text-sm font-black text-white shadow-[0_10px_28px_rgba(0,132,255,0.25)] transition hover:bg-[#0875e6] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50">{sellerIdentityReady ? (buyLoading ? "Preparando pedido…" : "Comprar agora") : "Oferta em validação"}</button><p className="mt-3 text-center text-[10px] leading-4 text-white/40">As formas de pagamento só são mostradas após a disponibilidade ser consultada.</p></section><section className="rounded-2xl border border-white/[0.08] bg-white/[0.025] p-5"><h2 className="text-sm font-black text-white">Como funciona</h2><ol className="mt-4 space-y-3 text-xs leading-5 text-white/55"><li className="flex gap-2"><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#168cff]/15 text-[10px] font-black text-[#89ccff]">1</span>Compare preço por unidade, mínimo, estoque e prazo.</li><li className="flex gap-2"><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#168cff]/15 text-[10px] font-black text-[#89ccff]">2</span>Escolha uma oferta com perfil público válido.</li><li className="flex gap-2"><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#168cff]/15 text-[10px] font-black text-[#89ccff]">3</span>O pedido e os dados de pagamento são tratados no fluxo protegido.</li></ol></section></aside>
           </div>
         </div>
 
-        {checkoutOpen && <CheckoutModal product={product} quantity={quantity} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} feePercent={feePercent} />}
+        {checkoutOpen && <CheckoutModal product={product} quantity={quantity} unitPrice={unitPrice} subtotal={subtotal} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} />}
         {selectedSellerId && <UserProfileModal open={!!selectedSellerId} onClose={() => setSelectedSellerId(null)} userId={selectedSellerId} />}
         <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
+        <CryptoPaymentModal charge={cryptoCharge} onClose={() => setCryptoCharge(null)} onPaid={handlePixPaid} />
         {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
       </AppShell>
     );
   }
 
-  // Regular product view (non-Robux) - GGMAX solid style
+  // Página de anúncio regular. Dados indisponíveis são mostrados como “—”, nunca estimados.
+  const seller = state.userDirectory?.[product.sellerId];
+  // Só o dono do anúncio vê o formulário de resposta (o banco revalida via RPC).
+  const isProductSeller = !!state.currentUser && state.currentUser.id === product.sellerId;
+  const sellerReviews = state.purchases.filter((purchase) => purchase.sellerId === product.sellerId && purchase.reviewed);
+  const sellerPositive = sellerReviews.length ? Math.round((sellerReviews.filter((review) => (review.reviewStars || 0) >= 4).length / sellerReviews.length) * 100) : null;
+  const relatedProducts = state.products.filter((item) => item.id !== product.id && item.category === product.category && item.approved).slice(0, 8);
+  const variationRequired = (product.variations?.length || 0) > 0;
+  const filteredVariations = (product.variations || []).filter((variation) => variation.name.toLowerCase().includes(variationSearch.toLowerCase()));
+  const createdAt = product.createdAt;
+
   return (
     <AppShell>
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-center gap-2 text-xs text-white/40 mb-4">
-          <Link to="/loja" className="hover:text-white">Loja</Link>
-          <span>/</span>
-          <button onClick={() => navigate(`/loja?cat=${encodeURIComponent(product.category)}`)} className="hover:text-white">{product.category}</button>
-          <span>/</span>
-          <span className="text-white font-bold truncate">{product.name}</span>
-        </div>
+        <nav aria-label="Navegação estrutural" className="flex items-center gap-2 text-xs text-white/45 mb-5 overflow-hidden">
+          <Link to="/" className="hover:text-white">Início</Link><span>›</span>
+          <button onClick={() => navigate(`/loja?cat=${encodeURIComponent(product.category)}`)} className="hover:text-white truncate">{product.category}</button><span>›</span>
+          <span className="text-white truncate">{product.name}</span>
+        </nav>
 
-        <div className="grid lg:grid-cols-[1fr_360px] gap-6">
-          <div className="space-y-4">
-            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl overflow-hidden">
-              <div className="relative aspect-[16/10] bg-[#0a0a0f]">
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
+          <main className="space-y-5">
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl overflow-hidden">
+              <div className="relative aspect-[16/9] bg-[#0a0a0f]">
                 <img src={product.banner || product.image} alt={product.name} className="w-full h-full object-cover" />
-                <button onClick={() => toggle(product.id)} className={`absolute top-3 right-3 p-2.5 rounded-full transition ${isFavorite(product.id) ? "bg-[#0084ff] text-white" : "bg-black/60 text-white/60 hover:text-white"}`}>
-                  <Heart className={`w-5 h-5 ${isFavorite(product.id) ? "fill-current" : ""}`} />
-                </button>
+                <button onClick={() => setImageOpen(true)} aria-label="Ampliar imagem" className="absolute bottom-4 left-4 p-3 rounded-xl bg-black/70 hover:bg-black text-white"><Expand className="w-5 h-5" /></button>
+                <button onClick={() => toggle(product.id)} aria-label="Favoritar" className={`absolute top-4 right-4 p-3 rounded-full ${fav ? "bg-[#0084ff] text-white" : "bg-black/70 text-white"}`}><Heart className={`w-5 h-5 ${fav ? "fill-current" : ""}`} /></button>
               </div>
-              <div className="p-5">
-                <h1 className="text-xl font-black text-white leading-tight">{product.name}</h1>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-xs bg-[#1a1a20] border border-[#25252e] px-2.5 py-1 rounded-full font-bold text-white/60">{product.category}</span>
-                  <span className="flex items-center gap-1 text-xs text-white/40"><Eye className="w-3.5 h-3.5" /> {product.sales} vendas</span>
+              <div className="p-5 sm:p-6">
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <span className="rounded-full px-3 py-1 text-[11px] font-bold bg-[#1a1a20] border border-[#25252e] text-white/70">{product.category}</span>
+                  <span className="rounded-full px-3 py-1 text-[11px] font-bold bg-[#0084ff]/15 border border-[#0084ff]/30 text-[#5aaeff]"><Zap className="inline w-3.5 h-3.5 mr-1" />{product.deliveryType === "auto" ? "Entrega automática" : "Entrega manual"}</span>
+                  <span className="rounded-full px-3 py-1 text-[11px] font-bold bg-[#1a1a20] border border-[#25252e] text-white/70">Anúncio digital</span>
                 </div>
-
-                <div className="flex gap-1 border-b border-[#1e1e28] mt-6">
-                  {[
-                    { id: "info", label: "Informações" },
-                    { id: "reviews", label: `Avaliações (${productReviews.length})` },
-                    { id: "questions", label: `Dúvidas (${productQuestions.length})` },
-                  ].map((t) => (
-                    <button key={t.id} onClick={() => setDetailTab(t.id as any)} className={`px-4 py-2.5 text-xs font-bold border-b-2 transition ${detailTab === t.id ? "border-[#0084ff] text-[#0084ff]" : "border-transparent text-white/40 hover:text-white"}`}>{t.label}</button>
-                  ))}
+                <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight">{product.name}</h1>
+                <div className="grid grid-cols-3 mt-6 border-y border-[#1e1e28] divide-x divide-[#1e1e28]">
+                  <div className="py-3"><p className="text-[10px] text-white/35 uppercase font-bold">Disponíveis</p><p className="font-black text-white mt-1">{formatStockLabel(productStock(product))}</p></div>
+                  <div className="py-3 px-3"><p className="text-[10px] text-white/35 uppercase font-bold">Vendidos</p><p className="font-black text-white mt-1">{product.sales || "—"}</p></div>
+                  <div className="py-3 px-3"><p className="text-[10px] text-white/35 uppercase font-bold">Vendas</p><p className="font-black text-white mt-1">{product.sales || "—"}</p></div>
                 </div>
+              </div>
+            </section>
 
-                <div className="pt-5">
-                  {detailTab === "info" && (
-                    <div className="space-y-4">
-                      <p className="text-sm text-white/80 whitespace-pre-wrap leading-relaxed">{product.description}</p>
-                      {product.variations && product.variations.length > 0 && (
-                        <div>
-                          <p className="text-xs font-bold uppercase text-white/30 mb-2">Variações</p>
-                          <div className="grid gap-2">
-                            {product.variations.map((v, i) => (
-                              <button key={i} onClick={() => setSelectedVariation(v)} className={`p-3 rounded-xl border text-left transition ${selectedVariation?.name === v.name ? "bg-[#0084ff]/10 border-[#0084ff] text-white" : "bg-[#1a1a20] border-[#25252e] text-white/60 hover:border-white/20"}`}>
-                                <div className="flex justify-between"><span className="font-bold">{v.name}</span><span className="font-black text-[#0084ff]">R$ {v.price.toFixed(2)}</span></div>
-                              </button>
-                            ))}
-                          </div>
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5 sm:p-6">
+              <h2 className="text-sm font-black tracking-wide text-white">CARACTERÍSTICAS</h2>
+              <dl className="mt-4 divide-y divide-[#1e1e28] text-sm">
+                <div className="flex justify-between py-3 gap-6"><dt className="text-white/45">Tipo do anúncio</dt><dd className="font-bold text-white text-right">{product.deliveryType === "auto" ? "Entrega automática" : "Entrega manual"}</dd></div>
+                <div className="flex justify-between py-3 gap-6"><dt className="text-white/45">Procedência</dt><dd className="font-bold text-white text-right">Não informada</dd></div>
+                <div className="flex justify-between py-3 gap-6"><dt className="text-white/45">Prazo de entrega</dt><dd className="font-bold text-white text-right">{product.deliveryTime || "Não informado"}</dd></div>
+              </dl>
+            </section>
+
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5 sm:p-6">
+              <h2 className="text-sm font-black tracking-wide text-white">DESCRIÇÃO</h2>
+              <p className="mt-4 text-sm leading-relaxed whitespace-pre-wrap text-white/75">{product.description || "O vendedor não adicionou uma descrição."}</p>
+              <div className="mt-5 pt-4 border-t border-[#1e1e28] flex flex-wrap items-center gap-3 text-xs text-white/40"><span>Criado em {createdAt ? new Date(createdAt).toLocaleDateString("pt-BR") : "—"}</span><button onClick={handleShare} className="flex items-center gap-1.5 hover:text-white"><Share2 className="w-4 h-4" /> Compartilhar</button><Link to="/suporte" className="flex items-center gap-1.5 hover:text-white"><Flag className="w-4 h-4" /> Denunciar</Link></div>
+            </section>
+
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5 sm:p-6" aria-label="Perguntas sobre o anúncio">
+              <div className="flex items-center justify-between"><h2 className="text-sm font-black tracking-wide text-white">PERGUNTAS ({productQuestions.length})</h2></div>
+              <div className="mt-5 space-y-3">
+                {questionsStatus === "loading" && <p className="text-sm text-white/40">Carregando perguntas…</p>}
+                {questionsStatus === "unavailable" && (
+                  <p className="text-sm text-white/40" role="status">Não foi possível carregar as perguntas agora.</p>
+                )}
+                {productQuestions.slice(0, questionsShown).map((item) => (
+                  <article key={item.id} className="rounded-xl bg-[#1a1a20] border border-[#25252e] p-4">
+                    <p className="text-xs font-bold text-[#5aaeff]">{item.userName}</p>
+                    <p className="text-sm text-white mt-1">{item.text}</p>
+                    <p className="text-[11px] text-white/35 mt-2">{new Date(item.date).toLocaleDateString("pt-BR")}</p>
+                    {item.answer
+                      ? <div className="mt-3 pl-3 border-l-2 border-[#0084ff]"><p className="text-[11px] font-bold text-[#5aaeff]">Resposta do vendedor</p><p className="text-sm text-white/80 mt-1">{item.answer}</p></div>
+                      : isProductSeller && questionsStatus === "ready" && (
+                        <div className="mt-3 border-t border-[#25252e] pt-3">
+                          <label className="sr-only" htmlFor={`answer-${item.id}`}>Responder pergunta</label>
+                          <textarea
+                            id={`answer-${item.id}`}
+                            value={answerDrafts[item.id] || ""}
+                            onChange={(event) => setAnswerDrafts((drafts) => ({ ...drafts, [item.id]: event.target.value }))}
+                            maxLength={2000}
+                            placeholder="Responder ao comprador"
+                            className="w-full min-h-16 bg-[#0a0a0f] border border-[#25252e] rounded-xl p-3 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#0084ff]"
+                          />
+                          <button
+                            onClick={() => void handleAnswerQuestion(item.id)}
+                            disabled={sendingAnswer === item.id}
+                            className="mt-2 bg-[#0084ff] hover:bg-[#0066cc] disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-bold"
+                          >
+                            {sendingAnswer === item.id ? "Enviando…" : "Responder"}
+                          </button>
                         </div>
                       )}
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="bg-[#00c950]/10 border border-[#00c950]/20 rounded-xl p-3"><Shield className="w-4 h-4 text-[#00c950] mb-1" /><p className="text-xs font-bold text-white">Protegido</p><p className="text-[10px] text-white/40">Reembolso</p></div>
-                        <div className="bg-[#0084ff]/10 border border-[#0084ff]/20 rounded-xl p-3"><Zap className="w-4 h-4 text-[#0084ff] mb-1" /><p className="text-xs font-bold text-white">Entrega</p><p className="text-[10px] text-white/40">{product.deliveryType === "auto" ? "Auto" : "Manual"}</p></div>
-                        <div className="bg-[#1a1a20] border border-[#25252e] rounded-xl p-3"><Clock className="w-4 h-4 text-white/60 mb-1" /><p className="text-xs font-bold text-white">Suporte</p><p className="text-[10px] text-white/40">24h</p></div>
-                      </div>
-                    </div>
-                  )}
-                  {detailTab === "reviews" && (
-                    <div className="space-y-2">
-                      {productReviews.length === 0 ? <p className="text-sm text-white/40 text-center py-10">Sem avaliações</p> : productReviews.map((r, i) => (
-                        <div key={i} className="bg-[#1a1a20] border border-[#25252e] p-3 rounded-xl"><p className="text-xs text-white">{r.reviewComment}</p></div>
-                      ))}
-                    </div>
-                  )}
-                  {detailTab === "questions" && (
-                    <div className="space-y-3">
-                      <div className="flex gap-2">
-                        <input value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Tire sua dúvida..." className="flex-1 bg-[#0a0a0f] border border-[#25252e] rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/20 focus:border-[#0084ff] outline-none" />
-                        <button onClick={handleSendQuestion} className="bg-[#0084ff] p-3 rounded-xl text-white"><Send className="w-4 h-4" /></button>
-                      </div>
-                      {productQuestions.map((q) => (
-                        <div key={q.id} className="bg-[#1a1a20] border border-[#25252e] p-3 rounded-xl"><p className="text-[10px] font-bold text-[#0084ff] uppercase">{q.userName}</p><p className="text-xs text-white mt-1">{q.text}</p></div>
-                      ))}
-                    </div>
-                  )}
+                  </article>
+                ))}
+                {!productQuestions.length && questionsStatus === "ready" && <p className="text-sm text-white/40 py-4">Ainda não há perguntas para este anúncio.</p>}
+                {productQuestions.length > questionsShown && <button onClick={() => setQuestionsShown((count) => count + 5)} className="text-sm font-bold text-[#5aaeff]">Carregar mais</button>}
+              </div>
+              {questionsStatus === "unavailable" ? (
+                <p className="mt-5 text-[11px] text-white/35 border border-[#25252e] rounded-xl p-3 bg-[#1a1a20]">
+                  O envio de perguntas está temporariamente desativado nesta tela até a atualização terminar — nada é salvo localmente.
+                </p>
+              ) : (
+                <div className="mt-5">
+                  <label className="sr-only" htmlFor="question-input">Faça uma pergunta</label>
+                  <textarea
+                    id="question-input"
+                    value={question}
+                    onChange={(event) => setQuestion(event.target.value)}
+                    maxLength={1000}
+                    placeholder="Faça uma pergunta"
+                    className="w-full min-h-24 bg-[#0a0a0f] border border-[#25252e] rounded-xl p-3 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-[#0084ff]"
+                  />
+                  <p className="text-[11px] text-white/35 mt-2">Não é permitido enviar contatos externos (WhatsApp, Discord, e-mail, links ou telefone).</p>
+                  <button
+                    onClick={() => void handleSendQuestion()}
+                    disabled={sendingQuestion}
+                    className="mt-3 bg-[#0084ff] hover:bg-[#0066cc] disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl text-sm font-bold"
+                  >
+                    {sendingQuestion ? "Enviando…" : "Enviar pergunta"}
+                  </button>
+                </div>
+              )}
+            </section>
+
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5 sm:p-6" aria-label="Avaliações do produto">
+              <h2 className="text-sm font-black tracking-wide text-white">AVALIAÇÕES ({reviewCount})</h2>
+              <div className="flex items-center gap-3 mt-4">
+                <p className="text-3xl font-black text-white">{avgRating || "—"}</p>
+                <div>
+                  <div className="flex text-[#ffbd2e]">{[1,2,3,4,5].map((star) => <Star key={star} className={`w-4 h-4 ${avgRating && star <= Math.round(Number(avgRating)) ? "fill-current" : "text-white/15"}`} />)}</div>
+                  <p className="text-xs text-white/40 mt-1">{reviewCount ? `${reviewCount} avaliação(ões)` : "Sem avaliações ainda"}</p>
                 </div>
               </div>
-            </div>
-          </div>
+              <div className="mt-5 space-y-3">
+                {reviewsStatus === "loading" && reviewCount > 0 && <p className="text-sm text-white/40">Carregando avaliações…</p>}
+                {reviewCount === 0 && <p className="text-sm text-white/40 py-2">Seja o primeiro a avaliar este produto após a compra.</p>}
+                {productReviews.map((review) => (
+                  <article key={review.id} className="border-t border-[#1e1e28] pt-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="flex text-[#ffbd2e]">{[1,2,3,4,5].map((star) => <Star key={star} className={`w-3 h-3 ${star <= (review.stars || 0) ? "fill-current" : "text-white/15"}`} />)}</span>
+                      <span className="text-[11px] font-bold text-white/60">{review.buyerName}</span>
+                    </div>
+                    <p className="text-sm text-white mt-1">{review.comment || "Sem comentário."}</p>
+                    <p className="text-[11px] text-white/35 mt-1">{new Date(review.createdAt).toLocaleDateString("pt-BR")}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </main>
 
-          <div className="lg:sticky lg:top-20 h-fit space-y-3">
-            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
-              <p className="text-[11px] uppercase font-bold text-white/30">Total com taxa</p>
-              <p className="text-3xl font-black text-white">R$ {total.toFixed(2)}</p>
-              <p className="text-xs text-white/40">R$ {subtotal.toFixed(2)} + {feePercent}% taxa</p>
-              <button onClick={handleBuyClick} disabled={buyLoading} className="w-full mt-4 bg-[#0084ff] hover:bg-[#0066cc] text-white py-3.5 rounded-xl font-black text-sm transition disabled:opacity-50">Comprar agora</button>
-            </div>
-          </div>
+          <aside className="lg:sticky lg:top-20 space-y-4">
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5"><p className="text-[11px] uppercase font-bold text-white/35">Preço</p><p className="text-3xl font-black text-white mt-1">{formatBRL(selectedVariation?.price ?? product.price)}</p>{variationRequired && <div className="relative mt-4"><button onClick={() => setVariationOpen((open) => !open)} className="w-full flex justify-between items-center rounded-xl bg-[#0a0a0f] border border-[#25252e] px-3 py-3 text-sm text-left text-white"><span>{selectedVariation?.name || "Escolha uma variação"}</span><span className="text-white/40">⌄</span></button>{variationOpen && <div className="absolute z-20 mt-2 w-full rounded-xl overflow-hidden bg-[#111114] border border-[#25252e] shadow-2xl"><div className="p-2 border-b border-[#25252e]"><label className="sr-only" htmlFor="variation-search">Buscar variação</label><div className="flex items-center gap-2 px-2"><Search className="w-4 h-4 text-white/40"/><input id="variation-search" autoFocus value={variationSearch} onChange={(event) => setVariationSearch(event.target.value)} placeholder="Buscar variação" className="w-full bg-transparent py-2 text-sm text-white outline-none"/></div></div><div className="max-h-56 overflow-auto">{filteredVariations.map((variation) => <button key={variation.name} onClick={() => { setSelectedVariation(variation); setVariationOpen(false); setVariationSearch(""); }} className="w-full p-3 text-left hover:bg-white/5 border-b border-[#1e1e28]"><span className="block font-bold text-white">{variation.name}</span><span className="text-xs text-[#5aaeff]">{formatBRL(variation.price)} · estoque: não informado</span></button>)}{!filteredVariations.length && <p className="p-3 text-sm text-white/40">Nenhuma variação encontrada.</p>}</div></div>}</div>}<p className="text-xs text-white/40 mt-2">{!sellerIdentityReady ? "Este anúncio ficará disponível quando a conta do vendedor for validada." : variationRequired && !selectedVariation ? "Escolha uma variação para comprar." : "Taxas e total serão detalhados no checkout."}</p><button onClick={handleBuyClick} disabled={buyLoading || !sellerIdentityReady || (variationRequired && !selectedVariation)} className="w-full mt-4 bg-[#ffbd2e] hover:bg-[#e6a829] disabled:opacity-40 disabled:cursor-not-allowed text-black py-3.5 rounded-xl font-black text-sm">{sellerIdentityReady ? "COMPRAR" : "ANÚNCIO EM VALIDAÇÃO"}</button></section>
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5"><h2 className="font-black text-white">Vendedor</h2><button onClick={() => setSelectedSellerId(product.sellerId)} className="w-full text-left flex gap-3 mt-4"><img src={seller?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(product.seller || "vendedor")}`} alt="" className="w-12 h-12 rounded-full bg-[#1a1a20]"/><div><p className="font-bold text-white">{product.seller || "Vendedor"}</p><p className="text-xs text-white/40 mt-1">{sellerIdentityReady ? `ID público: ${publicSellerId}` : "Conta do vendedor em validação"}</p><p className="text-xs text-white/40 mt-1">{sellerReviews.length ? `${sellerReviews.length} avaliações` : "Novo"}</p></div></button><dl className="mt-4 text-xs divide-y divide-[#1e1e28]"><div className="flex justify-between py-2"><dt className="text-white/40">Membro desde</dt><dd className="text-white">—</dd></div><div className="flex justify-between py-2"><dt className="text-white/40">Avaliações positivas</dt><dd className="text-white">{sellerPositive === null ? "—" : `${sellerPositive}%`}</dd></div><div className="flex justify-between py-2"><dt className="text-white/40">Último acesso</dt><dd className="text-white">—</dd></div></dl></section>
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5"><h2 className="font-black text-white">Verificações</h2><div className="mt-3 space-y-2 text-sm"><div className="flex justify-between"><span className="text-white/55">Documento</span><span className={seller?.isVerified ? "text-[#00c950]" : "text-white/40"}>{seller?.isVerified ? "Verificado" : "Não informado"}</span></div></div><p className="mt-3 text-[11px] leading-4 text-white/40">E-mail e telefone não são exibidos publicamente.</p></section>
+            <section className="bg-[#0084ff]/10 border border-[#0084ff]/30 rounded-2xl p-5 flex gap-3"><Shield className="w-6 h-6 text-[#5aaeff] shrink-0"/><div><h2 className="font-black text-white text-sm">Entrega garantida</h2><p className="text-xs text-white/55 mt-1">Pagamento e entrega acompanham o pedido dentro da ZXMAX.</p></div></section>
+          </aside>
         </div>
+        <section className="mt-8"><h2 className="text-lg font-black text-white">Anúncios parecidos</h2>{relatedProducts.length ? <div className="mt-4 flex gap-4 overflow-x-auto pb-2">{relatedProducts.map((item) => <Link key={item.id} to={`/produto/${item.id}`} className="shrink-0 w-52 rounded-2xl overflow-hidden bg-[#15151a] border border-[#25252e] hover:border-[#0084ff]"><img src={item.image} alt={item.name} className="w-full aspect-video object-cover"/><div className="p-3"><p className="text-sm font-bold text-white line-clamp-2">{item.name}</p><p className="text-sm font-black text-[#5aaeff] mt-2">{formatBRL(item.price)}</p></div></Link>)}</div> : <p className="mt-3 text-sm text-white/40">Não há outros anúncios desta categoria no momento.</p>}</section>
       </div>
-
-      {checkoutOpen && <CheckoutModal product={product} quantity={displayQuantity} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} feePercent={feePercent} />}
+      {imageOpen && <div role="dialog" aria-modal="true" aria-label="Imagem ampliada" className="fixed inset-0 z-[100] bg-black/90 p-4 flex items-center justify-center" onClick={() => setImageOpen(false)}><button onClick={() => setImageOpen(false)} className="absolute top-5 right-5 text-white p-3"><X /></button><img onClick={(event) => event.stopPropagation()} src={product.banner || product.image} alt={product.name} className="max-w-full max-h-full object-contain" /></div>}
+      {checkoutOpen && <CheckoutModal product={product} quantity={displayQuantity} unitPrice={unitPrice} subtotal={subtotal} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} />}
       {selectedSellerId && <UserProfileModal open={!!selectedSellerId} onClose={() => setSelectedSellerId(null)} userId={selectedSellerId} />}
       <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
+      <CryptoPaymentModal charge={cryptoCharge} onClose={() => setCryptoCharge(null)} onPaid={handlePixPaid} />
       {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
     </AppShell>
   );

@@ -21,82 +21,83 @@ serve(async (req) => {
 
     const body = await req.json();
     const purchaseId = Number(body.purchaseId);
-    const amount = Number(body.amount);
-    const network = body.network || "TRC20";
+    const network = String(body.network || "TRC20");
     const description = body.description || `Pedido #${purchaseId}`;
 
-    if (!purchaseId || !amount || amount < 2) throw new Error("Dados inválidos (mín R$2)");
+    if (!purchaseId) throw new Error("Pedido inválido");
 
-    // Check purchase
+    // Check purchase — o valor cobrado é o do banco, nunca o enviado pelo cliente.
     const { data: purchase } = await serviceClient.from("purchases").select("id, buyer_id, status, amount").eq("id", purchaseId).maybeSingle();
     if (!purchase || purchase.buyer_id !== userData.user.id) throw new Error("Pedido não encontrado");
     if (purchase.status !== "pending") throw new Error("Pedido não está pendente");
+    const amount = Number(purchase.amount);
+    if (!amount || amount < 20 || amount > 3000) throw new Error("Crypto exige pedido entre R$ 20,00 e R$ 3.000,00 (preço + taxa).");
+    if (!new Set(["TRC20", "USDC_TRC20", "BTC", "TRX"]).has(network)) {
+      throw new Error("Rede de Crypto inválida.");
+    }
 
-    // VexoPay credentials - uses same pattern as EvoPay but with ci/cs
-    let ci = Deno.env.get("VEXOPAY_CLIENT_ID") || Deno.env.get("EVOPAY_API_KEY");
-    let cs = Deno.env.get("VEXOPAY_CLIENT_SECRET");
-    
+    // Credenciais da VexoPay existem apenas no ambiente da Edge Function.
+    const ci = String(Deno.env.get("VEXOPAY_CLIENT_ID") || "").trim();
+    const cs = String(Deno.env.get("VEXOPAY_CLIENT_SECRET") || "").trim();
+    const baseUrl = "https://www.vexopay.com.br/api";
+    let cryptoEnabled = false;
+
     try {
-      const { data: setting } = await serviceClient.from("app_settings").select("value").eq("key", "evopay").maybeSingle();
-      if (setting?.value?.vexoCi) ci = setting.value.vexoCi;
-      if (setting?.value?.vexoCs) cs = setting.value.vexoCs;
+      const { data: setting } = await serviceClient.from("app_settings").select("value").eq("key", "vexopay").maybeSingle();
+      cryptoEnabled = setting?.value?.cryptoEnabled === true;
     } catch {}
 
-    if (!ci || !cs) throw new Error("VexoPay não configurado");
+    if (!ci || !cs || !cryptoEnabled) {
+      throw new Error("O pagamento em cripto está temporariamente indisponível: o gateway não está configurado. Avise o suporte.");
+    }
 
-    // Create crypto invoice via VexoPay gateway
-    // Docs: POST /api/gateway/crypto-create { amount, network, description }
+    // Contrato documentado: POST /gateway/crypto-create.
     const payload = {
       amount,
       network,
       description: description.slice(0, 120),
-      clientReference: String(purchaseId),
     };
 
-    console.log("Creating VexoPay crypto invoice", payload);
-
-    const resp = await fetch("https://www.vexopay.com.br/api/gateway/crypto-create", {
+    const resp = await fetch(`${baseUrl}/gateway/crypto-create`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "ci": ci,
-        "cs": cs,
-      },
+      headers: { "Content-Type": "application/json", Accept: "application/json", ci, cs },
       body: JSON.stringify(payload),
     });
+    const dataRes = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error("A VexoPay não conseguiu gerar esta cobrança Crypto. Tente novamente mais tarde.");
 
-    const data = await resp.json().catch(() => ({}));
-    console.log("VexoPay crypto response", resp.status, JSON.stringify(data));
+    const invoiceNode = dataRes?.invoice || dataRes?.data || dataRes;
+    const chargeId = invoiceNode?.id || dataRes?.id;
+    const address = invoiceNode?.address || dataRes?.address;
+    const qrPayload = invoiceNode?.qr_payload || dataRes?.qr_payload || invoiceNode?.qrCode || dataRes?.qrCode;
+    const expiresAt = invoiceNode?.expires_at || dataRes?.expires_at || new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
-    if (!resp.ok) throw new Error(data?.message || data?.error || "Erro ao criar cobrança Crypto");
+    if (!chargeId || !address) throw new Error("A VexoPay não devolveu os dados da cobrança Crypto.");
+    await serviceClient.from("purchases").update({
+      evopay_charge_id: `vexo:${chargeId}`,
+      updated_at: new Date().toISOString(),
+    }).eq("id", purchaseId);
 
-    // Save charge id if returned
-    if (data?.data?.id || data?.id) {
-      const chargeId = data?.data?.id || data?.id;
-      await serviceClient.from("purchases").update({
-        evopay_charge_id: String(chargeId),
-        updated_at: new Date().toISOString(),
-      }).eq("id", purchaseId);
-    }
-
-    await serviceClient.from("webhook_logs").insert({
-      source: "vexopay",
-      event_type: "CREATE_CRYPTO",
-      status: "created",
-      order_id: purchaseId,
-      charge_id: data?.data?.id || data?.id || null,
-      payload: data,
-      error: null,
-    });
+    try {
+      await serviceClient.from("webhook_logs").insert({
+        source: "vexopay",
+        event_type: "CREATE_CRYPTO",
+        status: "created",
+        order_id: purchaseId,
+        charge_id: chargeId ? String(chargeId) : null,
+        payload: { amount, network, expiresAt },
+        error: null,
+      });
+    } catch {}
 
     return new Response(JSON.stringify({
       success: true,
-      id: data?.data?.id || data?.id,
-      address: data?.data?.address || data?.address,
-      amount: data?.data?.amount || amount,
-      qrCode: data?.data?.qr_payload || data?.qr_payload || data?.data?.qrCode || null,
-      network: network,
-      expiresAt: data?.data?.expires_at || new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      id: `vexo:${chargeId}`,
+      address,
+      amount: invoiceNode?.amount || amount,
+      qrCode: qrPayload,
+      network,
+      expiresAt,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error: any) {

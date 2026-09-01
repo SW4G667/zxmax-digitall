@@ -1,34 +1,78 @@
 import React from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "@/store/StoreContext";
 import { StarEmoji } from "@/components/CustomEmojis";
 import { X, Shield, CheckCircle } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  userEmail?: string;
   userId?: string;
 }
 
-export default function UserProfileModal({ open, onClose, userEmail, userId }: Props) {
+export default function UserProfileModal({ open, onClose, userId }: Props) {
   const { state } = useStore();
-  
-  // Find seller info from products or purchases
-  const sellerProduct = state.products.find((p) => (userId ? p.sellerId === userId : p.sellerEmail === userEmail));
-  const sellerUuid = userId || sellerProduct?.sellerId || state.purchases.find((p) => p.sellerEmail === userEmail)?.sellerId || "";
+
+  const sellerProduct = state.products.find((p) => p.sellerId === userId);
+  const sellerUuid = userId || sellerProduct?.sellerId || "";
   const dirEntry = sellerUuid ? state.userDirectory?.[sellerUuid] : undefined;
-  const sellerName = dirEntry?.name || sellerProduct?.seller || userEmail?.split("@")[0] || "Vendedor";
-  const sellerId = sellerProduct?.sellerPublicId || state.purchases.find((p) => p.sellerEmail === userEmail)?.sellerPublicId || dirEntry?.publicId || "ID indisponível";
-  const sellerAvatar = dirEntry?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(sellerName)}`;
-  const isVerified = !!dirEntry?.isVerified;
+  const [resolvedProfile, setResolvedProfile] = useState<{
+    publicId: string;
+    name: string;
+    avatar?: string;
+    isVerified: boolean;
+  } | null>(null);
+  const [profileLookupStatus, setProfileLookupStatus] = useState<"idle" | "loading" | "ready" | "missing">("idle");
+
+  // The global directory may still be hydrating when a visitor opens this
+  // modal. Resolve this single, already-public profile again instead of
+  // replacing a valid seller identity with "Vendedor" or an unavailable ID.
+  useEffect(() => {
+    let active = true;
+    if (!open || !sellerUuid || dirEntry?.publicId) {
+      setResolvedProfile(null);
+      setProfileLookupStatus("idle");
+      return () => { active = false; };
+    }
+    setProfileLookupStatus("loading");
+    void (async () => {
+      const { data, error } = await (supabase as any)
+        .from("profiles_public")
+        .select("public_id, display_name, avatar_url, is_verified_seller")
+        .eq("user_id", sellerUuid)
+        .maybeSingle();
+      if (!active) return;
+      if (error || !data?.public_id) {
+        setResolvedProfile(null);
+        setProfileLookupStatus("missing");
+        return;
+      }
+      setResolvedProfile({
+        publicId: String(data.public_id),
+        name: String(data.display_name || sellerProduct?.seller || "Vendedor"),
+        avatar: data.avatar_url || undefined,
+        isVerified: !!data.is_verified_seller,
+      });
+      setProfileLookupStatus("ready");
+    })();
+    return () => { active = false; };
+  }, [open, sellerUuid, dirEntry?.publicId, sellerProduct?.seller]);
+
+  const sellerId = sellerProduct?.sellerPublicId || dirEntry?.publicId || resolvedProfile?.publicId || null;
+  const sellerIdentityReady = Boolean(sellerId);
+  const sellerName = dirEntry?.name || resolvedProfile?.name || sellerProduct?.seller || (sellerIdentityReady ? "Vendedor" : "Conta em validação");
+  const sellerAvatar = dirEntry?.avatar || resolvedProfile?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(sellerName)}`;
+  const isVerified = !!dirEntry?.isVerified || !!resolvedProfile?.isVerified;
 
   const sellerProducts = state.products.filter((p) => p.sellerId === sellerUuid && p.approved);
-  const sellerPurchases = state.purchases.filter((p) => p.sellerId === sellerUuid);
-  const sellerReviews = sellerPurchases.filter((p) => p.reviewed);
-  
-  const avgRating = sellerReviews.length > 0
-    ? (sellerReviews.reduce((a, r) => a + (r.reviewStars || 0), 0) / sellerReviews.length).toFixed(1)
-    : "Novo";
+  // Aggregates come from the persisted product review stats (reviews migration), never
+  // invented. Before that exists they are 0 and the UI shows "Novo • 0 avaliações".
+  const totalReviews = sellerProducts.reduce((acc, p) => acc + (p.reviewCount ?? 0), 0);
+  const weightedSum = sellerProducts.reduce((acc, p) => acc + (p.reviewAvg ?? 0) * (p.reviewCount ?? 0), 0);
+  const positiveSum = sellerProducts.reduce((acc, p) => acc + (p.reviewPositive ?? 0), 0);
+  const avgRating = totalReviews > 0 ? (weightedSum / totalReviews).toFixed(1) : "Novo";
+  const positivePct = totalReviews > 0 ? Math.round((positiveSum / totalReviews) * 100) : 0;
 
   if (!open) return null;
 
@@ -54,15 +98,27 @@ export default function UserProfileModal({ open, onClose, userEmail, userId }: P
             )}
           </div>
           <h4 className="text-2xl font-black text-foreground">{sellerName}</h4>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            {!sellerIdentityReady && profileLookupStatus === "loading"
+              ? "Carregando perfil público…"
+              : totalReviews > 0
+              ? `${positivePct}% positivas · ${totalReviews} avaliação(ões)`
+              : sellerIdentityReady ? "Novo • 0 avaliações" : "Identidade do vendedor em validação"}
+          </p>
           {isVerified ? (
             <div className="flex items-center gap-1.5 mt-1 bg-success/10 px-3 py-1 rounded-full">
               <Shield className="w-3 h-3 text-success" />
               <p className="text-[10px] font-bold text-success uppercase tracking-wider">Vendedor Verificado</p>
             </div>
-          ) : (
+          ) : sellerIdentityReady ? (
             <div className="flex items-center gap-1.5 mt-1 bg-muted px-3 py-1 rounded-full">
               <Shield className="w-3 h-3 text-muted-foreground" />
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Vendedor Não Verificado</p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 mt-1 bg-amber-500/10 px-3 py-1 rounded-full">
+              <Shield className="w-3 h-3 text-amber-500" />
+              <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Perfil em validação</p>
             </div>
           )}
         </div>
@@ -70,7 +126,7 @@ export default function UserProfileModal({ open, onClose, userEmail, userId }: P
         <div className="grid grid-cols-3 gap-3 mb-8">
           <div className="bg-muted rounded-2xl p-3 text-center">
             <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Vendas</p>
-            <p className="text-lg font-black text-foreground">{sellerPurchases.length}</p>
+            <p className="text-lg font-black text-foreground">{state.purchases.filter((p) => p.sellerId === sellerUuid).length}</p>
           </div>
           <div className="bg-muted rounded-2xl p-3 text-center">
             <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Avaliação</p>
@@ -78,6 +134,7 @@ export default function UserProfileModal({ open, onClose, userEmail, userId }: P
               <StarEmoji className="w-3 h-3" />
               <p className="text-lg font-black text-foreground">{avgRating}</p>
             </div>
+            <p className="text-[10px] text-muted-foreground mt-1">{totalReviews} avaliação(ões)</p>
           </div>
           <div className="bg-muted rounded-2xl p-3 text-center">
             <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Produtos</p>
@@ -87,9 +144,15 @@ export default function UserProfileModal({ open, onClose, userEmail, userId }: P
 
         <div className="space-y-4">
           <div className="bg-primary/5 border border-primary/10 rounded-2xl p-4">
-            <p className="text-[10px] font-bold text-primary uppercase mb-1 tracking-widest">ID do Vendedor (para denúncias)</p>
-            <p className="text-xs text-foreground font-mono break-all select-all">{sellerId}</p>
-            <p className="text-[9px] text-muted-foreground mt-2 italic">Use este ID para abrir disputas ou denúncias.</p>
+            <p className="text-[10px] font-bold text-primary uppercase mb-1 tracking-widest">ID público do vendedor</p>
+            {sellerIdentityReady ? (
+              <>
+                <p className="text-xs text-foreground font-mono break-all select-all">{sellerId}</p>
+                <p className="text-[9px] text-muted-foreground mt-2 italic">Use este ID para abrir disputas ou denúncias.</p>
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground leading-relaxed">Este anúncio ainda não está vinculado a uma conta pública. Ele não pode receber compra até a validação ser concluída.</p>
+            )}
           </div>
 
           <div className="space-y-2">
