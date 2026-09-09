@@ -36,20 +36,50 @@ verify_jwt = false
 [functions.zennith-withdraw]
 verify_jwt = true
 
+[functions.create-vexopay-pix]
+verify_jwt = false
+
 [functions.create-vexopay-crypto]
 verify_jwt = false
 
 [functions.vexopay-webhook]
 verify_jwt = false
 
-[functions.security-event]
+[functions.create-stripe-checkout]
 verify_jwt = false
-
-[functions.send-email]
-verify_jwt = true
 
 [functions.stripe-webhook]
 verify_jwt = false
 
+[functions.get-my-purchases]
+verify_jwt = false
+
+[functions.moderate-product]
+verify_jwt = false
+
+[functions.public-products]
+verify_jwt = false
+
+[functions.notify-product-event]
+verify_jwt = false
+
 [functions.admin-verify]
+verify_jwt = true
+
+[functions.admin-login]
+verify_jwt = false
+
+[functions.admin-remove-product]
+verify_jwt = true
+
+[functions.deliver-discord-webhook]
+verify_jwt = false
+
+[functions.manage-discord-webhooks]
+verify_jwt = true
+
+[functions.security-event]
+verify_jwt = false
+
+[functions.send-email]
 verify_jwt = true

@@ -11,14 +11,14 @@ const corsHeaders = {
 const BodySchema = z.object({
   orderId: z.number().int().positive(),
   action: z.enum([
-    "confirm_delivery",        // vendedor confirma entrega -> delivered_pending_confirmation
-    "confirm_receipt",         // comprador confirma recebimento -> delivered (liberação imediata)
-    "seller_refund",           // vendedor reembolsa comprador -> refunded
-    "open_dispute",            // comprador abre disputa -> dispute
-    "send_message",            // participantes enviam mensagem autorizada ao pedido
-    "approve",                 // admin aprova -> delivered
-    "revert",                  // admin reverte -> paid
-    "check_auto_release",      // verifica e processa auto-liberações de 3 dias
+    "confirm_delivery",
+    "confirm_receipt",
+    "seller_refund",
+    "open_dispute",
+    "send_message",
+    "approve",
+    "revert",
+    "check_auto_release",
   ]),
   reason: z.string().trim().optional(),
   message: z.string().trim().min(1).max(1000).optional(),
@@ -39,6 +39,8 @@ const json = (body: unknown, status = 200) =>
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+
+const EVOPAY_BASE = "https://api.evopay.cash/v1";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -99,7 +101,6 @@ serve(async (req) => {
     }
 
     if (action === "confirm_delivery") {
-      // Vendedor confirma entrega -> status delivered_pending_confirmation
       if (!isSeller && !isAdmin) return json({ error: "Apenas o vendedor pode marcar a entrega do pedido." }, 403);
       if (order.status !== "paid") return json({ error: "O pedido só pode ser marcado como entregue quando estiver em status pago." }, 400);
 
@@ -131,7 +132,6 @@ serve(async (req) => {
     }
 
     if (action === "confirm_receipt") {
-      // Comprador confirma recebimento -> status delivered (liberação imediata)
       if (!isBuyer && !isAdmin) return json({ error: "Apenas o comprador pode confirmar o recebimento do produto." }, 403);
       if (!["paid", "delivered_pending_confirmation"].includes(order.status)) {
         return json({ error: "Este pedido não está aguardando confirmação de recebimento." }, 400);
@@ -162,7 +162,6 @@ serve(async (req) => {
     }
 
     if (action === "seller_refund") {
-      // Vendedor reembolsa comprador
       if (!isSeller && !isAdmin) return json({ error: "Apenas o vendedor do pedido ou um administrador pode realizar o reembolso." }, 403);
       if (["refunded", "cancelled"].includes(order.status)) {
         return json({ error: "Este pedido já foi reembolsado ou cancelado." }, 400);
@@ -179,9 +178,83 @@ serve(async (req) => {
         return json({ error: "Não é permitido enviar contatos externos (WhatsApp, Discord, e-mail, links ou telefone)." }, 400);
       }
 
-      const provider = String(order.payment_provider || order.evopay_charge_id || "desconhecido");
+      const provider = String(order.payment_provider || "");
+      const chargeId = String(order.evopay_charge_id || "");
+
+      // Evopay Pix - reembolso via API oficial
+      if (provider === "evopay_pix" && chargeId.startsWith("evopay:")) {
+        const apiKey = String(Deno.env.get("EVOPAY_API_KEY") || "").trim();
+        if (!apiKey) return json({ error: "Credencial Evopay não configurada para reembolso." }, 503);
+
+        const transactionId = chargeId.slice("evopay:".length);
+        // Verifica se transação existe e está COMPLETED antes de reembolsar
+        try {
+          const verifyResp = await fetch(`${EVOPAY_BASE}/user/transactions/${encodeURIComponent(transactionId)}`, {
+            headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
+          });
+          const verifyBody = await verifyResp.json().catch(() => ({}));
+          if (!verifyResp.ok) {
+            const detail = String((verifyBody as any)?.message || `Transação não encontrada`);
+            return json({ error: `Não foi possível verificar a transação para reembolso: ${detail}` }, 400);
+          }
+          const node = (verifyBody as any)?.data || verifyBody;
+          const vStatus = String(node.status || "").toUpperCase();
+          if (!["COMPLETED", "PAID"].includes(vStatus)) {
+            return json({ error: `Só é possível reembolsar depósitos com status COMPLETED. Atual: ${vStatus}` }, 400);
+          }
+        } catch (e) {
+          console.error("evopay refund verify failed", e);
+          return json({ error: "Falha ao verificar transação para reembolso." }, 502);
+        }
+
+        // Solicita reembolso
+        try {
+          const refundResp = await fetch(`${EVOPAY_BASE}/user/refund/${encodeURIComponent(transactionId)}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({ description: cleanReason.slice(0, 500) }),
+          });
+          const refundBody = await refundResp.json().catch(() => ({}));
+          if (!refundResp.ok) {
+            const detail = String((refundBody as any)?.message || (refundBody as any)?.error || `Evopay ${refundResp.status}`);
+            console.error("evopay refund failed", refundResp.status, refundBody);
+            return json({ error: `Falha no reembolso Evopay: ${detail.slice(0, 180)}` }, 400);
+          }
+
+          // Log do reembolso
+          try {
+            await admin.from("webhook_logs").insert({
+              source: "evopay",
+              event_type: "REFUND_REQUESTED",
+              status: String((refundBody as any)?.status || "WAITING_FOR_REFUND"),
+              order_id: order.id,
+              charge_id: chargeId,
+              payload: { transactionId, reason: cleanReason, response: refundBody },
+              error: null,
+            });
+          } catch {}
+
+          // Atualiza pedido para refunded via RPC oficial (mantém auditoria)
+          const { data: refundResult, error: refundError } = await admin.rpc("seller_refund_order", {
+            _order_id: order.id,
+            _reason: cleanReason,
+          });
+          if (refundError) throw refundError;
+
+          return json({ success: true, status: "refunded", provider: "evopay", refund: refundBody });
+        } catch (e: any) {
+          console.error("evopay refund exception", e);
+          return json({ error: e?.message || "Erro ao processar reembolso Evopay" }, 400);
+        }
+      }
+
+      // Outros provedores ainda exigem implementação específica
       return json({
-        error: `O reembolso por ${provider} exige endpoint oficial, confirmação verificável do provedor e conciliação antes de alterar o pedido.`,
+        error: `O reembolso por ${provider || "este método"} ainda exige endpoint oficial. No momento apenas Evopay Pix possui reembolso automático implementado.`,
       }, 409);
     }
 

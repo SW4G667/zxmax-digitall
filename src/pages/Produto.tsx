@@ -34,9 +34,9 @@ interface SellerOffer {
   verified: boolean;
 }
 
-type CheckoutMethod = "zennith_pix" | "vexopay_pix" | "crypto" | "card" | "boleto";
+type CheckoutMethod = "evopay_pix" | "zennith_pix" | "vexopay_pix" | "crypto" | "card" | "boleto";
 
-const METHOD_ORDER: CheckoutMethod[] = ["zennith_pix", "vexopay_pix", "crypto", "card", "boleto"];
+const METHOD_ORDER: CheckoutMethod[] = ["evopay_pix", "zennith_pix", "vexopay_pix", "crypto", "card", "boleto"];
 
 function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConfirm, loading }: { product: Product; quantity: number; unitPrice: number; subtotal: number; onClose: () => void; onConfirm: (method: string, cpf: string, network?: string) => void; loading: boolean }) {
   // Sem método selecionado até sabermos o que está ativo: nunca deixamos PIX
@@ -87,7 +87,7 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
       return;
     }
     const cleanCpf = cpf.replace(/\D/g, "");
-    if (method === "zennith_pix" || method === "vexopay_pix" || method === "crypto") {
+    if (method === "evopay_pix" || method === "zennith_pix" || method === "vexopay_pix" || method === "crypto") {
       if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
         toast.error("Digite um CPF/CNPJ válido (11 ou 14 dígitos) para PIX/Crypto");
         return;
@@ -97,6 +97,7 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
   };
 
   const methodButtons: Array<{ id: CheckoutMethod; label: string; icon: React.ReactNode; selectedClass: string }> = [
+    { id: "evopay_pix", label: "PIX (Evopay)", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-[#0084ff] border-[#0084ff] text-white" },
     { id: "zennith_pix", label: "PIX", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-[#0084ff] border-[#0084ff] text-white" },
     { id: "vexopay_pix", label: "PIX", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-[#0084ff] border-[#0084ff] text-white" },
     { id: "crypto", label: "Crypto", icon: <Bitcoin className="w-5 h-5" />, selectedClass: "bg-[#ffbd2e] border-[#ffbd2e] text-black" },
@@ -104,9 +105,8 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
     { id: "boleto", label: "Boleto", icon: <Package className="w-5 h-5" />, selectedClass: "bg-white border-white text-black" },
   ];
   const visibleMethodButtons = methodButtons.filter(({ id }) => {
-    // A disponibilidade definitiva já aplica precedência no contrato; durante
-    // o carregamento, também evitamos desenhar duas opções PIX provisórias.
-    if (loadingMethods) return id !== "vexopay_pix";
+    // Durante carregamento, evita mostrar múltiplas opções PIX provisórias
+    if (loadingMethods) return id === "evopay_pix";
     return isAvailable(id);
   });
 
@@ -191,7 +191,7 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
           <button onClick={handleConfirm} disabled={loading || loadingMethods || !method || !isAvailable(method)} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
             {loading ? "Processando..."
               : !anyMethod && !loadingMethods ? "Nenhuma forma disponível"
-              : method === "zennith_pix" || method === "vexopay_pix" ? "Pagar com PIX"
+              : method === "evopay_pix" || method === "zennith_pix" || method === "vexopay_pix" ? "Pagar com PIX"
               : method === "crypto" ? "Pagar com cripto"
               : method === "boleto" ? "Gerar boleto"
               : "Pagar com cartão"}
@@ -436,9 +436,10 @@ export default function ProdutoPage() {
       purchaseId = await buyProduct(product.id, isRobux ? undefined : (selectedVariation || undefined), displayQuantity, method);
       if (!purchaseId) return; // buyProduct já explicou o motivo
 
-      if (method === "zennith_pix" || method === "vexopay_pix") {
+      if (method === "evopay_pix" || method === "zennith_pix" || method === "vexopay_pix") {
+        const functionName = method === "evopay_pix" ? "create-evopay-pix" : method === "zennith_pix" ? "create-zennith-pix" : "create-vexopay-pix";
         const res = await unwrapEdgeCall<{ id: string; qrCodeText: string; qrCodeUrl?: string; expiresAt?: string; amount?: number }>(
-          await supabase.functions.invoke(method === "zennith_pix" ? "create-zennith-pix" : "create-evopay-pix", {
+          await supabase.functions.invoke(functionName, {
             body: { purchaseId, productName: !isRobux && selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name, buyerName: state.currentUser?.name, payerDocument: cpf || undefined },
           }),
           "Não foi possível gerar o PIX. Tente novamente.",

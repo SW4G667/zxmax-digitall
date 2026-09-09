@@ -23,7 +23,7 @@ export default function WithdrawView() {
     setSubmitting(true);
     try {
       await requestWithdraw("normal", retryOf ? { retryOf } : undefined);
-      toast.success(retryOf ? "Saque reenviado para análise." : "Solicitação registrada. Após aprovação o Pix sai pela ZennithPay.");
+      toast.success(retryOf ? "Saque reenviado para análise." : "Solicitação registrada. Após aprovação o Pix sai automaticamente via Evopay (ou ZennithPay como fallback).");
     } catch (e: any) {
       toast.error(e?.message || "Não foi possível registrar o saque.");
     } finally {
@@ -54,7 +54,7 @@ export default function WithdrawView() {
           </div>
           <div className="bg-[#0a0a0f] border border-[#25252e] p-4 rounded-xl flex gap-3 text-white/70">
             <Clock3 className="w-5 h-5 text-[#0084ff] shrink-0" />
-            <span>Pix via ZennithPay após aprovação</span>
+            <span>Pix via Evopay (ou ZennithPay) após aprovação</span>
           </div>
         </div>
       </div>

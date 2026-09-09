@@ -13,6 +13,8 @@ function normalizedStatus(value: unknown) {
   return "PENDING";
 }
 
+const EVOPAY_BASE = "https://api.evopay.cash/v1";
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -40,7 +42,7 @@ serve(async (req) => {
     }
 
     const provider = String(purchase.payment_provider || "");
-    const { data: configRow } = await admin.from("app_settings").select("key,value").in("key", ["zennithpay", "vexopay"]);
+    const { data: configRow } = await admin.from("app_settings").select("key,value").in("key", ["zennithpay", "vexopay", "evopay"]);
     const configuration = (key: string) => ((configRow || []).find((row: any) => row.key === key)?.value || {}) as Record<string, unknown>;
     let providerStatus: string;
     let providerAmount: number;
@@ -74,14 +76,39 @@ serve(async (req) => {
       const node = (payload.data || payload.invoice || payload) as Record<string, unknown>;
       providerStatus = normalizedStatus(node.status);
       providerAmount = round(node.amount);
+    } else if (provider === "evopay_pix" && chargeId.startsWith("evopay:")) {
+      const apiKey = String(Deno.env.get("EVOPAY_API_KEY") || "").trim();
+      const evopayCfg = configuration("evopay");
+      if (!apiKey || evopayCfg.pixEnabled !== true && evopayCfg.enabled !== undefined && evopayCfg.pixEnabled !== true) {
+        // Se não há config mas tem key, permite consulta
+        if (!apiKey) return json({ error: "Gateway Evopay indisponível para consulta." }, 503);
+      }
+      const transactionId = chargeId.slice("evopay:".length);
+      // Consulta via GET /pix/?id=
+      let response = await fetch(`${EVOPAY_BASE}/pix/?id=${encodeURIComponent(transactionId)}`, {
+        headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
+      });
+      let payload: any = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        // Fallback para /user/transactions/{id}
+        response = await fetch(`${EVOPAY_BASE}/user/transactions/${encodeURIComponent(transactionId)}`, {
+          headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
+        });
+        payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error("evopay_status_lookup_failed");
+      }
+      const node = payload?.data && typeof payload.data === "object" ? payload.data : payload;
+      providerStatus = normalizedStatus(node.status);
+      providerAmount = round(node.amount);
     } else {
       return json({ error: "Provedor de pagamento não é elegível para consulta." }, 400);
     }
 
     const expectedAmount = round(purchase.amount);
     if (providerStatus === "COMPLETED" && Number.isFinite(providerAmount) && providerAmount === expectedAmount) {
+      const providerName = provider === "zennith_pix" ? "zennithpay" : provider === "evopay_pix" ? "evopay" : "vexopay";
       const { error } = await admin.rpc("apply_verified_payment", {
-        _provider: provider === "zennith_pix" ? "zennithpay" : "vexopay",
+        _provider: providerName,
         _event_key: `${chargeId}:poll:paid`,
         _event_type: "poll",
         _purchase_id: purchase.id,

@@ -47,7 +47,7 @@ serve(async (req) => {
     const productId = Number(body.productId);
     const variationName = typeof body.variationName === "string" ? body.variationName : null;
     const requestedQty = Number(body.quantity);
-    const paymentMethod = ["zennith_pix", "vexopay_pix", "crypto", "card", "boleto"].includes(String(body.paymentMethod)) ? String(body.paymentMethod) : null;
+    const paymentMethod = ["evopay_pix", "zennith_pix", "vexopay_pix", "crypto", "card", "boleto"].includes(String(body.paymentMethod)) ? String(body.paymentMethod) : null;
     if (!productId || Number.isNaN(productId)) return json({ error: "Produto inválido" }, 400);
 
     const admin = createClient(
@@ -55,25 +55,36 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { data: gatewayRows } = await admin.from("app_settings").select("key,value").in("key", ["zennithpay", "vexopay", "stripe"]);
+    const { data: gatewayRows } = await admin.from("app_settings").select("key,value").in("key", ["zennithpay", "vexopay", "evopay", "stripe"]);
     const gateway = (key: string) => (gatewayRows || []).find((row: any) => row.key === key)?.value || {};
     const zennith = gateway("zennithpay") as Record<string, unknown>;
     const zennithReady = Boolean(Deno.env.get("ZENNITH_API_KEY"));
     const vexopay = gateway("vexopay") as Record<string, unknown>;
     const vexopayReady = Boolean(Deno.env.get("VEXOPAY_CLIENT_ID") && Deno.env.get("VEXOPAY_CLIENT_SECRET"));
-    const selectedPix = zennithReady && zennith.pixEnabled === true
-      ? "zennith_pix"
-      : vexopayReady && vexopay.pixEnabled === true
-        ? "vexopay_pix"
-        : null;
-    if ((paymentMethod === "zennith_pix" || paymentMethod === "vexopay_pix") && paymentMethod !== selectedPix) {
+    const evopay = gateway("evopay") as Record<string, unknown>;
+    const evopayReady = Boolean(Deno.env.get("EVOPAY_API_KEY"));
+
+    // Prioridade: Evopay > Zennith > VexoPay
+    const evopayPixActive = evopayReady && (evopay as any).pixEnabled === true;
+    const zennithPixActive = zennithReady && zennith.pixEnabled === true;
+    const vexopayPixActive = vexopayReady && vexopay.pixEnabled === true;
+    let selectedPix: string | null = null;
+    if (evopayPixActive) selectedPix = "evopay_pix";
+    else if (zennithPixActive) selectedPix = "zennith_pix";
+    else if (vexopayPixActive) selectedPix = "vexopay_pix";
+
+    // Se o cliente escolheu PIX, valida contra o selecionado
+    if ((paymentMethod === "evopay_pix" || paymentMethod === "zennith_pix" || paymentMethod === "vexopay_pix") && paymentMethod !== selectedPix) {
       return json({ error: "PIX indisponível no momento. Tente novamente mais tarde." }, 503);
     }
-    const configuredFee = paymentMethod === "zennith_pix"
-      ? Number(gateway("zennithpay").pixFee)
-      : paymentMethod === "vexopay_pix"
-        ? Number(gateway("vexopay").pixFee)
-        : 0;
+
+    const configuredFee = paymentMethod === "evopay_pix"
+      ? Number(gateway("evopay").pixFee)
+      : paymentMethod === "zennith_pix"
+        ? Number(gateway("zennithpay").pixFee)
+        : paymentMethod === "vexopay_pix"
+          ? Number(gateway("vexopay").pixFee)
+          : 0;
     const buyerFee = Number.isFinite(configuredFee) && configuredFee >= 0 && configuredFee <= 1000 ? roundMoney(configuredFee) : 0;
     const stripe = gateway("stripe") as Record<string, unknown>;
     const stripeReady = Boolean(Deno.env.get("STRIPE_SECRET_KEY") && Deno.env.get("STRIPE_WEBHOOK_SECRET"));
@@ -82,6 +93,9 @@ serve(async (req) => {
     }
     if (paymentMethod === "boleto" && (!stripeReady || stripe.boletoEnabled !== true)) {
       return json({ error: "Boleto indisponível no momento. Escolha PIX ou tente mais tarde." }, 503);
+    }
+    if (paymentMethod === "evopay_pix" && (!evopayReady || (evopay as any).pixEnabled !== true)) {
+      return json({ error: "PIX via Evopay indisponível no momento. Tente novamente mais tarde." }, 503);
     }
     if (paymentMethod === "vexopay_pix" && (!vexopayReady || vexopay.pixEnabled !== true)) {
       return json({ error: "PIX indisponível no momento. Tente novamente mais tarde." }, 503);
@@ -99,9 +113,6 @@ serve(async (req) => {
     if (productError || !product || !product.approved) return json({ error: "Produto indisponível" }, 404);
     if (product.seller_id === user.id) return json({ error: "Você não pode comprar o próprio anúncio." }, 400);
 
-    // A public listing must always belong to an active marketplace identity.
-    // Old imported rows can keep a stale seller_id after the original account
-    // is removed; never create a payable order without a valid counterparty.
     const { data: sellerProfile, error: sellerProfileError } = await admin
       .from("profiles")
       .select("user_id, public_id")

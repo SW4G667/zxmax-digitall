@@ -108,7 +108,7 @@ export interface Purchase {
   createdAt: string;
   updatedAt?: string;
   amount: number;
-  paymentProvider?: "zennith_pix" | "vexopay_pix" | "crypto" | "card" | "boleto";
+  paymentProvider?: "evopay_pix" | "zennith_pix" | "vexopay_pix" | "crypto" | "card" | "boleto";
   messages: PurchaseMessage[];
   reviewed?: boolean;
   reviewStars?: number;
@@ -953,25 +953,61 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const withdrawal = state.withdrawals.find((w) => w.id === id);
     if (!withdrawal?.pixKey) throw new Error("Este saque não tem chave Pix cadastrada.");
     const net = Math.round((Number(withdrawal.amount) - WITHDRAW_FEE) * 100) / 100;
-    const res = await unwrapEdgeCall<{ id?: string; status?: string; error?: string }>(
-      await supabase.functions.invoke("zennith-withdraw", {
-        body: {
-          amount: net > 0 ? net : Number(withdrawal.amount),
-          pixKey: withdrawal.pixKey,
-          clientReference: `zxmax-withdraw-${id}`,
-        },
-      }),
-      "Erro ao processar saque na ZennithPay.",
-    );
-    if (res.errorMessage || !res.data) {
-      // 404 = function ainda não publicada — mensagem honesta em vez de falha genérica.
-      if (res.status === 404 || /not found/i.test(res.errorMessage || "")) {
-        throw new Error("Função de saque ZennithPay ainda não publicada no Supabase. Publique as edges antes de aprovar saques.");
+    const amountToSend = net > 0 ? net : Number(withdrawal.amount);
+
+    // Try Evopay first (new primary), then Zennith as fallback for legacy
+    const tryProviders = [
+      { fn: "evopay-withdraw", label: "Evopay" },
+      { fn: "zennith-withdraw", label: "ZennithPay" },
+    ];
+
+    let lastErr: string | null = null;
+    let providerTx: string | null = null;
+
+    for (const p of tryProviders) {
+      try {
+        const res = await unwrapEdgeCall<{ id?: string; status?: string; error?: string; transactionId?: string }>(
+          await supabase.functions.invoke(p.fn, {
+            body: {
+              amount: amountToSend,
+              pixKey: withdrawal.pixKey,
+              clientReference: `zxmax-withdraw-${id}`,
+            },
+          }),
+          `Erro ao processar saque via ${p.label}.`,
+        );
+        if (res.errorMessage && !res.data) {
+          if (res.status === 404 || /not found/i.test(res.errorMessage || "")) {
+            lastErr = res.errorMessage;
+            continue; // try next provider
+          }
+          throw new Error(res.errorMessage);
+        }
+        const data: any = res.data;
+        providerTx = data?.id ? String(data.id) : (data?.transactionId ? String(data.transactionId) : null);
+        if (providerTx || data?.status === "COMPLETED" || data?.status === "PENDING" || data?.ok) {
+          lastErr = null;
+          break;
+        }
+        // If response didn't have tx but also no error, consider success
+        if (data) {
+          lastErr = null;
+          break;
+        }
+      } catch (e: any) {
+        const msg = e?.message || "";
+        if (/not found/i.test(msg) || /404/.test(msg)) {
+          lastErr = msg;
+          continue;
+        }
+        throw e;
       }
-      throw new Error(res.errorMessage || "Erro ao processar saque na ZennithPay");
     }
-    const data = res.data;
-    const providerTx = data?.id ? String(data.id) : null;
+
+    if (lastErr && !providerTx) {
+      throw new Error(lastErr || "Nenhum gateway de saque disponível. Configure EVOPAY_API_KEY nos secrets.");
+    }
+
     const { error: rpcError } = await (supabase as any).rpc("approve_withdrawal", {
       _id: id,
       _provider_tx: providerTx,
