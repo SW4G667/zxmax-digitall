@@ -52,6 +52,8 @@ export interface Product {
   sellerEmail: string;
   sellerId: string;
   sellerPublicId?: string;
+  sellerAvatar?: string;
+  sellerVerified?: boolean;
   sales: number;
   rating: number;
   image: string;
@@ -193,7 +195,7 @@ interface StoreContextType {
   rejectProduct: (id: number) => Promise<boolean>;
   refreshProducts: () => Promise<void>;
   deleteProduct: (id: number) => Promise<{ paused: boolean }>;
-  buyProduct: (id: number, variation?: ProductVariation) => Promise<number | null>;
+  buyProduct: (id: number, variation?: ProductVariation, options?: { quantity?: number; paymentMethod?: string }) => Promise<number | null>;
   savePixCharge: (purchaseId: number, charge: { evopayId: string; qrCodeText: string; expiresAt: string }) => void;
   refreshPurchases: () => Promise<void>;
   markOrderDelivered: (orderId: number) => Promise<boolean>;
@@ -516,7 +518,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         seller: p.seller_name, 
         sellerEmail: "", 
         sellerId: p.seller_id, 
-        sellerPublicId: p.seller_public_id, 
+        sellerPublicId: p.seller_public_id,
+        sellerAvatar: p.seller_avatar || undefined,
+        sellerVerified: !!p.seller_verified,
         sales: p.sales || 0, 
         rating: Number(p.rating || 0), 
         image: p.image, 
@@ -533,6 +537,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         sellerRating: 99.4,
         sellerReviews: Math.floor((p.sales || 0) * 12 + 100),
       })) as Product[];
+      const sellerDirectory = products.reduce((acc, product) => {
+        if (!product.sellerId) return acc;
+        const existing = acc[product.sellerId];
+        acc[product.sellerId] = {
+          userId: product.sellerId,
+          publicId: product.sellerPublicId || existing?.publicId || "",
+          email: existing?.email || "",
+          name: product.seller || existing?.name || "Vendedor",
+          avatar: product.sellerAvatar || existing?.avatar,
+          isVerified: product.sellerVerified ?? existing?.isVerified ?? false,
+        };
+        return acc;
+      }, {} as Record<string, UserDirectoryEntry>);
       const purchases = ((dbPurchases || []) as any[]).map(mapPurchaseRow) as Purchase[];
       const withdrawals = ((dbWithdrawals || []) as any[]).map((w) => ({ id: Number(w.id), userEmail: w.user_email, userId: w.user_id, amount: Number(w.amount), method: w.method, status: w.status, createdAt: w.created_at, pixKey: w.pix_key || "", rejectionReason: w.rejection_reason || "", providerTxId: w.provider_tx_id || "", retryOf: w.retry_of ?? null })) as Withdrawal[];
       setState((s) => ({
@@ -540,6 +557,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         products,
         purchases,
         withdrawals,
+        userDirectory: { ...(s.userDirectory || {}), ...sellerDirectory },
       }));
     } catch (e) {
       console.error("loadCatalog failed", e);
@@ -681,11 +699,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { paused: false };
   };
 
-  const buyProduct = async (id: number, variation?: ProductVariation) => {
+  const buyProduct = async (id: number, variation?: ProductVariation, options?: { quantity?: number; paymentMethod?: string }) => {
     const product = state.products.find((p) => p.id === id);
     if (!product || !state.currentUser) return null;
     const { data, error } = await supabase.functions.invoke("create-purchase", {
-      body: { productId: id, variationName: variation?.name || null },
+      body: {
+        productId: id,
+        variationName: variation?.name || null,
+        quantity: options?.quantity,
+        paymentMethod: options?.paymentMethod || null,
+      },
     });
     if (error || data?.error || !data?.purchase) {
       const message = data?.error || error?.message || "Não foi possível registrar a compra.";

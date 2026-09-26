@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { X, Loader2, Lock, Eye, EyeOff, Shield, AlertTriangle } from "lucide-react";
+import { X, Loader2, Lock, Eye, EyeOff, Shield, AlertTriangle, BadgeCheck } from "lucide-react";
+import { useSiteBranding } from "@/context/SiteBrandingContext";
+import { supabase } from "@/integrations/supabase/client";
 import { buildDiscordAuthorizeUrl, rememberRedirectUri } from "@/lib/discordAuth";
 
 export default function AuthScreen({ onClose }: { onClose?: () => void }) {
   const { signUp, signIn } = useAuth();
+  const { branding } = useSiteBranding();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -59,7 +62,13 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
   };
 
   const handleForgot = async () => {
-    toast.info("A recuperação de senha estará disponível em breve. Se precisar de ajuda agora, fale com o suporte no Discord.");
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes("@")) return toast.error("Digite seu e-mail primeiro.");
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo: window.location.origin + "/reset-password",
+    });
+    if (error) return toast.error("Não foi possível enviar o link: " + error.message);
+    toast.success("Enviamos um link de recuperação para seu e-mail.");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -100,9 +109,7 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-[#050508]">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0084ff]/10 via-transparent to-transparent" />
-      </div>
+      <div className="absolute inset-0 bg-[#07070a]" />
 
       <div className="w-full max-w-md relative z-10 bg-[#0a0a0f] border border-white/10 rounded-2xl p-8 shadow-2xl animate-fade-in-up">
         {onClose && (
@@ -112,9 +119,15 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
         )}
 
         <div className="text-center mb-6">
-          <h1 className="text-3xl font-black tracking-tighter text-white">ZX<span className="text-[#0084ff]">MAX</span></h1>
-          <div className="flex items-center justify-center gap-2 mt-2 text-[11px] text-white/40">
-            <Shield className="w-3 h-3 text-[#00c950]" /> Compra Protegida
+          {branding.logoUrl ? (
+            <img src={branding.logoUrl} alt={branding.siteName} className="h-11 max-w-[210px] object-contain mx-auto mb-2" />
+          ) : (
+            <h1 className="text-3xl font-black tracking-tight text-white">{branding.siteName || "ZXMAX"}</h1>
+          )}
+          <p className="text-xs text-white/35 mt-2">Acesse sua conta para comprar, vender e acompanhar pedidos.</p>
+          <div className="flex items-center justify-center gap-4 mt-3 text-[10px] text-white/35">
+            <span className="flex items-center gap-1"><Shield className="w-3 h-3 text-[#00c950]" /> Compra protegida</span>
+            <span className="flex items-center gap-1"><BadgeCheck className="w-3 h-3 text-[#0084ff]" /> Vendedores verificados</span>
           </div>
         </div>
 
@@ -142,14 +155,18 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
           </button>
         </form>
 
-        {mode === "login" && <button type="button" onClick={handleForgot} className="w-full text-center text-[11px] font-bold text-white/30 mt-3 hover:text-white/50 transition">Esqueceu sua senha? (em breve)</button>}
+        {mode === "login" && <button type="button" onClick={handleForgot} className="w-full text-center text-[11px] font-bold text-white/35 mt-3 hover:text-white transition">Esqueceu sua senha?</button>}
 
         <div className="mt-5">
+          <div className="flex items-center gap-3 mb-4"><div className="h-px bg-white/10 flex-1" /><span className="text-[10px] text-white/25 uppercase font-bold">ou continue com</span><div className="h-px bg-white/10 flex-1" /></div>
           <button onClick={handleDiscord} className="w-full flex items-center justify-center gap-2 p-3 border border-white/10 rounded-xl hover:bg-white/[0.04] transition text-sm font-bold text-white/60 hover:text-white">
             <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="#5865F2" d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128c.126-.094.252-.192.373-.292a.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.086 2.157 2.419 0 1.334-.947 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.086 2.157 2.419 0 1.334-.946 2.419-2.157 2.419z"/></svg>
             Entrar com Discord
           </button>
         </div>
+        <p className="text-[10px] text-white/25 text-center mt-5 leading-relaxed">
+          Ao continuar, você concorda com os termos e regras da plataforma.
+        </p>
       </div>
     </div>
   );
