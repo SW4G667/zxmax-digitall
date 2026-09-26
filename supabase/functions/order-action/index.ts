@@ -254,6 +254,9 @@ serve(async (req) => {
         .eq("id", order.id);
 
       if (error) throw error;
+      if (order.status === "dispute") {
+        await notifyOrderEmails(["dispute_resolved_buyer", "dispute_resolved_seller"], Number(order.id));
+      }
       return json({ success: true, status: nextStatus });
     }
 
