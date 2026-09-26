@@ -36,8 +36,8 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
       if (paidRef.current) return;
       attempts += 1;
       try {
-        const { data, error } = await supabase.functions.invoke("check-evopay-status", {
-          body: { id: charge.evopayId },
+        const { data, error } = await supabase.functions.invoke("check-magnuspay-status", {
+          body: { purchaseId: charge.purchaseId },
         });
         const gatewayPaid = !error && (
           PAID_STATUSES.includes(data?.status) ||
@@ -51,7 +51,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
           const { data: latest } = await (supabase as any)
             .from("purchases")
             .select("id, status")
-            .eq("evopay_charge_id", charge.evopayId)
+            .eq("provider_payment_id", charge.evopayId)
             .maybeSingle();
           if (latest) {
             if (["paid", "delivered"].includes(latest.status)) localPaid = true;
@@ -92,7 +92,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [charge?.evopayId]);
+  }, [charge?.evopayId, charge?.purchaseId]);
 
   if (!charge) return null;
 
@@ -129,7 +129,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
         ) : (
           <>
             <p className="text-center text-2xl font-black text-primary mb-1">R$ {Number(charge.amount).toFixed(2)}</p>
-            <p className="text-center text-xs text-muted-foreground mb-5">Escaneie o QR Code ou copie o código abaixo</p>
+            <p className="text-center text-xs text-muted-foreground mb-5">Pix processado com segurança pela MagnusPay. Escaneie o QR Code ou copie o código abaixo.</p>
 
             <div className="flex justify-center mb-5">
               <img src={qrImg} alt="QR Code PIX" className="w-56 h-56 rounded-2xl bg-white p-2 shadow-md" />
