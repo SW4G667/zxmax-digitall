@@ -73,6 +73,12 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
             )}
           </button>
 
+          <nav className="hidden items-center gap-1 lg:flex" aria-label="Navegação principal">
+            <button onClick={() => navigate("/loja")} className="rounded-md px-2.5 py-2 text-xs font-medium text-white/52 transition hover:bg-white/[0.04] hover:text-white">Loja</button>
+            <button onClick={() => navigate("/categorias")} className="rounded-md px-2.5 py-2 text-xs font-medium text-white/52 transition hover:bg-white/[0.04] hover:text-white">Categorias</button>
+            <button onClick={() => navigate("/robux")} className={`rounded-md px-2.5 py-2 text-xs font-semibold transition ${location.pathname === "/robux" ? "bg-[#168cff]/10 text-[#67b5ff]" : "text-white/52 hover:bg-white/[0.04] hover:text-white"}`}>Robux</button>
+          </nav>
+
           <form onSubmit={submitSearch} className="hidden min-w-0 flex-1 md:flex">
             <div className="flex h-10 w-full max-w-xl items-center rounded-lg border border-white/[0.1] bg-[#151519] px-3 focus-within:border-[#168cff]/60">
               <Search className="h-4 w-4 shrink-0 text-white/30" />
@@ -162,6 +168,13 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
             />
           </div>
         </form>
+
+        <nav className="flex gap-4 overflow-x-auto pb-3 text-[11px] font-medium text-white/42 lg:hidden" aria-label="Atalhos do marketplace">
+          <button onClick={() => navigate("/loja")} className="shrink-0 hover:text-white">Loja</button>
+          <button onClick={() => navigate("/categorias")} className="shrink-0 hover:text-white">Categorias</button>
+          <button onClick={() => navigate("/robux")} className={`shrink-0 ${location.pathname === "/robux" ? "text-[#67b5ff]" : "hover:text-white"}`}>Robux</button>
+          <button onClick={() => navigate("/como-funciona")} className="shrink-0 hover:text-white">Como funciona</button>
+        </nav>
       </div>
     </header>
   );
