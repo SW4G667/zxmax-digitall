@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session, Factor } from "@supabase/supabase-js";
-import { clearAdminGate, peekStoredSession, readAdminGate, wipePersistedAuth, withTimeout, writeAdminGate } from "@/lib/authSession";\nimport { getAppUrl } from "@/lib/appUrl";
+import { clearAdminGate, peekStoredSession, readAdminGate, wipePersistedAuth, withTimeout, writeAdminGate } from "@/lib/authSession";
+import { getAppUrl } from "@/lib/appUrl";
 
 interface Profile {
   id: string;
