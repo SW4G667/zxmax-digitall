@@ -32,6 +32,12 @@ type Provider = {
 
 const PROVIDERS: Provider[] = [
   {
+    id: "magnuspay",
+    name: "MagnusPay PIX",
+    description: "Gateway PIX principal. A chave fica somente nos Secrets do Supabase e nunca é exposta ao navegador.",
+    secretNames: ["MAGNUSPAY_API_KEY"],
+  },
+  {
     id: "zennithpay",
     name: "ZennithPay PIX",
     description: "Método PIX independente. A taxa exibida é aplicada pelo servidor ao criar o pedido.",
