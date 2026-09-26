@@ -5,9 +5,11 @@ import { X, Lock, Eye, EyeOff, AlertTriangle, ArrowRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getDiscordRedirectTo } from "@/lib/discordAuth";
 import { recordSecurityEvent } from "@/lib/securityEvents";
+import { useSiteBranding } from "@/context/SiteBrandingContext";
 
 export default function AuthScreen({ onClose }: { onClose?: () => void }) {
   const { signUp, signIn } = useAuth();
+  const { branding } = useSiteBranding();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -115,6 +117,9 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
         )}
 
         <div className="mb-6 border-b border-white/[0.08] pb-5 pr-10">
+          <div className="mb-4 flex items-center gap-2">
+            {branding.logoUrl ? <img src={branding.logoUrl} alt={branding.siteName} className="h-7 max-w-[140px] object-contain object-left" /> : <span className="text-sm font-black tracking-tight text-white">{branding.siteName || "ZXMAX"}</span>}
+          </div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#65bbff]">Área da conta</p>
           <h1 className="mt-2 text-2xl font-black tracking-[-0.055em] text-white">{mode === "login" ? "Entre na sua conta" : "Crie sua conta"}</h1>
           <p className="mt-1.5 text-[13px] leading-5 text-white/48">{mode === "login" ? "Acompanhe pedidos, anúncios e conversas em um só lugar." : "Seu perfil público usa nome, avatar e ID — sem exibir seus contatos."}</p>
