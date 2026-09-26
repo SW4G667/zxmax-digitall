@@ -159,7 +159,7 @@ describe("Produto Robux — regressão de taxa", () => {
       variations: [{ id: "robux-1000", name: "1.000 Robux", price: 19.9, stock: 1000 }],
     };
     storeState.current = baseStore({ state: { products: [robuxProduct], currentUser: { id: "buyer-uuid", name: "Comprador" } } });
-    db.edgeResult.current = { data: { v: 3, methods: { zennith_pix: true, vexopay_pix: false, crypto: false, card: false, boleto: false }, fees: { zennith_pix: 0.9 } }, error: null };
+    db.edgeResult.current = { data: { v: 3, methods: { magnuspay_pix: false, zennith_pix: true, vexopay_pix: false, crypto: false, card: false, boleto: false }, fees: { zennith_pix: 0.9 } }, error: null };
 
     renderProduto(51);
 
@@ -279,7 +279,7 @@ describe("Checkout — Tarefa C/D", () => {
 
   it("método PIX único selecionável com taxa específica", async () => {
     storeState.current = baseStore({ state: { currentUser: { id: "buyer-uuid", name: "Comprador" } } });
-    db.edgeResult.current = { data: { v: 3, methods: { zennith_pix: true, vexopay_pix: false, crypto: false, card: false, boleto: false }, fees: { zennith_pix: 0.9 } }, error: null };
+    db.edgeResult.current = { data: { v: 3, methods: { magnuspay_pix: false, zennith_pix: true, vexopay_pix: false, crypto: false, card: false, boleto: false }, fees: { zennith_pix: 0.9 } }, error: null };
     renderProduto();
     await waitFor(() => expect(screen.getByText("COMPRAR")).toBeTruthy());
     await openCheckout();
@@ -294,7 +294,7 @@ describe("Checkout — Tarefa C/D", () => {
 
   it("nenhum método ativo: nada selecionado, sem CPF, botão desabilitado", async () => {
     storeState.current = baseStore({ state: { currentUser: { id: "buyer-uuid", name: "Comprador" } } });
-    db.edgeResult.current = { data: { v: 3, methods: { zennith_pix: false, vexopay_pix: false, crypto: false, card: false, boleto: false }, fees: {} }, error: null };
+    db.edgeResult.current = { data: { v: 3, methods: { magnuspay_pix: false, zennith_pix: false, vexopay_pix: false, crypto: false, card: false, boleto: false }, fees: {} }, error: null };
     renderProduto();
     await openCheckout();
     await waitFor(() => expect(screen.getByText("Nenhuma forma disponível")).toBeTruthy());
@@ -325,7 +325,7 @@ describe("Checkout — Tarefa C/D", () => {
 
   it("modal rolável e acima da navegação inferior (mobile)", async () => {
     storeState.current = baseStore({ state: { currentUser: { id: "buyer-uuid", name: "Comprador" } } });
-    db.edgeResult.current = { data: { v: 3, methods: { zennith_pix: true, vexopay_pix: false, crypto: false, card: false, boleto: false }, fees: { zennith_pix: 0.9 } }, error: null };
+    db.edgeResult.current = { data: { v: 3, methods: { magnuspay_pix: false, zennith_pix: true, vexopay_pix: false, crypto: false, card: false, boleto: false }, fees: { zennith_pix: 0.9 } }, error: null };
     renderProduto();
     await openCheckout();
     await waitFor(() => expect(screen.getByText("Pagar com PIX")).toBeTruthy());
