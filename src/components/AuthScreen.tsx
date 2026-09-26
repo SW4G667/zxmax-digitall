@@ -5,7 +5,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { getDiscordRedirectTo } from "@/lib/discordAuth";
 import { recordSecurityEvent } from "@/lib/securityEvents";
-import { useSiteBranding } from "@/context/SiteBrandingContext";\nimport { getAppUrl, isGeneratedVercelPreviewHost } from "@/lib/appUrl";
+import { useSiteBranding } from "@/context/SiteBrandingContext";
+import { getAppUrl, isGeneratedVercelPreviewHost } from "@/lib/appUrl";
 
 export default function AuthScreen({ onClose }: { onClose?: () => void }) {
   const { signUp, signIn } = useAuth();
@@ -18,7 +19,8 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
-  const [passStrength, setPassStrength] = useState(0);\n  const isPreviewHost = isGeneratedVercelPreviewHost();
+  const [passStrength, setPassStrength] = useState(0);
+  const isPreviewHost = isGeneratedVercelPreviewHost();
 
   useEffect(() => {
     let score = 0;
