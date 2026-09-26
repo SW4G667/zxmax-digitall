@@ -11,7 +11,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   headers: { ...corsHeaders, "Content-Type": "application/json" },
 });
 
-type EmailType = "purchase_confirmed" | "new_sale" | "new_question" | "product_approved" | "product_rejected" | "product_removed";
+type EmailType = "purchase_created" | "purchase_confirmed" | "new_sale" | "delivery_marked" | "receipt_confirmed_buyer" | "receipt_confirmed_seller" | "dispute_opened_buyer" | "dispute_opened_seller" | "new_question" | "product_approved" | "product_rejected" | "product_removed";
 type EmailPayload = {
   type: EmailType;
   purchaseId?: number;
@@ -56,6 +56,7 @@ const shell = (eyebrow: string, title: string, copy: string, details: string, ct
 `;
 
 const paidStatus = new Set(["paid", "delivered", "delivered_pending_confirmation"]);
+const sellerRecipientTypes = new Set<EmailType>(["new_sale", "receipt_confirmed_seller", "dispute_opened_seller"]);
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -81,12 +82,12 @@ serve(async (req) => {
   try {
     const body = (await req.json().catch(() => ({}))) as EmailPayload;
     const type = body.type;
-    if (!(["purchase_confirmed", "new_sale", "new_question", "product_approved", "product_rejected", "product_removed"] as const).includes(type)) {
+    if (!(["purchase_created", "purchase_confirmed", "new_sale", "delivery_marked", "receipt_confirmed_buyer", "receipt_confirmed_seller", "dispute_opened_buyer", "dispute_opened_seller", "new_question", "product_approved", "product_rejected", "product_removed"] as const).includes(type)) {
       return json({ error: "Tipo de notificação inválido." }, 400);
     }
     // Payment confirmation and sale notices originate only after a verified
     // provider webhook. A buyer or seller must not be able to resend them.
-    if ((type === "purchase_confirmed" || type === "new_sale" || type === "product_approved" || type === "product_rejected" || type === "product_removed") && !internalCall) {
+    if (type !== "new_question" && !internalCall) {
       return json({ error: "Este tipo de notificação é processado pelo servidor." }, 403);
     }
 
@@ -164,30 +165,122 @@ serve(async (req) => {
       if (!Number.isInteger(purchaseId) || purchaseId <= 0) return json({ error: "Pedido inválido." }, 400);
       const { data: purchase, error } = await admin
         .from("purchases")
-        .select("id, product_id, buyer_id, buyer_email, seller_id, seller_email, amount, status, variation_name")
+        .select("id, product_id, buyer_id, buyer_email, seller_id, seller_email, amount, status, variation_name, payment_provider, payment_status")
         .eq("id", purchaseId)
         .maybeSingle();
       if (error || !purchase) return json({ error: "Pedido não encontrado." }, 404);
-      if (!paidStatus.has(String(purchase.status))) return json({ error: "O pagamento ainda não foi confirmado." }, 409);
+
+      const allowedStatuses: Partial<Record<EmailType, Set<string>>> = {
+        purchase_created: new Set(["pending", "paid", "delivered_pending_confirmation", "delivered", "dispute"]),
+        purchase_confirmed: paidStatus,
+        new_sale: paidStatus,
+        delivery_marked: new Set(["delivered_pending_confirmation", "delivered", "dispute"]),
+        receipt_confirmed_buyer: new Set(["delivered"]),
+        receipt_confirmed_seller: new Set(["delivered"]),
+        dispute_opened_buyer: new Set(["dispute"]),
+        dispute_opened_seller: new Set(["dispute"]),
+      };
+      const allowed = allowedStatuses[type];
+      if (!allowed?.has(String(purchase.status))) return json({ error: "O status atual do pedido não permite esta notificação." }, 409);
+
       const { data: product } = await admin.from("products").select("name").eq("id", purchase.product_id).maybeSingle();
       const productName = product?.name || `Produto #${purchase.product_id}`;
       const { data: buyerProfile } = await admin.from("profiles").select("email").eq("user_id", purchase.buyer_id).maybeSingle();
       const { data: sellerProfile } = await admin.from("profiles").select("email").eq("user_id", purchase.seller_id).maybeSingle();
-      recipient = type === "purchase_confirmed"
-        ? (purchase.buyer_email || buyerProfile?.email || "")
-        : (purchase.seller_email || sellerProfile?.email || "");
+      const sellerRecipient = sellerRecipientTypes.has(type);
+      recipient = sellerRecipient
+        ? (purchase.seller_email || sellerProfile?.email || "")
+        : (purchase.buyer_email || buyerProfile?.email || "");
       if (!recipient) return json({ error: "Destinatário indisponível." }, 409);
       logId = purchaseId;
-      const variation = purchase.variation_name ? `<br><span style="color:#9eacc4">Variação: ${escapeHtml(purchase.variation_name)}</span>` : "";
-      const details = `<strong style="color:#fff">${escapeHtml(productName)}</strong>${variation}<br><br><span style="color:#9eacc4">Valor confirmado</span><br><strong style="font-size:18px;color:#fff">${formatBRL(purchase.amount)}</strong>`;
-      if (type === "purchase_confirmed") {
+
+      const variation = purchase.variation_name
+        ? `<br><span style="color:#9eacc4">Variação: ${escapeHtml(purchase.variation_name)}</span>`
+        : "";
+      const amountLabel = type === "purchase_created" ? "Valor do pedido" : "Valor confirmado";
+      const details = `<strong style="color:#fff">${escapeHtml(productName)}</strong>${variation}<br><br><span style="color:#9eacc4">Pedido</span><br><strong style="color:#fff">#${purchaseId}</strong><br><br><span style="color:#9eacc4">${amountLabel}</span><br><strong style="font-size:18px;color:#fff">${formatBRL(purchase.amount)}</strong>`;
+      const orderUrl = `${SITE_URL}/minhas-compras?order=${purchaseId}`;
+
+      if (type === "purchase_created") {
+        subject = `Pedido #${purchaseId} criado — ${productName}`;
+        html = shell(
+          "Pedido criado",
+          "Seu pedido foi reservado",
+          "O pedido foi criado e está aguardando a confirmação do pagamento. Use somente a cobrança exibida dentro da ZXMAX.",
+          details,
+          "Continuar pagamento",
+          orderUrl,
+        );
+        text = `Pedido #${purchaseId} criado\n\nProduto: ${productName}\nValor: ${formatBRL(purchase.amount)}\nStatus: aguardando pagamento.\n\nContinue pela ZXMAX: ${orderUrl}`;
+      } else if (type === "purchase_confirmed") {
         subject = `Pagamento confirmado — ${productName}`;
-        html = shell("Pagamento confirmado", "Seu pedido está protegido", `O pagamento do seu pedido foi confirmado. Acompanhe a entrega e converse pelo chat seguro da ZXMAX.`, details, "Abrir pedido e chat", `${SITE_URL}/minhas-compras?order=${purchaseId}`);
-        text = `Pagamento confirmado\n\nProduto: ${productName}${purchase.variation_name ? `\nVariação: ${purchase.variation_name}` : ""}\nValor confirmado: ${formatBRL(purchase.amount)}\n\nAcompanhe o pedido: ${SITE_URL}/minhas-compras?order=${purchaseId}`;
-      } else {
+        html = shell(
+          "Pagamento confirmado",
+          "Seu pedido está protegido",
+          "O pagamento foi confirmado com segurança. Acompanhe a entrega e converse somente pelo chat do pedido.",
+          details,
+          "Abrir pedido e chat",
+          orderUrl,
+        );
+        text = `Pagamento confirmado\n\nPedido: #${purchaseId}\nProduto: ${productName}\nValor confirmado: ${formatBRL(purchase.amount)}\n\nAcompanhe: ${orderUrl}`;
+      } else if (type === "new_sale") {
         subject = `Nova venda — ${productName}`;
-        html = shell("Nova venda", "Você realizou uma venda", `O pagamento foi confirmado e o pedido está pronto para atendimento dentro da ZXMAX.`, details, "Ir ao chat do pedido", `${SITE_URL}/minhas-compras?order=${purchaseId}`);
-        text = `Nova venda\n\nProduto: ${productName}${purchase.variation_name ? `\nVariação: ${purchase.variation_name}` : ""}\nValor confirmado: ${formatBRL(purchase.amount)}\n\nAcesse o pedido: ${SITE_URL}/minhas-compras?order=${purchaseId}`;
+        html = shell(
+          "Nova venda",
+          "Você realizou uma venda",
+          "O pagamento foi confirmado e o pedido está pronto para atendimento. Faça a entrega e mantenha toda a conversa dentro da ZXMAX.",
+          details,
+          "Atender pedido",
+          orderUrl,
+        );
+        text = `Nova venda\n\nPedido: #${purchaseId}\nProduto: ${productName}\nValor confirmado: ${formatBRL(purchase.amount)}\n\nAtenda o pedido: ${orderUrl}`;
+      } else if (type === "delivery_marked") {
+        subject = `Entrega sinalizada — pedido #${purchaseId}`;
+        html = shell(
+          "Entrega sinalizada",
+          "O vendedor marcou o pedido como entregue",
+          "Confira o produto com atenção antes de confirmar o recebimento. Se houver algum problema, use o chat ou abra uma disputa dentro da plataforma.",
+          details,
+          "Verificar entrega",
+          orderUrl,
+        );
+        text = `Entrega sinalizada\n\nPedido: #${purchaseId}\nProduto: ${productName}\n\nConfira antes de confirmar o recebimento: ${orderUrl}`;
+      } else if (type === "receipt_confirmed_buyer") {
+        subject = `Pedido #${purchaseId} concluído`;
+        html = shell(
+          "Pedido concluído",
+          "Recebimento confirmado",
+          "Sua confirmação foi registrada e o pedido foi concluído. Você pode revisar os detalhes e avaliar a experiência pela ZXMAX.",
+          details,
+          "Ver pedido",
+          orderUrl,
+        );
+        text = `Pedido #${purchaseId} concluído\n\nProduto: ${productName}\nRecebimento confirmado.\n\nVer pedido: ${orderUrl}`;
+      } else if (type === "receipt_confirmed_seller") {
+        subject = `Venda concluída — pedido #${purchaseId}`;
+        html = shell(
+          "Venda concluída",
+          "O comprador confirmou o recebimento",
+          "O pedido foi concluído e a liberação do valor ao vendedor foi registrada pela plataforma.",
+          details,
+          "Ver venda",
+          orderUrl,
+        );
+        text = `Venda concluída\n\nPedido: #${purchaseId}\nProduto: ${productName}\nO recebimento foi confirmado e a liberação foi registrada.\n\nVer venda: ${orderUrl}`;
+      } else {
+        const sellerCopy = type === "dispute_opened_seller";
+        subject = `Disputa aberta — pedido #${purchaseId}`;
+        html = shell(
+          "Disputa aberta",
+          sellerCopy ? "Uma disputa foi aberta nesta venda" : "Sua disputa foi registrada",
+          sellerCopy
+            ? "O pedido entrou em análise. Não tente resolver a situação fora da plataforma; mantenha evidências e mensagens no chat do pedido."
+            : "A disputa foi registrada e o pedido entrou em análise. Mantenha evidências e mensagens dentro da ZXMAX.",
+          details,
+          "Acompanhar disputa",
+          orderUrl,
+        );
+        text = `Disputa aberta\n\nPedido: #${purchaseId}\nProduto: ${productName}\nStatus: em análise.\n\nAcompanhe pela ZXMAX: ${orderUrl}`;
       }
     }
 
@@ -205,15 +298,15 @@ serve(async (req) => {
     if (!EMAIL_FROM) return json({ skipped: true, reason: "email_sender_not_configured" }, 202);
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json", "Idempotency-Key": `zxmax-${type}-${logId}-${idempotencyKey || "v1"}` },
       body: JSON.stringify({ from: EMAIL_FROM, to: [recipient], subject, html, text }),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      await admin.from("webhook_logs").insert({ source: "email", event_type: type, status: `error_${response.status}`, order_id: logId, charge_id: idempotencyKey, payload: { recipient: type === "new_sale" || type === "new_question" || type === "product_approved" || type === "product_rejected" || type === "product_removed" ? "seller" : "buyer", subject }, error: "provider_rejected" });
+      await admin.from("webhook_logs").insert({ source: "email", event_type: type, status: `error_${response.status}`, order_id: logId, charge_id: idempotencyKey, payload: { recipient: sellerRecipientTypes.has(type) || type === "new_question" || type === "product_approved" || type === "product_rejected" || type === "product_removed" ? "seller" : "buyer", subject }, error: "provider_rejected" });
       return json({ error: "Não foi possível entregar a notificação." }, 502);
     }
-    await admin.from("webhook_logs").insert({ source: "email", event_type: type, status: "sent", order_id: logId, charge_id: idempotencyKey || result.id || null, payload: { recipient: type === "new_sale" || type === "new_question" || type === "product_approved" || type === "product_rejected" || type === "product_removed" ? "seller" : "buyer", subject, resend_id: result.id || null }, error: null });
+    await admin.from("webhook_logs").insert({ source: "email", event_type: type, status: "sent", order_id: logId, charge_id: idempotencyKey || result.id || null, payload: { recipient: sellerRecipientTypes.has(type) || type === "new_question" || type === "product_approved" || type === "product_rejected" || type === "product_removed" ? "seller" : "buyer", subject, resend_id: result.id || null }, error: null });
     return json({ sent: true, id: result.id });
   } catch (error) {
     console.error("send-email failure", error instanceof Error ? error.message : "unknown");
