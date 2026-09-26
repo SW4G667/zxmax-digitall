@@ -345,8 +345,8 @@ export default function ProdutoPage() {
             <span className="text-white font-bold">Moeda</span>
           </div>
 
-          <div className="bg-[#ffbd2e] text-black text-xs font-bold px-4 py-2 rounded-full inline-flex items-center gap-2 mb-4">
-            Agora aceitamos <span className="italic">PayPal</span> e <span className="flex items-center gap-1"><Bitcoin className="w-3 h-3" /> Crypto</span>
+          <div className="bg-[#0084ff]/10 border border-[#0084ff]/20 text-[#7dbdff] text-xs font-bold px-4 py-2 rounded-full inline-flex items-center gap-2 mb-4">
+            <Shield className="w-3.5 h-3.5" /> Pagamento PIX processado pelo servidor
           </div>
 
           <div className="grid lg:grid-cols-[1fr_360px] gap-6">
@@ -358,6 +358,7 @@ export default function ProdutoPage() {
                     <img src={state.userDirectory?.[currentOffer.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentOffer.sellerName}`} className="w-12 h-12 rounded-full bg-[#1a1a20] border border-[#25252e]" alt="" />
                     <div>
                       <p className="font-black text-white flex items-center gap-1.5">{currentOffer.sellerName} <BadgeCheck className="w-4 h-4 text-[#0084ff]" /></p>
+                      <p className="text-[10px] text-white/35 font-mono">vendedor #{state.userDirectory?.[currentOffer.sellerId]?.publicId || product.sellerPublicId || "—"} · produto #{product.id}</p>
                       <p className="text-xs flex items-center gap-2">
                         {currentOffer.reviews > 0 ? (
                           <>
@@ -398,8 +399,8 @@ export default function ProdutoPage() {
 
                 <div className="mt-4 space-y-2.5">
                   <div className="flex gap-2 text-xs"><Shield className="w-4 h-4 text-[#0084ff] shrink-0" /><span className="font-bold text-white">Garantia de reembolso</span><span className="text-white/40">Protegido pelo TradeShield</span></div>
-                  <div className="flex gap-2 text-xs"><Zap className="w-4 h-4 text-[#ffbd2e] shrink-0" /><span className="font-bold text-white">Checkout rápido</span><span className="flex gap-1"><span className="bg-[#00c950] text-white px-2 py-0.5 rounded text-[10px] font-bold">PIX</span><span className="bg-black border border-white/10 text-white px-2 py-0.5 rounded text-[10px]">Apple Pay</span><span className="bg-[#0084ff] text-white px-2 py-0.5 rounded text-[10px]">G Pay</span><span className="bg-[#ffbd2e] text-black px-2 py-0.5 rounded text-[10px]">PayPal</span></span></div>
-                  <div className="flex gap-2 text-xs"><MessageSquare className="w-4 h-4 text-[#0084ff] shrink-0" /><span className="font-bold text-white">Atendimento 24 horas por dia</span><span className="text-white/40">Tira sua dúvida!</span></div>
+                  <div className="flex gap-2 text-xs"><Zap className="w-4 h-4 text-[#ffbd2e] shrink-0" /><span className="font-bold text-white">Checkout seguro</span><span className="text-white/40">PIX gerado no backend</span></div>
+                  <div className="flex gap-2 text-xs"><MessageSquare className="w-4 h-4 text-[#0084ff] shrink-0" /><span className="font-bold text-white">Suporte pelo pedido</span><span className="text-white/40">Histórico centralizado</span></div>
                 </div>
               </div>
 
@@ -506,6 +507,7 @@ export default function ProdutoPage() {
               </div>
               <div className="p-5">
                 <h1 className="text-xl font-black text-white leading-tight">{product.name}</h1>
+                <p className="text-[10px] text-white/35 font-mono mt-1">produto #{product.id}</p>
                 <div className="flex items-center gap-2 mt-2">
                   <span className="text-xs bg-[#1a1a20] border border-[#25252e] px-2.5 py-1 rounded-full font-bold text-white/60">{product.category}</span>
                   <span className="flex items-center gap-1 text-xs text-white/40"><Eye className="w-3.5 h-3.5" /> {product.sales} vendas</span>
@@ -568,6 +570,22 @@ export default function ProdutoPage() {
           </div>
 
           <div className="lg:sticky lg:top-20 h-fit space-y-3">
+            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
+              <p className="text-xs font-bold text-white/40 mb-3">Vendedor</p>
+              <button onClick={() => setSelectedSellerId(product.sellerId)} className="w-full flex items-center gap-3 text-left">
+                <img
+                  src={state.userDirectory?.[product.sellerId]?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(product.seller || "Vendedor")}`}
+                  className="w-11 h-11 rounded-full object-cover bg-[#1a1a20] border border-[#25252e]"
+                  alt=""
+                />
+                <div className="min-w-0">
+                  <p className="font-bold text-white truncate">{product.seller || "Vendedor"}</p>
+                  <p className="text-[10px] text-white/40 font-mono">vendedor #{state.userDirectory?.[product.sellerId]?.publicId || product.sellerPublicId || "—"}</p>
+                  <p className="text-[10px] text-white/30 font-mono">produto #{product.id}</p>
+                </div>
+              </button>
+            </div>
+
             <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
               <p className="text-[11px] uppercase font-bold text-white/30">Total com taxa</p>
               <p className="text-3xl font-black text-white">R$ {total.toFixed(2)}</p>
