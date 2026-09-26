@@ -62,7 +62,8 @@ export default function BottomNav({ current: propCurrent, onChange: propOnChange
 
   return (
     <>
-      <nav className="fixed bottom-0 left-0 right-0 h-[64px] px-2 flex items-center justify-around z-50 bg-[#0f0f14] border-t border-[#1e1e28] safe-area-inset-bottom">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/[0.07] bg-[#0d0d10]/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-lg">
+        <div className="mx-auto grid h-[62px] max-w-md items-center" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
         {items.map((item) => {
           const Icon = item.icon;
           const active = derivedCurrent === item.key;
@@ -70,15 +71,16 @@ export default function BottomNav({ current: propCurrent, onChange: propOnChange
             <button
               key={item.key}
               onClick={() => handleChange(item.key)}
-              className={`flex flex-col items-center gap-1 py-2 px-4 rounded-xl transition-colors ${
-                active ? "text-[#0084ff]" : "text-white/40 hover:text-white/80"
+              className={`flex min-w-0 flex-col items-center gap-1 rounded-md px-1 py-2 transition-colors ${
+                active ? "text-[#58adff]" : "text-white/35 hover:text-white/75"
               }`}
             >
-              <Icon className={`w-5 h-5 ${active ? "text-[#0084ff]" : "text-white/40"}`} />
-              <span className="text-[10px] font-bold uppercase tracking-wide">{item.label}</span>
+              <Icon className={`h-[19px] w-[19px] ${active ? "text-[#58adff]" : "text-white/35"}`} />
+              <span className="max-w-full truncate text-[9px] font-semibold">{item.label}</span>
             </button>
           );
         })}
+        </div>
       </nav>
       {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
     </>
