@@ -13,11 +13,12 @@ describe("IntegrationsPanel — Stripe seguro", () => {
     invoke.mockResolvedValue({
       data: {
         integrations: {
+          magnuspay: { pixEnabled: true, pixFee: 0 },
           zennithpay: { pixEnabled: false, pixFee: 0.9 },
           vexopay: { pixEnabled: false, cryptoEnabled: false, pixFee: 1.2 },
           stripe: { cardEnabled: true, boletoEnabled: true, boletoExpiresAfterDays: 3 },
         },
-        secretStatus: { STRIPE_SECRET_KEY: true, STRIPE_WEBHOOK_SECRET: true },
+        secretStatus: { MAGNUSPAY_API_KEY: true, STRIPE_SECRET_KEY: true, STRIPE_WEBHOOK_SECRET: true },
         discord: {
           enabled: true,
           providerCallback: "https://example.supabase.co/auth/v1/callback",
@@ -30,6 +31,8 @@ describe("IntegrationsPanel — Stripe seguro", () => {
     render(<IntegrationsPanel />);
 
     await waitFor(() => expect(screen.getByText("Stripe · cartão e boleto")).toBeInTheDocument());
+    expect(screen.getByText("MagnusPay PIX")).toBeInTheDocument();
+    expect(screen.getByText(/MAGNUSPAY_API_KEY/)).toBeInTheDocument();
     expect(screen.getByLabelText("Oferecer cartão")).toBeChecked();
     expect(screen.getByLabelText("Oferecer boleto")).toBeChecked();
     expect(screen.getByLabelText("Validade do boleto (dias)")).toHaveValue(3);

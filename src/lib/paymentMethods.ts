@@ -1,6 +1,6 @@
 import type { EdgeCallResult } from "@/lib/edgeErrors";
 
-export type PaymentMethodId = "zennith_pix" | "vexopay_pix" | "crypto" | "card" | "boleto";
+export type PaymentMethodId = "magnuspay_pix" | "zennith_pix" | "vexopay_pix" | "crypto" | "card" | "boleto";
 export type PaymentFees = Partial<Record<PaymentMethodId, number>>;
 
 export type PaymentMethodsState =
@@ -10,7 +10,7 @@ export type PaymentMethodsState =
   | { status: "unavailable" }
   | { status: "network" };
 
-export const NO_METHODS: Record<PaymentMethodId, boolean> = { zennith_pix: false, vexopay_pix: false, crypto: false, card: false, boleto: false };
+export const NO_METHODS: Record<PaymentMethodId, boolean> = { magnuspay_pix: false, zennith_pix: false, vexopay_pix: false, crypto: false, card: false, boleto: false };
 
 export function checkoutMethods(state: PaymentMethodsState): Record<PaymentMethodId, boolean> | null {
   return state.status === "ok" ? state.methods : null;
@@ -24,7 +24,7 @@ const safeFee = (value: unknown) => {
 function validMethods(value: unknown): value is Record<PaymentMethodId, boolean> {
   if (!value || typeof value !== "object") return false;
   const methods = value as Record<string, unknown>;
-  return (["zennith_pix", "vexopay_pix", "crypto", "card", "boleto"] as const).every((key) => typeof methods[key] === "boolean");
+  return (["magnuspay_pix", "zennith_pix", "vexopay_pix", "crypto", "card", "boleto"] as const).every((key) => typeof methods[key] === "boolean");
 }
 
 export function classifyPaymentMethods(result: EdgeCallResult<{ methods?: unknown; fees?: unknown; v?: number }>): PaymentMethodsState {
@@ -33,8 +33,8 @@ export function classifyPaymentMethods(result: EdgeCallResult<{ methods?: unknow
     const raw = result.data.methods;
     // Defesa em profundidade para uma configuração legada: o cliente nunca
     // apresenta dois PIX. A função Edge aplica a mesma precedência.
-    const methods = { ...raw, vexopay_pix: raw.zennith_pix ? false : raw.vexopay_pix };
-    return { status: "ok", methods, fees: { zennith_pix: safeFee(rawFees.zennith_pix), vexopay_pix: safeFee(rawFees.vexopay_pix) } };
+    const methods = { ...raw, zennith_pix: raw.magnuspay_pix ? false : raw.zennith_pix, vexopay_pix: raw.magnuspay_pix || raw.zennith_pix ? false : raw.vexopay_pix };
+    return { status: "ok", methods, fees: { magnuspay_pix: safeFee(rawFees.magnuspay_pix), zennith_pix: safeFee(rawFees.zennith_pix), vexopay_pix: safeFee(rawFees.vexopay_pix) } };
   }
   if (result.status === 401) return { status: "session" };
   if (result.status === 503) return { status: "network" };

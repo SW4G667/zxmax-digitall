@@ -63,6 +63,7 @@ describe("fronteira de secrets dos gateways", () => {
       expect(sourceCode).not.toContain("cfg.baseUrl");
     }
     expect(integrations).not.toContain("incoming.baseUrl");
-    expect(integrations).toContain("baseUrl: _legacyBaseUrl");
+    expect(integrations).not.toContain("baseUrl:");
+    expect(integrations).toContain('Deno.env.get("MAGNUSPAY_API_KEY")');
   });
 });

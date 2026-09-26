@@ -1,26 +1,298 @@
-# ZX MAX
+# 🚀 ZXMAX Digital
 
-Crie um site completo de marketplace de produtos digitais/virtuais chamado ZXMAX, com visual bonito, atrativo e moderno inspirado em https://ggmax.com.br e https://ereemby.com/: fundo claro com gradiente suave (branco/cinza claro para roxo/azul vibrante), cards brancos ou coloridos com sombras suaves e bordas arredondadas, cores vibrantes (roxo, azul, rosa, verde neon em destaques), espaçamento generoso, animações suaves (hover scale/lift, fade-in, pulse em botões), tipografia bold moderna (Poppins ou Inter), header clean com logo ZXMAX grande e chamativo, barra de pesquisa central, ícones coloridos, layout responsivo perfeito. O site é um marketplace onde qualquer usuário pode vender produtos digitais/virtuais (bots Discord, contas de jogos/streaming, scripts, serviços online, designs digitais, consultoria virtual, arquivos, keys de software, etc.). Foco em atrair clientes: variedade enorme, fotos bonitas, descrições detalhadas, avaliações reais, chat de negociação/entrega, sistema de disputa (admin intervém e reverte pagamento se golpe), e você ganha taxa em cada venda. Use emojis customizados estilizados (não use emojis padrão do sistema, celular ou PC): crie todos com CSS puro ou SVG (ex: estrela dourada com raios pulsantes, chave neon colorida com glow, dinheiro voando com partículas, coração roxo pulsante, foguete colorido acelerando, escudo azul com aura, balão de chat com efeito de digitação, câmera com flash colorido, etc.). Coloque emojis customizados em títulos, botões, toasts, sidebar e produtos (ex: Loja 🔥, Meus Anúncios 📦, Carteira 💰, Suporte 📩, Sair 🚪). **Tela inicial bonita e chamativa:** - Fundo com produtos em destaque desfocados (blur) para destacar a tela de login/register - Tela de login/register centralizada com design bonito e moderno (abas "Entrar" e "Criar conta") - Registro: email + senha + confirmar senha + botão "Criar conta" (ou login com Discord/Google via OAuth) - Login: email/senha + botões grandes e coloridos "Entrar com Discord" e "Entrar com Google" - Salva sessão no localStorage (mantém logado ao fechar navegador) - Botão pequeno no header para mudar tema (light/dark) **Sistema de login e registro obrigatório:** - Site começa na tela de login/register (não permite acessar nada sem conta) - Após registro/login bem-sucedido, redireciona para dashboard "Loja" - Se email for exatamente "admin@keybot.com", redireciona silenciosamente para painel admin (sem texto explicativo visível) **Bottom navigation com três barrinhas:** - Barra inferior com ícones grandes e coloridos para navegação rápida: - Loja (ícone custom de carrinho 🔥) - Meus Anúncios (ícone custom de pacote 📦) — ao clicar, abre página com lista de produtos criados pelo usuário + botão grande "Criar Novo Produto" - Suporte (ícone custom de headset 📩) - Clique neles muda a página principal **Bolinha de perfil (foto + nome):** - No header: bolinha redonda com foto de perfil (upload ou default avatar) + nome do usuário ao lado - Ao clicar na bolinha: abre mini-perfil modal ou página com: - Foto maior - Nome editável - Saldo atual (R$) - Avaliações (estrelas médias + total) - Ganhos totais - Botão "Enviar documentos" (upload de RG/CPF/selfie para verificação de saque — admin vê e aprova) - Botão "Editar perfil" (mudar foto, nome, etc.) **Painel Admin (acesso só com conta admin@keybot.com):** - Você controla tudo: taxa de comissão (ex: 10%), taxa saque instantâneo (5-7%), categorias, produtos, usuários, saques, suporte, avisos, disputas, etc. - Aba "Configurações Gerais": Stripe Publishable Key, Secret Key, taxa comissão, taxa saque instantâneo, link Discord (obrigatório para botão funcionar) - Aba "Categorias": adicionar/editar categorias (ex: Bots Discord, Contas de Jogos, Designs Digitais, Serviços Online, Consultoria Virtual, etc.) - Aba "Produtos": ver todos os produtos (pendentes/aprovados) + botão "Aprovar" ou "Rejeitar" - Aba "Compras": lista de compras (pendente/pago/entregue/disputa) + botão "Aprovar Entrega" ou "Reverter Pagamento" (se golpe) - Aba "Saque": lista de pedidos de saque (valor, método: 5-7 dias normal ou instantâneo com taxa 5-7%) - Admin verifica documentos (foto RG/CPF/selfie) antes de aprovar saque - Botão "Aprovar Saque" (envia dinheiro via Stripe Connect ou manual) - Aba "Suporte/Disputas": lista de tickets/chats/disputas + ao clicar abre chat completo com histórico (bolhas, data/hora, preview de imagem) - Admin responde diretamente no chat - Botão "Chamar Suporte" no chat do usuário envia mensagem "Aguardando suporte" - Se detectar golpe, admin pode reverter pagamento (devolver dinheiro pro comprador) e banir usuário (temporário ou permanente) - Aba "Avisos": textarea para mandar aviso global (banner/toast para todos os usuários logados) - Aba "Usuários": ver lista de usuários, saldo, ganhos, documentos enviados para saque, banir/desbanir **Sistema de vendas e entrega para usuários:** - Usuários criam e vendem produtos digitais/virtuais (ganham dinheiro menos sua taxa de comissão) - Ao criar produto: nome, categoria (select), descrição, preço, foto upload, entrega automática (envia código/key/link via chat) ou manual - Saldo aparece em "Carteira" - Usuário solicita saque (normal 5-7 dias sem taxa ou instantâneo com taxa 5-7%) - Admin verifica documentos na aba Saque antes de aprovar **Fluxo de compra:** - Na loja pública: cards de produtos com nome, categoria, preço, foto, quantidade vendida, avaliações (estrelas médias) - Ao clicar "Comprar": abre Stripe Checkout real (pagamento automático com cartão/Pix, não mensagem falsa) - Webhook do Stripe confirma pagamento e muda status para "Pago" no admin - Após aprovação manual do admin, abre chat entre comprador e vendedor - Vendedor entrega manualmente (conversa no chat) ou automaticamente (envia código/key/link) - No chat: botão "Chamar Suporte" (envia mensagem "Aguardando suporte") - Após entrega aprovada, comprador avalia vendedor (estrelas + comentário) **Perfil do vendedor:** - Mostra foto, nome, avaliações (estrelas médias + comentários), saldo, ganhos totais **Barra de pesquisa:** - Barra de pesquisa no header ou na loja para buscar produtos por nome/categoria Use localStorage para persistir login, produtos, compras, saldo, saques, chave Pix, link Discord. Código limpo, comentado, responsivo, modais bonitos, toasts de sucesso/erro, animações suaves. Entregue o HTML completo atualizado pronto para salvar como index.html e abrir direto.
+> **Marketplace moderno de produtos digitais com notificações em tempo real**
 
-This project was built with [Lovable](https://lovable.dev).
+[![Live Demo](https://img.shields.io/badge/Demo-zxmax.vercel.app-blue?style=for-the-badge&logo=vercel)](https://zxmax.vercel.app)
+[![Built with React](https://img.shields.io/badge/React-18-61dafb?style=for-the-badge&logo=react)](https://react.dev)
+[![Supabase](https://img.shields.io/badge/Supabase-Auth%20&%20Realtime-3fcf8e?style=for-the-badge&logo=supabase)](https://supabase.com)
+[![Stripe Integration](https://img.shields.io/badge/Stripe-Payments-635bff?style=for-the-badge&logo=stripe)](https://stripe.com)
 
-**Live app**: https://zxmax-digital.lovable.app
+---
 
-## Build with Lovable
+## ✨ Sobre o Projeto
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/9a9706a8-1828-4709-abbf-bfab14dde6f0).
+**ZXMAX** é uma plataforma digital de marketplace construída para facilitar a compra e venda de produtos digitais com uma experiência visual moderna, intuitiva e segura.
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+### 🎯 Características Principais
 
-## Development
+- 📦 **Catálogo de Produtos Digitais** - Browse, busca e filtros avançados
+- 🛒 **Carrinho de Compras** - Checkout rápido e seguro com Stripe
+- 💳 **Pagamentos Seguros** - Integração completa com Stripe e validação de servidor
+- 🔐 **Autenticação** - Login/Registro com Supabase Auth
+- 💬 **Perguntas e Respostas** - Sistema de Q&A entre comprador e vendedor
+- ⭐ **Avaliações** - Reviews com estrelas de clientes verificados
+- 🔔 **Notificações Discord** - Avisos em tempo real para eventos importantes
+- 👤 **Gestão de Conta** - Segurança, dados pessoais e integrações
+- 💰 **Sistema de Saque** - Processamento seguro de pagamentos aos vendedores
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+---
 
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+## 🏗️ Arquitetura Técnica
+
+### Frontend
+- **React 18** com TypeScript
+- **TanStack Router** para navegação
+- **Tailwind CSS** + **Lucide Icons** para UI moderna
+- **Sonner** para notificações toast
+- **React Context API** para gerenciamento de estado
+
+### Backend
+- **Supabase** - Database PostgreSQL + Auth + Real-time
+- **Edge Functions (Deno)** - Lógica serverless
+- **Stripe Webhooks** - Processamento de pagamentos
+- **Vault Secrets** - Armazenamento seguro de URLs de webhook Discord
+
+### Segurança
+- ✅ JWT authentication em todas as Edge Functions
+- ✅ Row Level Security (RLS) no banco de dados
+- ✅ Secrets no Vault - URLs de webhook nunca expostas
+- ✅ Server-side validation de eventos
+- ✅ Proteção contra CORS em endpoints
+- ✅ Rate limiting automático do Discord
+
+---
+
+## 🎨 Features Recentes
+
+### 🔔 Integração Segura com Discord (v1.0)
+
+Vendedores podem receber notificações automáticas no Discord para:
+
+- **Venda Confirmada** - Aviso imediato após confirmação de pagamento
+- **Nova Pergunta** - Alerta quando um cliente questiona o produto
+- **Nova Avaliação** - Notificação de reviews válidos
+
+**Segurança:**
+- URLs de webhook armazenadas no Vault (nunca em banco expostos)
+- Sem acesso ao conteúdo da pergunta/comentário via Discord
+- Redireciona para a plataforma para ver detalhes completos
+- Idempotência garantida (sem duplicação de envios)
+- Respeita rate limits do Discord automaticamente
+
+---
+
+## 🚀 Getting Started
+
+### Pré-requisitos
+- **Node.js** 18+ (recomendado usar [nvm](https://github.com/nvm-sh/nvm))
+- **npm** ou **yarn**
+- Conta **Supabase** (free tier funciona)
+- Chave **Stripe** (para pagamentos)
+
+### Instalação Local
+
+```bash
+# Clone o repositório
+git clone https://github.com/SW4G667/zxmax-digitall.git
+cd zxmax-digitall
+
+# Instale as dependências
+npm install
+
+# Configure as variáveis de ambiente
+cp .env.example .env.local
+# Edite .env.local com suas credenciais Supabase e Stripe
+
+# Inicie o servidor de desenvolvimento
 npm run dev
 ```
+
+A aplicação estará disponível em `http://localhost:5173`
+
+---
+
+## 📁 Estrutura do Projeto
+
+```
+zxmax-digitall/
+├── src/
+│   ├── components/          # Componentes React reutilizáveis
+│   │   ├── DiscordWebhookSettings.tsx    # Configuração de notificações
+│   │   ├── AppShell.tsx
+│   │   └── ...
+│   ├── pages/              # Páginas da aplicação
+│   │   ├── Configuracoes.tsx            # Configurações de conta
+│   │   ├── Produto.tsx
+│   │   ├── Checkout.tsx
+│   │   └── ...
+│   ├── store/              # Contexto e lógica de estado
+│   ├── hooks/              # Custom React hooks
+│   ├── lib/                # Utilitários e helpers
+│   └── integrations/       # Integrações (Supabase, Stripe)
+├── supabase/
+│   ├── functions/          # Edge Functions serverless
+│   │   ├── manage-discord-webhooks/     # Gerenciar integrações
+│   │   ├── deliver-discord-webhook/     # Entregar notificações
+│   │   ├── notify-product-event/        # Disparar eventos
+│   │   ├── stripe-webhook/              # Processar pagamentos
+│   │   └── ...
+│   └── migrations/         # Migrações do banco de dados
+└── src/test/               # Testes unitários e integração
+```
+
+---
+
+## 🔗 Fluxo de Notificações Discord
+
+```
+┌─────────────────┐
+│  Evento Real    │  (Venda, Pergunta, Avaliação)
+└────────┬────────┘
+         │
+         ▼
+┌──────────────────────────────┐
+│  notify-product-event        │  (Edge Function)
+│  - Valida permissões         │
+│  - Valida evento             │
+└────────┬─────────────────────┘
+         │
+         ▼
+┌──────────────────────────────┐
+│  deliver-discord-webhook     │  (Edge Function)
+│  - Busca webhook no Vault    │
+│  - Claim idempotência        │
+│  - Envia embed ao Discord    │
+└────────┬─────────────────────┘
+         │
+         ▼
+┌──────────────────────────────┐
+│  Discord                     │  (Notificação entregue)
+│  - Embed formatado           │
+│  - Sem URL de webhook        │
+│  - Redireciona para ZXMAX    │
+└──────────────────────────────┘
+```
+
+---
+
+## 🧪 Testes
+
+```bash
+# Rodar testes unitários
+npm run test
+
+# Testes específicos
+npm run test -- discordWebhookBoundary.test.ts
+npm run test -- questionsAndCheckout.test.tsx
+
+# Coverage
+npm run test:coverage
+```
+
+Cobertura de testes para:
+- ✅ Segurança de webhook Discord
+- ✅ Validação de eventos
+- ✅ Fluxo de perguntas e checkout
+- ✅ Integração com Stripe
+
+---
+
+## 📚 Documentação
+
+### Endpoints Edge Functions
+
+#### `manage-discord-webhooks` (Autenticado)
+Gerenciar integrações de Discord do usuário.
+
+```typescript
+POST /functions/v1/manage-discord-webhooks
+Authorization: Bearer <JWT>
+
+// Listar
+{ action: "list" }
+
+// Adicionar/atualizar
+{ action: "set", eventType: "sale_confirmed", webhookUrl: "https://discord.com/api/webhooks/..." }
+
+// Ativar/pausar
+{ action: "toggle", eventType: "product_question", active: true }
+
+// Remover
+{ action: "remove", eventType: "product_review" }
+```
+
+#### `deliver-discord-webhook` (Service Role Only)
+Entregar notificação ao Discord.
+
+```typescript
+POST /functions/v1/deliver-discord-webhook
+Authorization: Bearer <SERVICE_ROLE_KEY>
+
+{
+  userId: "uuid",
+  eventType: "sale_confirmed" | "product_question" | "product_review",
+  eventId: 123
+}
+```
+
+---
+
+## 🔐 Variáveis de Ambiente
+
+```env
+# Supabase
+VITE_SUPABASE_URL=https://seu-projeto.supabase.co
+VITE_SUPABASE_ANON_KEY=seu-anon-key
+
+# Stripe
+VITE_STRIPE_PUBLIC_KEY=pk_live_seu_stripe_key
+
+# URLs
+VITE_APP_URL=https://zxmax.vercel.app
+```
+
+---
+
+## 🎯 Roadmap
+
+- [ ] Sistema de afiliados
+- [ ] Certificados digitais para produtos
+- [ ] Análise de vendas (dashboard do vendedor)
+- [ ] Suporte a múltiplas moedas
+- [ ] Integração com mais plataformas (Telegram, WhatsApp)
+- [ ] Marketplace de temas/templates
+- [ ] API pública para integrações
+
+---
+
+## 🤝 Contribuições
+
+Contribuições são bem-vindas! Por favor:
+
+1. Faça um Fork do projeto
+2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
+3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
+4. Push para a branch (`git push origin feature/AmazingFeature`)
+5. Abra um Pull Request
+
+---
+
+## 📝 Licença
+
+Este projeto é propriedade de **SW4G667**. Todos os direitos reservados.
+
+---
+
+## 💬 Suporte
+
+Dúvidas? Abra uma [issue](https://github.com/SW4G667/zxmax-digitall/issues) ou entre em contato através da plataforma.
+
+---
+
+## 🙌 Agradecimentos
+
+- [Lovable](https://lovable.dev) - Plataforma de desenvolvimento
+- [Supabase](https://supabase.com) - Backend open-source
+- [Stripe](https://stripe.com) - Processamento de pagamentos
+- [React](https://react.dev) - Biblioteca JavaScript
+- [Tailwind CSS](https://tailwindcss.com) - Utility-first CSS
+
+---
+
+<div align="center">
+
+**Made with ❤️ by [SW4G667](https://github.com/SW4G667)**
+
+*Transformando ideias digitais em realidade* 🚀
+
+</div>

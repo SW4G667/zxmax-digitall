@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
+import { Heart, Menu, Search, Settings, Wallet } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useStore } from "@/store/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
-import { useNavigate, useLocation } from "react-router-dom";
-import { Sun, Moon, Search, Wallet, Heart } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 import DiscordIcon from "@/components/DiscordIcon";
 import useFavorites from "@/hooks/useFavorites";
+import { useSiteBranding } from "@/context/SiteBrandingContext";
 
 interface Props {
   onProfileClick?: () => void;
@@ -15,18 +16,24 @@ interface Props {
 }
 
 export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuOpen = false }: Props) {
-  const { state, isDark, toggleDark } = useStore();
+  const { state } = useStore();
   const { profile, user, isAdmin } = useAuth();
+  const { branding } = useSiteBranding();
   const navigate = useNavigate();
   const location = useLocation();
-  const [q, setQ] = useState("");
   const { count } = useFavorites();
   const [favCount, setFavCount] = useState(count);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    setQuery(params.get("q") || "");
+  }, [location.search]);
 
   useEffect(() => {
     setFavCount(count);
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
       if (typeof detail === "number") setFavCount(detail);
     };
     window.addEventListener("zxmax:favorites-updated", handler as EventListener);
@@ -34,27 +41,16 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
   }, [count]);
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const urlQ = params.get("q") || "";
-    if (urlQ) setQ(urlQ);
-  }, [location.search]);
-
-  useEffect(() => {
-    const handler = () => setQ("");
+    const handler = () => setQuery("");
     window.addEventListener("zxmax:clear-search", handler);
     return () => window.removeEventListener("zxmax:clear-search", handler);
   }, []);
 
-  const submitSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = q.trim();
-    if (!trimmed) {
-      navigate("/loja");
-      window.dispatchEvent(new CustomEvent("zxmax:search", { detail: "" }));
-      return;
-    }
-    navigate(`/loja?q=${encodeURIComponent(trimmed)}`);
-    window.dispatchEvent(new CustomEvent("zxmax:search", { detail: trimmed }));
+  const submitSearch = (event: React.FormEvent) => {
+    event.preventDefault();
+    const value = query.trim();
+    navigate(value ? `/loja?q=${encodeURIComponent(value)}` : "/loja");
+    window.dispatchEvent(new CustomEvent("zxmax:search", { detail: value }));
   };
 
   const openListing = () => {
@@ -66,84 +62,120 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-[#0a0a0f] border-b border-[#1e1e28]">
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 h-14 flex items-center gap-2 sm:gap-4">
-        <button onClick={() => navigate("/loja")} className="shrink-0 flex items-center" aria-label="Ir para a loja">
-          <h2 className="text-lg sm:text-2xl font-black tracking-[-0.06em] text-white">ZX<span className="text-[#168cff]">MAX</span></h2>
-        </button>
+    <header className="sticky top-0 z-50 border-b border-white/[0.08] bg-[#0b0b0e]/95 backdrop-blur-lg">
+      <div className="mx-auto max-w-[1240px] px-3 sm:px-4">
+        <div className="flex h-16 items-center gap-2 sm:gap-3">
+          <button onClick={() => navigate("/")} className="shrink-0" aria-label="Ir para a página inicial">
+            {branding.logoUrl ? (
+              <img src={branding.logoUrl} alt={branding.siteName} className="h-8 max-w-[140px] object-contain object-left" />
+            ) : (
+              <span className="text-xl font-extrabold tracking-[-0.05em] text-white">{branding.siteName || "ZXMAX"}</span>
+            )}
+          </button>
 
-        <button
-          onClick={openListing}
-          className="sm:hidden shrink-0 rounded-full bg-[#168cff] px-3 py-2 text-[10px] font-black text-white shadow-[0_8px_18px_rgba(0,132,255,0.18)] transition hover:bg-[#0877eb] active:scale-[0.97]"
-          aria-label={user ? "Abrir meus anúncios" : "Entrar para anunciar"}
-        >
-          + Anunciar
-        </button>
+          <nav className="hidden items-center gap-1 lg:flex" aria-label="Navegação principal">
+            <button onClick={() => navigate("/loja")} className="rounded-md px-2.5 py-2 text-xs font-medium text-white/52 transition hover:bg-white/[0.04] hover:text-white">Loja</button>
+            <button onClick={() => navigate("/categorias")} className="rounded-md px-2.5 py-2 text-xs font-medium text-white/52 transition hover:bg-white/[0.04] hover:text-white">Categorias</button>
+            <button onClick={() => navigate("/robux")} className={`rounded-md px-2.5 py-2 text-xs font-semibold transition ${location.pathname === "/robux" ? "bg-[#168cff]/10 text-[#67b5ff]" : "text-white/52 hover:bg-white/[0.04] hover:text-white"}`}>Robux</button>
+          </nav>
 
-        <form onSubmit={submitSearch} className="hidden md:flex items-center bg-[#15151a] border border-[#25252e] rounded-xl px-3 py-2 flex-1 max-w-xl focus-within:border-[#0084ff]/50 transition">
-          <Search className="w-4 h-4 text-white/30" />
-          <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar Robux, bots, contas, scripts..." className="bg-transparent border-none focus:ring-0 focus:outline-none text-sm w-full ml-2 text-white placeholder:text-white/30" />
+          <form onSubmit={submitSearch} className="hidden min-w-0 flex-1 md:flex">
+            <div className="flex h-10 w-full max-w-xl items-center rounded-lg border border-white/[0.1] bg-[#151519] px-3 focus-within:border-[#168cff]/60">
+              <Search className="h-4 w-4 shrink-0 text-white/30" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Buscar anúncios..."
+                aria-label="Buscar no marketplace"
+                className="ml-2 min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/28"
+              />
+            </div>
+          </form>
+
+          <div className="ml-auto flex items-center gap-1.5">
+            <button
+              onClick={openListing}
+              aria-label={user ? "Abrir meus anúncios" : "Anunciar"}
+              className="hidden h-9 items-center rounded-md bg-[#168cff] px-4 text-xs font-bold text-white transition hover:bg-[#0878dc] sm:flex"
+            >
+              Anunciar
+            </button>
+
+            <button onClick={() => navigate("/favoritos")} className="zx-icon-action relative hidden sm:flex" aria-label="Favoritos" title="Favoritos">
+              <Heart className={`h-4 w-4 ${favCount ? "fill-[#57aaff] text-[#57aaff]" : ""}`} />
+              {favCount > 0 ? <span className="absolute -right-1 -top-1 rounded-full bg-[#168cff] px-1 text-[8px] font-bold text-white">{favCount > 99 ? "99+" : favCount}</span> : null}
+            </button>
+
+            <NotificationBell />
+
+            <a
+              href={branding.supportUrl || state.config.discordLink || "https://discord.gg/zxmax"}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="zx-icon-action hidden sm:flex border-[#5865F2]/25"
+              title="Comunidade"
+              aria-label="Abrir comunidade no Discord"
+            >
+              <DiscordIcon className="h-4 w-4" />
+            </a>
+
+            {isAdmin ? (
+              <button onClick={() => navigate("/admin/branding")} className="zx-icon-action hidden sm:flex" aria-label="Personalizar site" title="Personalizar site">
+                <Settings className="h-4 w-4" />
+              </button>
+            ) : null}
+
+            {user ? (
+              <button onClick={onProfileClick} className="flex h-10 items-center gap-2 rounded-lg border border-white/[0.09] bg-[#151519] px-2 transition hover:border-white/[0.16]">
+                {profile?.avatar_url || state.currentUser?.avatar ? (
+                  <img src={profile?.avatar_url || state.currentUser?.avatar} alt="Avatar" className="h-7 w-7 rounded-full object-cover" />
+                ) : (
+                  <span className="grid h-7 w-7 place-items-center rounded-full bg-[#222228] text-[10px] font-bold text-white">{(profile?.display_name || user.email || "U").slice(0, 1).toUpperCase()}</span>
+                )}
+                <span className="hidden text-left lg:block">
+                  <span className="block max-w-[90px] truncate text-[11px] font-semibold text-white">{profile?.display_name || user.email?.split("@")[0]}</span>
+                  <span className="mt-0.5 flex items-center gap-1 text-[9px] text-white/35"><Wallet className="h-3 w-3" /> R$ {Number(state.currentUser?.balance ?? 0).toFixed(2)}</span>
+                </span>
+              </button>
+            ) : (
+              <button onClick={onAuthClick} aria-label="Entrar para anunciar" className="rounded-md border border-white/[0.12] px-3 py-2 text-xs font-semibold text-white/80 transition hover:bg-white/[0.05] hover:text-white">
+                Entrar
+              </button>
+            )}
+
+            <button
+              onClick={onMenuClick}
+              className="zx-icon-action"
+              aria-label="Abrir menu principal"
+              aria-expanded={menuOpen}
+              aria-controls="zxmax-main-menu"
+              title="Menu"
+            >
+              <Menu className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <form onSubmit={submitSearch} className="pb-3 md:hidden">
+          <div className="flex h-10 items-center rounded-lg border border-white/[0.09] bg-[#151519] px-3 focus-within:border-[#168cff]/60">
+            <Search className="h-4 w-4 shrink-0 text-white/30" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Buscar anúncios..."
+              aria-label="Buscar no marketplace"
+              className="ml-2 min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/28"
+            />
+          </div>
         </form>
 
-        <div className="flex items-center gap-1 ml-auto">
-          <a href={state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noopener noreferrer" className="zx-icon-action hidden sm:flex border-[#5865F2]/25 bg-[#5865F2]/10 hover:bg-[#5865F2]/20" title="Entrar no Discord">
-            <DiscordIcon className="w-4 h-4 text-[#5865F2]" />
-          </a>
-
-          <button onClick={() => navigate("/favoritos")} className="zx-icon-action relative hidden sm:flex" title="Favoritos" aria-label="Favoritos">
-            <Heart className={`w-4 h-4 ${favCount > 0 ? "text-[#0084ff] fill-[#0084ff]" : "text-white/40"}`} />
-            {favCount > 0 && <span className="absolute -top-1 -right-1 bg-[#0084ff] text-white text-[9px] font-black min-w-[16px] h-[16px] px-1 rounded-full flex items-center justify-center">{favCount > 99 ? "99+" : favCount}</span>}
-          </button>
-
-          <NotificationBell />
-
-          <button onClick={toggleDark} className="zx-icon-action hidden sm:flex" title="Mudar tema" aria-label="Mudar tema">
-            {isDark ? <Sun className="w-4 h-4 text-white/40" /> : <Moon className="w-4 h-4 text-white/40" />}
-          </button>
-
-          {user ? (
-            <>
-              <button
-                onClick={openListing}
-                className="hidden sm:flex items-center gap-1.5 rounded-full bg-[#168cff] px-4 py-2 text-xs font-black text-white shadow-[0_8px_18px_rgba(0,132,255,0.18)] transition hover:bg-[#0877eb] active:scale-[0.97]"
-                title="Criar um anúncio"
-              >
-                + Anunciar
-              </button>
-              <button onClick={onProfileClick} className="flex items-center gap-2 hover:bg-white/5 p-1 pr-2 rounded-xl transition border border-transparent hover:border-white/10">
-                <div className="text-right hidden sm:block leading-tight">
-                  <p className="text-xs font-bold text-white flex items-center gap-1 justify-end">{profile?.display_name || user.email?.split("@")[0]} {isAdmin && <span className="bg-[#ff8c00] text-white text-[8px] px-1.5 py-0.5 rounded-full uppercase font-black">ADM</span>}</p>
-                  <p className="text-[11px] font-bold text-[#0084ff] flex items-center gap-1 justify-end"><Wallet className="w-3 h-3" /> R$ {Number(state.currentUser?.balance ?? 0).toFixed(2)}</p>
-                </div>
-                <img src={profile?.avatar_url || state.currentUser?.avatar} alt="Avatar" className="w-8 h-8 rounded-lg bg-[#0084ff]/10 border border-white/10 object-cover" />
-              </button>
-            </>
-          ) : (
-            <button onClick={onAuthClick} className="bg-[#0084ff] hover:bg-[#0066cc] text-white px-4 py-2 text-xs font-black rounded-xl transition">Entrar</button>
-          )}
-          <button
-            onClick={onMenuClick}
-            className={`zx-icon-action group ${menuOpen ? "border-[#168cff]/60 bg-[#168cff]/15" : ""}`}
-            title="Abrir menu"
-            aria-label="Abrir menu principal"
-            aria-expanded={menuOpen}
-            aria-controls="zxmax-main-menu"
-          >
-            <span className="flex w-[17px] flex-col gap-[3px]" aria-hidden>
-              <span className="h-[1.5px] w-full rounded-full bg-white transition group-hover:bg-[#6dbdff]" />
-              <span className="h-[1.5px] w-full rounded-full bg-white transition group-hover:bg-[#6dbdff]" />
-              <span className="h-[1.5px] w-full rounded-full bg-white transition group-hover:bg-[#6dbdff]" />
-            </span>
-          </button>
-        </div>
+        <nav className="flex gap-4 overflow-x-auto pb-3 text-[11px] font-medium text-white/42 lg:hidden" aria-label="Atalhos do marketplace">
+          <button onClick={() => navigate("/loja")} className="shrink-0 hover:text-white">Loja</button>
+          <button onClick={() => navigate("/categorias")} className="shrink-0 hover:text-white">Categorias</button>
+          <button onClick={() => navigate("/robux")} className={`shrink-0 ${location.pathname === "/robux" ? "text-[#67b5ff]" : "hover:text-white"}`}>Robux</button>
+          <button onClick={() => navigate("/como-funciona")} className="shrink-0 hover:text-white">Como funciona</button>
+        </nav>
       </div>
-
-      <form onSubmit={submitSearch} className="md:hidden px-3 pb-3">
-        <div className="flex items-center bg-[#15151a] border border-[#25252e] rounded-xl px-3 py-2.5">
-          <Search className="w-4 h-4 text-white/30" />
-          <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar produtos..." className="bg-transparent border-none focus:ring-0 focus:outline-none text-sm w-full ml-2 text-white placeholder:text-white/30" />
-        </div>
-      </form>
     </header>
   );
 }

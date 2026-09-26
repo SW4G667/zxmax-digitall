@@ -27,6 +27,28 @@ function packageUnits(product: { category?: string; variations?: { name?: string
   return Number.isFinite(units) && units > 0 ? units : 1;
 }
 
+async function notifyOrderEmail(type: string, purchaseId: number) {
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceKey) return;
+  try {
+    const response = await fetch(`${url}/functions/v1/send-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceKey}`,
+        apikey: serviceKey,
+      },
+      body: JSON.stringify({ type, purchaseId }),
+    });
+    if (!response.ok && response.status !== 202) {
+      console.warn("order email not delivered", type, purchaseId, response.status);
+    }
+  } catch (error) {
+    console.warn("order email failed", type, purchaseId, error instanceof Error ? error.message : "unknown");
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -47,7 +69,7 @@ serve(async (req) => {
     const productId = Number(body.productId);
     const variationName = typeof body.variationName === "string" ? body.variationName : null;
     const requestedQty = Number(body.quantity);
-    const paymentMethod = ["zennith_pix", "vexopay_pix", "crypto", "card", "boleto"].includes(String(body.paymentMethod)) ? String(body.paymentMethod) : null;
+    const paymentMethod = ["magnuspay_pix", "zennith_pix", "vexopay_pix", "crypto", "card", "boleto"].includes(String(body.paymentMethod)) ? String(body.paymentMethod) : null;
     if (!productId || Number.isNaN(productId)) return json({ error: "Produto inválido" }, 400);
 
     const admin = createClient(
@@ -55,25 +77,31 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { data: gatewayRows } = await admin.from("app_settings").select("key,value").in("key", ["zennithpay", "vexopay", "stripe"]);
+    const { data: gatewayRows } = await admin.from("app_settings").select("key,value").in("key", ["magnuspay", "zennithpay", "vexopay", "stripe"]);
     const gateway = (key: string) => (gatewayRows || []).find((row: any) => row.key === key)?.value || {};
+    const magnus = gateway("magnuspay") as Record<string, unknown>;
+    const magnusReady = Boolean(Deno.env.get("MAGNUSPAY_API_KEY"));
     const zennith = gateway("zennithpay") as Record<string, unknown>;
     const zennithReady = Boolean(Deno.env.get("ZENNITH_API_KEY"));
     const vexopay = gateway("vexopay") as Record<string, unknown>;
     const vexopayReady = Boolean(Deno.env.get("VEXOPAY_CLIENT_ID") && Deno.env.get("VEXOPAY_CLIENT_SECRET"));
-    const selectedPix = zennithReady && zennith.pixEnabled === true
-      ? "zennith_pix"
-      : vexopayReady && vexopay.pixEnabled === true
-        ? "vexopay_pix"
-        : null;
-    if ((paymentMethod === "zennith_pix" || paymentMethod === "vexopay_pix") && paymentMethod !== selectedPix) {
+    const selectedPix = magnusReady && magnus.pixEnabled === true
+      ? "magnuspay_pix"
+      : zennithReady && zennith.pixEnabled === true
+        ? "zennith_pix"
+        : vexopayReady && vexopay.pixEnabled === true
+          ? "vexopay_pix"
+          : null;
+    if ((paymentMethod === "magnuspay_pix" || paymentMethod === "zennith_pix" || paymentMethod === "vexopay_pix") && paymentMethod !== selectedPix) {
       return json({ error: "PIX indisponível no momento. Tente novamente mais tarde." }, 503);
     }
-    const configuredFee = paymentMethod === "zennith_pix"
-      ? Number(gateway("zennithpay").pixFee)
-      : paymentMethod === "vexopay_pix"
-        ? Number(gateway("vexopay").pixFee)
-        : 0;
+    const configuredFee = paymentMethod === "magnuspay_pix"
+      ? Number(gateway("magnuspay").pixFee)
+      : paymentMethod === "zennith_pix"
+        ? Number(gateway("zennithpay").pixFee)
+        : paymentMethod === "vexopay_pix"
+          ? Number(gateway("vexopay").pixFee)
+          : 0;
     const buyerFee = Number.isFinite(configuredFee) && configuredFee >= 0 && configuredFee <= 1000 ? roundMoney(configuredFee) : 0;
     const stripe = gateway("stripe") as Record<string, unknown>;
     const stripeReady = Boolean(Deno.env.get("STRIPE_SECRET_KEY") && Deno.env.get("STRIPE_WEBHOOK_SECRET"));
@@ -131,7 +159,7 @@ serve(async (req) => {
     }
 
     const safeProductAmount = isRobux
-      ? roundMoney((quantity / units) * Number(product.price))
+      ? roundMoney((quantity / units) * unitPrice)
       : roundMoney(unitPrice);
     const amount = roundMoney(safeProductAmount + buyerFee);
     if (amount < 2) return json({ error: "Valor mínimo do pedido é R$ 2,00." }, 400);
@@ -183,6 +211,8 @@ serve(async (req) => {
     }
 
     if (purchaseError || !purchase) throw purchaseError || new Error("Falha ao criar pedido");
+
+    await notifyOrderEmail("purchase_created", Number(purchase.id));
 
     return json({
       purchase: {

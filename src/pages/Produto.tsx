@@ -34,9 +34,9 @@ interface SellerOffer {
   verified: boolean;
 }
 
-type CheckoutMethod = "zennith_pix" | "vexopay_pix" | "crypto" | "card" | "boleto";
+type CheckoutMethod = "magnuspay_pix" | "zennith_pix" | "vexopay_pix" | "crypto" | "card" | "boleto";
 
-const METHOD_ORDER: CheckoutMethod[] = ["zennith_pix", "vexopay_pix", "crypto", "card", "boleto"];
+const METHOD_ORDER: CheckoutMethod[] = ["magnuspay_pix", "zennith_pix", "vexopay_pix", "crypto", "card", "boleto"];
 
 function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConfirm, loading }: { product: Product; quantity: number; unitPrice: number; subtotal: number; onClose: () => void; onConfirm: (method: string, cpf: string, network?: string) => void; loading: boolean }) {
   // Sem método selecionado até sabermos o que está ativo: nunca deixamos PIX
@@ -97,6 +97,7 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
   };
 
   const methodButtons: Array<{ id: CheckoutMethod; label: string; icon: React.ReactNode; selectedClass: string }> = [
+    { id: "magnuspay_pix", label: "PIX", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-[#0084ff] border-[#0084ff] text-white" },
     { id: "zennith_pix", label: "PIX", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-[#0084ff] border-[#0084ff] text-white" },
     { id: "vexopay_pix", label: "PIX", icon: <CreditCard className="w-5 h-5" />, selectedClass: "bg-[#0084ff] border-[#0084ff] text-white" },
     { id: "crypto", label: "Crypto", icon: <Bitcoin className="w-5 h-5" />, selectedClass: "bg-[#ffbd2e] border-[#ffbd2e] text-black" },
@@ -106,7 +107,7 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
   const visibleMethodButtons = methodButtons.filter(({ id }) => {
     // A disponibilidade definitiva já aplica precedência no contrato; durante
     // o carregamento, também evitamos desenhar duas opções PIX provisórias.
-    if (loadingMethods) return id !== "vexopay_pix";
+    if (loadingMethods) return id === "magnuspay_pix" || id === "crypto" || id === "card" || id === "boleto";
     return isAvailable(id);
   });
 
@@ -157,11 +158,11 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
             )}
           </div>
 
-          {anyMethod && (
+          {anyMethod && (method === "zennith_pix" || method === "vexopay_pix" || method === "crypto") && (
             <div>
-              <p className="text-xs font-bold uppercase text-white/30 mb-2">CPF para pagamento{method === "card" || method === "boleto" ? " (opcional)" : ""}</p>
+              <p className="text-xs font-bold uppercase text-white/30 mb-2">CPF/CNPJ para pagamento</p>
               <input value={cpf} onChange={(e) => setCpf(e.target.value)} inputMode="numeric" placeholder="000.000.000-00" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />
-              <p className="text-[10px] text-white/30 mt-1">Obrigatório para PIX e Crypto</p>
+              <p className="text-[10px] text-white/30 mt-1">Solicitado apenas pelos métodos que realmente exigem documento.</p>
             </div>
           )}
 
@@ -191,7 +192,7 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
           <button onClick={handleConfirm} disabled={loading || loadingMethods || !method || !isAvailable(method)} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
             {loading ? "Processando..."
               : !anyMethod && !loadingMethods ? "Nenhuma forma disponível"
-              : method === "zennith_pix" || method === "vexopay_pix" ? "Pagar com PIX"
+              : method === "magnuspay_pix" || method === "zennith_pix" || method === "vexopay_pix" ? "Pagar com PIX"
               : method === "crypto" ? "Pagar com cripto"
               : method === "boleto" ? "Gerar boleto"
               : "Pagar com cartão"}
@@ -436,9 +437,10 @@ export default function ProdutoPage() {
       purchaseId = await buyProduct(product.id, isRobux ? undefined : (selectedVariation || undefined), displayQuantity, method);
       if (!purchaseId) return; // buyProduct já explicou o motivo
 
-      if (method === "zennith_pix" || method === "vexopay_pix") {
+      if (method === "magnuspay_pix" || method === "zennith_pix" || method === "vexopay_pix") {
+        const pixFunction = method === "magnuspay_pix" ? "create-magnuspay-pix" : method === "zennith_pix" ? "create-zennith-pix" : "create-evopay-pix";
         const res = await unwrapEdgeCall<{ id: string; qrCodeText: string; qrCodeUrl?: string; expiresAt?: string; amount?: number }>(
-          await supabase.functions.invoke(method === "zennith_pix" ? "create-zennith-pix" : "create-evopay-pix", {
+          await supabase.functions.invoke(pixFunction, {
             body: { purchaseId, productName: !isRobux && selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name, buyerName: state.currentUser?.name, payerDocument: cpf || undefined },
           }),
           "Não foi possível gerar o PIX. Tente novamente.",
@@ -451,7 +453,7 @@ export default function ProdutoPage() {
           return;
         }
         savePixCharge(purchaseId, { evopayId: res.data.id, qrCodeText: res.data.qrCodeText, expiresAt: res.data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
-        setPixCharge({ evopayId: res.data.id, qrCodeText: res.data.qrCodeText, amount: Number(res.data.amount ?? subtotal), qrCodeUrl: res.data.qrCodeUrl, purchaseId });
+        setPixCharge({ evopayId: res.data.id, provider: method, qrCodeText: res.data.qrCodeText, amount: Number(res.data.amount ?? subtotal), qrCodeUrl: res.data.qrCodeUrl, purchaseId });
         setCheckoutOpen(false);
         return;
       }
@@ -539,21 +541,6 @@ export default function ProdutoPage() {
     if (clean.length < 1) { toast.error("Escreva a resposta antes de enviar."); return; }
     setSendingAnswer(questionId);
     const { error } = await (supabase as any).rpc("answer_product_question", { _question_id: questionId, _answer: clean });
-    if (error && isSchemaMissing(error)) {
-      const next = (product.questions || []).map((item) =>
-        item.id === questionId ? { ...item, answer: clean, answerDate: new Date().toISOString() } : item,
-      );
-      const upErr = await persistLegacyQuestions(next);
-      setSendingAnswer(null);
-      if (upErr) {
-        toast.error(friendlyQuestionError(upErr, "answer"));
-        return;
-      }
-      answerProductQuestion(product.id, questionId, clean);
-      toast.success("Resposta publicada.");
-      setAnswerDrafts((drafts) => ({ ...drafts, [questionId]: "" }));
-      return;
-    }
     setSendingAnswer(null);
     if (error) { toast.error(friendlyQuestionError(error, "answer")); return; }
     toast.success("Resposta publicada.");

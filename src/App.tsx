@@ -21,6 +21,10 @@ import Robux from "./pages/Robux.tsx";
 import Favoritos from "./pages/Favoritos.tsx";
 import AuthCallback from "./pages/AuthCallback.tsx";
 import MaintenanceGate from "@/components/MaintenanceGate";
+import AdminBranding from "./pages/AdminBranding.tsx";
+import MarketplaceHome from "./pages/MarketplaceHome.tsx";
+import MarketplaceInfo from "./pages/MarketplaceInfo.tsx";
+import { SiteBrandingProvider } from "@/context/SiteBrandingContext";
 
 const queryClient = new QueryClient();
 
@@ -28,38 +32,53 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <ErrorBoundary>
-        <AuthProvider>
-          <StoreProvider>
-            <BrowserRouter>
-              <Sonner position="top-center" richColors />
-              <CookieConsent />
-              <MaintenanceGate>
-              <Routes>
-                <Route path="/" element={<Index view="store" />} />
-                <Route path="/loja" element={<Index view="store" />} />
-                <Route path="/categorias" element={<Categorias />} />
-                <Route path="/produto/:id" element={<Produto />} />
-                <Route path="/robux" element={<Robux />} />
-                <Route path="/favoritos" element={<Favoritos />} />
-                <Route path="/meus-produtos" element={<Index view="inventory" />} />
-                <Route path="/minhas-compras" element={<Index view="purchases" />} />
-                <Route path="/suporte" element={<Index view="support" />} />
-                <Route path="/admin" element={<Index view="admin" />} />
-                <Route path="/sacar" element={<Index view="withdraw" />} />
-                <Route path="/auth/callback" element={<AuthCallback />} />
-                <Route path="/reset-password" element={<ResetPassword />} />
-                <Route path="/faq" element={<Faq />} />
-                <Route path="/termos" element={<Termos />} />
-                <Route path="/privacidade" element={<Privacidade />} />
-                <Route path="/regras" element={<Regras />} />
-                <Route path="/perfil" element={<Perfil />} />
-                <Route path="/configuracoes" element={<Configuracoes />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-              </MaintenanceGate>
-            </BrowserRouter>
-          </StoreProvider>
-        </AuthProvider>
+        <SiteBrandingProvider>
+          <AuthProvider>
+            <StoreProvider>
+              <BrowserRouter>
+                <Sonner position="top-center" richColors />
+                <CookieConsent />
+                <MaintenanceGate>
+                  <Routes>
+                    <Route path="/" element={<MarketplaceHome />} />
+                    <Route path="/loja" element={<Index view="store" />} />
+                    <Route path="/categorias" element={<Categorias />} />
+                    <Route path="/produto/:id" element={<Produto />} />
+                    <Route path="/robux" element={<Robux />} />
+                    <Route path="/favoritos" element={<Favoritos />} />
+
+                    <Route path="/como-funciona" element={<MarketplaceInfo kind="como-funciona" />} />
+                    <Route path="/comprar" element={<MarketplaceInfo kind="comprar" />} />
+                    <Route path="/vender" element={<MarketplaceInfo kind="vender" />} />
+                    <Route path="/seguranca" element={<MarketplaceInfo kind="seguranca" />} />
+                    <Route path="/formas-de-pagamento" element={<MarketplaceInfo kind="pagamentos" />} />
+                    <Route path="/tarifas-e-prazos" element={<MarketplaceInfo kind="tarifas" />} />
+                    <Route path="/reembolsos" element={<MarketplaceInfo kind="reembolsos" />} />
+                    <Route path="/entrega-automatica" element={<MarketplaceInfo kind="entrega-automatica" />} />
+                    <Route path="/vendedores-verificados" element={<MarketplaceInfo kind="vendedores-verificados" />} />
+                    <Route path="/central-de-ajuda" element={<MarketplaceInfo kind="central-ajuda" />} />
+
+                    <Route path="/meus-produtos" element={<Index view="inventory" />} />
+                    <Route path="/minhas-compras" element={<Index view="purchases" />} />
+                    <Route path="/suporte" element={<Index view="support" />} />
+                    <Route path="/admin" element={<Index view="admin" />} />
+                    <Route path="/admin/branding" element={<AdminBranding />} />
+                    <Route path="/sacar" element={<Index view="withdraw" />} />
+                    <Route path="/auth/callback" element={<AuthCallback />} />
+                    <Route path="/reset-password" element={<ResetPassword />} />
+                    <Route path="/faq" element={<Faq />} />
+                    <Route path="/termos" element={<Termos />} />
+                    <Route path="/privacidade" element={<Privacidade />} />
+                    <Route path="/regras" element={<Regras />} />
+                    <Route path="/perfil" element={<Perfil />} />
+                    <Route path="/configuracoes" element={<Configuracoes />} />
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </MaintenanceGate>
+              </BrowserRouter>
+            </StoreProvider>
+          </AuthProvider>
+        </SiteBrandingProvider>
       </ErrorBoundary>
     </TooltipProvider>
   </QueryClientProvider>

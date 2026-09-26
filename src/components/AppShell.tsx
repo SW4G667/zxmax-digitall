@@ -6,7 +6,7 @@ import ProfileModal from "@/components/ProfileModal";
 import AuthScreen from "@/components/AuthScreen";
 import SiteFooter from "@/components/SiteFooter";
 import { useAuth } from "@/hooks/useAuth";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "withdraw";
 
@@ -26,32 +26,50 @@ interface Props {
 export default function AppShell({ children }: Props) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [profileOpen, setProfileOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  useEffect(() => { if (!user) { setProfileOpen(false); setMenuOpen(false); } }, [user]);
+  useEffect(() => {
+    if (!user) {
+      setProfileOpen(false);
+      setMenuOpen(false);
+    }
+  }, [user]);
+
+  const accountArea = ["/meus-produtos", "/minhas-compras", "/suporte", "/admin", "/sacar", "/perfil", "/configuracoes"]
+    .some((prefix) => location.pathname.startsWith(prefix));
 
   return (
-    <div className="bg-gradient-page min-h-screen pb-24">
+    <div className={`min-h-screen bg-[#0b0b0e] text-white ${accountArea && user ? "pb-20" : ""}`}>
       <Header
         onProfileClick={() => setProfileOpen(true)}
         onAuthClick={() => setAuthOpen(true)}
         onMenuClick={() => setMenuOpen(true)}
         menuOpen={menuOpen}
       />
-      <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
-      <SiteFooter />
-      <BottomNav />
+
+      <div className="mx-auto w-full max-w-[1240px] px-3 py-5 sm:px-5 sm:py-7">
+        {children}
+      </div>
+
+      {!accountArea ? <SiteFooter /> : null}
+      {accountArea && user ? <BottomNav /> : null}
+
       <SideMenu
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         onNavigate={(next) => {
-          if (!user && next !== "store") return setAuthOpen(true);
+          if (!user && next !== "store") {
+            setAuthOpen(true);
+            return;
+          }
           navigate(PATHS[next]);
         }}
         onOpenProfile={() => (user ? setProfileOpen(true) : setAuthOpen(true))}
       />
+
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
       {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
     </div>

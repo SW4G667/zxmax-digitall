@@ -25,11 +25,24 @@ const failed = (status: number, code: string | null = null): EdgeCallResult<{ me
 
 describe("classifyPaymentMethods", () => {
   it("HTTP 200 com métodos válidos devolve as opções PIX nomeadas e suas taxas", () => {
-    const state = classifyPaymentMethods(ok({ zennith_pix: true, vexopay_pix: false, crypto: false, card: false, boleto: false }, { zennith_pix: 0.9 }));
+    const state = classifyPaymentMethods(ok({ magnuspay_pix: false, zennith_pix: true, vexopay_pix: false, crypto: false, card: false, boleto: false }, { zennith_pix: 0.9 }));
     expect(state.status).toBe("ok");
     if (state.status !== "ok") throw new Error("Estado inesperado");
-    expect(state.methods).toEqual({ zennith_pix: true, vexopay_pix: false, crypto: false, card: false, boleto: false });
+    expect(state.methods).toEqual({ magnuspay_pix: false, zennith_pix: true, vexopay_pix: false, crypto: false, card: false, boleto: false });
     expect(state.fees.zennith_pix).toBe(0.9);
+  });
+
+  it("MagnusPay tem precedência quando mais de um PIX aparece ativo em configuração legada", () => {
+    const state = classifyPaymentMethods(ok(
+      { magnuspay_pix: true, zennith_pix: true, vexopay_pix: true, crypto: false, card: false, boleto: false },
+      { magnuspay_pix: 0, zennith_pix: 0.9, vexopay_pix: 1.2 },
+    ));
+    expect(state.status).toBe("ok");
+    if (state.status !== "ok") throw new Error("Estado inesperado");
+    expect(state.methods.magnuspay_pix).toBe(true);
+    expect(state.methods.zennith_pix).toBe(false);
+    expect(state.methods.vexopay_pix).toBe(false);
+    expect(state.fees.magnuspay_pix).toBe(0);
   });
 
   it("403 não oferece métodos sem uma resposta validada da função", () => {
@@ -67,7 +80,7 @@ describe("classifyPaymentMethods", () => {
   });
 
   it("métodos todos false (de verdade) continua distinguível de falha", () => {
-    const state = classifyPaymentMethods(ok({ zennith_pix: false, vexopay_pix: false, crypto: false, card: false, boleto: false }));
+    const state = classifyPaymentMethods(ok({ magnuspay_pix: false, zennith_pix: false, vexopay_pix: false, crypto: false, card: false, boleto: false }));
     expect(state.status).toBe("ok");
     expect(paymentMethodsNotice(state)).toBeNull();
   });
