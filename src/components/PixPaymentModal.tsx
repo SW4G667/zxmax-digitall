@@ -25,58 +25,53 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
   useEffect(() => {
     paidRef.current = false;
     setStatus("waiting");
-    if (!charge) return;
+    if (!charge?.purchaseId) return;
 
     let attempts = 0;
-    const MAX_ATTEMPTS = 90;
+    const MAX_ATTEMPTS = 75;
 
     const tick = async () => {
       if (paidRef.current) return;
       attempts += 1;
+
       try {
-        if (!charge.purchaseId) return;
+        const { data, error } = await supabase.functions.invoke("check-magnuspay-status", {
+          body: { purchaseId: charge.purchaseId },
+        });
 
-        const { data: latest, error } = await (supabase as any)
-          .from("purchases")
-          .select("id,status,pix_expires_at")
-          .eq("id", charge.purchaseId)
-          .maybeSingle();
-
-        if (!error && latest && ["paid", "delivered"].includes(String(latest.status))) {
-          if (paidRef.current) return;
+        if (!error && data?.paid === true) {
           paidRef.current = true;
           setStatus("paid");
           clearInterval(interval);
           onPaid();
-
-          try {
-            await supabase.functions.invoke("send-email", {
-              body: { type: "purchase_confirmed", purchaseId: charge.purchaseId },
-            });
-            await supabase.functions.invoke("send-email", {
-              body: { type: "new_sale", purchaseId: charge.purchaseId },
-            });
-          } catch {}
           return;
         }
 
-        if (latest?.pix_expires_at && new Date(latest.pix_expires_at).getTime() < Date.now()) {
+        const gatewayStatus = String(data?.status || "").toUpperCase();
+        if (gatewayStatus === "EXPIRED") {
           clearInterval(interval);
           toast.error("Este PIX expirou. Gere uma nova cobrança.");
+          return;
+        }
+        if (gatewayStatus === "FAILED") {
+          clearInterval(interval);
+          toast.error("O pagamento falhou. Gere uma nova cobrança.");
+          return;
         }
       } catch {
-        /* mantém a consulta local; nunca libera pedido por erro de rede */
+        // O webhook continua sendo o caminho principal. Falha temporária no polling
+        // nunca libera o pedido e a próxima consulta tenta novamente.
       }
+
       if (attempts >= MAX_ATTEMPTS) clearInterval(interval);
     };
 
-    const interval = setInterval(tick, 4000);
+    const interval = setInterval(tick, 8000);
     void tick();
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [charge?.paymentId, charge?.purchaseId]);
-
   if (!charge) return null;
 
   const copyCode = async () => {
@@ -123,7 +118,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
                 <p className="text-xs font-bold text-foreground">Use o código PIX copia e cola abaixo</p>
                 <p className="text-[11px] text-muted-foreground mt-1">O gateway não enviou uma imagem de QR Code para esta cobrança.</p>
               </div>
-            )
+            )}
 
             <div className="bg-muted rounded-xl p-3 mb-3">
               <p className="text-[11px] text-foreground break-all font-mono leading-relaxed">{charge.qrCodeText}</p>
