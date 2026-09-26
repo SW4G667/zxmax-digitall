@@ -1,110 +1,92 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { KeyRound, Plug, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle2, KeyRound, Loader2, Plug, RefreshCw, XCircle } from "lucide-react";
 
-type Field = { key: string; label: string; secret?: boolean; placeholder?: string; readOnly?: boolean };
+type ProviderId = "magnuspay" | "zennithpay" | "vexopay" | "stripe";
 
-const PROVIDERS: { id: string; name: string; hint: string; fields: Field[] }[] = [
-  {
-    id: "vexopay",
-    name: "VexoPay (PIX + Crypto)",
-    hint: "Use o Client ID e o Client Secret gerados no painel da VexoPay em API Keys. A base padrão é https://vexopay.com.br/api",
-    fields: [
-      { key: "baseUrl", label: "Base URL", placeholder: "https://vexopay.com.br/api" },
-      { key: "clientId", label: "Client ID (ci)", placeholder: "vxp_ci_..." },
-      { key: "clientSecret", label: "Client Secret (cs)", secret: true, placeholder: "vxp_cs_..." },
-      { key: "webhookSecret", label: "Segredo do webhook (opcional)", secret: true },
-    ],
+interface ProviderConfig {
+  pixEnabled?: boolean;
+  pixFee?: number;
+  cryptoEnabled?: boolean;
+  cardEnabled?: boolean;
+  boletoEnabled?: boolean;
+  boletoExpiresAfterDays?: number;
+}
+
+const LABELS: Record<ProviderId, { name: string; description: string }> = {
+  magnuspay: {
+    name: "MagnusPay",
+    description: "PIX principal da ZXMAX. A API key fica apenas nos Secrets do Supabase.",
   },
-  {
-    id: "evopay",
-    name: "EvoPay (PIX)",
-    hint: "Gateway de pagamento ativo. Cole a API Key gerada no painel da EvoPay.",
-    fields: [
-      { key: "apiKey", label: "API Key", secret: true, placeholder: "evp_..." },
-    ],
+  zennithpay: {
+    name: "ZennithPay",
+    description: "Gateway PIX legado. Mantido para compatibilidade.",
   },
-  {
-    id: "stripe",
+  vexopay: {
+    name: "VexoPay",
+    description: "PIX legado e pagamentos em crypto.",
+  },
+  stripe: {
     name: "Stripe",
-    hint: "Opcional. Usado para cobranças internacionais em cartão.",
-    fields: [
-      { key: "publishableKey", label: "Publishable Key", placeholder: "pk_live_..." },
-      { key: "secretKey", label: "Secret Key", secret: true, placeholder: "sk_live_..." },
-      { key: "webhookSecret", label: "Webhook Secret", secret: true, placeholder: "whsec_..." },
-    ],
+    description: "Cartão e boleto, quando configurados no servidor.",
   },
-  {
-    id: "discord",
-    name: "Discord OAuth",
-    hint: "Login social via Discord. O Redirect URI precisa ser idêntico ao cadastrado no Discord Developer Portal.",
-    fields: [
-      { key: "clientId", label: "Client ID", placeholder: "ID do aplicativo no Discord Developer Portal" },
-      { key: "clientSecret", label: "Client Secret", secret: true },
-      { key: "redirectUri", label: "Redirect URI", placeholder: window.location.origin + "/" },
-      { key: "scopes", label: "Scopes", placeholder: "identify email" },
-      { key: "serverLink", label: "Link do servidor", placeholder: "https://discord.gg/..." },
-    ],
-  },
-];
+};
 
 export default function IntegrationsPanel() {
-  const [values, setValues] = useState<Record<string, Record<string, string>>>({});
-  const [masks, setMasks] = useState<Record<string, Record<string, string>>>({});
+  const [configs, setConfigs] = useState<Record<string, ProviderConfig>>({});
+  const [secretStatus, setSecretStatus] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string }>>({});
-  const [webhookUrl, setWebhookUrl] = useState("");
 
   const load = async () => {
     setLoading(true);
     const { data, error } = await supabase.functions.invoke("integrations-config", { body: { action: "get" } });
+    setLoading(false);
     if (error || data?.error) {
-      toast.error("Não foi possível carregar as integrações.");
-      setLoading(false);
+      toast.error(data?.error || "Não foi possível carregar os gateways.");
       return;
     }
-    const next: Record<string, Record<string, string>> = {};
-    const nextMasks: Record<string, Record<string, string>> = {};
-    for (const p of PROVIDERS) {
-      const cfg = data.integrations?.[p.id] || {};
-      next[p.id] = {};
-      nextMasks[p.id] = {};
-      for (const f of p.fields) {
-        if (f.secret) nextMasks[p.id][f.key] = cfg[`${f.key}_masked`] || "";
-        else next[p.id][f.key] = cfg[f.key] || "";
-      }
-    }
-    setWebhookUrl(data.webhookUrl || "");
-    setValues(next);
-    setMasks(nextMasks);
-    setLoading(false);
+    setConfigs(data?.integrations || {});
+    setSecretStatus(data?.secretStatus || {});
   };
 
   useEffect(() => { void load(); }, []);
 
-  const setField = (provider: string, key: string, val: string) =>
-    setValues((v) => ({ ...v, [provider]: { ...(v[provider] || {}), [key]: val } }));
+  const update = (provider: ProviderId, patch: ProviderConfig) => {
+    setConfigs((current) => ({
+      ...current,
+      [provider]: { ...(current[provider] || {}), ...patch },
+    }));
+  };
 
-  const run = async (provider: string, action: "save" | "test" | "simulate") => {
-    setBusy(`${provider}:${action}`);
+  const save = async (provider: ProviderId) => {
+    setBusy(`${provider}:save`);
     const { data, error } = await supabase.functions.invoke("integrations-config", {
-      body: { action, provider, values: values[provider] || {}, test: action === "save" },
+      body: { action: "save", provider, values: configs[provider] || {} },
     });
     setBusy(null);
     if (error || data?.error) {
-      toast.error(data?.error || "Falha ao comunicar com o servidor.");
+      toast.error(data?.error || "Falha ao salvar.");
       return;
     }
-    if (action === "save") {
-      toast.success("Credenciais salvas com segurança no servidor.");
-      if (data.test) setResults((r) => ({ ...r, [provider]: data.test }));
-      void load();
-    } else {
-      setResults((r) => ({ ...r, [provider]: { ok: !!data.ok, message: data.message } }));
-      data.ok ? toast.success("Conexão bem-sucedida!") : toast.error("Conexão falhou.");
-    }
+    toast.success("Gateway atualizado.");
+    await load();
+  };
+
+  const test = async (provider: ProviderId) => {
+    setBusy(`${provider}:test`);
+    const { data, error } = await supabase.functions.invoke("integrations-config", {
+      body: { action: "test", provider },
+    });
+    setBusy(null);
+    const result = {
+      ok: !error && !!data?.ok,
+      message: data?.message || data?.error || error?.message || "Falha no teste.",
+    };
+    setResults((current) => ({ ...current, [provider]: result }));
+    result.ok ? toast.success(result.message) : toast.error(result.message);
   };
 
   if (loading) {
@@ -115,97 +97,94 @@ export default function IntegrationsPanel() {
     );
   }
 
+  const magnusReady = !!secretStatus.MAGNUSPAY_API_KEY;
+
   return (
-    <div className="space-y-4">
-      <div className="glass-card p-4 bg-primary/5 border border-primary/20">
-        <div className="flex items-center gap-2 mb-1">
+    <div className="space-y-5">
+      <div className="glass-card p-5 bg-primary/5 border border-primary/20">
+        <div className="flex items-center gap-2 mb-2">
           <KeyRound className="w-4 h-4 text-primary" />
-          <h3 className="font-bold text-foreground text-sm">Credenciais e APIs</h3>
+          <h3 className="font-black text-foreground">Pagamentos e credenciais</h3>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Tudo é gravado apenas no servidor. As chaves secretas nunca voltam para o navegador — você vê só a máscara e pode
-          substituí-las quando quiser.
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Chaves privadas não são salvas no navegador nem retornam por esta tela. Configure a secret
+          <code className="mx-1 px-1.5 py-0.5 rounded bg-muted text-foreground">MAGNUSPAY_API_KEY</code>
+          no Supabase. O checkout só libera PIX quando a secret existe.
         </p>
       </div>
 
-      {PROVIDERS.map((p) => {
-        const result = results[p.id];
-        return (
-          <div key={p.id} className="glass-card p-5 bg-card space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <h3 className="font-bold text-foreground flex items-center gap-2">
-                  <Plug className="w-4 h-4 text-primary" /> {p.name}
-                </h3>
-                <p className="text-[11px] text-muted-foreground mt-0.5">{p.hint}</p>
-              </div>
+      <div className="glass-card p-5 border border-primary/30 bg-card">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <Plug className="w-4 h-4 text-primary" />
+              <h3 className="font-black text-foreground">MagnusPay · PIX principal</h3>
             </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              {p.fields.map((f) => (
-                <div key={f.key}>
-                  <label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">{f.label}</label>
-                  <input
-                    type={f.secret ? "password" : "text"}
-                    value={values[p.id]?.[f.key] || ""}
-                    onChange={(e) => setField(p.id, f.key, e.target.value)}
-                    placeholder={
-                      f.secret && masks[p.id]?.[f.key]
-                        ? "•••••••• (configurada — preencha para alterar)"
-                        : f.placeholder || ""
-                    }
-                    className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono"
-                  />
-                </div>
-              ))}
-            </div>
-
-            {result && (
-              <div className={`flex items-start gap-2 text-xs p-3 rounded-xl ${result.ok ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}>
-                {result.ok ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <XCircle className="w-4 h-4 shrink-0" />}
-                <span className="break-all">{result.message}</span>
-              </div>
-            )}
-
-            {p.id === "evopay" && webhookUrl && (
-              <div>
-                <label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">
-                  URL do Webhook (cole no painel da EvoPay — contém um token secreto)
-                </label>
-                <input
-                  readOnly
-                  value={webhookUrl}
-                  onClick={(e) => (e.target as HTMLInputElement).select()}
-                  className="w-full p-3 rounded-xl bg-muted text-[11px] text-foreground font-mono select-all"
-                />
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  Chamadas sem esse token são rejeitadas, e todo pagamento é reconferido direto na EvoPay antes de liberar o pedido.
-                </p>
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => run(p.id, "save")}
-                disabled={busy !== null}
-                className="btn-gradient px-4 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50"
-              >
-                {busy === `${p.id}:save` ? "Salvando..." : "Salvar credenciais"}
-              </button>
-              <button
-                onClick={() => run(p.id, "test")}
-                disabled={busy !== null}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold bg-muted text-foreground disabled:opacity-50"
-              >
-                {busy === `${p.id}:test` ? "Testando..." : "Testar conexão"}
-              </button>
-              <button onClick={() => run(p.id, "simulate")} disabled={busy !== null} className="px-4 py-2.5 rounded-xl text-xs font-bold border border-border text-foreground disabled:opacity-50">
-                {busy === `${p.id}:simulate` ? "Simulando..." : "Simular evento"}
-              </button>
-            </div>
+            <p className="text-xs text-muted-foreground mt-1">{LABELS.magnuspay.description}</p>
           </div>
-        );
-      })}
+          <span className={`text-[11px] font-black px-2.5 py-1 rounded-full ${magnusReady ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}>
+            {magnusReady ? "SECRET CONFIGURADA" : "FALTA API KEY"}
+          </span>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3 mt-5">
+          <label className="p-4 rounded-xl bg-muted flex items-center justify-between gap-3">
+            <span>
+              <span className="block text-sm font-bold text-foreground">Ativar PIX</span>
+              <span className="block text-[11px] text-muted-foreground">Desativa automaticamente outros PIX.</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={configs.magnuspay?.pixEnabled === true}
+              onChange={(e) => update("magnuspay", { pixEnabled: e.target.checked })}
+              className="w-5 h-5 accent-primary"
+            />
+          </label>
+          <label className="p-4 rounded-xl bg-muted">
+            <span className="block text-sm font-bold text-foreground mb-2">Taxa adicional no checkout (R$)</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={configs.magnuspay?.pixFee ?? 0}
+              onChange={(e) => update("magnuspay", { pixFee: Number(e.target.value) || 0 })}
+              className="w-full p-2.5 rounded-lg bg-card border border-border text-foreground"
+            />
+          </label>
+        </div>
+
+        {results.magnuspay && (
+          <div className={`mt-3 p-3 rounded-xl text-xs flex items-center gap-2 ${results.magnuspay.ok ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}>
+            {results.magnuspay.ok ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+            {results.magnuspay.message}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2 mt-4">
+          <button onClick={() => save("magnuspay")} disabled={busy !== null} className="btn-gradient px-4 py-2.5 rounded-xl text-xs font-black disabled:opacity-50">
+            {busy === "magnuspay:save" ? "Salvando..." : "Salvar MagnusPay"}
+          </button>
+          <button onClick={() => test("magnuspay")} disabled={busy !== null} className="px-4 py-2.5 rounded-xl text-xs font-black bg-muted text-foreground disabled:opacity-50">
+            {busy === "magnuspay:test" ? "Testando..." : "Verificar secret"}
+          </button>
+          <button onClick={() => void load()} disabled={busy !== null} className="px-4 py-2.5 rounded-xl text-xs font-black border border-border text-foreground flex items-center gap-1.5">
+            <RefreshCw className="w-3.5 h-3.5" /> Atualizar
+          </button>
+        </div>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-3">
+        {(["zennithpay", "vexopay", "stripe"] as ProviderId[]).map((provider) => (
+          <div key={provider} className="glass-card p-4 bg-card">
+            <h4 className="font-bold text-foreground">{LABELS[provider].name}</h4>
+            <p className="text-[11px] text-muted-foreground mt-1 min-h-[34px]">{LABELS[provider].description}</p>
+            <button onClick={() => test(provider)} disabled={busy !== null} className="mt-3 text-xs font-bold text-primary hover:underline">
+              Testar configuração
+            </button>
+            {results[provider] && <p className={`text-[11px] mt-2 ${results[provider].ok ? "text-success" : "text-destructive"}`}>{results[provider].message}</p>}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
