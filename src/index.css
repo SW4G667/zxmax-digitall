@@ -191,3 +191,47 @@
   .animate-fade-in-up, .animate-slide-in-bottom, .zx-menu-panel { animation: none; }
   *, *::before, *::after { scroll-behavior: auto !important; }
 }
+
+
+/* ZXMAX marketplace v3 */
+@layer base {
+  body {
+    background:
+      radial-gradient(circle at 50% -20%, rgba(22, 140, 255, 0.08), transparent 34rem),
+      #080a0f;
+  }
+
+  ::selection {
+    background: rgba(22, 140, 255, 0.35);
+    color: #fff;
+  }
+}
+
+@layer components {
+  .zx-header-action {
+    @apply flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.09] bg-[#11151c] text-white/55 transition;
+  }
+
+  .zx-header-action:hover {
+    border-color: rgba(255,255,255,.16);
+    background: #151a23;
+    color: #fff;
+  }
+
+  .zx-header-action:active {
+    transform: scale(.97);
+  }
+
+  .marketplace-surface {
+    border: 1px solid rgba(255,255,255,.075);
+    border-radius: 1rem;
+    background: #101319;
+  }
+}
+
+@media (min-width: 1024px) {
+  .marketplace-sticky-filters {
+    position: sticky;
+    top: 8rem;
+  }
+}

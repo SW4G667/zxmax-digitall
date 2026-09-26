@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Heart, Menu, Moon, Search, Settings, ShieldCheck, Sun, Wallet } from "lucide-react";
 import { useStore } from "@/store/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
-import { useNavigate, useLocation } from "react-router-dom";
-import { Sun, Moon, Search, Wallet, Heart, Settings } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 import DiscordIcon from "@/components/DiscordIcon";
 import useFavorites from "@/hooks/useFavorites";
@@ -15,20 +15,29 @@ interface Props {
   menuOpen?: boolean;
 }
 
+const NAV_ITEMS = [
+  { label: "Comprar", to: "/loja" },
+  { label: "Categorias", to: "/categorias" },
+  { label: "Robux", to: "/robux" },
+  { label: "Como funciona", to: "/como-funciona" },
+  { label: "Vender", to: "/vender" },
+  { label: "Segurança", to: "/seguranca" },
+];
+
 export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuOpen = false }: Props) {
   const { state, isDark, toggleDark } = useStore();
   const { profile, user, isAdmin } = useAuth();
+  const { branding } = useSiteBranding();
   const navigate = useNavigate();
   const location = useLocation();
-  const [q, setQ] = useState("");
+  const [query, setQuery] = useState("");
   const { count } = useFavorites();
-  const { branding } = useSiteBranding();
   const [favCount, setFavCount] = useState(count);
 
   useEffect(() => {
     setFavCount(count);
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
       if (typeof detail === "number") setFavCount(detail);
     };
     window.addEventListener("zxmax:favorites-updated", handler as EventListener);
@@ -37,25 +46,19 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const urlQ = params.get("q") || "";
-    if (urlQ) setQ(urlQ);
+    setQuery(params.get("q") || "");
   }, [location.search]);
 
   useEffect(() => {
-    const handler = () => setQ("");
+    const handler = () => setQuery("");
     window.addEventListener("zxmax:clear-search", handler);
     return () => window.removeEventListener("zxmax:clear-search", handler);
   }, []);
 
-  const submitSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = q.trim();
-    if (!trimmed) {
-      navigate("/loja");
-      window.dispatchEvent(new CustomEvent("zxmax:search", { detail: "" }));
-      return;
-    }
-    navigate(`/loja?q=${encodeURIComponent(trimmed)}`);
+  const submitSearch = (event: React.FormEvent) => {
+    event.preventDefault();
+    const trimmed = query.trim();
+    navigate(trimmed ? `/loja?q=${encodeURIComponent(trimmed)}` : "/loja");
     window.dispatchEvent(new CustomEvent("zxmax:search", { detail: trimmed }));
   };
 
@@ -67,91 +70,146 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
     navigate("/meus-produtos");
   };
 
+  const isActive = (to: string) => {
+    if (to === "/loja") return location.pathname === "/" || location.pathname === "/loja";
+    return location.pathname.startsWith(to);
+  };
+
   return (
-    <header className="sticky top-0 z-50 bg-[#0a0a0f] border-b border-[#1e1e28]">
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 h-14 flex items-center gap-2 sm:gap-4">
-        <button onClick={() => navigate("/loja")} className="shrink-0 flex items-center" aria-label="Ir para a loja">
-          {branding.logoUrl ? <img src={branding.logoUrl} alt={branding.siteName} className="h-8 max-w-[150px] object-contain object-left" /> : <h2 className="text-lg sm:text-2xl font-black tracking-[-0.06em] text-white">{branding.siteName || "ZXMAX"}</h2>}
-        </button>
-
-        <button
-          onClick={openListing}
-          className="sm:hidden shrink-0 rounded-full bg-[#168cff] px-3 py-2 text-[10px] font-black text-white shadow-[0_8px_18px_rgba(0,132,255,0.18)] transition hover:bg-[#0877eb] active:scale-[0.97]"
-          aria-label={user ? "Abrir meus anúncios" : "Entrar para anunciar"}
-        >
-          + Anunciar
-        </button>
-
-        <form onSubmit={submitSearch} className="hidden md:flex items-center bg-[#15151a] border border-[#25252e] rounded-xl px-3 py-2 flex-1 max-w-xl focus-within:border-[#0084ff]/50 transition">
-          <Search className="w-4 h-4 text-white/30" />
-          <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar Robux, bots, contas, scripts..." className="bg-transparent border-none focus:ring-0 focus:outline-none text-sm w-full ml-2 text-white placeholder:text-white/30" />
-        </form>
-
-        <div className="flex items-center gap-1 ml-auto">
-          <a href={branding.supportUrl || state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noopener noreferrer" className="zx-icon-action hidden sm:flex border-[#5865F2]/25 bg-[#5865F2]/10 hover:bg-[#5865F2]/20" title="Entrar no Discord">
-            <DiscordIcon className="w-4 h-4 text-[#5865F2]" />
-          </a>
-
-          <button onClick={() => navigate("/favoritos")} className="zx-icon-action relative hidden sm:flex" title="Favoritos" aria-label="Favoritos">
-            <Heart className={`w-4 h-4 ${favCount > 0 ? "text-[#0084ff] fill-[#0084ff]" : "text-white/40"}`} />
-            {favCount > 0 && <span className="absolute -top-1 -right-1 bg-[#0084ff] text-white text-[9px] font-black min-w-[16px] h-[16px] px-1 rounded-full flex items-center justify-center">{favCount > 99 ? "99+" : favCount}</span>}
-          </button>
-
-          <NotificationBell />
-
-          {isAdmin && (
-            <button onClick={() => navigate("/admin/branding")} className="zx-icon-action hidden sm:flex" title="Personalizar site" aria-label="Personalizar identidade visual do site">
-              <Settings className="w-4 h-4 text-white/50" />
-            </button>
-          )}
-
-          <button onClick={toggleDark} className="zx-icon-action hidden sm:flex" title="Mudar tema" aria-label="Mudar tema">
-            {isDark ? <Sun className="w-4 h-4 text-white/40" /> : <Moon className="w-4 h-4 text-white/40" />}
-          </button>
-
-          {user ? (
-            <>
-              <button
-                onClick={openListing}
-                className="hidden sm:flex items-center gap-1.5 rounded-full bg-[#168cff] px-4 py-2 text-xs font-black text-white shadow-[0_8px_18px_rgba(0,132,255,0.18)] transition hover:bg-[#0877eb] active:scale-[0.97]"
-                title="Criar um anúncio"
-              >
-                + Anunciar
-              </button>
-              <button onClick={onProfileClick} className="flex items-center gap-2 hover:bg-white/5 p-1 pr-2 rounded-xl transition border border-transparent hover:border-white/10">
-                <div className="text-right hidden sm:block leading-tight">
-                  <p className="text-xs font-bold text-white flex items-center gap-1 justify-end">{profile?.display_name || user.email?.split("@")[0]} {isAdmin && <span className="bg-[#ff8c00] text-white text-[8px] px-1.5 py-0.5 rounded-full uppercase font-black">ADM</span>}</p>
-                  <p className="text-[11px] font-bold text-[#0084ff] flex items-center gap-1 justify-end"><Wallet className="w-3 h-3" /> R$ {Number(state.currentUser?.balance ?? 0).toFixed(2)}</p>
-                </div>
-                {profile?.avatar_url || state.currentUser?.avatar ? <img src={profile?.avatar_url || state.currentUser?.avatar} alt="Avatar" className="w-8 h-8 rounded-lg bg-[#0084ff]/10 border border-white/10 object-cover" /> : <div className="w-8 h-8 rounded-lg bg-[#0084ff]/10 border border-white/10 grid place-items-center text-xs font-black text-[#78beff]" aria-label="Avatar padrão">{(profile?.display_name || user.email || "U").slice(0,1).toUpperCase()}</div>}
-              </button>
-            </>
-          ) : (
-            <button onClick={onAuthClick} className="bg-[#0084ff] hover:bg-[#0066cc] text-white px-4 py-2 text-xs font-black rounded-xl transition">Entrar</button>
-          )}
-          <button
-            onClick={onMenuClick}
-            className={`zx-icon-action group ${menuOpen ? "border-[#168cff]/60 bg-[#168cff]/15" : ""}`}
-            title="Abrir menu"
-            aria-label="Abrir menu principal"
-            aria-expanded={menuOpen}
-            aria-controls="zxmax-main-menu"
-          >
-            <span className="flex w-[17px] flex-col gap-[3px]" aria-hidden>
-              <span className="h-[1.5px] w-full rounded-full bg-white transition group-hover:bg-[#6dbdff]" />
-              <span className="h-[1.5px] w-full rounded-full bg-white transition group-hover:bg-[#6dbdff]" />
-              <span className="h-[1.5px] w-full rounded-full bg-white transition group-hover:bg-[#6dbdff]" />
-            </span>
-          </button>
+    <header className="sticky top-0 z-50 border-b border-white/[0.07] bg-[#080a0f]/95 backdrop-blur-xl">
+      <div className="hidden border-b border-white/[0.055] bg-[#0b0e14] md:block">
+        <div className="mx-auto flex h-8 max-w-[1440px] items-center justify-between px-5 text-[10px] font-bold text-white/40">
+          <div className="flex items-center gap-4">
+            <Link to="/seguranca" className="inline-flex items-center gap-1.5 transition hover:text-white"><ShieldCheck className="h-3.5 w-3.5 text-[#63b5ff]" /> Compra protegida</Link>
+            <Link to="/formas-de-pagamento" className="transition hover:text-white">Pagamentos</Link>
+            <Link to="/tarifas-e-prazos" className="transition hover:text-white">Tarifas e prazos</Link>
+          </div>
+          <div className="flex items-center gap-4">
+            <Link to="/central-de-ajuda" className="transition hover:text-white">Central de ajuda</Link>
+            <a href={branding.supportUrl || state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 transition hover:text-white"><DiscordIcon className="h-3.5 w-3.5 text-[#7b86ff]" /> Comunidade</a>
+          </div>
         </div>
       </div>
 
-      <form onSubmit={submitSearch} className="md:hidden px-3 pb-3">
-        <div className="flex items-center bg-[#15151a] border border-[#25252e] rounded-xl px-3 py-2.5">
-          <Search className="w-4 h-4 text-white/30" />
-          <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar produtos..." className="bg-transparent border-none focus:ring-0 focus:outline-none text-sm w-full ml-2 text-white placeholder:text-white/30" />
+      <div className="mx-auto max-w-[1440px] px-3 sm:px-5">
+        <div className="flex h-16 items-center gap-2 sm:gap-4">
+          <button onClick={() => navigate("/")} className="flex shrink-0 items-center" aria-label="Ir para a página inicial">
+            {branding.logoUrl ? (
+              <img src={branding.logoUrl} alt={branding.siteName} className="h-8 max-w-[145px] object-contain object-left sm:h-9" />
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="grid h-9 w-9 place-items-center rounded-xl border border-[#168cff]/20 bg-[#168cff]/12 text-sm font-black text-[#79c3ff]">Z</span>
+                <span className="hidden text-xl font-black tracking-[-0.055em] text-white min-[420px]:inline">{branding.siteName || "ZXMAX"}</span>
+              </div>
+            )}
+          </button>
+
+          <form onSubmit={submitSearch} className="hidden min-w-0 flex-1 lg:flex lg:max-w-2xl">
+            <div className="flex w-full items-center rounded-xl border border-white/[0.09] bg-[#11151c] px-3.5 py-2.5 transition focus-within:border-[#168cff]/55 focus-within:bg-[#131922]">
+              <Search className="h-4 w-4 shrink-0 text-white/30" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Buscar produtos, categorias ou vendedores..."
+                className="ml-2 min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/28"
+                aria-label="Buscar no marketplace"
+              />
+              <span className="rounded-md border border-white/[0.08] bg-white/[0.035] px-2 py-1 text-[9px] font-bold text-white/25">ENTER</span>
+            </div>
+          </form>
+
+          <div className="ml-auto flex items-center gap-1.5">
+            <button onClick={() => navigate("/favoritos")} className="zx-header-action relative hidden sm:flex" title="Favoritos" aria-label="Favoritos">
+              <Heart className={`h-4 w-4 ${favCount > 0 ? "fill-[#5fb7ff] text-[#5fb7ff]" : ""}`} />
+              {favCount > 0 && <span className="absolute -right-1 -top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-[#168cff] px-1 text-[8px] font-black text-white">{favCount > 99 ? "99+" : favCount}</span>}
+            </button>
+
+            <NotificationBell />
+
+            <a href={branding.supportUrl || state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noopener noreferrer" className="zx-icon-action hidden sm:flex border-[#5865F2]/25" title="Comunidade" aria-label="Abrir comunidade no Discord">
+              <DiscordIcon className="h-4 w-4" />
+            </a>
+
+            {isAdmin && (
+              <button onClick={() => navigate("/admin/branding")} className="zx-header-action hidden sm:flex" title="Personalizar site" aria-label="Personalizar site">
+                <Settings className="h-4 w-4" />
+              </button>
+            )}
+
+            <button onClick={toggleDark} className="zx-header-action hidden sm:flex" title="Mudar tema" aria-label="Mudar tema">
+              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+
+            {user ? (
+              <>
+                <button onClick={openListing} className="hidden rounded-xl bg-[#168cff] px-4 py-2.5 text-xs font-black text-white transition hover:bg-[#0876e4] md:inline-flex">
+                  + Anunciar
+                </button>
+                <button onClick={onProfileClick} className="group flex items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.025] p-1.5 pr-2 transition hover:border-white/[0.14] hover:bg-white/[0.05]">
+                  {profile?.avatar_url || state.currentUser?.avatar ? (
+                    <img src={profile?.avatar_url || state.currentUser?.avatar} alt="Avatar" className="h-8 w-8 rounded-lg object-cover" />
+                  ) : (
+                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#168cff]/12 text-xs font-black text-[#7bc5ff]">
+                      {(profile?.display_name || user.email || "U").slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                  <span className="hidden text-left sm:block">
+                    <span className="block max-w-[115px] truncate text-[11px] font-black text-white">{profile?.display_name || user.email?.split("@")[0]}</span>
+                    <span className="mt-0.5 flex items-center gap-1 text-[10px] font-bold text-[#68b9ff]"><Wallet className="h-3 w-3" /> R$ {Number(state.currentUser?.balance ?? 0).toFixed(2)}</span>
+                  </span>
+                </button>
+              </>
+            ) : (
+              <button onClick={onAuthClick} aria-label="Entrar para anunciar" className="rounded-xl bg-white px-4 py-2.5 text-xs font-black text-black transition hover:bg-white/90">
+                Entrar
+              </button>
+            )}
+
+            <button
+              onClick={onMenuClick}
+              className={`group inline-flex h-10 items-center gap-2 rounded-xl border px-3 transition ${menuOpen ? "border-[#168cff]/55 bg-[#168cff]/12 text-white" : "border-white/[0.09] bg-[#11151c] text-white/70 hover:border-white/[0.16] hover:text-white"}`}
+              title="Abrir menu"
+              aria-label="Abrir menu principal"
+              aria-expanded={menuOpen}
+              aria-controls="zxmax-main-menu"
+            >
+              <Menu className="h-[18px] w-[18px]" />
+              <span className="hidden text-[11px] font-black uppercase tracking-[0.08em] xl:inline">Menu</span>
+            </button>
+          </div>
         </div>
-      </form>
+
+        <form onSubmit={submitSearch} className="pb-3 lg:hidden">
+          <div className="flex items-center rounded-xl border border-white/[0.085] bg-[#11151c] px-3 py-2.5 focus-within:border-[#168cff]/50">
+            <Search className="h-4 w-4 shrink-0 text-white/30" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Buscar no marketplace..."
+              className="ml-2 min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/28"
+              aria-label="Buscar no marketplace"
+            />
+          </div>
+        </form>
+      </div>
+
+      <nav className="hidden border-t border-white/[0.05] bg-[#0b0e14] lg:block" aria-label="Navegação principal">
+        <div className="mx-auto flex h-11 max-w-[1440px] items-center gap-1 px-5">
+          {NAV_ITEMS.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              className={`rounded-lg px-3 py-2 text-[11px] font-black transition ${isActive(item.to) ? "bg-[#168cff]/12 text-[#75c2ff]" : "text-white/48 hover:bg-white/[0.04] hover:text-white"}`}
+            >
+              {item.label}
+            </Link>
+          ))}
+          <div className="ml-auto flex items-center gap-1">
+            <Link to="/entrega-automatica" className="rounded-lg px-3 py-2 text-[11px] font-black text-[#74d89a] transition hover:bg-[#22c55e]/[0.08]">Entrega automática</Link>
+            <Link to="/vendedores-verificados" className="rounded-lg px-3 py-2 text-[11px] font-black text-[#8ccaff] transition hover:bg-[#168cff]/[0.08]">Verificados</Link>
+          </div>
+        </div>
+      </nav>
     </header>
   );
 }
