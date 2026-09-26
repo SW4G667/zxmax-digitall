@@ -1,8 +1,9 @@
+import { getAppUrl } from "@/lib/appUrl";
+
 /**
- * O Discord é configurado no painel Auth do Supabase. O cliente não monta URLs
- * com Client ID, não recebe Client Secret e não troca códigos manualmente.
- * O SDK usa PKCE/state e trata o retorno no callback definido abaixo.
+ * O Discord é configurado no painel Auth do Supabase. O cliente não recebe
+ * Client Secret e o callback sempre usa o domínio em que o app está aberto.
  */
-export function getDiscordRedirectTo(origin = window.location.origin): string {
-  return new URL("/auth/callback", origin).toString();
+export function getDiscordRedirectTo(origin?: string): string {
+  return getAppUrl("/auth/callback", origin);
 }
