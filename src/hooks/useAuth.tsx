@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session, Factor } from "@supabase/supabase-js";
-import { clearAdminGate, peekStoredSession, readAdminGate, wipePersistedAuth, withTimeout, writeAdminGate } from "@/lib/authSession";
+import { clearAdminGate, peekStoredSession, readAdminGate, wipePersistedAuth, withTimeout, writeAdminGate } from "@/lib/authSession";\nimport { getAppUrl } from "@/lib/appUrl";
 
 interface Profile {
   id: string;
@@ -382,7 +382,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
       options: {
         data: { display_name: displayName },
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: getAppUrl("/auth/callback"),
       },
     });
     if (error) return { error: error.message };
