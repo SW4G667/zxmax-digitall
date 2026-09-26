@@ -26,3 +26,15 @@ verify_jwt = false
 
 [functions.integrations-config]
 verify_jwt = false
+
+[functions.create-magnuspay-pix]
+verify_jwt = true
+
+[functions.check-magnuspay-status]
+verify_jwt = true
+
+[functions.magnuspay-webhook]
+verify_jwt = false
+
+[functions.site-config]
+verify_jwt = false
