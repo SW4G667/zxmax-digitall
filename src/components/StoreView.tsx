@@ -4,6 +4,7 @@ import { Search, Shield, CheckCircle, Zap, Flame } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import AuthScreen from "@/components/AuthScreen";
 import UserProfileModal from "@/components/UserProfileModal";
+import useSiteBranding from "@/hooks/useSiteBranding";
 
 export default function StoreView() {
   const { state } = useStore();
@@ -13,6 +14,7 @@ export default function StoreView() {
   const [category, setCategory] = useState("Todos");
   const [selectedSellerId, setSelectedSellerId] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
+  const { branding } = useSiteBranding();
 
   const [fallbackProducts, setFallbackProducts] = useState<any[]>([]);
 
@@ -174,9 +176,9 @@ export default function StoreView() {
           <span className="bg-[#00c950]/10 border border-[#00c950]/20 px-3 py-1 rounded-full text-[10px] font-bold text-[#00c950] flex items-center gap-1"><Shield className="w-3 h-3" /> Compra Protegida</span>
         </div>
         <h1 className="text-2xl md:text-4xl font-black tracking-tight text-white mb-2 leading-tight">
-          Encontre tudo para <span className="text-[#0084ff]">dominar</span> no digital
+          {branding.heroTitle}
         </h1>
-        <p className="text-white/40 text-sm mb-5">Robux, bots, contas, scripts e muito mais com entrega imediata.</p>
+        <p className="text-white/40 text-sm mb-5">{branding.heroSubtitle}</p>
         
         <div className="flex items-center bg-white rounded-xl px-4 py-3 max-w-xl">
           <Search className="w-5 h-5 text-black/30" />
