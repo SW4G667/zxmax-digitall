@@ -27,6 +27,28 @@ function packageUnits(product: { category?: string; variations?: { name?: string
   return Number.isFinite(units) && units > 0 ? units : 1;
 }
 
+async function notifyOrderEmail(type: string, purchaseId: number) {
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceKey) return;
+  try {
+    const response = await fetch(`${url}/functions/v1/send-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceKey}`,
+        apikey: serviceKey,
+      },
+      body: JSON.stringify({ type, purchaseId }),
+    });
+    if (!response.ok && response.status !== 202) {
+      console.warn("order email not delivered", type, purchaseId, response.status);
+    }
+  } catch (error) {
+    console.warn("order email failed", type, purchaseId, error instanceof Error ? error.message : "unknown");
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -189,6 +211,8 @@ serve(async (req) => {
     }
 
     if (purchaseError || !purchase) throw purchaseError || new Error("Falha ao criar pedido");
+
+    await notifyOrderEmail("purchase_created", Number(purchase.id));
 
     return json({
       purchase: {
