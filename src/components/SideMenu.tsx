@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
-  BadgeCheck, Boxes, ChevronRight, Clock3, CreditCard, FileText, Heart, HelpCircle,
-  Home, LayoutGrid, Lock, LogIn, LogOut, Moon, Package, ReceiptText, RefreshCcw,
-  ScrollText, Settings, ShieldCheck, ShoppingBag, Sparkles, Store, Sun, User,
-  Wallet, X, Zap,
+  BadgeCheck, BarChart3, Boxes, ChevronRight, ClipboardCheck, Clock3, CreditCard,
+  FileText, Flag, Headset, Heart, HelpCircle, Home, KeyRound, LayoutGrid, Lock,
+  LogIn, LogOut, MessageSquare, Moon, Package, Receipt, RefreshCcw, ScrollText,
+  Settings, Shield, ShieldCheck, ShoppingBag, Sparkles, Store, Sun, Tag,
+  TrendingUp, User, Users, Wallet, X, Zap,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useStore } from "@/store/StoreContext";
@@ -22,11 +23,18 @@ interface Props {
 type IconType = React.ComponentType<{ className?: string }>;
 
 interface MenuItem {
+  key: string;
   label: string;
   to: string;
   icon: IconType;
   hint?: string;
   badge?: number | string;
+}
+
+interface MenuSection {
+  id: string;
+  title: string;
+  entries: MenuItem[];
 }
 
 function DrawerLink({ item, active, onClose }: { item: MenuItem; active: boolean; onClose: () => void }) {
@@ -35,34 +43,147 @@ function DrawerLink({ item, active, onClose }: { item: MenuItem; active: boolean
     <Link
       to={item.to}
       onClick={onClose}
-      className={`group flex items-center gap-3 rounded-xl border px-3 py-3 transition ${active ? "border-[#168cff]/30 bg-[#168cff]/10" : "border-transparent hover:border-white/[0.07] hover:bg-white/[0.035]"}`}
+      aria-current={active ? "page" : undefined}
+      className={`group flex items-center gap-3 rounded-xl border px-3 py-3 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#168cff] ${active ? "border-[#168cff]/30 bg-[#168cff]/10" : "border-transparent hover:border-white/[0.07] hover:bg-white/[0.035]"}`}
     >
       <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${active ? "bg-[#168cff]/16 text-[#7bc5ff]" : "bg-white/[0.035] text-white/45 group-hover:text-white/75"}`}>
         <Icon className="h-4 w-4" />
       </span>
       <span className="min-w-0 flex-1">
         <span className={`block text-[12px] font-black ${active ? "text-white" : "text-white/72"}`}>{item.label}</span>
-        {item.hint && <span className="mt-0.5 block truncate text-[10px] font-medium text-white/28">{item.hint}</span>}
+        {item.hint && <span className="mt-0.5 block text-[10px] font-medium leading-4 text-white/28">{item.hint}</span>}
       </span>
-      {item.badge ? <span className="rounded-full bg-[#168cff] px-2 py-0.5 text-[9px] font-black text-white">{item.badge}</span> : <ChevronRight className="h-3.5 w-3.5 text-white/20 transition group-hover:translate-x-0.5 group-hover:text-white/45" />}
+      {item.badge !== undefined && item.badge !== 0 && item.badge !== "" ? (
+        <span className="rounded-full bg-[#168cff] px-2 py-0.5 text-[9px] font-black text-white">{item.badge}</span>
+      ) : (
+        <ChevronRight className="h-3.5 w-3.5 text-white/20 transition group-hover:translate-x-0.5 group-hover:text-white/45" />
+      )}
     </Link>
   );
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <p className="mb-2 px-2 text-[9px] font-black uppercase tracking-[0.18em] text-white/24">{children}</p>;
-}
-
-export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: Props) {
-  const { user, profile, isAdmin, isSupport, signOut } = useAuth();
+export default function SideMenu({ open, onClose, onNavigate: _onNavigate, onOpenProfile }: Props) {
+  const { user, profile, isAdmin, isSupport, mfaEnabled, signOut } = useAuth();
   const { state, isDark, toggleDark } = useStore();
   const { count } = useFavorites();
   const location = useLocation();
 
+  const products = state.products ?? [];
+  const purchases = state.purchases ?? [];
+
   const isSeller = useMemo(
-    () => Boolean(profile?.is_verified_seller || state.products.some((product) => product.sellerId === user?.id)),
-    [profile?.is_verified_seller, state.products, user?.id],
+    () => Boolean(profile?.is_verified_seller || products.some((product) => product.sellerId === user?.id)),
+    [profile?.is_verified_seller, products, user?.id],
   );
+
+  const openOrders = useMemo(
+    () => purchases.filter((purchase) => purchase.buyerId === user?.id && purchase.status !== "delivered" && purchase.status !== "cancelled").length,
+    [purchases, user?.id],
+  );
+
+  const sellerOrders = useMemo(
+    () => purchases.filter((purchase) => purchase.sellerId === user?.id && purchase.status === "paid").length,
+    [purchases, user?.id],
+  );
+
+  const pendingModeration = useMemo(
+    () => (isAdmin ? products.filter((product) => !product.approved).length : 0),
+    [isAdmin, products],
+  );
+
+  const sections = useMemo<MenuSection[]>(() => {
+    const marketplace: MenuSection = {
+      id: "marketplace",
+      title: "Marketplace",
+      entries: [
+        { key: "home", label: "Página inicial", to: "/", icon: Home, hint: "Destaques e acesso rápido" },
+        { key: "store", label: "Marketplace", to: "/loja", icon: Store, hint: "Todos os anúncios disponíveis" },
+        { key: "categories", label: "Categorias", to: "/categorias", icon: LayoutGrid, hint: "Navegue por tipo de produto" },
+        { key: "robux", label: "Mercado de Robux", to: "/robux", icon: Sparkles, hint: "Compare ofertas de Robux" },
+        { key: "new", label: "Novidades", to: "/loja?sort=recentes", icon: Sparkles, hint: "Anúncios publicados recentemente" },
+        { key: "popular", label: "Mais vendidos", to: "/loja?sort=vendidos", icon: TrendingUp, hint: "Produtos com maior volume de vendas" },
+        { key: "auto", label: "Entrega automática", to: "/loja?delivery=auto", icon: Zap, hint: "Filtrar produtos com entrega automática" },
+        { key: "verified", label: "Vendedores verificados", to: "/loja?verified=1", icon: BadgeCheck, hint: "Filtrar anúncios de contas verificadas" },
+        { key: "favorites", label: "Favoritos", to: "/favoritos", icon: Heart, hint: "Anúncios que você salvou", badge: count || undefined },
+      ],
+    };
+
+    const help: MenuSection = {
+      id: "help",
+      title: "Ajuda e confiança",
+      entries: [
+        { key: "how", label: "Como funciona", to: "/como-funciona", icon: Boxes, hint: "Do anúncio até a confirmação" },
+        { key: "buy", label: "Como comprar", to: "/comprar", icon: ShoppingBag, hint: "Guia para compradores" },
+        { key: "sell-guide", label: "Como vender", to: "/vender", icon: Store, hint: "Guia para vendedores" },
+        { key: "security", label: "Segurança", to: "/seguranca", icon: ShieldCheck, hint: "Proteções e boas práticas" },
+        { key: "payments", label: "Formas de pagamento", to: "/formas-de-pagamento", icon: CreditCard },
+        { key: "fees", label: "Tarifas e prazos", to: "/tarifas-e-prazos", icon: Clock3 },
+        { key: "refunds", label: "Reembolsos", to: "/reembolsos", icon: RefreshCcw },
+        { key: "help-center", label: "Central de ajuda", to: "/central-de-ajuda", icon: HelpCircle },
+        { key: "faq", label: "FAQ", to: "/faq", icon: HelpCircle },
+        { key: "rules", label: "Regras", to: "/regras", icon: ScrollText },
+        { key: "terms", label: "Termos de uso", to: "/termos", icon: FileText },
+        { key: "privacy", label: "Privacidade", to: "/privacidade", icon: Lock },
+      ],
+    };
+
+    if (!user) return [marketplace, help];
+
+    const account: MenuSection = {
+      id: "account",
+      title: "Minha conta",
+      entries: [
+        { key: "profile", label: "Meu perfil", to: "/perfil", icon: User, hint: "Identidade pública e segurança" },
+        { key: "settings", label: "Configurações", to: "/configuracoes", icon: Settings, hint: "Senha, sessões e preferências" },
+        { key: "orders", label: "Meus pedidos", to: "/minhas-compras", icon: ShoppingBag, hint: "Compras e acompanhamento", badge: openOrders || undefined },
+        { key: "transactions", label: "Transações", to: "/minhas-compras", icon: Receipt, hint: "Histórico de compras e vendas" },
+        { key: "listings", label: "Meus anúncios", to: "/meus-produtos", icon: Package, hint: "Produtos publicados e estoque" },
+        { key: "wallet", label: "Carteira e saque", to: "/sacar", icon: Wallet, hint: "Saldo e retiradas" },
+        { key: "support", label: "Suporte", to: "/suporte", icon: Headset, hint: "Atendimento ligado à sua conta" },
+      ],
+    };
+
+    const seller: MenuSection = {
+      id: "seller",
+      title: isSeller ? "Painel do vendedor" : "Começar a vender",
+      entries: [
+        { key: "seller-listings", label: "Gerenciar anúncios", to: "/meus-produtos", icon: Package, hint: "Criar, editar e pausar" },
+        ...(isSeller ? [
+          { key: "sales", label: "Pedidos e entregas", to: "/minhas-compras?scope=sales", icon: Receipt, hint: "Vendas aguardando ação", badge: sellerOrders || undefined },
+          { key: "sales-history", label: "Histórico de vendas", to: "/minhas-compras?scope=sales", icon: BarChart3, hint: "Transações como vendedor" },
+          { key: "seller-verified", label: "Verificação de vendedor", to: "/perfil", icon: BadgeCheck, hint: profile?.is_verified_seller ? "Conta verificada" : "Envie seus documentos" },
+        ] : [
+          { key: "seller-start", label: "Verificar minha conta", to: "/perfil", icon: BadgeCheck, hint: "Prepare sua conta para vender" },
+        ]),
+      ],
+    };
+
+    const result: MenuSection[] = [marketplace, account, seller, help];
+
+    if (isAdmin || isSupport) {
+      result.splice(3, 0, {
+        id: "admin",
+        title: isAdmin ? "Administração" : "Operações de suporte",
+        entries: isAdmin ? [
+          { key: "admin-home", label: "Painel administrativo", to: "/admin", icon: Shield, hint: "Visão geral da operação" },
+          { key: "admin-products", label: "Moderação de anúncios", to: "/admin?tab=products", icon: ClipboardCheck, badge: pendingModeration || undefined },
+          { key: "admin-orders", label: "Pedidos", to: "/admin?tab=orders", icon: Receipt },
+          { key: "admin-disputes", label: "Disputas e denúncias", to: "/admin?tab=disputes", icon: Flag },
+          { key: "admin-users", label: "Usuários e verificações", to: "/admin?tab=verifications", icon: Users },
+          { key: "admin-notices", label: "Avisos e conteúdo", to: "/admin?tab=notices", icon: MessageSquare },
+          { key: "admin-tags", label: "Tags de usuários", to: "/admin?tab=tags", icon: Tag, hint: "Selos persistentes por ID público" },
+          { key: "admin-roles", label: "Cargos e permissões", to: "/admin?tab=roles", icon: Users, hint: "Acesso auditado no banco" },
+          { key: "admin-apis", label: "APIs e credenciais", to: "/admin?tab=apis", icon: KeyRound },
+          { key: "admin-config", label: "Operação e manutenção", to: "/admin?tab=config", icon: Settings, hint: "Taxas, limites e manutenção" },
+          { key: "admin-security", label: "Segurança do painel", to: "/admin?tab=security", icon: ShieldCheck, hint: mfaEnabled ? "2FA ativo" : "Ative o 2FA" },
+        ] : [
+          { key: "support-console", label: "Console de operações", to: "/admin", icon: Shield, hint: "Ações permitidas à sua conta" },
+        ],
+      });
+    }
+
+    return result;
+  }, [user, isAdmin, isSupport, isSeller, count, openOrders, sellerOrders, pendingModeration, mfaEnabled, profile?.is_verified_seller]);
 
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
@@ -76,49 +197,8 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
     };
   }, [open, onClose]);
 
-  const marketplace: MenuItem[] = [
-    { label: "Página inicial", to: "/", icon: Home, hint: "Destaques e acesso rápido" },
-    { label: "Marketplace", to: "/loja", icon: Store, hint: "Todos os anúncios disponíveis" },
-    { label: "Categorias", to: "/categorias", icon: LayoutGrid, hint: "Navegue por tipo de produto" },
-    { label: "Mercado de Robux", to: "/robux", icon: Sparkles, hint: "Compare ofertas de Robux" },
-    { label: "Mais vendidos", to: "/loja?sort=vendidos", icon: ShoppingBag, hint: "Produtos com maior volume de vendas" },
-    { label: "Entrega automática", to: "/entrega-automatica", icon: Zap, hint: "Entenda e filtre entregas imediatas" },
-    { label: "Vendedores verificados", to: "/vendedores-verificados", icon: BadgeCheck, hint: "Como funciona a verificação" },
-    { label: "Favoritos", to: "/favoritos", icon: Heart, hint: "Anúncios que você salvou", badge: count || undefined },
-  ];
-
-  const learn: MenuItem[] = [
-    { label: "Como funciona", to: "/como-funciona", icon: Boxes, hint: "Do anúncio até a confirmação da entrega" },
-    { label: "Como comprar", to: "/comprar", icon: ShoppingBag, hint: "Guia para compradores" },
-    { label: "Como vender", to: "/vender", icon: Store, hint: "Guia para vendedores" },
-    { label: "Segurança", to: "/seguranca", icon: ShieldCheck, hint: "Proteções e boas práticas" },
-    { label: "Formas de pagamento", to: "/formas-de-pagamento", icon: CreditCard, hint: "Métodos disponíveis no checkout" },
-    { label: "Tarifas e prazos", to: "/tarifas-e-prazos", icon: Clock3, hint: "Transparência antes de concluir" },
-    { label: "Reembolsos", to: "/reembolsos", icon: RefreshCcw, hint: "Problemas, análise e resolução" },
-  ];
-
-  const account: MenuItem[] = user ? [
-    { label: "Meu perfil", to: "/perfil", icon: User, hint: "Identidade pública e dados da conta" },
-    { label: "Configurações", to: "/configuracoes", icon: Settings, hint: "Senha, sessões e preferências" },
-    { label: "Meus pedidos", to: "/minhas-compras", icon: ReceiptText, hint: "Compras e acompanhamento" },
-    { label: "Meus anúncios", to: "/meus-produtos", icon: Package, hint: "Produtos publicados e estoque" },
-    { label: "Carteira e saque", to: "/sacar", icon: Wallet, hint: "Saldo e retiradas" },
-    { label: "Suporte", to: "/suporte", icon: HelpCircle, hint: "Atendimento ligado à sua conta" },
-  ] : [];
-
-  const legal: MenuItem[] = [
-    { label: "Central de ajuda", to: "/central-de-ajuda", icon: HelpCircle },
-    { label: "FAQ", to: "/faq", icon: Boxes },
-    { label: "Regras", to: "/regras", icon: ScrollText },
-    { label: "Termos de uso", to: "/termos", icon: FileText },
-    { label: "Privacidade", to: "/privacidade", icon: Lock },
-  ];
-
-  const active = (to: string) => {
-    const clean = to.split("?")[0];
-    if (clean === "/") return location.pathname === "/";
-    return location.pathname === clean || location.pathname.startsWith(`${clean}/`);
-  };
+  const currentPath = `${location.pathname}${location.search}`;
+  const isActive = (to: string) => to.includes("?") ? currentPath === to : location.pathname === to;
 
   if (!open) return null;
 
@@ -146,7 +226,12 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
               )}
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1.5 truncate text-sm font-black text-white">{profile?.display_name || user.email?.split("@")[0]}{profile?.is_verified_seller && <BadgeCheck className="h-4 w-4 shrink-0 text-[#68b9ff]" />}</span>
-                <span className="mt-1 flex items-center gap-2 text-[10px] font-semibold text-white/35"><Wallet className="h-3 w-3" /> R$ {Number(state.currentUser?.balance ?? 0).toFixed(2)} {isSeller ? "· vendedor" : ""}</span>
+                <span className="mt-1 flex items-center gap-2 text-[10px] font-semibold text-white/35"><Wallet className="h-3 w-3" /> R$ {Number(state.currentUser?.balance ?? 0).toFixed(2)}</span>
+                <span className="mt-1.5 flex items-center gap-2 text-[9px] font-bold uppercase tracking-wide text-white/28">
+                  <span>ID #{profile?.public_id || state.currentUser?.publicId || "—"}</span>
+                  <span className="h-1 w-1 rounded-full bg-white/20" aria-hidden />
+                  <span>{openOrders} em aberto</span>
+                </span>
               </span>
               <ChevronRight className="h-4 w-4 text-white/25" />
             </button>
@@ -160,44 +245,21 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
 
         <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-4">
           <div className="space-y-5">
-            <section>
-              <SectionTitle>Marketplace</SectionTitle>
-              <div className="space-y-1">{marketplace.map((item) => <DrawerLink key={item.to} item={item} active={active(item.to)} onClose={onClose} />)}</div>
-            </section>
-
-            {account.length > 0 && (
-              <section>
-                <SectionTitle>Minha conta</SectionTitle>
-                <div className="space-y-1">{account.map((item) => <DrawerLink key={item.to} item={item} active={active(item.to)} onClose={onClose} />)}</div>
+            {sections.map((section) => (
+              <section key={section.id}>
+                <p className="mb-2 px-2 text-[9px] font-black uppercase tracking-[0.18em] text-white/24">{section.title}</p>
+                <div className="space-y-1">
+                  {section.entries.map((item) => <DrawerLink key={item.key} item={item} active={isActive(item.to)} onClose={onClose} />)}
+                </div>
               </section>
-            )}
-
-            {(isAdmin || isSupport) && (
-              <section>
-                <SectionTitle>Equipe</SectionTitle>
-                <button onClick={() => { onNavigate("admin"); onClose(); }} className="group flex w-full items-center gap-3 rounded-xl border border-[#f59e0b]/15 bg-[#f59e0b]/[0.05] px-3 py-3 text-left transition hover:border-[#f59e0b]/30">
-                  <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#f59e0b]/10 text-[#ffc45f]"><ShieldCheck className="h-4 w-4" /></span>
-                  <span className="min-w-0 flex-1"><span className="block text-[12px] font-black text-white">Painel administrativo</span><span className="mt-0.5 block text-[10px] text-white/28">Moderação, integrações e operação</span></span>
-                  <ChevronRight className="h-3.5 w-3.5 text-white/20" />
-                </button>
-              </section>
-            )}
-
-            <section>
-              <SectionTitle>Comprar e vender</SectionTitle>
-              <div className="space-y-1">{learn.map((item) => <DrawerLink key={item.to} item={item} active={active(item.to)} onClose={onClose} />)}</div>
-            </section>
-
-            <section>
-              <SectionTitle>Ajuda e legal</SectionTitle>
-              <div className="space-y-1">{legal.map((item) => <DrawerLink key={item.to} item={item} active={active(item.to)} onClose={onClose} />)}</div>
-            </section>
+            ))}
           </div>
         </div>
 
         <div className="border-t border-white/[0.07] bg-[#090c11] p-4">
+          <p className="mb-2 text-[9px] font-black uppercase tracking-[0.16em] text-white/24">Preferência visual</p>
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={toggleDark} className="flex items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-3 text-[11px] font-black text-white/55 transition hover:bg-white/[0.06] hover:text-white">
+            <button onClick={() => toggleDark?.()} className="flex items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-3 text-[11px] font-black text-white/55 transition hover:bg-white/[0.06] hover:text-white">
               {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />} {isDark ? "Tema claro" : "Tema escuro"}
             </button>
             {user ? (
