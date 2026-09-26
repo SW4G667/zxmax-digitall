@@ -160,7 +160,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
                 </button>
               </>
             ) : (
-              <button onClick={onAuthClick} className="rounded-xl bg-white px-4 py-2.5 text-xs font-black text-black transition hover:bg-white/90">
+              <button onClick={onAuthClick} aria-label="Entrar para anunciar" className="rounded-xl bg-white px-4 py-2.5 text-xs font-black text-black transition hover:bg-white/90">
                 Entrar
               </button>
             )}
