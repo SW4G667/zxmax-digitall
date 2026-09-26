@@ -56,9 +56,11 @@ describe("formulário, upload e checkout de Robux", () => {
   it("apresenta PIX uma única vez e não exibe fornecedor técnico ao comprador", async () => {
     const productPage = await source("src/pages/Produto.tsx");
 
-    expect(productPage).toContain('if (loadingMethods) return id !== "vexopay_pix"');
+    expect(productPage).toContain('if (loadingMethods) return id === "magnuspay_pix" || id === "crypto" || id === "card" || id === "boleto"');
+    expect(productPage).toContain('{ id: "magnuspay_pix", label: "PIX"');
     expect(productPage).toContain('{ id: "zennith_pix", label: "PIX"');
     expect(productPage).toContain('{ id: "vexopay_pix", label: "PIX"');
+    expect(productPage).not.toContain("Pagar com PIX · Magnus");
     expect(productPage).not.toContain("Pagar com PIX · Zennith");
     expect(productPage).not.toContain("Função de Crypto (VexoPay)");
   });
