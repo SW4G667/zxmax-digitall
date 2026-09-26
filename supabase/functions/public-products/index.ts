@@ -37,7 +37,23 @@ serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ products: finalProducts }), {
+    const sellerIds = [...new Set(finalProducts.map((p: any) => p.seller_id).filter(Boolean))];
+    const { data: profiles } = sellerIds.length
+      ? await serviceClient.from("profiles").select("user_id,public_id,display_name,avatar_url,is_verified_seller").in("user_id", sellerIds)
+      : { data: [] as any[] };
+    const profileMap = new Map((profiles || []).map((profile: any) => [profile.user_id, profile]));
+    const publicProducts = finalProducts.map((product: any) => {
+      const seller = profileMap.get(product.seller_id) as any;
+      return {
+        ...product,
+        seller_public_id: product.seller_public_id || (seller?.public_id ? String(seller.public_id) : ""),
+        seller_name: product.seller_name || seller?.display_name || "Vendedor",
+        seller_avatar: seller?.avatar_url || "",
+        seller_verified: !!seller?.is_verified_seller,
+      };
+    });
+
+    return new Response(JSON.stringify({ products: publicProducts }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
