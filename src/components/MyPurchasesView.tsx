@@ -165,7 +165,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
     e?.stopPropagation();
     if (!state.currentUser) return;
     const provider = purchase.paymentProvider || "zennith_pix";
-    if (provider !== "zennith_pix" && provider !== "vexopay_pix") {
+    if (provider !== "magnuspay_pix" && provider !== "zennith_pix" && provider !== "vexopay_pix") {
       toast.error("Este pedido não pode ser retomado como PIX. Volte ao método de pagamento original.");
       return;
     }
@@ -174,7 +174,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
     setResumeId(purchase.id);
     // Reuse existing valid QR
     if (purchase.pixQrCode && purchase.evopayChargeId && !expired) {
-      setPixCharge({ evopayId: purchase.evopayChargeId, qrCodeText: purchase.pixQrCode, amount: purchase.amount, purchaseId: purchase.id });
+      setPixCharge({ evopayId: purchase.evopayChargeId, provider, qrCodeText: purchase.pixQrCode, amount: purchase.amount, purchaseId: purchase.id });
       return;
     }
     // Generate a new Pix
@@ -182,14 +182,18 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
     try {
       const res = await unwrapEdgeCall<{ id: string; qrCodeText: string; qrCodeUrl?: string; expiresAt?: string; amount?: number }>(
         await supabase.functions.invoke(
-          provider === "vexopay_pix" ? "create-evopay-pix" : "create-zennith-pix",
+          provider === "magnuspay_pix"
+            ? "create-magnuspay-pix"
+            : provider === "vexopay_pix"
+              ? "create-evopay-pix"
+              : "create-zennith-pix",
           {
-            body: provider === "vexopay_pix"
-              ? { purchaseId: purchase.id }
-              : {
+            body: provider === "zennith_pix"
+              ? {
                 purchaseId: purchase.id,
                 productName: purchase.variationName ? `${product?.name} - ${purchase.variationName}` : product?.name,
-              },
+              }
+              : { purchaseId: purchase.id },
           },
         ),
         "Erro ao gerar PIX.",
@@ -203,7 +207,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
       const data = res.data;
       if (data?.qrCodeText) {
         savePixCharge(purchase.id, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
-        setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? purchase.amount, qrCodeUrl: data.qrCodeUrl, purchaseId: purchase.id });
+        setPixCharge({ evopayId: data.id, provider, qrCodeText: data.qrCodeText, amount: data.amount ?? purchase.amount, qrCodeUrl: data.qrCodeUrl, purchaseId: purchase.id });
       } else {
         toast.error("Erro ao gerar PIX. Tente novamente.");
       }
