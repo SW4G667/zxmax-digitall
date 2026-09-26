@@ -38,7 +38,7 @@ export default function AppShell({ children }: Props) {
   }, [user]);
 
   return (
-    <div className="min-h-screen bg-[#080a0f] pb-20 text-white">
+    <div className="min-h-screen bg-[#0b0b0e] pb-20 text-white">
       <Header
         onProfileClick={() => setProfileOpen(true)}
         onAuthClick={() => setAuthOpen(true)}
@@ -46,7 +46,7 @@ export default function AppShell({ children }: Props) {
         menuOpen={menuOpen}
       />
 
-      <div className="mx-auto w-full max-w-[1440px] px-3 py-5 sm:px-5 sm:py-7">
+      <div className="mx-auto w-full max-w-[1240px] px-3 py-5 sm:px-5 sm:py-7">
         {children}
       </div>
 
