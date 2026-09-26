@@ -89,7 +89,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
           <div className="ml-auto flex items-center gap-1.5">
             <button
               onClick={openListing}
-              aria-label={user ? "Abrir meus anúncios" : "Entrar para anunciar"}
+              aria-label={user ? "Abrir meus anúncios" : "Anunciar"}
               className="hidden h-9 items-center rounded-md bg-[#168cff] px-4 text-xs font-bold text-white transition hover:bg-[#0878dc] sm:flex"
             >
               Anunciar
