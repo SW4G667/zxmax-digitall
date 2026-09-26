@@ -30,28 +30,42 @@ export default function AppShell({ children }: Props) {
   const [authOpen, setAuthOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  useEffect(() => { if (!user) { setProfileOpen(false); setMenuOpen(false); } }, [user]);
+  useEffect(() => {
+    if (!user) {
+      setProfileOpen(false);
+      setMenuOpen(false);
+    }
+  }, [user]);
 
   return (
-    <div className="bg-gradient-page min-h-screen pb-24">
+    <div className="min-h-screen bg-[#080a0f] pb-20 text-white">
       <Header
         onProfileClick={() => setProfileOpen(true)}
         onAuthClick={() => setAuthOpen(true)}
         onMenuClick={() => setMenuOpen(true)}
         menuOpen={menuOpen}
       />
-      <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
+
+      <div className="mx-auto w-full max-w-[1440px] px-3 py-5 sm:px-5 sm:py-7">
+        {children}
+      </div>
+
       <SiteFooter />
       <BottomNav />
+
       <SideMenu
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         onNavigate={(next) => {
-          if (!user && next !== "store") return setAuthOpen(true);
+          if (!user && next !== "store") {
+            setAuthOpen(true);
+            return;
+          }
           navigate(PATHS[next]);
         }}
         onOpenProfile={() => (user ? setProfileOpen(true) : setAuthOpen(true))}
       />
+
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
       {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
     </div>
