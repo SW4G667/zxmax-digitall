@@ -10,6 +10,9 @@ describe("e-mails transacionais seguros", () => {
     expect(email).toContain('role="presentation"');
     expect(email).toContain('aria-label="${escapeHtml(cta)}"');
     expect(email).toContain("Para sua segurança, conclua qualquer ação somente dentro da plataforma.");
+    expect(email).toContain('eq("key", "site_branding")');
+    expect(email).toContain("branding.logoUrl");
+    expect(email).toContain("branding.supportUrl");
     expect(email).toContain("{ from: EMAIL_FROM, to: [recipient], subject, html, text }");
   });
 
@@ -24,6 +27,9 @@ describe("e-mails transacionais seguros", () => {
       "receipt_confirmed_seller",
       "dispute_opened_buyer",
       "dispute_opened_seller",
+      "dispute_resolved_buyer",
+      "dispute_resolved_seller",
+      "new_review",
     ]) expect(email).toContain(type);
   });
 
