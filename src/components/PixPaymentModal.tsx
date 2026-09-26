@@ -22,8 +22,6 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
   const [status, setStatus] = useState<"waiting" | "paid">("waiting");
   const paidRef = useRef(false);
 
-  const PAID_STATUSES = ["COMPLETED", "PAID", "CONFIRMED", "paid", "completed"];
-
   useEffect(() => {
     paidRef.current = false;
     setStatus("waiting");
@@ -92,7 +90,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
     }
   };
 
-  const qrImg = charge.qrCodeUrl || `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(charge.qrCodeText)}`;
+  const qrImg = charge.qrCodeUrl || null;
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-foreground/50 backdrop-blur-sm" onClick={onClose}>
@@ -116,9 +114,16 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
             <p className="text-center text-2xl font-black text-primary mb-1">R$ {Number(charge.amount).toFixed(2)}</p>
             <p className="text-center text-xs text-muted-foreground mb-5">Escaneie o QR Code ou copie o código abaixo</p>
 
-            <div className="flex justify-center mb-5">
-              <img src={qrImg} alt="QR Code PIX" className="w-56 h-56 rounded-2xl bg-white p-2 shadow-md" />
-            </div>
+            {qrImg ? (
+              <div className="flex justify-center mb-5">
+                <img src={qrImg} alt="QR Code PIX" className="w-56 h-56 rounded-2xl bg-white p-2 shadow-md" />
+              </div>
+            ) : (
+              <div className="mb-5 rounded-xl border border-border bg-muted p-4 text-center">
+                <p className="text-xs font-bold text-foreground">Use o código PIX copia e cola abaixo</p>
+                <p className="text-[11px] text-muted-foreground mt-1">O gateway não enviou uma imagem de QR Code para esta cobrança.</p>
+              </div>
+            )
 
             <div className="bg-muted rounded-xl p-3 mb-3">
               <p className="text-[11px] text-foreground break-all font-mono leading-relaxed">{charge.qrCodeText}</p>
