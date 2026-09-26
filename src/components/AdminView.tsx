@@ -72,6 +72,8 @@ export default function AdminView() {
   const [maintenanceMessage, setMaintenanceMessage] = useState("");
   const [minProductPrice, setMinProductPrice] = useState("2,00");
   const [minWithdraw, setMinWithdraw] = useState("5,00");
+  const [buyerFee, setBuyerFee] = useState("0,90");
+  const [withdrawFee, setWithdrawFee] = useState("3,50");
   const [operatorCapabilities, setOperatorCapabilities] = useState<string[]>([]);
   const [operatorAccessLoading, setOperatorAccessLoading] = useState(!isAdmin);
 
@@ -236,6 +238,8 @@ export default function AdminView() {
     setMaintenanceMessage(String(data?.message || ""));
     setMinProductPrice(formatBRL(data?.minProductPrice ?? 2).replace("R$ ", ""));
     setMinWithdraw(formatBRL(data?.minWithdraw ?? 5).replace("R$ ", ""));
+    setBuyerFee(formatBRL(data?.buyerFee ?? 0.90).replace("R$ ", ""));
+    setWithdrawFee(formatBRL(data?.withdrawFee ?? 3.50).replace("R$ ", ""));
   }, []);
 
   useEffect(() => { if (tab === "config") void loadPlatformSettings(); }, [tab, loadPlatformSettings]);
@@ -243,18 +247,26 @@ export default function AdminView() {
   const savePlatformSettings = async () => {
     const parsedPrice = parsePriceInput(minProductPrice);
     const parsedWithdraw = parsePriceInput(minWithdraw);
+    const parsedBuyerFee = parsePriceInput(buyerFee);
+    const parsedWithdrawFee = parsePriceInput(withdrawFee);
     if (!isValidProductPrice(parsedPrice)) { toast.error("Use um preço mínimo entre R$ 2,00 e R$ 1.000.000,00."); return; }
-    if (parsedWithdraw < 5 || parsedWithdraw > 1_000_000) { toast.error("Use um saque mínimo entre R$ 5,00 e R$ 1.000.000,00."); return; }
+    if (parsedWithdraw < 1 || parsedWithdraw > 1_000_000) { toast.error("Use um saque mínimo entre R$ 1,00 e R$ 1.000.000,00."); return; }
+    if (parsedBuyerFee < 0 || parsedBuyerFee > 1_000) { toast.error("A taxa do comprador deve ficar entre R$ 0,00 e R$ 1.000,00."); return; }
+    if (parsedWithdrawFee < 0 || parsedWithdrawFee >= parsedWithdraw) { toast.error("A taxa de saque deve ser menor que o saque mínimo."); return; }
+
     setPlatformSaving(true);
     const { error } = await (supabase as any).rpc("update_platform_settings", {
       _maintenance: maintenance,
       _message: maintenanceMessage.trim(),
       _min_product_price: parsedPrice,
       _min_withdraw: parsedWithdraw,
+      _buyer_fee: parsedBuyerFee,
+      _withdraw_fee: parsedWithdrawFee,
     });
     setPlatformSaving(false);
     if (error) { toast.error(error.message || "Não foi possível salvar a plataforma."); return; }
-    toast.success(maintenance ? "Modo manutenção ativado para visitantes." : "Plataforma reaberta para visitantes.");
+    updateConfig({ buyerFee: parsedBuyerFee, withdrawMin: parsedWithdraw, withdrawFee: parsedWithdrawFee });
+    toast.success("Operação e taxas atualizadas no servidor.");
   };
 
   if (selectedDisputeId) {
@@ -353,7 +365,8 @@ export default function AdminView() {
               <div key={w.id} className="glass-card p-5 flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold text-muted-foreground uppercase">{w.method === "instant" ? "Saque Instantâneo" : "Saque Normal"}</p>
-                  <p className="text-xl font-black text-foreground">R$ {w.amount.toFixed(2)}</p>
+                  <p className="text-xl font-black text-foreground">{formatBRL(w.netAmount ?? Math.max(0, w.amount - (w.fee ?? state.config.withdrawFee)))}</p>
+                  <p className="text-[10px] text-muted-foreground">Solicitado {formatBRL(w.amount)} · taxa {formatBRL(w.fee ?? state.config.withdrawFee)}</p>
                   <p className="text-xs text-muted-foreground mt-1">Usuário: {w.userEmail}</p>
                   <p className="text-[10px] text-muted-foreground font-mono">ID: {w.userId}</p>
                   <p className="text-[11px] text-foreground mt-1">Chave Pix: <span className="font-mono">{w.pixKey || "—"}</span></p>
@@ -775,12 +788,18 @@ export default function AdminView() {
               <label className="inline-flex items-center gap-2 text-xs font-bold text-foreground"><input type="checkbox" checked={maintenance} onChange={(event) => setMaintenance(event.target.checked)} disabled={platformLoading} /> Modo manutenção</label>
             </div>
             <textarea value={maintenanceMessage} maxLength={300} onChange={(event) => setMaintenanceMessage(event.target.value)} placeholder="Mensagem curta para visitantes" className="w-full rounded-xl bg-muted p-3 text-sm text-foreground" rows={3} disabled={platformLoading} />
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <label className="text-xs font-bold text-muted-foreground">Preço mínimo de anúncio
                 <input value={minProductPrice} inputMode="decimal" onChange={(event) => setMinProductPrice(event.target.value)} placeholder="2,00" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
               </label>
+              <label className="text-xs font-bold text-muted-foreground">Taxa base do comprador
+                <input value={buyerFee} inputMode="decimal" onChange={(event) => setBuyerFee(event.target.value)} placeholder="0,90" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
+              </label>
               <label className="text-xs font-bold text-muted-foreground">Saque mínimo
                 <input value={minWithdraw} inputMode="decimal" onChange={(event) => setMinWithdraw(event.target.value)} placeholder="5,00" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
+              </label>
+              <label className="text-xs font-bold text-muted-foreground">Taxa de saque
+                <input value={withdrawFee} inputMode="decimal" onChange={(event) => setWithdrawFee(event.target.value)} placeholder="3,50" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
               </label>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -788,37 +807,13 @@ export default function AdminView() {
               <button onClick={() => setTab("apis")} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-bold text-foreground hover:bg-white/[0.08]"><ExternalLink className="w-4 h-4" /> Configurar integrações</button>
             </div>
           </div>
-          {/* Taxas */}
-          <div className="glass-card p-6 space-y-4">
-            <h3 className="font-bold text-foreground">Taxas da Plataforma</h3>
-            <p className="text-xs text-muted-foreground">Valores oficiais aplicados no checkout e no saque. O cliente sempre paga R$ 0,90 a mais; o saque mínimo é R$ 10,00 com taxa de R$ 3,50.</p>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-3 rounded-xl bg-muted">
-                <p className="text-[10px] font-bold uppercase text-muted-foreground">Taxa do comprador</p>
-                <p className="text-lg font-black text-foreground">R$ 0,90</p>
-              </div>
-              <div className="p-3 rounded-xl bg-muted">
-                <p className="text-[10px] font-bold uppercase text-muted-foreground">Saque mínimo</p>
-                <p className="text-lg font-black text-foreground">R$ 10,00</p>
-              </div>
-              <div className="p-3 rounded-xl bg-muted">
-                <p className="text-[10px] font-bold uppercase text-muted-foreground">Taxa de saque</p>
-                <p className="text-lg font-black text-foreground">R$ 3,50</p>
-              </div>
-              <div className="p-3 rounded-xl bg-muted">
-                <p className="text-[10px] font-bold uppercase text-muted-foreground">Exemplo</p>
-                <p className="text-sm font-bold text-foreground">Anúncio R$ 5,00 → cliente paga R$ 5,90</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4 hidden">
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Comissão (%)</label>
-                <input type="number" value={commission} onChange={(e) => setCommission(Number(e.target.value))} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Taxa Saque Instantâneo (%)</label>
-                <input type="number" value={instantFee} onChange={(e) => setInstantFee(Number(e.target.value))} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground" />
-              </div>
+          <div className="glass-card p-6 space-y-3">
+            <h3 className="font-bold text-foreground">Como as taxas são aplicadas</h3>
+            <p className="text-xs leading-5 text-muted-foreground">A taxa base do comprador é definida aqui. Na aba <strong className="text-foreground">APIs & Credenciais</strong>, cada gateway pode ter um adicional próprio de processamento. No saque, a taxa é congelada no momento da solicitação: mudar a configuração depois não altera saques já registrados.</p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="rounded-xl bg-muted p-3"><p className="text-[10px] font-bold uppercase text-muted-foreground">Comprador</p><p className="mt-1 text-base font-black text-foreground">{formatBRL(parsePriceInput(buyerFee))}</p></div>
+              <div className="rounded-xl bg-muted p-3"><p className="text-[10px] font-bold uppercase text-muted-foreground">Mínimo de saque</p><p className="mt-1 text-base font-black text-foreground">{formatBRL(parsePriceInput(minWithdraw))}</p></div>
+              <div className="rounded-xl bg-muted p-3"><p className="text-[10px] font-bold uppercase text-muted-foreground">Taxa de saque</p><p className="mt-1 text-base font-black text-foreground">{formatBRL(parsePriceInput(withdrawFee))}</p></div>
             </div>
           </div>
 
