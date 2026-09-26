@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 
 export interface SiteBranding {
   siteName: string;
@@ -31,6 +30,10 @@ export function SiteBrandingProvider({ children }: { children: React.ReactNode }
 
   const refreshBranding = async () => {
     try {
+      // Lazy-load the configured client only when the provider actually needs
+      // remote branding. Consumers can use the safe defaults without requiring
+      // Supabase environment variables at module-import time.
+      const { supabase } = await import("@/integrations/supabase/client");
       const { data, error } = await supabase.functions.invoke("site-config", { body: { action: "get" } });
       if (!error && data?.branding) setBranding({ ...defaults, ...data.branding });
     } catch {
