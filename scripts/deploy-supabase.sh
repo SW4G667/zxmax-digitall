@@ -9,7 +9,7 @@
 #
 #   2) Rode:
 #        export SUPABASE_ACCESS_TOKEN="sbp_xxx"
-#        export SUPABASE_PROJECT_REF="dbekdedzgkfgtlytrnyw"
+#        export SUPABASE_PROJECT_REF="szvkktvubyhulzipcxfk"
 #        ./scripts/deploy-supabase.sh
 #
 # Ou passe como argumento:  ./scripts/deploy-supabase.sh sbp_xxx
@@ -22,7 +22,7 @@
 set -euo pipefail
 
 SUPABASE_ACCESS_TOKEN="${SUPABASE_ACCESS_TOKEN:-${1:-}}"
-PROJECT_REF="${SUPABASE_PROJECT_REF:-dbekdedzgkfgtlytrnyw}"
+PROJECT_REF="${SUPABASE_PROJECT_REF:-szvkktvubyhulzipcxfk}"
 USE_NPX="0"
 
 if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
@@ -59,20 +59,10 @@ sb db push
 echo ""
 echo "==> 3/3 Deploy das Edge Functions..."
 FUNCTIONS=(
-  admin-login
-  admin-verify
   create-purchase
-  create-evopay-pix
-  check-evopay-status
-  evopay-webhook
-  evopay-withdraw
-  mark-order-delivered
-  order-action
   integrations-config
-  discord-callback
-  create-stripe-checkout
-  create-vexopay-crypto
-  send-email
+  create-magnuspay-pix
+  site-config
 )
 for fn in "${FUNCTIONS[@]}"; do
   echo "   - deploy ${fn} ..."
@@ -86,13 +76,13 @@ echo "✅ Backend atualizado. Agora configure as SECRETS no dashboard:"
 echo "   https://supabase.com/dashboard/project/$PROJECT_REF/settings/functions"
 echo ""
 echo "   Rode com as secrets (uma por vez, sem expor em log):"
-for s in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY RESEND_API_KEY EVOPAY_API_KEY; do
+for s in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY MAGNUSPAY_API_KEY RESEND_API_KEY; do
   echo "   - sb secrets set $s=<valor>"
 done
 echo ""
 echo "   Obrigatórias para o login admin e a verificação funcionarem:"
 echo "   - SUPABASE_SERVICE_ROLE_KEY  (aprovação de verificação/produtos)"
-echo "   - EVOPAY_API_KEY             (Pagamento Pix)"
+echo "   - MAGNUSPAY_API_KEY          (Pagamento PIX MagnusPay)"
 echo "   - RESEND_API_KEY             OPCIONAL — o login admin usa OTP do Supabase Auth"
 echo ""
 echo "   No painel: Authentication -> Providers -> Email -> ligue 'Enable Email provider'."

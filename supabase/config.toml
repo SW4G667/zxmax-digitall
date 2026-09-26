@@ -1,28 +1,21 @@
-project_id = "dbekdedzgkfgtlytrnyw"
+project_id = "szvkktvubyhulzipcxfk"
 
+[functions.create-purchase]
+verify_jwt = true
+
+[functions.integrations-config]
+verify_jwt = true
+
+[functions.create-magnuspay-pix]
+verify_jwt = true
+
+# Public read endpoint + explicit admin JWT validation inside the function.
+[functions.site-config]
+verify_jwt = false
+
+# OAuth callback and provider webhooks validate their own protocol.
 [functions.discord-callback]
 verify_jwt = false
 
-[functions.create-evopay-pix]
-verify_jwt = false
-
-[functions.create-purchase]
-verify_jwt = false
-
-[functions.check-evopay-status]
-verify_jwt = false
-
 [functions.evopay-webhook]
-verify_jwt = false
-
-[functions.evopay-withdraw]
-verify_jwt = false
-
-[functions.mark-order-delivered]
-verify_jwt = false
-
-[functions.order-action]
-verify_jwt = false
-
-[functions.integrations-config]
 verify_jwt = false

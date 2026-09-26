@@ -49,7 +49,7 @@ function StageStepper({ status }: { status: Purchase["status"] }) {
 }
 
 export default function MyPurchasesView({ initialSelectedId }: { initialSelectedId?: number | null }) {
-  const { state, confirmDelivery, openDispute, reviewPurchase, savePixCharge, markPurchasePaid } = useStore();
+  const { state, confirmDelivery, openDispute, reviewPurchase, markPurchasePaid } = useStore();
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(initialSelectedId || null);
 
@@ -83,35 +83,26 @@ export default function MyPurchasesView({ initialSelectedId }: { initialSelected
   const handlePayPix = async (purchase: Purchase, e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (!state.currentUser) return;
-    const product = state.products.find((p) => p.id === purchase.productId);
-    const expired = purchase.pixExpiresAt ? new Date(purchase.pixExpiresAt).getTime() < Date.now() : true;
+
     setResumeId(purchase.id);
-    // Reuse existing valid QR
-    if (purchase.pixQrCode && purchase.evopayChargeId && !expired) {
-      setPixCharge({ evopayId: purchase.evopayChargeId, qrCodeText: purchase.pixQrCode, amount: purchase.amount, purchaseId: purchase.id });
-      return;
-    }
-    // Generate a new Pix
     setLoadingPix(purchase.id);
     try {
-      const { data, error } = await supabase.functions.invoke("create-evopay-pix", {
-        body: {
-          purchaseId: purchase.id,
-          productName: purchase.variationName ? `${product?.name} - ${purchase.variationName}` : product?.name,
-          amount: purchase.amount,
-          buyerEmail: state.currentUser.email,
-          buyerName: state.currentUser.name,
-        },
+      const { data, error } = await supabase.functions.invoke("create-magnuspay-pix", {
+        body: { purchaseId: purchase.id },
       });
       if (error) throw error;
-      if (data?.qrCodeText) {
-        savePixCharge(purchase.id, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
-        setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: data.amount ?? purchase.amount, qrCodeUrl: data.qrCodeUrl, purchaseId: purchase.id });
-      } else {
-        toast.error("Erro ao gerar PIX. Tente novamente.");
-      }
+      if (data?.error) throw new Error(data.error);
+      if (!data?.qrCodeText || !data?.id) throw new Error("A cobrança PIX não retornou os dados esperados.");
+
+      setPixCharge({
+        paymentId: String(data.id),
+        qrCodeText: String(data.qrCodeText),
+        amount: Number(data.amount ?? purchase.amount),
+        qrCodeUrl: data.qrCodeUrl || undefined,
+        purchaseId: purchase.id,
+      });
     } catch (err: any) {
-      toast.error("Erro ao gerar PIX: " + (err.message || "tente novamente"));
+      toast.error("Erro ao gerar PIX: " + (err?.message || "tente novamente"));
     } finally {
       setLoadingPix(null);
     }

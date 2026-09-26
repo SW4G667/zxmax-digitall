@@ -4,6 +4,8 @@ import { Search, Shield, CheckCircle, Zap, Flame } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import AuthScreen from "@/components/AuthScreen";
 import UserProfileModal from "@/components/UserProfileModal";
+import useSiteBranding from "@/hooks/useSiteBranding";
+import ProductCard from "@/components/ProductCard";
 
 export default function StoreView() {
   const { state } = useStore();
@@ -13,6 +15,7 @@ export default function StoreView() {
   const [category, setCategory] = useState("Todos");
   const [selectedSellerId, setSelectedSellerId] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
+  const { branding } = useSiteBranding();
 
   const [fallbackProducts, setFallbackProducts] = useState<any[]>([]);
 
@@ -170,13 +173,13 @@ export default function StoreView() {
       {/* Hero - GGMAX minimal */}
       <div className="bg-[#111114] border border-[#1e1e28] rounded-2xl p-6 md:p-8">
         <div className="flex items-center gap-2 mb-3">
-          <span className="bg-[#1a1a20] border border-[#25252e] px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide text-white/50">Marketplace #1 do Brasil</span>
+          <span className="bg-[#1a1a20] border border-[#25252e] px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide text-white/50">Marketplace de produtos digitais</span>
           <span className="bg-[#00c950]/10 border border-[#00c950]/20 px-3 py-1 rounded-full text-[10px] font-bold text-[#00c950] flex items-center gap-1"><Shield className="w-3 h-3" /> Compra Protegida</span>
         </div>
         <h1 className="text-2xl md:text-4xl font-black tracking-tight text-white mb-2 leading-tight">
-          Encontre tudo para <span className="text-[#0084ff]">dominar</span> no digital
+          {branding.heroTitle}
         </h1>
-        <p className="text-white/40 text-sm mb-5">Robux, bots, contas, scripts e muito mais com entrega imediata.</p>
+        <p className="text-white/40 text-sm mb-5">{branding.heroSubtitle}</p>
         
         <div className="flex items-center bg-white rounded-xl px-4 py-3 max-w-xl">
           <Search className="w-5 h-5 text-black/30" />
@@ -192,8 +195,8 @@ export default function StoreView() {
 
         <div className="flex flex-wrap gap-2 mt-5">
           <span className="flex items-center gap-1.5 text-[11px] text-white/40 bg-[#1a1a20] border border-[#25252e] px-3 py-1.5 rounded-full"><CheckCircle className="w-3.5 h-3.5 text-[#00c950]" /> Entrega Automática</span>
-          <span className="flex items-center gap-1.5 text-[11px] text-white/40 bg-[#1a1a20] border border-[#25252e] px-3 py-1.5 rounded-full"><Zap className="w-3.5 h-3.5 text-[#ffbd2e]" /> Suporte 24h</span>
-          <span className="flex items-center gap-1.5 text-[11px] text-white/40 bg-[#1a1a20] border border-[#25252e] px-3 py-1.5 rounded-full"><Shield className="w-3.5 h-3.5 text-[#0084ff]" /> Reembolso Garantido</span>
+          <span className="flex items-center gap-1.5 text-[11px] text-white/40 bg-[#1a1a20] border border-[#25252e] px-3 py-1.5 rounded-full"><Zap className="w-3.5 h-3.5 text-[#ffbd2e]" /> Entrega conforme anúncio</span>
+          <span className="flex items-center gap-1.5 text-[11px] text-white/40 bg-[#1a1a20] border border-[#25252e] px-3 py-1.5 rounded-full"><Shield className="w-3.5 h-3.5 text-[#0084ff]" /> Pedidos rastreados</span>
         </div>
       </div>
 
@@ -206,15 +209,7 @@ export default function StoreView() {
             <span className="text-[10px] bg-[#ff4444] text-white px-2 py-0.5 rounded-full font-black">HOT</span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {trending.map((p) => (
-              <div key={`trend-${p.id}`} onClick={() => navigate(`/produto/${p.id}`)} className="bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden cursor-pointer hover:border-[#2a2a36] transition group">
-                <div className="aspect-[4/3] bg-[#1a1a20] overflow-hidden"><img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" /></div>
-                <div className="p-3">
-                  <p className="text-xs font-bold text-white truncate">{p.name}</p>
-                  <p className="text-sm font-black text-white mt-1">R$ {p.price.toFixed(2)}</p>
-                </div>
-              </div>
-            ))}
+            {trending.map((p) => <ProductCard key={`trend-${p.id}`} product={p} />)}
           </div>
         </div>
       )}
@@ -230,19 +225,7 @@ export default function StoreView() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {filtered.map((p) => (
-              <div key={p.id} onClick={() => navigate(`/produto/${p.id}`)} className="bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden cursor-pointer hover:border-[#2a2a36] transition group">
-                <div className="relative aspect-[4/3] bg-[#1a1a20] overflow-hidden">
-                  <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" loading="lazy" />
-                  {p.sales > 50 && <span className="absolute top-2 left-2 bg-[#ef4444] text-white text-[9px] px-2 py-0.5 rounded-full font-black">HOT</span>}
-                </div>
-                <div className="p-3">
-                  <h3 className="font-bold text-white text-xs leading-tight line-clamp-2 min-h-[32px]">{p.name}</h3>
-                  <p className="text-[11px] text-white/40 mt-1 truncate">por <span className="text-[#0084ff]">{p.seller}</span></p>
-                  <p className="text-sm font-black text-white mt-2">R$ {p.price.toFixed(2)}</p>
-                </div>
-              </div>
-            ))}
+            {filtered.map((p) => <ProductCard key={p.id} product={p} />)}
           </div>
         )}
       </div>

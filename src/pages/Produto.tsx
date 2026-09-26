@@ -25,44 +25,46 @@ interface SellerOffer {
   verified: boolean;
 }
 
-function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePercent }: { product: Product; quantity: number; onClose: () => void; onConfirm: (method: string, cpf: string) => void; loading: boolean; feePercent: number }) {
+function CheckoutModal({ product, quantity, subtotal, onClose, onConfirm, loading }: { product: Product; quantity: number; subtotal: number; onClose: () => void; onConfirm: (method: string) => void; loading: boolean }) {
   const [method, setMethod] = useState<"pix" | "crypto" | "card" | "boleto">("pix");
-  const [cpf, setCpf] = useState("");
-  const [available, setAvailable] = useState<Record<string, boolean>>({ pix: true, crypto: true, card: true, boleto: true });
-  const unitPrice = product.price;
-  const subtotal = unitPrice * quantity;
-  const fee = subtotal * (feePercent / 100);
+  const [available, setAvailable] = useState<Record<string, boolean>>({ pix: false, crypto: false, card: false, boleto: false });
+  const [pixFee, setPixFee] = useState(0);
+  const fee = method === "pix" ? pixFee : 0;
   const total = subtotal + fee;
 
   useEffect(() => {
-    // Check gateway health - if fails, mark as unavailable
-    const checkHealth = async () => {
+    const loadMethods = async () => {
       try {
-        const { data } = await supabase.functions.invoke("integrations-config", { body: { action: "get" } });
-        const evopayOk = !!data?.integrations?.evopay?.apiKey_masked || !!data?.integrations?.vexopay?.clientId;
-        const stripeOk = !!data?.integrations?.stripe?.secretKey_masked;
-        setAvailable({
-          pix: evopayOk || true, // PIX fallback true, will show error if fails
-          crypto: !!data?.integrations?.vexopay?.clientId || !!data?.integrations?.vexopay?.clientId_masked || true,
-          card: stripeOk || true,
-          boleto: stripeOk || true,
+        const { data, error } = await supabase.functions.invoke("integrations-config", {
+          body: { action: "payment_methods" },
         });
+        if (error || !data?.methods) throw error || new Error("Métodos indisponíveis");
+        const next = {
+          pix: data.methods.magnuspay_pix === true,
+          crypto: data.methods.crypto === true,
+          card: data.methods.card === true,
+          boleto: data.methods.boleto === true,
+        };
+        setAvailable(next);
+        setPixFee(Number(data?.fees?.magnuspay_pix || 0));
+        if (!next.pix) {
+          if (next.crypto) setMethod("crypto");
+          else if (next.card) setMethod("card");
+          else if (next.boleto) setMethod("boleto");
+        }
       } catch {
-        // Keep all available, will handle error on confirm
+        setAvailable({ pix: false, crypto: false, card: false, boleto: false });
       }
     };
-    void checkHealth();
+    void loadMethods();
   }, []);
 
   const handleConfirm = () => {
-    const cleanCpf = cpf.replace(/\D/g, "");
-    if (method === "pix" || method === "crypto") {
-      if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
-        toast.error("Digite um CPF/CNPJ válido (11 ou 14 dígitos) para PIX/Crypto");
-        return;
-      }
+    if (!available[method]) {
+      toast.error("Essa forma de pagamento está indisponível no momento.");
+      return;
     }
-    onConfirm(method, cleanCpf);
+    onConfirm(method);
   };
 
   return (
@@ -101,20 +103,13 @@ function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePerc
             <p className="text-[10px] text-white/30 mt-2">Se alguma forma estiver com problemas, fica indisponível automaticamente. Configure credenciais Stripe em Admin → APIs.</p>
           </div>
 
-          <div>
-            <p className="text-xs font-bold uppercase text-white/30 mb-2">CPF para pagamento</p>
-            <input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />
-            <p className="text-[10px] text-white/30 mt-1">Obrigatório para PIX e Crypto (VexoPay exige documento)</p>
-          </div>
-
           <div className="bg-[#0a0a0f] border border-[#1e1e28] rounded-xl p-4 space-y-2">
-            <div className="flex justify-between text-xs"><span className="text-white/40">Preço unitário</span><span className="text-white">R$ {unitPrice.toFixed(5)} / un</span></div>
+            <div className="flex justify-between text-xs"><span className="text-white/40">Produto</span><span className="text-white">R$ {subtotal.toFixed(2)}</span></div>
             <div className="flex justify-between text-xs"><span className="text-white/40">Quantidade</span><span className="text-white">{quantity}</span></div>
-            <div className="flex justify-between text-xs"><span className="text-white/40">Subtotal</span><span className="text-white">R$ {subtotal.toFixed(2)}</span></div>
-            <div className="flex justify-between text-xs"><span className="text-white/40">Taxa plataforma ({feePercent}%)</span><span className="text-[#ffbd2e]">+ R$ {fee.toFixed(2)}</span></div>
+            {fee > 0 && <div className="flex justify-between text-xs"><span className="text-white/40">Taxa do pagamento</span><span className="text-[#ffbd2e]">+ R$ {fee.toFixed(2)}</span></div>}
             <div className="h-px bg-[#1e1e28] my-2" />
             <div className="flex justify-between font-black"><span className="text-white">Total</span><span className="text-white text-lg">R$ {total.toFixed(2)}</span></div>
-            <p className="text-[10px] text-white/30">Taxa vai para o admin. Produto continua R$ {subtotal.toFixed(2)} para o vendedor.</p>
+            <p className="text-[10px] text-white/30">O valor final é validado no servidor antes da cobrança.</p>
           </div>
 
           <button onClick={handleConfirm} disabled={loading} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 transition">
@@ -135,7 +130,7 @@ function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePerc
 export default function ProdutoPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { state, addProductQuestion, buyProduct, refreshPurchases, savePixCharge } = useStore();
+  const { state, addProductQuestion, buyProduct, refreshPurchases } = useStore();
   const { isFavorite, toggle } = useFavorites();
   const [selectedVariation, setSelectedVariation] = useState<ProductVariation | null>(null);
   const [detailTab, setDetailTab] = useState<"info" | "reviews" | "questions">("info");
@@ -215,9 +210,15 @@ export default function ProdutoPage() {
 
   const unitPrice = selectedVariation ? selectedVariation.price : product.price;
   const displayQuantity = isRobux ? quantity : 1;
-  const subtotal = unitPrice * displayQuantity;
-  const feePercent = state.config.commission || 10;
-  const total = subtotal * (1 + feePercent / 100);
+  const packageLabel = selectedVariation?.name || product.variations?.[0]?.name || "";
+  const packageUnitsMatch = String(packageLabel).match(/(\d[\d.,]*)/);
+  const packageUnits = isRobux
+    ? Math.max(1, Number(String(packageUnitsMatch?.[1] || "100").replace(/\./g, "").replace(",", ".")) || 100)
+    : 1;
+  const subtotal = isRobux
+    ? Number(((displayQuantity / packageUnits) * unitPrice).toFixed(2))
+    : Number(unitPrice.toFixed(2));
+  const total = subtotal;
 
   const handleBuyClick = () => {
     if (!state.currentUser) {
@@ -235,30 +236,24 @@ export default function ProdutoPage() {
     setCheckoutOpen(true);
   };
 
-  const handleCheckoutConfirm = async (method: string, cpf: string) => {
+  const handleCheckoutConfirm = async (method: string) => {
     setBuyLoading(true);
     try {
-      // Save CPF to profile
-      if (state.currentUser) {
-        await supabase.from("profiles").update({ cpf } as any).eq("user_id", state.currentUser.id);
-      }
-
-      const purchaseId = await buyProduct(product.id, selectedVariation || undefined);
+      const paymentMethod = method === "pix" ? "magnuspay_pix" : method;
+      const purchaseId = await buyProduct(product.id, {
+        variation: selectedVariation || undefined,
+        quantity: isRobux ? quantity : 1,
+        paymentMethod,
+      });
       if (!purchaseId) throw new Error("Falha ao criar pedido");
 
       if (method === "pix") {
-        const { data, error } = await supabase.functions.invoke("create-evopay-pix", {
-          body: {
-            purchaseId,
-            productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name,
-            amount: subtotal,
-            buyerName: state.currentUser?.name,
-          },
+        const { data, error } = await supabase.functions.invoke("create-magnuspay-pix", {
+          body: { purchaseId },
         });
         if (error) throw error;
         if (data?.qrCodeText) {
-          savePixCharge(purchaseId, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
-          setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: total, qrCodeUrl: data.qrCodeUrl, purchaseId });
+          setPixCharge({ paymentId: data.id, qrCodeText: data.qrCodeText, amount: Number(data.amount), qrCodeUrl: data.qrCodeUrl, purchaseId });
           setCheckoutOpen(false);
         } else {
           toast.error("Erro ao gerar PIX: " + (data?.error || "tente novamente"));
@@ -350,8 +345,8 @@ export default function ProdutoPage() {
             <span className="text-white font-bold">Moeda</span>
           </div>
 
-          <div className="bg-[#ffbd2e] text-black text-xs font-bold px-4 py-2 rounded-full inline-flex items-center gap-2 mb-4">
-            Agora aceitamos <span className="italic">PayPal</span> e <span className="flex items-center gap-1"><Bitcoin className="w-3 h-3" /> Crypto</span>
+          <div className="bg-[#0084ff]/10 border border-[#0084ff]/20 text-[#7dbdff] text-xs font-bold px-4 py-2 rounded-full inline-flex items-center gap-2 mb-4">
+            <Shield className="w-3.5 h-3.5" /> Pagamento PIX processado pelo servidor
           </div>
 
           <div className="grid lg:grid-cols-[1fr_360px] gap-6">
@@ -363,6 +358,7 @@ export default function ProdutoPage() {
                     <img src={state.userDirectory?.[currentOffer.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentOffer.sellerName}`} className="w-12 h-12 rounded-full bg-[#1a1a20] border border-[#25252e]" alt="" />
                     <div>
                       <p className="font-black text-white flex items-center gap-1.5">{currentOffer.sellerName} <BadgeCheck className="w-4 h-4 text-[#0084ff]" /></p>
+                      <p className="text-[10px] text-white/35 font-mono">vendedor #{state.userDirectory?.[currentOffer.sellerId]?.publicId || product.sellerPublicId || "—"} · produto #{product.id}</p>
                       <p className="text-xs flex items-center gap-2">
                         {currentOffer.reviews > 0 ? (
                           <>
@@ -396,15 +392,15 @@ export default function ProdutoPage() {
 
                 <div className="mt-4 space-y-3 text-sm">
                   <div className="flex justify-between"><span className="text-white/60">Prazo de entrega</span><span className="font-bold text-white">{currentOffer.delivery}</span></div>
-                  <div className="border-t border-[#1e1e28] pt-3 flex justify-between text-lg font-black"><span className="text-white">Total: R$ {total.toFixed(2)}</span><span className="text-white/40 text-xs font-normal">taxa {feePercent}% inclusa</span></div>
+                  <div className="border-t border-[#1e1e28] pt-3 flex justify-between text-lg font-black"><span className="text-white">Total: R$ {total.toFixed(2)}</span><span className="text-white/40 text-xs font-normal">valor do produto</span></div>
                 </div>
 
                 <button onClick={handleBuyClick} disabled={buyLoading} className="w-full mt-5 bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-base transition disabled:opacity-50">Comprar agora</button>
 
                 <div className="mt-4 space-y-2.5">
                   <div className="flex gap-2 text-xs"><Shield className="w-4 h-4 text-[#0084ff] shrink-0" /><span className="font-bold text-white">Garantia de reembolso</span><span className="text-white/40">Protegido pelo TradeShield</span></div>
-                  <div className="flex gap-2 text-xs"><Zap className="w-4 h-4 text-[#ffbd2e] shrink-0" /><span className="font-bold text-white">Checkout rápido</span><span className="flex gap-1"><span className="bg-[#00c950] text-white px-2 py-0.5 rounded text-[10px] font-bold">PIX</span><span className="bg-black border border-white/10 text-white px-2 py-0.5 rounded text-[10px]">Apple Pay</span><span className="bg-[#0084ff] text-white px-2 py-0.5 rounded text-[10px]">G Pay</span><span className="bg-[#ffbd2e] text-black px-2 py-0.5 rounded text-[10px]">PayPal</span></span></div>
-                  <div className="flex gap-2 text-xs"><MessageSquare className="w-4 h-4 text-[#0084ff] shrink-0" /><span className="font-bold text-white">Atendimento 24 horas por dia</span><span className="text-white/40">Tira sua dúvida!</span></div>
+                  <div className="flex gap-2 text-xs"><Zap className="w-4 h-4 text-[#ffbd2e] shrink-0" /><span className="font-bold text-white">Checkout seguro</span><span className="text-white/40">PIX gerado no backend</span></div>
+                  <div className="flex gap-2 text-xs"><MessageSquare className="w-4 h-4 text-[#0084ff] shrink-0" /><span className="font-bold text-white">Suporte pelo pedido</span><span className="text-white/40">Histórico centralizado</span></div>
                 </div>
               </div>
 
@@ -465,7 +461,7 @@ export default function ProdutoPage() {
               <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
                 <p className="text-xs uppercase font-bold text-white/30 mb-1">Preço</p>
                 <p className="text-3xl font-black text-white">R$ {total.toFixed(2)}</p>
-                <p className="text-xs text-white/40 mt-1">R$ {unitPrice.toFixed(5)} / unidade × {quantity} + taxa {feePercent}%</p>
+                <p className="text-xs text-white/40 mt-1">Pacote de {packageUnits.toLocaleString()} unidades · quantidade {quantity.toLocaleString()}</p>
                 <button onClick={handleBuyClick} className="w-full mt-4 bg-[#ffbd2e] text-black py-3.5 rounded-xl font-black">Comprar agora</button>
               </div>
 
@@ -480,7 +476,7 @@ export default function ProdutoPage() {
           </div>
         </div>
 
-        {checkoutOpen && <CheckoutModal product={product} quantity={quantity} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} feePercent={feePercent} />}
+        {checkoutOpen && <CheckoutModal product={product} quantity={quantity} subtotal={subtotal} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} />}
         {selectedSellerId && <UserProfileModal open={!!selectedSellerId} onClose={() => setSelectedSellerId(null)} userId={selectedSellerId} />}
         <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
         {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
@@ -511,6 +507,7 @@ export default function ProdutoPage() {
               </div>
               <div className="p-5">
                 <h1 className="text-xl font-black text-white leading-tight">{product.name}</h1>
+                <p className="text-[10px] text-white/35 font-mono mt-1">produto #{product.id}</p>
                 <div className="flex items-center gap-2 mt-2">
                   <span className="text-xs bg-[#1a1a20] border border-[#25252e] px-2.5 py-1 rounded-full font-bold text-white/60">{product.category}</span>
                   <span className="flex items-center gap-1 text-xs text-white/40"><Eye className="w-3.5 h-3.5" /> {product.sales} vendas</span>
@@ -574,16 +571,32 @@ export default function ProdutoPage() {
 
           <div className="lg:sticky lg:top-20 h-fit space-y-3">
             <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
+              <p className="text-xs font-bold text-white/40 mb-3">Vendedor</p>
+              <button onClick={() => setSelectedSellerId(product.sellerId)} className="w-full flex items-center gap-3 text-left">
+                <img
+                  src={state.userDirectory?.[product.sellerId]?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(product.seller || "Vendedor")}`}
+                  className="w-11 h-11 rounded-full object-cover bg-[#1a1a20] border border-[#25252e]"
+                  alt=""
+                />
+                <div className="min-w-0">
+                  <p className="font-bold text-white truncate">{product.seller || "Vendedor"}</p>
+                  <p className="text-[10px] text-white/40 font-mono">vendedor #{state.userDirectory?.[product.sellerId]?.publicId || product.sellerPublicId || "—"}</p>
+                  <p className="text-[10px] text-white/30 font-mono">produto #{product.id}</p>
+                </div>
+              </button>
+            </div>
+
+            <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
               <p className="text-[11px] uppercase font-bold text-white/30">Total com taxa</p>
               <p className="text-3xl font-black text-white">R$ {total.toFixed(2)}</p>
-              <p className="text-xs text-white/40">R$ {subtotal.toFixed(2)} + {feePercent}% taxa</p>
+              <p className="text-xs text-white/40">Valor do produto antes da taxa do meio de pagamento</p>
               <button onClick={handleBuyClick} disabled={buyLoading} className="w-full mt-4 bg-[#0084ff] hover:bg-[#0066cc] text-white py-3.5 rounded-xl font-black text-sm transition disabled:opacity-50">Comprar agora</button>
             </div>
           </div>
         </div>
       </div>
 
-      {checkoutOpen && <CheckoutModal product={product} quantity={displayQuantity} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} feePercent={feePercent} />}
+      {checkoutOpen && <CheckoutModal product={product} quantity={displayQuantity} subtotal={subtotal} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} />}
       {selectedSellerId && <UserProfileModal open={!!selectedSellerId} onClose={() => setSelectedSellerId(null)} userId={selectedSellerId} />}
       <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
       {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}

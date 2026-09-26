@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { X, Store, Package, ShoppingBag, Headset, Shield, User, Wallet, FileText, HelpCircle, Lock, ScrollText, Heart, ShieldCheck, Sparkles, TrendingUp } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import useFavorites from "@/hooks/useFavorites";
+import useSiteBranding from "@/hooks/useSiteBranding";
 
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "withdraw";
 
@@ -16,6 +17,7 @@ interface Props {
 export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: Props) {
   const { isAdmin, user, profile, mfaEnabled } = useAuth();
   const { count } = useFavorites();
+  const { branding } = useSiteBranding();
 
   useEffect(() => {
     if (open) {
@@ -74,9 +76,11 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
         <div className="relative z-10 p-6 pb-4 shrink-0">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-black tracking-tighter text-white">
-                ZX<span className="text-primary">MAX</span>
-              </h2>
+              {branding.logoUrl ? (
+                <img src={branding.logoUrl} alt={branding.siteName} className="h-10 max-w-[180px] object-contain object-left" />
+              ) : (
+                <h2 className="text-2xl font-black tracking-tighter text-white">{branding.siteName}</h2>
+              )}
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/30 mt-1 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-success animate-pulse" /> Marketplace Seguro
               </p>
@@ -117,6 +121,14 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
             </p>
             <div className="space-y-1">
               <Item icon={Store} label="Loja" hint="Ver todos os anúncios" onClick={() => go("store")} highlight />
+              <Link to="/como-funciona" onClick={onClose} className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-white/[0.06] transition group text-left">
+                <span className="p-2.5 rounded-xl bg-white/[0.06] text-primary"><HelpCircle className="w-[18px] h-[18px]" /></span>
+                <span className="flex-1"><span className="block text-[13px] font-bold text-white">Como funciona</span><span className="block text-[11px] text-white/40">Compra, pagamento e entrega</span></span>
+              </Link>
+              <Link to="/vender" onClick={onClose} className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-white/[0.06] transition group text-left">
+                <span className="p-2.5 rounded-xl bg-white/[0.06] text-primary"><Package className="w-[18px] h-[18px]" /></span>
+                <span className="flex-1"><span className="block text-[13px] font-bold text-white">Quero vender</span><span className="block text-[11px] text-white/40">Guia para vendedores</span></span>
+              </Link>
               <Link to="/favoritos" onClick={onClose} className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-white/[0.06] transition group text-left">
                 <span className="p-2.5 rounded-xl bg-white/[0.06] text-primary group-hover:bg-primary/15 group-hover:scale-110 transition">
                   <Heart className="w-[18px] h-[18px]" />
@@ -169,6 +181,14 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20 px-3 mb-3">Institucional</p>
             <div className="space-y-1">
+              <Link to="/seguranca" onClick={onClose} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/[0.04] transition text-white/60 hover:text-white">
+                <ShieldCheck className="w-4 h-4 text-white/30" />
+                <span className="text-[13px] font-semibold">Segurança</span>
+              </Link>
+              <Link to="/taxas" onClick={onClose} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/[0.04] transition text-white/60 hover:text-white">
+                <Wallet className="w-4 h-4 text-white/30" />
+                <span className="text-[13px] font-semibold">Taxas</span>
+              </Link>
               <Link to="/regras" onClick={onClose} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/[0.04] transition text-white/60 hover:text-white">
                 <ScrollText className="w-4 h-4 text-white/30" />
                 <span className="text-[13px] font-semibold">Regras da plataforma</span>
@@ -197,7 +217,7 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
         </div>
 
         <div className="p-4 border-t border-white/5 shrink-0">
-          <p className="text-[10px] text-white/20 text-center font-mono">ZXMAX v2 • GGMAX Edition • Seguro</p>
+          <p className="text-[10px] text-white/20 text-center font-mono">{branding.siteName} • Marketplace Digital • Seguro</p>
         </div>
       </aside>
     </div>

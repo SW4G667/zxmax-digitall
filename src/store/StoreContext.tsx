@@ -193,7 +193,7 @@ interface StoreContextType {
   rejectProduct: (id: number) => Promise<boolean>;
   refreshProducts: () => Promise<void>;
   deleteProduct: (id: number) => Promise<{ paused: boolean }>;
-  buyProduct: (id: number, variation?: ProductVariation) => Promise<number | null>;
+  buyProduct: (id: number, options?: { variation?: ProductVariation; quantity?: number; paymentMethod?: string }) => Promise<number | null>;
   savePixCharge: (purchaseId: number, charge: { evopayId: string; qrCodeText: string; expiresAt: string }) => void;
   refreshPurchases: () => Promise<void>;
   markOrderDelivered: (orderId: number) => Promise<boolean>;
@@ -249,7 +249,7 @@ const defaultConfig: AppConfig = {
   discordServerLink: "https://discord.gg/zxmax",
   evopayApiKey: "",
   evopayMode: "automatic",
-  evopayWebhookUrl: typeof window !== "undefined" ? `https://dbekdedzgkfgtlytrnyw.supabase.co/functions/v1/evopay-webhook` : "",
+  evopayWebhookUrl: typeof window !== "undefined" ? `` : "",
   rules: "1- Proibido estelionato(golpe).\n2-Proibido lavagem de dinheiro no sistema de saque do site.\n3-Proibido venda de conteúdo adulto, cp, gore ou qualquer conteúdo doloso\n\n**(Toda regra quebrada resultará a suspensão do usuário de 1 semana a permanente sem receber dinheiro de vendas durante a suspensão.)**",
 };
 
@@ -681,19 +681,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { paused: false };
   };
 
-  const buyProduct = async (id: number, variation?: ProductVariation) => {
+  const buyProduct = async (
+    id: number,
+    options?: { variation?: ProductVariation; quantity?: number; paymentMethod?: string },
+  ) => {
     const product = state.products.find((p) => p.id === id);
     if (!product || !state.currentUser) return null;
+
+    const quantity = Number(options?.quantity);
     const { data, error } = await supabase.functions.invoke("create-purchase", {
-      body: { productId: id, variationName: variation?.name || null },
+      body: {
+        productId: id,
+        variationName: options?.variation?.name || null,
+        quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : undefined,
+        paymentMethod: options?.paymentMethod || null,
+      },
     });
     if (error || data?.error || !data?.purchase) {
       const message = data?.error || error?.message || "Não foi possível registrar a compra.";
       toast.error(message);
       return null;
     }
+
     const finalPurchase = mapPurchaseRow(data.purchase);
-    setState((s) => ({ ...s, purchases: [...s.purchases, finalPurchase] }));
+    setState((s) => ({
+      ...s,
+      purchases: [...s.purchases.filter((purchase) => purchase.id !== finalPurchase.id), finalPurchase],
+    }));
     return finalPurchase.id;
   };
 

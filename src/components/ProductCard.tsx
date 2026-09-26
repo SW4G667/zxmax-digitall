@@ -1,7 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { Heart, Star } from "lucide-react";
-import { Product } from "@/store/StoreContext";
+import { Product, useStore } from "@/store/StoreContext";
 import useFavorites from "@/hooks/useFavorites";
 
 interface Props {
@@ -11,6 +11,7 @@ interface Props {
 
 export default function ProductCard({ product, onClick }: Props) {
   const navigate = useNavigate();
+  const { state } = useStore();
   const { isFavorite, toggle } = useFavorites();
 
   const fav = isFavorite(product.id);
@@ -66,9 +67,21 @@ export default function ProductCard({ product, onClick }: Props) {
         <h3 className="font-bold text-foreground text-[13px] leading-tight line-clamp-2 min-h-[36px]">
           {product.name}
         </h3>
-        <p className="text-[11px] text-muted-foreground mt-1">
-          por <span className="text-primary font-semibold">{product.seller}</span>
-        </p>
+        <div className="flex items-center gap-2 mt-2">
+          <img
+            src={state.userDirectory?.[product.sellerId]?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(product.seller || "Vendedor")}`}
+            alt=""
+            className="w-6 h-6 rounded-full object-cover bg-muted border border-border"
+          />
+          <div className="min-w-0">
+            <p className="text-[11px] text-muted-foreground truncate">
+              por <span className="text-primary font-semibold">{product.seller || "Vendedor"}</span>
+            </p>
+            <p className="text-[9px] text-muted-foreground font-mono truncate">
+              vendedor #{product.sellerPublicId || "—"} · produto #{product.id}
+            </p>
+          </div>
+        </div>
 
         <div className="mt-auto pt-3 flex items-end justify-between">
           <div>

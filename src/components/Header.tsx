@@ -6,6 +6,7 @@ import { Sun, Moon, Search, Wallet, Heart } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 import DiscordIcon from "@/components/DiscordIcon";
 import useFavorites from "@/hooks/useFavorites";
+import useSiteBranding from "@/hooks/useSiteBranding";
 
 interface Props {
   onProfileClick?: () => void;
@@ -21,6 +22,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
   const [q, setQ] = useState("");
   const { count } = useFavorites();
   const [favCount, setFavCount] = useState(count);
+  const { branding } = useSiteBranding();
 
   useEffect(() => {
     setFavCount(count);
@@ -67,8 +69,12 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
           </div>
         </button>
 
-        <button onClick={() => navigate("/loja")} className="shrink-0 flex items-center" aria-label="Ir para a loja">
-          <h2 className="text-xl sm:text-2xl font-black tracking-tighter text-white">ZX<span className="text-[#0084ff]">MAX</span></h2>
+        <button onClick={() => navigate("/loja")} className="shrink-0 flex items-center gap-2" aria-label="Ir para a loja">
+          {branding.logoUrl ? (
+            <img src={branding.logoUrl} alt={branding.siteName} className="h-8 max-w-[140px] object-contain" />
+          ) : (
+            <h2 className="text-xl sm:text-2xl font-black tracking-tighter text-white">{branding.siteName}</h2>
+          )}
         </button>
 
         <form onSubmit={submitSearch} className="hidden md:flex items-center bg-[#15151a] border border-[#25252e] rounded-xl px-3 py-2 flex-1 max-w-xl focus-within:border-[#0084ff]/50 transition">
@@ -78,7 +84,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick }: Pro
 
         <div className="flex items-center gap-1 ml-auto">
           {/* Discord small near bell as requested */}
-          <a href={state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-xl bg-[#5865F2]/10 border border-[#5865F2]/20 flex items-center justify-center hover:bg-[#5865F2]/20 transition" title="Entrar no Discord">
+          <a href={branding.supportUrl || state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-xl bg-[#5865F2]/10 border border-[#5865F2]/20 flex items-center justify-center hover:bg-[#5865F2]/20 transition" title="Entrar no Discord">
             <DiscordIcon className="w-4 h-4 text-[#5865F2]" />
           </a>
 
