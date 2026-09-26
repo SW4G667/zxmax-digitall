@@ -9,10 +9,10 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   status,
   headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
 });
-const API = String(Deno.env.get("MAGNUSPAY_BASE_URL") || "https://magnuscash.com.br/api").replace(/\/$/, "");
+const API = String(Deno.env.get("MAGNUSPAY_BASE_URL") || "https://magnuspay.onrender.com/api").replace(/\/$/, "");
 const normalizeMoney = (value: unknown) => Math.round(Number(value) * 100);
 
-async function notify(admin: any, purchaseId: number) {
+async function notify(purchaseId: number) {
   const url = Deno.env.get("SUPABASE_URL")!;
   const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${service}`, apikey: service };
@@ -46,7 +46,7 @@ serve(async (req) => {
       .maybeSingle();
 
     if (purchaseError || !purchase || purchase.buyer_id !== authData.user.id) return json({ error: "Pedido não encontrado." }, 404);
-    if (["paid", "delivered"].includes(String(purchase.status))) {
+    if (["paid", "delivered_pending_confirmation", "delivered"].includes(String(purchase.status))) {
       return json({ status: "COMPLETED", purchaseStatus: purchase.status, paid: true });
     }
     if (purchase.payment_provider !== "magnuspay_pix" || !purchase.provider_payment_id) {
@@ -54,7 +54,7 @@ serve(async (req) => {
     }
 
     const apiKey = String(Deno.env.get("MAGNUSPAY_API_KEY") || "").trim();
-    if (!apiKey) return json({ error: "PIX temporariamente indisponível." }, 503);
+    if (!apiKey) return json({ error: "PIX MagnusPay não está configurado no servidor." }, 503);
 
     const response = await fetch(`${API}/transactions/check`, {
       method: "POST",
@@ -65,12 +65,20 @@ serve(async (req) => {
     let parsed: any = {};
     try { parsed = raw ? JSON.parse(raw) : {}; } catch { parsed = {}; }
 
+    if (response.status === 429) {
+      return json({ error: "Limite temporário da MagnusPay atingido. Aguarde alguns instantes.", retryAfter: response.headers.get("Retry-After") }, 429);
+    }
     if (!response.ok || parsed?.success === false || !parsed?.data) {
-      return json({ error: "Não foi possível consultar o pagamento agora." }, 502);
+      await admin.from("webhook_logs").insert({
+        source: "magnuspay", event_type: "CHECK_STATUS", status: `error_${response.status}`,
+        order_id: purchase.id, charge_id: purchase.provider_payment_id,
+        payload: { code: parsed?.code || null }, error: String(parsed?.message || "Falha na consulta").slice(0, 500),
+      }).catch(() => {});
+      return json({ error: String(parsed?.message || "Não foi possível consultar o pagamento agora.").slice(0, 240) }, 502);
     }
 
     const data = parsed.data;
-    const id = String(data.id || "");
+    const id = String(data.id || data.transactionId || data.transaction_id || "");
     const status = String(data.status || "").toUpperCase();
     const amountCents = normalizeMoney(data.amount);
     const expectedCents = normalizeMoney(purchase.amount);
@@ -90,7 +98,7 @@ serve(async (req) => {
       });
       if (applyError) throw applyError;
       const result = Array.isArray(applied) ? applied[0] : applied;
-      if (result?.applied) void notify(admin, purchase.id);
+      if (result?.applied) void notify(purchase.id);
       return json({ status, purchaseStatus: result?.resulting_status || "paid", paid: true });
     }
 
