@@ -25,44 +25,46 @@ interface SellerOffer {
   verified: boolean;
 }
 
-function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePercent }: { product: Product; quantity: number; onClose: () => void; onConfirm: (method: string, cpf: string) => void; loading: boolean; feePercent: number }) {
+function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePercent }: { product: Product; quantity: number; onClose: () => void; onConfirm: (method: string) => void; loading: boolean; feePercent: number }) {
   const [method, setMethod] = useState<"pix" | "crypto" | "card" | "boleto">("pix");
-  const [cpf, setCpf] = useState("");
-  const [available, setAvailable] = useState<Record<string, boolean>>({ pix: true, crypto: true, card: true, boleto: true });
+  const [available, setAvailable] = useState<Record<string, boolean>>({ pix: false, crypto: false, card: false, boleto: false });
   const unitPrice = product.price;
   const subtotal = unitPrice * quantity;
   const fee = subtotal * (feePercent / 100);
   const total = subtotal + fee;
 
   useEffect(() => {
-    // Check gateway health - if fails, mark as unavailable
-    const checkHealth = async () => {
+    const loadMethods = async () => {
       try {
-        const { data } = await supabase.functions.invoke("integrations-config", { body: { action: "get" } });
-        const evopayOk = !!data?.integrations?.evopay?.apiKey_masked || !!data?.integrations?.vexopay?.clientId;
-        const stripeOk = !!data?.integrations?.stripe?.secretKey_masked;
-        setAvailable({
-          pix: evopayOk || true, // PIX fallback true, will show error if fails
-          crypto: !!data?.integrations?.vexopay?.clientId || !!data?.integrations?.vexopay?.clientId_masked || true,
-          card: stripeOk || true,
-          boleto: stripeOk || true,
+        const { data, error } = await supabase.functions.invoke("integrations-config", {
+          body: { action: "payment_methods" },
         });
+        if (error || !data?.methods) throw error || new Error("Métodos indisponíveis");
+        const next = {
+          pix: data.methods.magnuspay_pix === true,
+          crypto: data.methods.crypto === true,
+          card: data.methods.card === true,
+          boleto: data.methods.boleto === true,
+        };
+        setAvailable(next);
+        if (!next.pix) {
+          if (next.crypto) setMethod("crypto");
+          else if (next.card) setMethod("card");
+          else if (next.boleto) setMethod("boleto");
+        }
       } catch {
-        // Keep all available, will handle error on confirm
+        setAvailable({ pix: false, crypto: false, card: false, boleto: false });
       }
     };
-    void checkHealth();
+    void loadMethods();
   }, []);
 
   const handleConfirm = () => {
-    const cleanCpf = cpf.replace(/\D/g, "");
-    if (method === "pix" || method === "crypto") {
-      if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
-        toast.error("Digite um CPF/CNPJ válido (11 ou 14 dígitos) para PIX/Crypto");
-        return;
-      }
+    if (!available[method]) {
+      toast.error("Essa forma de pagamento está indisponível no momento.");
+      return;
     }
-    onConfirm(method, cleanCpf);
+    onConfirm(method);
   };
 
   return (
@@ -99,12 +101,6 @@ function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePerc
               </button>
             </div>
             <p className="text-[10px] text-white/30 mt-2">Se alguma forma estiver com problemas, fica indisponível automaticamente. Configure credenciais Stripe em Admin → APIs.</p>
-          </div>
-
-          <div>
-            <p className="text-xs font-bold uppercase text-white/30 mb-2">CPF para pagamento</p>
-            <input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />
-            <p className="text-[10px] text-white/30 mt-1">Obrigatório para PIX e Crypto (VexoPay exige documento)</p>
           </div>
 
           <div className="bg-[#0a0a0f] border border-[#1e1e28] rounded-xl p-4 space-y-2">
@@ -235,30 +231,25 @@ export default function ProdutoPage() {
     setCheckoutOpen(true);
   };
 
-  const handleCheckoutConfirm = async (method: string, cpf: string) => {
+  const handleCheckoutConfirm = async (method: string) => {
     setBuyLoading(true);
     try {
-      // Save CPF to profile
-      if (state.currentUser) {
-        await supabase.from("profiles").update({ cpf } as any).eq("user_id", state.currentUser.id);
-      }
-
-      const purchaseId = await buyProduct(product.id, selectedVariation || undefined);
+      const paymentMethod = method === "pix" ? "magnuspay_pix" : method;
+      const purchaseId = await buyProduct(product.id, {
+        variation: selectedVariation || undefined,
+        quantity: isRobux ? quantity : 1,
+        paymentMethod,
+      });
       if (!purchaseId) throw new Error("Falha ao criar pedido");
 
       if (method === "pix") {
-        const { data, error } = await supabase.functions.invoke("create-evopay-pix", {
-          body: {
-            purchaseId,
-            productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name,
-            amount: subtotal,
-            buyerName: state.currentUser?.name,
-          },
+        const { data, error } = await supabase.functions.invoke("create-magnuspay-pix", {
+          body: { purchaseId },
         });
         if (error) throw error;
         if (data?.qrCodeText) {
           savePixCharge(purchaseId, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
-          setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: total, qrCodeUrl: data.qrCodeUrl, purchaseId });
+          setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: Number(data.amount), qrCodeUrl: data.qrCodeUrl, purchaseId });
           setCheckoutOpen(false);
         } else {
           toast.error("Erro ao gerar PIX: " + (data?.error || "tente novamente"));
