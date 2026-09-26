@@ -8,7 +8,7 @@ const corsHeaders = {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { ...corsHeaders, "Content-Type": "application/json" },
 });
-const API = "https://magnuspay.onrender.com/api";
+const API = String(Deno.env.get("MAGNUSPAY_BASE_URL") || "https://magnuscash.com.br/api").replace(/\/$/, "");
 
 const unwrap = (body: any) => body?.data && typeof body.data === "object" ? body.data : body || {};
 const first = (obj: any, keys: string[]) => {
@@ -37,7 +37,7 @@ serve(async (req) => {
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: purchase, error: purchaseError } = await admin
       .from("purchases")
-      .select("id,buyer_id,status,amount,payment_provider,provider_payment_id,pix_qr_code,pix_expires_at")
+      .select("id,buyer_id,status,amount,payment_provider,provider_payment_id,payment_status,pix_qr_code,pix_expires_at")
       .eq("id", purchaseId)
       .maybeSingle();
 
@@ -47,10 +47,15 @@ serve(async (req) => {
       return json({ error: "Forma de pagamento incompatível com PIX MagnusPay." }, 409);
     }
 
-    if (purchase.provider_payment_id && purchase.pix_qr_code) {
+    const stillValid = purchase.payment_status === "pending"
+      && purchase.provider_payment_id
+      && purchase.pix_qr_code
+      && (!purchase.pix_expires_at || new Date(purchase.pix_expires_at).getTime() > Date.now());
+
+    if (stillValid) {
       return json({
         id: purchase.provider_payment_id,
-        status: "pending",
+        status: "PENDING",
         amount: Number(purchase.amount),
         qrCodeText: purchase.pix_qr_code,
         qrCodeUrl: null,
@@ -65,6 +70,8 @@ serve(async (req) => {
     const amount = Math.round(Number(purchase.amount) * 100) / 100;
     if (!Number.isFinite(amount) || amount < 0.01) return json({ error: "Valor do pedido inválido." }, 400);
 
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const webhookUrl = `${supabaseUrl}/functions/v1/magnuspay-webhook`;
     const response = await fetch(`${API}/transactions/create`, {
       method: "POST",
       headers: {
@@ -72,7 +79,12 @@ serve(async (req) => {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({ amount, description: `ZXMAX pedido #${purchase.id}` }),
+      body: JSON.stringify({
+        amount,
+        description: `ZXMAX pedido #${purchase.id}`,
+        externalId: `zxmax-purchase-${purchase.id}`,
+        webhookUrl,
+      }),
     });
 
     const raw = await response.text();
