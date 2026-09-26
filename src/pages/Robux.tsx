@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowRight, BadgeCheck, CheckCircle2, ChevronRight, CircleDollarSign, Coins,
-  PackageCheck, Search, ShieldCheck, ShoppingCart, Sparkles, Star, X, Zap,
+  PackageCheck, Search, ShieldCheck, ShoppingCart, Sparkles, Star, X,
 } from "lucide-react";
 import { useStore } from "@/store/StoreContext";
 import {
