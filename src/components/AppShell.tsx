@@ -6,7 +6,7 @@ import ProfileModal from "@/components/ProfileModal";
 import AuthScreen from "@/components/AuthScreen";
 import SiteFooter from "@/components/SiteFooter";
 import { useAuth } from "@/hooks/useAuth";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "withdraw";
 
@@ -26,6 +26,7 @@ interface Props {
 export default function AppShell({ children }: Props) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [profileOpen, setProfileOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -37,8 +38,11 @@ export default function AppShell({ children }: Props) {
     }
   }, [user]);
 
+  const accountArea = ["/meus-produtos", "/minhas-compras", "/suporte", "/admin", "/sacar", "/perfil", "/configuracoes"]
+    .some((prefix) => location.pathname.startsWith(prefix));
+
   return (
-    <div className="min-h-screen bg-[#0b0b0e] pb-20 text-white">
+    <div className={`min-h-screen bg-[#0b0b0e] text-white ${accountArea && user ? "pb-20" : ""}`}>
       <Header
         onProfileClick={() => setProfileOpen(true)}
         onAuthClick={() => setAuthOpen(true)}
@@ -50,8 +54,8 @@ export default function AppShell({ children }: Props) {
         {children}
       </div>
 
-      <SiteFooter />
-      <BottomNav />
+      {!accountArea ? <SiteFooter /> : null}
+      {accountArea && user ? <BottomNav /> : null}
 
       <SideMenu
         open={menuOpen}
