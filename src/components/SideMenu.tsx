@@ -121,6 +121,14 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
             </p>
             <div className="space-y-1">
               <Item icon={Store} label="Loja" hint="Ver todos os anúncios" onClick={() => go("store")} highlight />
+              <Link to="/como-funciona" onClick={onClose} className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-white/[0.06] transition group text-left">
+                <span className="p-2.5 rounded-xl bg-white/[0.06] text-primary"><HelpCircle className="w-[18px] h-[18px]" /></span>
+                <span className="flex-1"><span className="block text-[13px] font-bold text-white">Como funciona</span><span className="block text-[11px] text-white/40">Compra, pagamento e entrega</span></span>
+              </Link>
+              <Link to="/vender" onClick={onClose} className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-white/[0.06] transition group text-left">
+                <span className="p-2.5 rounded-xl bg-white/[0.06] text-primary"><Package className="w-[18px] h-[18px]" /></span>
+                <span className="flex-1"><span className="block text-[13px] font-bold text-white">Quero vender</span><span className="block text-[11px] text-white/40">Guia para vendedores</span></span>
+              </Link>
               <Link to="/favoritos" onClick={onClose} className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-white/[0.06] transition group text-left">
                 <span className="p-2.5 rounded-xl bg-white/[0.06] text-primary group-hover:bg-primary/15 group-hover:scale-110 transition">
                   <Heart className="w-[18px] h-[18px]" />
@@ -173,6 +181,14 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20 px-3 mb-3">Institucional</p>
             <div className="space-y-1">
+              <Link to="/seguranca" onClick={onClose} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/[0.04] transition text-white/60 hover:text-white">
+                <ShieldCheck className="w-4 h-4 text-white/30" />
+                <span className="text-[13px] font-semibold">Segurança</span>
+              </Link>
+              <Link to="/taxas" onClick={onClose} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/[0.04] transition text-white/60 hover:text-white">
+                <Wallet className="w-4 h-4 text-white/30" />
+                <span className="text-[13px] font-semibold">Taxas</span>
+              </Link>
               <Link to="/regras" onClick={onClose} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/[0.04] transition text-white/60 hover:text-white">
                 <ScrollText className="w-4 h-4 text-white/30" />
                 <span className="text-[13px] font-semibold">Regras da plataforma</span>
