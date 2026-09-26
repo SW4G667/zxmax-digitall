@@ -38,14 +38,13 @@ function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePerc
     // Check gateway health - if fails, mark as unavailable
     const checkHealth = async () => {
       try {
-        const { data } = await supabase.functions.invoke("integrations-config", { body: { action: "get" } });
-        const evopayOk = !!data?.integrations?.evopay?.apiKey_masked || !!data?.integrations?.vexopay?.clientId;
-        const stripeOk = !!data?.integrations?.stripe?.secretKey_masked;
+        const { data, error } = await supabase.functions.invoke("integrations-config", { body: { action: "payment_methods" } });
+        if (error || !data?.methods) throw error || new Error("Métodos indisponíveis");
         setAvailable({
-          pix: evopayOk || true, // PIX fallback true, will show error if fails
-          crypto: !!data?.integrations?.vexopay?.clientId || !!data?.integrations?.vexopay?.clientId_masked || true,
-          card: stripeOk || true,
-          boleto: stripeOk || true,
+          pix: !!data.methods.magnuspay_pix || !!data.methods.zennith_pix || !!data.methods.vexopay_pix,
+          crypto: !!data.methods.crypto,
+          card: !!data.methods.card,
+          boleto: !!data.methods.boleto,
         });
       } catch {
         // Keep all available, will handle error on confirm
@@ -56,11 +55,9 @@ function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePerc
 
   const handleConfirm = () => {
     const cleanCpf = cpf.replace(/\D/g, "");
-    if (method === "pix" || method === "crypto") {
-      if (cleanCpf.length !== 11 && cleanCpf.length !== 14) {
-        toast.error("Digite um CPF/CNPJ válido (11 ou 14 dígitos) para PIX/Crypto");
-        return;
-      }
+    if (method === "crypto" && cleanCpf.length !== 11 && cleanCpf.length !== 14) {
+      toast.error("Digite um CPF/CNPJ válido para pagamento em Crypto");
+      return;
     }
     onConfirm(method, cleanCpf);
   };
@@ -104,7 +101,7 @@ function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePerc
           <div>
             <p className="text-xs font-bold uppercase text-white/30 mb-2">CPF para pagamento</p>
             <input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />
-            <p className="text-[10px] text-white/30 mt-1">Obrigatório para PIX e Crypto (VexoPay exige documento)</p>
+            <p className="text-[10px] text-white/30 mt-1">Opcional no PIX. Necessário apenas se o provedor selecionado exigir documento.</p>
           </div>
 
           <div className="bg-[#0a0a0f] border border-[#1e1e28] rounded-xl p-4 space-y-2">
@@ -238,8 +235,8 @@ export default function ProdutoPage() {
   const handleCheckoutConfirm = async (method: string, cpf: string) => {
     setBuyLoading(true);
     try {
-      // Save CPF to profile
-      if (state.currentUser) {
+      // Store document only when the user explicitly provided one.
+      if (state.currentUser && cpf) {
         await supabase.from("profiles").update({ cpf } as any).eq("user_id", state.currentUser.id);
       }
 
@@ -247,7 +244,7 @@ export default function ProdutoPage() {
       if (!purchaseId) throw new Error("Falha ao criar pedido");
 
       if (method === "pix") {
-        const { data, error } = await supabase.functions.invoke("create-evopay-pix", {
+        const { data, error } = await supabase.functions.invoke("create-magnuspay-pix", {
           body: {
             purchaseId,
             productName: selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name,
@@ -363,6 +360,7 @@ export default function ProdutoPage() {
                     <img src={state.userDirectory?.[currentOffer.sellerId]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentOffer.sellerName}`} className="w-12 h-12 rounded-full bg-[#1a1a20] border border-[#25252e]" alt="" />
                     <div>
                       <p className="font-black text-white flex items-center gap-1.5">{currentOffer.sellerName} <BadgeCheck className="w-4 h-4 text-[#0084ff]" /></p>
+                      <p className="text-[10px] font-mono text-white/30 mt-0.5">Produto #{product.id} · Vendedor ID {product.sellerPublicId || "—"}</p>
                       <p className="text-xs flex items-center gap-2">
                         {currentOffer.reviews > 0 ? (
                           <>
@@ -513,6 +511,7 @@ export default function ProdutoPage() {
                 <h1 className="text-xl font-black text-white leading-tight">{product.name}</h1>
                 <div className="flex items-center gap-2 mt-2">
                   <span className="text-xs bg-[#1a1a20] border border-[#25252e] px-2.5 py-1 rounded-full font-bold text-white/60">{product.category}</span>
+                  <span className="text-[11px] font-mono text-white/35">Produto #{product.id}</span>
                   <span className="flex items-center gap-1 text-xs text-white/40"><Eye className="w-3.5 h-3.5" /> {product.sales} vendas</span>
                 </div>
 
