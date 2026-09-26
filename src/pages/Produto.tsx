@@ -25,12 +25,11 @@ interface SellerOffer {
   verified: boolean;
 }
 
-function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePercent }: { product: Product; quantity: number; onClose: () => void; onConfirm: (method: string) => void; loading: boolean; feePercent: number }) {
+function CheckoutModal({ product, quantity, subtotal, onClose, onConfirm, loading }: { product: Product; quantity: number; subtotal: number; onClose: () => void; onConfirm: (method: string) => void; loading: boolean }) {
   const [method, setMethod] = useState<"pix" | "crypto" | "card" | "boleto">("pix");
   const [available, setAvailable] = useState<Record<string, boolean>>({ pix: false, crypto: false, card: false, boleto: false });
-  const unitPrice = product.price;
-  const subtotal = unitPrice * quantity;
-  const fee = subtotal * (feePercent / 100);
+  const [pixFee, setPixFee] = useState(0);
+  const fee = method === "pix" ? pixFee : 0;
   const total = subtotal + fee;
 
   useEffect(() => {
@@ -47,6 +46,7 @@ function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePerc
           boleto: data.methods.boleto === true,
         };
         setAvailable(next);
+        setPixFee(Number(data?.fees?.magnuspay_pix || 0));
         if (!next.pix) {
           if (next.crypto) setMethod("crypto");
           else if (next.card) setMethod("card");
@@ -104,13 +104,12 @@ function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePerc
           </div>
 
           <div className="bg-[#0a0a0f] border border-[#1e1e28] rounded-xl p-4 space-y-2">
-            <div className="flex justify-between text-xs"><span className="text-white/40">Preço unitário</span><span className="text-white">R$ {unitPrice.toFixed(5)} / un</span></div>
+            <div className="flex justify-between text-xs"><span className="text-white/40">Produto</span><span className="text-white">R$ {subtotal.toFixed(2)}</span></div>
             <div className="flex justify-between text-xs"><span className="text-white/40">Quantidade</span><span className="text-white">{quantity}</span></div>
-            <div className="flex justify-between text-xs"><span className="text-white/40">Subtotal</span><span className="text-white">R$ {subtotal.toFixed(2)}</span></div>
-            <div className="flex justify-between text-xs"><span className="text-white/40">Taxa plataforma ({feePercent}%)</span><span className="text-[#ffbd2e]">+ R$ {fee.toFixed(2)}</span></div>
+            {fee > 0 && <div className="flex justify-between text-xs"><span className="text-white/40">Taxa do pagamento</span><span className="text-[#ffbd2e]">+ R$ {fee.toFixed(2)}</span></div>}
             <div className="h-px bg-[#1e1e28] my-2" />
             <div className="flex justify-between font-black"><span className="text-white">Total</span><span className="text-white text-lg">R$ {total.toFixed(2)}</span></div>
-            <p className="text-[10px] text-white/30">Taxa vai para o admin. Produto continua R$ {subtotal.toFixed(2)} para o vendedor.</p>
+            <p className="text-[10px] text-white/30">O valor final é validado no servidor antes da cobrança.</p>
           </div>
 
           <button onClick={handleConfirm} disabled={loading} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 transition">
@@ -131,7 +130,7 @@ function CheckoutModal({ product, quantity, onClose, onConfirm, loading, feePerc
 export default function ProdutoPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { state, addProductQuestion, buyProduct, refreshPurchases, savePixCharge } = useStore();
+  const { state, addProductQuestion, buyProduct, refreshPurchases } = useStore();
   const { isFavorite, toggle } = useFavorites();
   const [selectedVariation, setSelectedVariation] = useState<ProductVariation | null>(null);
   const [detailTab, setDetailTab] = useState<"info" | "reviews" | "questions">("info");
@@ -211,9 +210,15 @@ export default function ProdutoPage() {
 
   const unitPrice = selectedVariation ? selectedVariation.price : product.price;
   const displayQuantity = isRobux ? quantity : 1;
-  const subtotal = unitPrice * displayQuantity;
-  const feePercent = state.config.commission || 10;
-  const total = subtotal * (1 + feePercent / 100);
+  const packageLabel = selectedVariation?.name || product.variations?.[0]?.name || "";
+  const packageUnitsMatch = String(packageLabel).match(/(\d[\d.,]*)/);
+  const packageUnits = isRobux
+    ? Math.max(1, Number(String(packageUnitsMatch?.[1] || "100").replace(/\./g, "").replace(",", ".")) || 100)
+    : 1;
+  const subtotal = isRobux
+    ? Number(((displayQuantity / packageUnits) * unitPrice).toFixed(2))
+    : Number(unitPrice.toFixed(2));
+  const total = subtotal;
 
   const handleBuyClick = () => {
     if (!state.currentUser) {
@@ -248,7 +253,6 @@ export default function ProdutoPage() {
         });
         if (error) throw error;
         if (data?.qrCodeText) {
-          savePixCharge(purchaseId, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
           setPixCharge({ paymentId: data.id, qrCodeText: data.qrCodeText, amount: Number(data.amount), qrCodeUrl: data.qrCodeUrl, purchaseId });
           setCheckoutOpen(false);
         } else {
@@ -387,7 +391,7 @@ export default function ProdutoPage() {
 
                 <div className="mt-4 space-y-3 text-sm">
                   <div className="flex justify-between"><span className="text-white/60">Prazo de entrega</span><span className="font-bold text-white">{currentOffer.delivery}</span></div>
-                  <div className="border-t border-[#1e1e28] pt-3 flex justify-between text-lg font-black"><span className="text-white">Total: R$ {total.toFixed(2)}</span><span className="text-white/40 text-xs font-normal">taxa {feePercent}% inclusa</span></div>
+                  <div className="border-t border-[#1e1e28] pt-3 flex justify-between text-lg font-black"><span className="text-white">Total: R$ {total.toFixed(2)}</span><span className="text-white/40 text-xs font-normal">valor do produto</span></div>
                 </div>
 
                 <button onClick={handleBuyClick} disabled={buyLoading} className="w-full mt-5 bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-base transition disabled:opacity-50">Comprar agora</button>
@@ -456,7 +460,7 @@ export default function ProdutoPage() {
               <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
                 <p className="text-xs uppercase font-bold text-white/30 mb-1">Preço</p>
                 <p className="text-3xl font-black text-white">R$ {total.toFixed(2)}</p>
-                <p className="text-xs text-white/40 mt-1">R$ {unitPrice.toFixed(5)} / unidade × {quantity} + taxa {feePercent}%</p>
+                <p className="text-xs text-white/40 mt-1">Pacote de {packageUnits.toLocaleString()} unidades · quantidade {quantity.toLocaleString()}</p>
                 <button onClick={handleBuyClick} className="w-full mt-4 bg-[#ffbd2e] text-black py-3.5 rounded-xl font-black">Comprar agora</button>
               </div>
 
@@ -471,7 +475,7 @@ export default function ProdutoPage() {
           </div>
         </div>
 
-        {checkoutOpen && <CheckoutModal product={product} quantity={quantity} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} feePercent={feePercent} />}
+        {checkoutOpen && <CheckoutModal product={product} quantity={quantity} subtotal={subtotal} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} />}
         {selectedSellerId && <UserProfileModal open={!!selectedSellerId} onClose={() => setSelectedSellerId(null)} userId={selectedSellerId} />}
         <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
         {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
@@ -567,14 +571,14 @@ export default function ProdutoPage() {
             <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
               <p className="text-[11px] uppercase font-bold text-white/30">Total com taxa</p>
               <p className="text-3xl font-black text-white">R$ {total.toFixed(2)}</p>
-              <p className="text-xs text-white/40">R$ {subtotal.toFixed(2)} + {feePercent}% taxa</p>
+              <p className="text-xs text-white/40">Valor do produto antes da taxa do meio de pagamento</p>
               <button onClick={handleBuyClick} disabled={buyLoading} className="w-full mt-4 bg-[#0084ff] hover:bg-[#0066cc] text-white py-3.5 rounded-xl font-black text-sm transition disabled:opacity-50">Comprar agora</button>
             </div>
           </div>
         </div>
       </div>
 
-      {checkoutOpen && <CheckoutModal product={product} quantity={displayQuantity} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} feePercent={feePercent} />}
+      {checkoutOpen && <CheckoutModal product={product} quantity={displayQuantity} subtotal={subtotal} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} />}
       {selectedSellerId && <UserProfileModal open={!!selectedSellerId} onClose={() => setSelectedSellerId(null)} userId={selectedSellerId} />}
       <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
       {authOpen && <AuthScreen onClose={() => setAuthOpen(false)} />}
