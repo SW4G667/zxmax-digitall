@@ -137,7 +137,7 @@ serve(async (req) => {
     }
 
     const safeProductAmount = isRobux
-      ? roundMoney((quantity / units) * Number(product.price))
+      ? roundMoney((quantity / units) * unitPrice)
       : roundMoney(unitPrice);
     const amount = roundMoney(safeProductAmount + buyerFee);
     if (amount < 2) return json({ error: "Valor mínimo do pedido é R$ 2,00." }, 400);
