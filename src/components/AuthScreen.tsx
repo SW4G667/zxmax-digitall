@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { getDiscordRedirectTo } from "@/lib/discordAuth";
 import { recordSecurityEvent } from "@/lib/securityEvents";
-import { useSiteBranding } from "@/context/SiteBrandingContext";
+import { useSiteBranding } from "@/context/SiteBrandingContext";\nimport { getAppUrl, isGeneratedVercelPreviewHost } from "@/lib/appUrl";
 
 export default function AuthScreen({ onClose }: { onClose?: () => void }) {
   const { signUp, signIn } = useAuth();
@@ -18,7 +18,7 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
-  const [passStrength, setPassStrength] = useState(0);
+  const [passStrength, setPassStrength] = useState(0);\n  const isPreviewHost = isGeneratedVercelPreviewHost();
 
   useEffect(() => {
     let score = 0;
@@ -53,7 +53,7 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
     setLoading(true);
     try {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: new URL("/reset-password", window.location.origin).toString(),
+        redirectTo: getAppUrl("/reset-password"),
       });
       if (resetError) throw resetError;
       void recordSecurityEvent(supabase, "auth.recovery", "success");
@@ -141,6 +141,12 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
             {mode === "login" ? "Acompanhe pedidos, anúncios e conversas em um só lugar." : "Crie seu perfil para comprar e vender dentro da plataforma."}
           </p>
         </div>
+
+        {isPreviewHost ? (
+          <div role="status" className="mt-5 rounded-lg border border-amber-300/15 bg-amber-300/[0.06] p-3 text-[11px] leading-5 text-amber-100/75">
+            Ambiente de preview da Vercel. Para sua segurança, prefira entrar com senha no domínio oficial ou no seu domínio personalizado.
+          </div>
+        ) : null}
 
         <div className="mt-5 grid grid-cols-2 rounded-lg bg-[#0b0b0e] p-1">
           <button onClick={() => { setMode("login"); setError(""); }} className={`rounded-md py-2 text-xs font-semibold transition ${mode === "login" ? "bg-[#1b1b20] text-white" : "text-white/40 hover:text-white"}`}>Entrar</button>
