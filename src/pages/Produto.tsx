@@ -240,7 +240,11 @@ export default function ProdutoPage() {
         await supabase.from("profiles").update({ cpf } as any).eq("user_id", state.currentUser.id);
       }
 
-      const purchaseId = await buyProduct(product.id, selectedVariation || undefined);
+      const paymentMethod = method === "pix" ? "magnuspay_pix" : method;
+      const purchaseId = await buyProduct(product.id, selectedVariation || undefined, {
+        quantity: isRobux ? quantity : 1,
+        paymentMethod,
+      });
       if (!purchaseId) throw new Error("Falha ao criar pedido");
 
       if (method === "pix") {
