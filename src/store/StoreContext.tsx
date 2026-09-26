@@ -108,7 +108,7 @@ export interface Purchase {
   createdAt: string;
   updatedAt?: string;
   amount: number;
-  paymentProvider?: "zennith_pix" | "vexopay_pix" | "crypto" | "card" | "boleto";
+  paymentProvider?: "magnuspay_pix" | "zennith_pix" | "vexopay_pix" | "crypto" | "card" | "boleto";
   messages: PurchaseMessage[];
   reviewed?: boolean;
   reviewStars?: number;
