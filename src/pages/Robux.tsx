@@ -109,7 +109,7 @@ export default function RobuxPage() {
         </nav>
 
         <header className="mb-6 border-b border-white/[0.07] pb-5">
-          <p className="text-xs font-medium text-white/35">Comprar e vender Robux</p>
+          <p className="text-xs font-medium text-white/35">Mercado de Robux</p>
           <h1 className="mt-1 text-3xl font-bold tracking-[-0.035em] text-white">Robux Roblox</h1>
         </header>
 
