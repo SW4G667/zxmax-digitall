@@ -2,10 +2,11 @@ import React, { useEffect, useState } from "react";
 import { useStore } from "@/store/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Sun, Moon, Search, Wallet, Heart } from "lucide-react";
+import { Sun, Moon, Search, Wallet, Heart, Settings } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 import DiscordIcon from "@/components/DiscordIcon";
 import useFavorites from "@/hooks/useFavorites";
+import { useSiteBranding } from "@/context/SiteBrandingContext";
 
 interface Props {
   onProfileClick?: () => void;
@@ -21,6 +22,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
   const location = useLocation();
   const [q, setQ] = useState("");
   const { count } = useFavorites();
+  const { branding } = useSiteBranding();
   const [favCount, setFavCount] = useState(count);
 
   useEffect(() => {
@@ -69,7 +71,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
     <header className="sticky top-0 z-50 bg-[#0a0a0f] border-b border-[#1e1e28]">
       <div className="max-w-7xl mx-auto px-3 sm:px-4 h-14 flex items-center gap-2 sm:gap-4">
         <button onClick={() => navigate("/loja")} className="shrink-0 flex items-center" aria-label="Ir para a loja">
-          <h2 className="text-lg sm:text-2xl font-black tracking-[-0.06em] text-white">ZX<span className="text-[#168cff]">MAX</span></h2>
+          {branding.logoUrl ? <img src={branding.logoUrl} alt={branding.siteName} className="h-8 max-w-[150px] object-contain object-left" /> : <h2 className="text-lg sm:text-2xl font-black tracking-[-0.06em] text-white">{branding.siteName || "ZXMAX"}</h2>}
         </button>
 
         <button
@@ -86,7 +88,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
         </form>
 
         <div className="flex items-center gap-1 ml-auto">
-          <a href={state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noopener noreferrer" className="zx-icon-action hidden sm:flex border-[#5865F2]/25 bg-[#5865F2]/10 hover:bg-[#5865F2]/20" title="Entrar no Discord">
+          <a href={branding.supportUrl || state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noopener noreferrer" className="zx-icon-action hidden sm:flex border-[#5865F2]/25 bg-[#5865F2]/10 hover:bg-[#5865F2]/20" title="Entrar no Discord">
             <DiscordIcon className="w-4 h-4 text-[#5865F2]" />
           </a>
 
@@ -96,6 +98,12 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
           </button>
 
           <NotificationBell />
+
+          {isAdmin && (
+            <button onClick={() => navigate("/admin/branding")} className="zx-icon-action hidden sm:flex" title="Personalizar site" aria-label="Personalizar identidade visual do site">
+              <Settings className="w-4 h-4 text-white/50" />
+            </button>
+          )}
 
           <button onClick={toggleDark} className="zx-icon-action hidden sm:flex" title="Mudar tema" aria-label="Mudar tema">
             {isDark ? <Sun className="w-4 h-4 text-white/40" /> : <Moon className="w-4 h-4 text-white/40" />}
@@ -115,7 +123,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
                   <p className="text-xs font-bold text-white flex items-center gap-1 justify-end">{profile?.display_name || user.email?.split("@")[0]} {isAdmin && <span className="bg-[#ff8c00] text-white text-[8px] px-1.5 py-0.5 rounded-full uppercase font-black">ADM</span>}</p>
                   <p className="text-[11px] font-bold text-[#0084ff] flex items-center gap-1 justify-end"><Wallet className="w-3 h-3" /> R$ {Number(state.currentUser?.balance ?? 0).toFixed(2)}</p>
                 </div>
-                <img src={profile?.avatar_url || state.currentUser?.avatar} alt="Avatar" className="w-8 h-8 rounded-lg bg-[#0084ff]/10 border border-white/10 object-cover" />
+                {profile?.avatar_url || state.currentUser?.avatar ? <img src={profile?.avatar_url || state.currentUser?.avatar} alt="Avatar" className="w-8 h-8 rounded-lg bg-[#0084ff]/10 border border-white/10 object-cover" /> : <div className="w-8 h-8 rounded-lg bg-[#0084ff]/10 border border-white/10 grid place-items-center text-xs font-black text-[#78beff]" aria-label="Avatar padrão">{(profile?.display_name || user.email || "U").slice(0,1).toUpperCase()}</div>}
               </button>
             </>
           ) : (
