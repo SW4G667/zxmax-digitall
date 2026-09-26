@@ -278,7 +278,7 @@ export default function StoreView() {
                 <div className="aspect-[4/3] bg-[#1a1a20] overflow-hidden"><img src={p.image} alt="" className="w-full h-full object-cover group-hover:scale-[1.02] transition duration-300" loading="lazy" /></div>
                 <div className="p-2.5 sm:p-3">
                   <p className="text-xs font-bold text-white truncate">{p.name}</p>
-                  <p className="mt-2 text-sm font-bold text-white">{priceLabel(p)}</p>
+                  <p className="mt-2 text-sm font-bold text-[#45a7ff]">{priceLabel(p)}</p>
                 </div>
               </button>
             ))}
@@ -362,7 +362,7 @@ export default function StoreView() {
                       por <span className="text-[#0084ff]">{p.seller}</span>
                       {isVerifiedSeller(p.sellerId) && <BadgeCheck className="w-3 h-3 text-[#0084ff] shrink-0" aria-label="Vendedor verificado" />}
                     </p>
-                    <p className="mt-2 text-sm font-bold text-white">{priceLabel(p)}</p>
+                    <p className="mt-2 text-sm font-bold text-[#45a7ff]">{priceLabel(p)}</p>
                     {p.sales > 0 && <p className="text-[10px] text-white/30 mt-1">{p.sales} vendas</p>}
                   </div>
                 </button>
