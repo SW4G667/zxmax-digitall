@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { useStore, Product, Withdrawal, Purchase } from "@/store/StoreContext";
 import { MoneyEmoji, PackageEmoji, ChatEmoji, StarEmoji, ShieldEmoji } from "@/components/CustomEmojis";
-import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag, ArrowLeft, ExternalLink, Webhook, RefreshCw, KeyRound, ShieldCheck, Lock, BarChart3, ShoppingBag, Ban, Wrench } from "lucide-react";
+import { X, Check, Send, User, Trash2, ShieldAlert, FileText, Settings, Users, Tag, ArrowLeft, ExternalLink, Eye, Webhook, RefreshCw, KeyRound, ShieldCheck, Lock, BarChart3, ShoppingBag, Ban, Wrench, Wrench as MaintenanceIcon } from "lucide-react";
 import { toast } from "sonner";
 import MyPurchasesView from "@/components/MyPurchasesView";
 import IntegrationsPanel from "@/components/IntegrationsPanel";
 import TwoFactorPanel from "@/components/TwoFactorPanel";
+import { AdminTagsPanel } from "@/components/AdminMorePanels";
+import AdminRolePermissionsPanel from "@/components/AdminRolePermissionsPanel";
+import OperatorConsole from "@/components/OperatorConsole";
 import {
   AdminStatsPanel,
   AdminPurchasesPanel,
@@ -15,6 +18,8 @@ import {
 } from "@/components/AdminExtraPanels";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useSearchParams } from "react-router-dom";
+import { formatBRL, isValidProductPrice, parsePriceInput } from "@/lib/catalog";
 
 interface WebhookLog {
   id: number;
@@ -22,69 +27,88 @@ interface WebhookLog {
   event_type: string | null;
   status: string | null;
   order_id: number | null;
-  charge_id: string | null;
-  payload: any;
-  error: string | null;
+  has_error: boolean;
   created_at: string;
 }
 
+export const ADMIN_TABS = [
+  "dashboard", "stats", "orders", "moderation", "tools", "products", "withdrawals",
+  "notices", "users", "tags", "adminchat", "documents", "verifications", "disputes",
+  "config", "webhooks", "apis", "security", "roles",
+] as const;
+export type AdminTab = (typeof ADMIN_TABS)[number];
+
 export default function AdminView() {
-  const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, createUserTag, deleteUserTag, assignUserTag, unassignUserTag, sendAdminChat, verifyUser, reviewSellerDocument, saveGatewaySettings } = useStore();
-  const { mfaEnabled, isAdmin } = useAuth();
-  const [tab, setTab] = useState<"dashboard" | "stats" | "orders" | "moderation" | "tools" | "products" | "withdrawals" | "notices" | "users" | "tags" | "adminchat" | "documents" | "verifications" | "disputes" | "config" | "webhooks" | "apis" | "security" | "roles">("dashboard");
+  const { state, approveProduct, rejectProduct, approveWithdraw, rejectWithdraw, approvePurchase, revertPurchase, banUser, unbanUser, updateConfig, publishNotice, deleteNotice, sendAdminChat, verifyUser } = useStore();
+  const { mfaEnabled, isAdmin, isSupport } = useAuth();
+  // The active section lives in the URL so the side menu can deep-link to a
+  // real admin area (?tab=products) and the browser back button works.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = (ADMIN_TABS.includes(searchParams.get("tab") as AdminTab) ? searchParams.get("tab") : "dashboard") as AdminTab;
+  const setTab = React.useCallback((next: AdminTab) => {
+    setSearchParams((current) => {
+      const params = new URLSearchParams(current);
+      if (next === "dashboard") params.delete("tab"); else params.set("tab", next);
+      return params;
+    }, { replace: true });
+  }, [setSearchParams]);
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
-  const [expandedLog, setExpandedLog] = useState<number | null>(null);
+  const [docs, setDocs] = useState<any[]>([]);
   const [kyc, setKyc] = useState<any[]>([]);
   const [kycLoading, setKycLoading] = useState(false);
   const [kycNotes, setKycNotes] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
   const [chatMsg, setChatMsg] = useState("");
-  const [newTagName, setNewTagName] = useState("");
-  const [newTagColor, setNewTagColor] = useState("#8B5CF6");
-  const [tagAssignEmail, setTagAssignEmail] = useState("");
-  const [tagAssignTagId, setTagAssignTagId] = useState<number | "">("");
   const [rules, setRules] = useState(state.config.rules);
   const [commission, setCommission] = useState(state.config.commission);
   const [instantFee, setInstantFee] = useState(state.config.instantFee);
-  // Discord config
-  const [discordMode, setDiscordMode] = useState(state.config.discordMode);
-  const [discordClientId, setDiscordClientId] = useState(state.config.discordClientId);
-  const [discordRedirectUri, setDiscordRedirectUri] = useState(state.config.discordRedirectUri);
-  const [discordScopes, setDiscordScopes] = useState(state.config.discordScopes);
-  const [discordServerLink, setDiscordServerLink] = useState(state.config.discordServerLink);
-  // EvoPay config (active payment gateway)
-  const [evopayMode, setEvopayMode] = useState(state.config.evopayMode);
-  const [evopayApiKey, setEvopayApiKey] = useState("");
-  // Auth mode
-  const [authMode, setAuthMode] = useState(state.config.authMode);
   const [banIdentifier, setBanIdentifier] = useState("");
   const [banReason, setBanReason] = useState("");
   const [selectedDisputeId, setSelectedDisputeId] = useState<number | null>(null);
+  const [platformLoading, setPlatformLoading] = useState(false);
+  const [platformSaving, setPlatformSaving] = useState(false);
+  const [maintenance, setMaintenance] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState("");
+  const [minProductPrice, setMinProductPrice] = useState("2,00");
+  const [minWithdraw, setMinWithdraw] = useState("5,00");
+  const [operatorCapabilities, setOperatorCapabilities] = useState<string[]>([]);
+  const [operatorAccessLoading, setOperatorAccessLoading] = useState(!isAdmin);
+
+  const hasCapability = React.useCallback((capability: string) => isAdmin || operatorCapabilities.includes(capability), [isAdmin, operatorCapabilities]);
+
+  useEffect(() => {
+    if (isAdmin) { setOperatorCapabilities(["moderate_catalog", "review_identity", "manage_user_safety", "manage_tags", "view_sanitized_webhooks"]); setOperatorAccessLoading(false); return; }
+    if (!isSupport) { setOperatorCapabilities([]); setOperatorAccessLoading(false); return; }
+    setOperatorAccessLoading(true);
+    void (async () => {
+      const { data, error } = await (supabase as any).rpc("get_my_admin_capabilities");
+      if (error) { setOperatorCapabilities([]); toast.error("Não foi possível confirmar as permissões operacionais."); }
+      else setOperatorCapabilities(Array.isArray(data?.capabilities) ? data.capabilities.map(String) : []);
+      setOperatorAccessLoading(false);
+    })();
+  }, [isAdmin, isSupport]);
 
   const pendingProducts = state.products.filter((p) => !p.approved);
   const pendingWithdrawals = state.withdrawals.filter((w) => w.status === "pending");
   const adminMessages = state.adminChat || [];
   const globalNotices = state.globalNotices || [];
   const disputes = state.purchases.filter(p => p.status === "dispute");
-  const pendingDocuments = (state.sellerDocuments || []).filter(d => d.status === "pending");
+  const pendingDocuments = docs.filter(d => d.status === "pending");
+  const requiredCapabilityByTab: Partial<Record<AdminTab, string>> = {
+    products: "moderate_catalog",
+    tags: "manage_tags",
+    documents: "review_identity",
+    verifications: "review_identity",
+    webhooks: "view_sanitized_webhooks",
+  };
+  const canOpenTab = (candidate: AdminTab) => isAdmin || candidate === "dashboard" || (!!requiredCapabilityByTab[candidate] && hasCapability(requiredCapabilityByTab[candidate]!));
 
   const handleSaveConfig = async () => {
     updateConfig({
       rules, commission, instantFee,
-      authMode,
-      discordMode, discordClientId, discordRedirectUri, discordScopes, discordServerLink,
-      discordLink: discordServerLink,
-      evopayMode,
     });
-    const tid = toast.loading("Salvando configurações...");
-    const ok = await saveGatewaySettings({ evopayMode, evopayApiKey: evopayApiKey.trim() || undefined });
-    if (ok) {
-      setEvopayApiKey("");
-      toast.success("Configurações salvas!", { id: tid });
-    } else {
-      toast.error("Configurações locais salvas, mas falha ao salvar as credenciais do gateway.", { id: tid });
-    }
+    toast.success("Preferências locais atualizadas. Pagamentos e OAuth são administrados na aba APIs & Credenciais.");
   };
 
   const handleBan = async () => {
@@ -118,54 +142,26 @@ export default function AdminView() {
     } catch (e) {
       console.error("admin-verify failed", e);
     }
-    // Fallback direct via storage
-    try {
-      const { data, error } = await supabase.storage.from("documents").createSignedUrl(cleanPath, 60 * 10);
-      if (error) throw error;
-      if (!data?.signedUrl) throw new Error("URL vazia");
-      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
-    } catch (e: any) {
-      console.error("createSignedUrl failed", e);
-      toast.error("Não foi possível abrir: " + (e?.message || "verifique bucket RLS"));
-      // Last fallback: try download
-      try {
-        const { data } = await supabase.storage.from("documents").download(cleanPath);
-        if (data) {
-          const url = URL.createObjectURL(data);
-          window.open(url, "_blank");
-        }
-      } catch (err) {
-        console.error("download failed", err);
-      }
-    }
+    toast.error("Não foi possível abrir o documento no momento.");
   };
 
   const loadWebhookLogs = async () => {
     setLogsLoading(true);
-    const { data, error } = await (supabase as any)
-      .from("webhook_logs")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(100);
+    const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "get_webhook_logs" } });
     setLogsLoading(false);
     if (error) {
       toast.error("Não foi possível carregar os logs do webhook.");
       return;
     }
-    setWebhookLogs((data || []) as WebhookLog[]);
+    setWebhookLogs((data?.logs || []) as WebhookLog[]);
   };
 
   const loadKyc = async () => {
     setKycLoading(true);
-    const { data, error } = await (supabase as any)
-      .from("profiles")
-      .select("user_id, public_id, email, display_name, full_name, cpf, birth_date, phone, city, state, verification_selfie_path, verification_status, verification_notes, verification_submitted_at, is_verified_seller")
-      .not("verification_status", "is", null)
-      .neq("verification_status", "none")
-      .order("verification_submitted_at", { ascending: false });
+    const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "get_verifications" } });
     setKycLoading(false);
     if (error) return toast.error("Não foi possível carregar as verificações.");
-    setKyc(data || []);
+    setKyc(data?.verifications || []);
   };
 
   const reviewKyc = async (userId: string, approved: boolean) => {
@@ -181,23 +177,31 @@ export default function AdminView() {
         toast.success("Verificação recusada.", { id: tid });
       }
     } catch (e: any) {
-      // Fallback to direct
-      if (approved) {
-        const ok = await verifyUser(userId);
-        ok ? toast.success("Usuário verificado! (fallback)", { id: tid }) : toast.error("Falha ao verificar: " + (e?.message || ""), { id: tid });
-      } else {
-        const { error } = await (supabase as any).from("profiles").update({
-          verification_status: "rejected",
-          is_verified_seller: false,
-          verification_notes: kycNotes[userId]?.trim() || "Documentos ilegíveis",
-        } as any).eq("user_id", userId);
-        error ? toast.error("Falha ao recusar: " + error.message, { id: tid }) : toast.success("Recusado (fallback)", { id: tid });
-      }
+      toast.error("Falha ao revisar a verificação. Nenhuma alteração foi aplicada.", { id: tid });
     }
     await loadKyc();
   };
 
-  const [docs, setDocs] = useState<any[]>([]);
+  const reviewDocument = async (doc: any, approved: boolean) => {
+    const tid = toast.loading(approved ? "Aprovando documento..." : "Recusando documento...");
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-verify", {
+        body: {
+          action: approved ? "verify_user" : "reject_user",
+          userId: doc.user_id,
+          documentId: doc.id,
+          ...(approved ? {} : { notes: "Documento recusado pela revisão administrativa" }),
+        },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message || "Falha");
+      toast.success(approved ? "Documento aprovado e vendedor verificado." : "Documento recusado.", { id: tid });
+      await loadDocs();
+      await loadKyc();
+    } catch {
+      toast.error("Falha ao revisar o documento. Nenhuma alteração foi aplicada.", { id: tid });
+    }
+  };
+
   const loadDocs = async () => {
     try {
       const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "get_documents" } });
@@ -206,9 +210,7 @@ export default function AdminView() {
         return;
       }
     } catch {}
-    // Fallback to direct query
-    const { data } = await (supabase as any).from("seller_documents").select("id, user_id, file_path, file_name, status, created_at").order("created_at", { ascending: false }).limit(100);
-    if (data) setDocs(data);
+    toast.error("Não foi possível carregar os documentos.");
   };
 
   useEffect(() => {
@@ -221,6 +223,40 @@ export default function AdminView() {
     }
   }, [tab]);
 
+  useEffect(() => {
+    if (!operatorAccessLoading && !canOpenTab(tab)) setTab("dashboard");
+  }, [tab, operatorAccessLoading, operatorCapabilities, isAdmin, setTab]);
+
+  const loadPlatformSettings = React.useCallback(async () => {
+    setPlatformLoading(true);
+    const { data, error } = await (supabase as any).rpc("get_admin_platform_settings");
+    setPlatformLoading(false);
+    if (error) { toast.error("Não foi possível carregar as configurações da plataforma."); return; }
+    setMaintenance(!!data?.maintenance);
+    setMaintenanceMessage(String(data?.message || ""));
+    setMinProductPrice(formatBRL(data?.minProductPrice ?? 2).replace("R$ ", ""));
+    setMinWithdraw(formatBRL(data?.minWithdraw ?? 5).replace("R$ ", ""));
+  }, []);
+
+  useEffect(() => { if (tab === "config") void loadPlatformSettings(); }, [tab, loadPlatformSettings]);
+
+  const savePlatformSettings = async () => {
+    const parsedPrice = parsePriceInput(minProductPrice);
+    const parsedWithdraw = parsePriceInput(minWithdraw);
+    if (!isValidProductPrice(parsedPrice)) { toast.error("Use um preço mínimo entre R$ 2,00 e R$ 1.000.000,00."); return; }
+    if (parsedWithdraw < 5 || parsedWithdraw > 1_000_000) { toast.error("Use um saque mínimo entre R$ 5,00 e R$ 1.000.000,00."); return; }
+    setPlatformSaving(true);
+    const { error } = await (supabase as any).rpc("update_platform_settings", {
+      _maintenance: maintenance,
+      _message: maintenanceMessage.trim(),
+      _min_product_price: parsedPrice,
+      _min_withdraw: parsedWithdraw,
+    });
+    setPlatformSaving(false);
+    if (error) { toast.error(error.message || "Não foi possível salvar a plataforma."); return; }
+    toast.success(maintenance ? "Modo manutenção ativado para visitantes." : "Plataforma reaberta para visitantes.");
+  };
+
   if (selectedDisputeId) {
     return (
       <div className="animate-fade-in-up pb-20">
@@ -232,6 +268,11 @@ export default function AdminView() {
     );
   }
 
+  if (!isAdmin && (operatorAccessLoading || tab === "dashboard" || !canOpenTab(tab))) {
+    if (operatorAccessLoading) return <div className="rounded-2xl border border-border bg-card p-10 text-center text-muted-foreground">Confirmando permissões operacionais…</div>;
+    return <OperatorConsole capabilities={operatorCapabilities} onOpenTab={setTab} />;
+  }
+
 
   return (
     <div className="animate-fade-in-up pb-20">
@@ -239,7 +280,7 @@ export default function AdminView() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl font-black text-foreground mb-2 flex items-center gap-3">
-              Painel Admin
+              {isAdmin ? "Painel Admin" : "Operações autorizadas"}
               {mfaEnabled ? <span className="inline-flex items-center gap-1.5 text-[11px] bg-success/15 text-success border border-success/20 px-3 py-1 rounded-full"><ShieldCheck className="w-3.5 h-3.5" /> 2FA Ativo</span> : <span className="inline-flex items-center gap-1.5 text-[11px] bg-destructive/15 text-destructive border border-destructive/20 px-3 py-1 rounded-full"><Lock className="w-3.5 h-3.5" /> 2FA Inativo</span>}
             </h1>
             <p className="text-muted-foreground">Gerenciamento global da plataforma. Acesso protegido.</p>
@@ -268,6 +309,7 @@ export default function AdminView() {
           { id: "moderation", label: "Moderação", icon: Ban },
           { id: "tools", label: "Ferramentas", icon: Wrench },
           { id: "roles", label: "Cargos", icon: Users },
+          { id: "tags", label: "Tags", icon: Tag },
           { id: "security", label: "Segurança 2FA", icon: ShieldCheck },
           { id: "products", label: "Produtos", icon: PackageEmoji, count: pendingProducts.length },
           { id: "withdrawals", label: "Saques", icon: MoneyEmoji, count: pendingWithdrawals.length },
@@ -277,10 +319,10 @@ export default function AdminView() {
           { id: "users", label: "Usuários", icon: Users },
           { id: "notices", label: "Avisos", icon: StarEmoji },
           { id: "adminchat", label: "Chat Equipe", icon: ChatEmoji },
-          { id: "webhooks", label: "Webhooks EvoPay", icon: Webhook },
+          { id: "webhooks", label: "Webhooks", icon: Webhook },
           { id: "apis", label: "APIs & Credenciais", icon: KeyRound },
           { id: "config", label: "Config", icon: Settings },
-        ].map((t) => (
+        ].filter((t) => canOpenTab(t.id as AdminTab)).map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id as any)}
@@ -296,31 +338,7 @@ export default function AdminView() {
       </div>
 
       {/* Products Tab */}
-      {tab === "products" && (
-        <div className="space-y-4">
-          <h3 className="font-bold text-foreground">Produtos Pendentes ({pendingProducts.length})</h3>
-          {pendingProducts.length === 0 ? (
-            <div className="bg-card rounded-3xl p-10 text-center border-2 border-dashed border-border">
-              <p className="text-muted-foreground">Nenhum produto aguardando aprovação.</p>
-            </div>
-          ) : (
-            pendingProducts.map((p) => (
-              <div key={p.id} className="glass-card p-5 flex items-center gap-5">
-                <img src={p.image} className="w-16 h-16 rounded-xl object-cover" alt="" />
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-bold text-foreground truncate">{p.name}</h4>
-                  <p className="text-xs text-muted-foreground">Vendedor: {p.seller} ({p.sellerEmail})</p>
-                  <p className="text-sm font-black text-primary mt-1">R$ {p.price.toFixed(2)}</p>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => { approveProduct(p.id); toast.success("Produto aprovado!"); }} className="p-3 bg-success/10 text-success rounded-xl hover:bg-success/20 transition"><Check className="w-5 h-5" /></button>
-                  <button onClick={() => { rejectProduct(p.id); toast.error("Produto rejeitado."); }} className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition"><X className="w-5 h-5" /></button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
+      {tab === "products" && <AdminProductModeration />}
 
       {/* Withdrawals Tab */}
       {tab === "withdrawals" && (
@@ -506,9 +524,9 @@ export default function AdminView() {
           </div>
           <p className="text-sm text-white/40 mb-6">Aprove documentos para liberar saque. Se não aparece, verifique RLS e bucket.</p>
           <div className="space-y-4">
-            {(docs.length === 0 && (state.sellerDocuments || []).length === 0) ? (
+            {docs.length === 0 ? (
               <p className="text-center text-xs text-white/40 py-10">Nenhum documento enviado ainda.</p>
-            ) : (docs.length > 0 ? docs : state.sellerDocuments || []).map((doc: any) => (
+            ) : docs.map((doc: any) => (
               <div key={doc.id} className="p-4 bg-muted rounded-xl border border-border/40">
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <div className="min-w-0">
@@ -520,26 +538,8 @@ export default function AdminView() {
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   <button onClick={() => openDocument(doc.file_path || doc.filePath || "")} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1"><ExternalLink className="w-3 h-3" /> Abrir</button>
-                  <button onClick={async () => { 
-                    const tid = toast.loading("Aprovando...");
-                    try {
-                      const { data, error } = await supabase.functions.invoke("admin-verify", { body: { action: "verify_user", userId: doc.user_id || doc.user_id, documentId: doc.id } });
-                      if (error || data?.error) throw new Error(data?.error || error?.message);
-                      reviewSellerDocument(doc.id, "approved");
-                      toast.success("Documento aprovado e vendedor verificado!", { id: tid });
-                      void loadDocs();
-                    } catch (e: any) {
-                      reviewSellerDocument(doc.id, "approved");
-                      const ok = await verifyUser(doc.user_id || doc.user_id);
-                      if (ok) {
-                        toast.success("Aprovado (fallback)!", { id: tid });
-                        void loadDocs();
-                      } else {
-                        toast.error("Erro ao verificar: " + (e?.message || "tente novamente"), { id: tid });
-                      }
-                    }
-                  }} className="px-3 py-2 bg-[#00c950] text-white text-xs font-bold rounded-lg">Aprovar</button>
-                  <button onClick={() => { reviewSellerDocument(doc.id, "rejected"); toast.error("Documento rejeitado."); }} className="px-3 py-2 bg-destructive/10 text-destructive text-xs font-bold rounded-lg">Rejeitar</button>
+                  <button onClick={() => void reviewDocument(doc, true)} className="px-3 py-2 bg-[#00c950] text-white text-xs font-bold rounded-lg">Aprovar</button>
+                  <button onClick={() => void reviewDocument(doc, false)} className="px-3 py-2 bg-destructive/10 text-destructive text-xs font-bold rounded-lg">Rejeitar</button>
                 </div>
               </div>
             ))}
@@ -637,17 +637,12 @@ export default function AdminView() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-bold text-foreground">Eventos do Webhook EvoPay</h3>
-              <p className="text-xs text-muted-foreground">Últimos 100 eventos recebidos e cobranças geradas. Use para depurar pagamentos.</p>
+              <h3 className="font-bold text-foreground">Eventos de webhook</h3>
+              <p className="text-xs text-muted-foreground">Últimos 100 eventos recebidos dos gateways configurados. Use para depurar pagamentos sem expor URLs ou segredos.</p>
             </div>
             <button onClick={() => loadWebhookLogs()} className="shrink-0 p-2.5 rounded-xl bg-card border border-border/40 text-muted-foreground hover:text-foreground transition">
               <RefreshCw className={`w-4 h-4 ${logsLoading ? "animate-spin" : ""}`} />
             </button>
-          </div>
-
-          <div className="glass-card p-4">
-            <p className="text-xs font-bold text-muted-foreground uppercase mb-1">URL do Webhook (cole no painel EvoPay)</p>
-            <input readOnly value={state.config.evopayWebhookUrl} onClick={(e) => (e.target as HTMLInputElement).select()} className="w-full p-3 rounded-xl bg-muted text-xs text-foreground font-mono select-all" />
           </div>
 
           {logsLoading ? (
@@ -661,26 +656,21 @@ export default function AdminView() {
             </div>
           ) : (
             webhookLogs.map((log) => {
-              const isError = log.status === "error" || (log.status || "").startsWith("error") || !!log.error;
+              const isError = log.status === "error" || (log.status || "").startsWith("error") || log.has_error;
               return (
                 <div key={log.id} className="glass-card p-4">
-                  <button onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)} className="w-full flex items-center gap-3 text-left">
+                  <div className="w-full flex items-center gap-3 text-left">
                     <span className={`shrink-0 w-2.5 h-2.5 rounded-full ${isError ? "bg-destructive" : log.status === "created" ? "bg-primary" : "bg-success"}`} />
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-foreground text-sm truncate">
                         {log.event_type || "EVENTO"} <span className="text-muted-foreground font-normal">— {log.status}</span>
                       </p>
                       <p className="text-[10px] text-muted-foreground">
-                        {new Date(log.created_at).toLocaleString()} {log.order_id ? `• Pedido #${log.order_id}` : ""} {log.charge_id ? `• Cobrança ${log.charge_id}` : ""}
+                        {new Date(log.created_at).toLocaleString()} {log.order_id ? `• Pedido #${log.order_id}` : ""}
                       </p>
                     </div>
-                  </button>
-                  {log.error && (
-                    <p className="text-xs text-destructive mt-2 bg-destructive/10 p-2 rounded-lg break-words">{log.error}</p>
-                  )}
-                  {expandedLog === log.id && (
-                    <pre className="mt-3 text-[10px] text-foreground bg-muted p-3 rounded-xl overflow-x-auto max-h-72">{JSON.stringify(log.payload, null, 2)}</pre>
-                  )}
+                  </div>
+                  {isError && <p className="text-xs text-destructive mt-2 bg-destructive/10 p-2 rounded-lg">Evento com falha. Consulte o monitoramento restrito do servidor para detalhes.</p>}
                 </div>
               );
             })
@@ -692,56 +682,9 @@ export default function AdminView() {
 
       {tab === "apis" && <IntegrationsPanel />}
 
-      {tab === "roles" && (
-        <div className="space-y-6 max-w-3xl">
-          <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
-            <h3 className="font-black text-white flex items-center gap-2"><Users className="w-5 h-5 text-[#0084ff]" /> Cargos e Permissões</h3>
-            <p className="text-xs text-white/50 mt-2">Dê acesso admin por e-mail e crie cargos custom com permissões.</p>
-          </div>
+      {tab === "tags" && <AdminTagsPanel />}
 
-          <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6 space-y-4">
-            <h4 className="font-bold text-white">Dar cargo por e-mail</h4>
-            <div className="grid gap-3">
-              <input id="role-email" placeholder="E-mail do usuário" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none" />
-              <select id="role-select" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm">
-                <option value="admin">Admin (total)</option>
-                <option value="moderator">Moderador (produtos + disputas)</option>
-                <option value="support">Suporte (chat)</option>
-                <option value="finance">Financeiro (saques)</option>
-              </select>
-              <button
-                onClick={async () => {
-                  const emailInput = document.getElementById('role-email') as HTMLInputElement;
-                  const roleSelect = document.getElementById('role-select') as HTMLSelectElement;
-                  const email = emailInput?.value?.trim();
-                  const role = roleSelect?.value;
-                  if (!email) return toast.error("Digite e-mail");
-                  const { data: prof } = await supabase.from("profiles").select("user_id").eq("email", email).maybeSingle();
-                  if (!prof?.user_id) return toast.error("Usuário não encontrado");
-                  const { error } = await supabase.from("user_roles").upsert({ user_id: prof.user_id, role: role as "admin" | "support" | "user" }, { onConflict: "user_id,role" });
-                  if (error) return toast.error(error.message);
-                  toast.success(`Cargo ${role} dado para ${email}`);
-                  emailInput.value = "";
-                }}
-                className="bg-[#0084ff] text-white px-6 py-3 rounded-xl font-bold text-sm"
-              >
-                Dar acesso
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
-            <h4 className="font-bold text-white mb-3">Usuários com acesso</h4>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {Object.values(state.userDirectory || {}).slice(0, 20).map((u: any) => (
-                <div key={u.userId} className="flex items-center justify-between p-3 rounded-xl bg-[#0a0a0f] border border-[#1e1e28]">
-                  <div><p className="text-sm font-bold text-white truncate">{u.name}</p><p className="text-[11px] text-white/40 font-mono">{u.email} • ID {u.publicId}</p></div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {tab === "roles" && <AdminRolePermissionsPanel />}
 
       {tab === "dashboard" && (
         <div className="space-y-6">
@@ -769,9 +712,9 @@ export default function AdminView() {
           </div>
 
           <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
-            <h3 className="font-black text-white mb-4">Receita estimada (taxa {state.config.commission}%)</h3>
-            <p className="text-3xl font-black text-[#ffbd2e]">R$ {(state.purchases.reduce((a,p)=>a+Number(p.amount),0) * (state.config.commission/100)).toFixed(2)}</p>
-            <p className="text-xs text-white/40 mt-1">Total vendido: R$ {state.purchases.reduce((a,p)=>a+Number(p.amount),0).toFixed(2)}</p>
+            <h3 className="font-black text-white mb-4">Receita estimada (R$ 0,90 por pedido)</h3>
+            <p className="text-3xl font-black text-[#ffbd2e]">R$ {(state.purchases.filter(p => p.status !== "pending" && p.status !== "cancelled").length * 0.9).toFixed(2)}</p>
+            <p className="text-xs text-white/40 mt-1">Total cobrado dos clientes: R$ {state.purchases.reduce((a,p)=>a+Number(p.amount),0).toFixed(2)}</p>
           </div>
 
           <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
@@ -788,18 +731,8 @@ export default function AdminView() {
                     return;
                   }
                   throw new Error(data?.error || error?.message || "Edge Function falhou");
-                } catch (e: any) {
-                  console.error("Edge approve all failed, trying direct", e);
-                  // Fallback: direct update (requires admin RLS policy)
-                  try {
-                    const { error: directError } = await supabase.from("products").update({ approved: true }).eq("approved", false);
-                    if (directError) throw directError;
-                    toast.success("Todos produtos aprovados via direto! Recarregando...", { id: tid });
-                    setTimeout(() => window.location.reload(), 1000);
-                  } catch (directErr: any) {
-                    console.error("Direct approve all failed", directErr);
-                    toast.error("Falha ao aprovar: " + (directErr?.message || e?.message || "") + " - Verifique se function admin-verify está deployada e RLS fix aplicada.", { id: tid });
-                  }
+                } catch {
+                  toast.error("Falha ao aprovar. Nenhuma alteração foi aplicada; tente novamente após verificar a sessão administrativa.", { id: tid });
                 }
               }} className="bg-[#ffbd2e] text-black px-4 py-2 rounded-xl text-xs font-black">Aprovar TODOS produtos (fix 0 produtos)</button>
               <button onClick={()=>setTab('products' as any)} className="bg-[#0084ff] text-white px-4 py-2 rounded-xl text-xs font-bold">Aprovar Produtos individuais</button>
@@ -833,10 +766,51 @@ export default function AdminView() {
       {/* Config Tab */}
       {tab === "config" && (
         <div className="space-y-6">
+          <div className="glass-card p-6 space-y-4 border border-[#168cff]/25 bg-[#168cff]/[0.045]">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h3 className="font-black text-foreground flex items-center gap-2"><MaintenanceIcon className="w-5 h-5 text-[#168cff]" /> Operação da plataforma</h3>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">Quando ativado, visitantes veem a página de manutenção. Administradores autenticados continuam acessando o painel após validação de papel e 2FA.</p>
+              </div>
+              <label className="inline-flex items-center gap-2 text-xs font-bold text-foreground"><input type="checkbox" checked={maintenance} onChange={(event) => setMaintenance(event.target.checked)} disabled={platformLoading} /> Modo manutenção</label>
+            </div>
+            <textarea value={maintenanceMessage} maxLength={300} onChange={(event) => setMaintenanceMessage(event.target.value)} placeholder="Mensagem curta para visitantes" className="w-full rounded-xl bg-muted p-3 text-sm text-foreground" rows={3} disabled={platformLoading} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-bold text-muted-foreground">Preço mínimo de anúncio
+                <input value={minProductPrice} inputMode="decimal" onChange={(event) => setMinProductPrice(event.target.value)} placeholder="2,00" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
+              </label>
+              <label className="text-xs font-bold text-muted-foreground">Saque mínimo
+                <input value={minWithdraw} inputMode="decimal" onChange={(event) => setMinWithdraw(event.target.value)} placeholder="5,00" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <button onClick={() => void savePlatformSettings()} disabled={platformSaving || platformLoading} className="btn-gradient rounded-xl px-5 py-3 text-sm font-bold disabled:opacity-50">{platformSaving ? "Salvando..." : "Salvar operação"}</button>
+              <button onClick={() => setTab("apis")} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-bold text-foreground hover:bg-white/[0.08]"><ExternalLink className="w-4 h-4" /> Configurar integrações</button>
+            </div>
+          </div>
           {/* Taxas */}
           <div className="glass-card p-6 space-y-4">
             <h3 className="font-bold text-foreground">Taxas da Plataforma</h3>
+            <p className="text-xs text-muted-foreground">Valores oficiais aplicados no checkout e no saque. O cliente sempre paga R$ 0,90 a mais; o saque mínimo é R$ 10,00 com taxa de R$ 3,50.</p>
             <div className="grid grid-cols-2 gap-4">
+              <div className="p-3 rounded-xl bg-muted">
+                <p className="text-[10px] font-bold uppercase text-muted-foreground">Taxa do comprador</p>
+                <p className="text-lg font-black text-foreground">R$ 0,90</p>
+              </div>
+              <div className="p-3 rounded-xl bg-muted">
+                <p className="text-[10px] font-bold uppercase text-muted-foreground">Saque mínimo</p>
+                <p className="text-lg font-black text-foreground">R$ 10,00</p>
+              </div>
+              <div className="p-3 rounded-xl bg-muted">
+                <p className="text-[10px] font-bold uppercase text-muted-foreground">Taxa de saque</p>
+                <p className="text-lg font-black text-foreground">R$ 3,50</p>
+              </div>
+              <div className="p-3 rounded-xl bg-muted">
+                <p className="text-[10px] font-bold uppercase text-muted-foreground">Exemplo</p>
+                <p className="text-sm font-bold text-foreground">Anúncio R$ 5,00 → cliente paga R$ 5,90</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4 hidden">
               <div>
                 <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Comissão (%)</label>
                 <input type="number" value={commission} onChange={(e) => setCommission(Number(e.target.value))} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground" />
@@ -850,75 +824,16 @@ export default function AdminView() {
 
           {/* Auth */}
           <div className="glass-card p-6 space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="font-bold text-foreground">Autenticação</h3>
-              <div className="flex gap-1 bg-muted rounded-xl p-1">
-                <button onClick={() => setAuthMode("automatic")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${authMode === "automatic" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Automático</button>
-                <button onClick={() => setAuthMode("manual")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${authMode === "manual" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Manual</button>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">No modo automático, o sistema usa as credenciais padrão. No manual, usa as configurações abaixo (Discord).</p>
+            <h3 className="font-bold text-foreground">Autenticação</h3>
+            <p className="text-xs leading-5 text-muted-foreground">Login por senha e provedores sociais são configurados no Supabase Auth. O painel não recebe Client Secret, nem armazena credenciais OAuth no navegador.</p>
           </div>
 
           {/* Discord */}
           <div className="glass-card p-6 space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="font-bold text-foreground">Credenciais Discord</h3>
-              <div className="flex gap-1 bg-muted rounded-xl p-1">
-                <button onClick={() => setDiscordMode("automatic")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${discordMode === "automatic" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Automático</button>
-                <button onClick={() => setDiscordMode("manual")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${discordMode === "manual" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Manual</button>
-              </div>
-            </div>
-            <div>
-              <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Link do Servidor Discord</label>
-              <input value={discordServerLink} onChange={(e) => setDiscordServerLink(e.target.value)} placeholder="https://discord.gg/..." className="w-full p-3 rounded-xl bg-muted text-sm text-foreground" />
-            </div>
-            {discordMode === "manual" && (
-              <>
-                <div>
-                  <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Client ID</label>
-                  <input value={discordClientId} onChange={(e) => setDiscordClientId(e.target.value)} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
-                </div>
-                <p className="text-[10px] text-muted-foreground">O Client Secret do Discord fica na aba "APIs & Credenciais" e é guardado apenas no servidor.</p>
-                <div>
-                  <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Redirect URI</label>
-                  <input value={discordRedirectUri} onChange={(e) => setDiscordRedirectUri(e.target.value)} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Scopes</label>
-                  <input value={discordScopes} onChange={(e) => setDiscordScopes(e.target.value)} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
-                </div>
-              </>
-            )}
+            <h3 className="font-bold text-foreground">Discord OAuth</h3>
+            <p className="text-xs leading-5 text-muted-foreground">O Client ID e o Client Secret devem ser cadastrados diretamente no provedor Discord e no Supabase Auth. A aba de integrações mostra o callback oficial e o status de ativação, sem revelar valores sensíveis.</p>
+            <button onClick={() => setTab("apis")} className="btn-gradient rounded-xl px-5 py-3 text-sm font-bold">Abrir configuração segura</button>
           </div>
-
-          {/* Credenciais sensíveis foram movidas para a aba "APIs & Credenciais" (armazenadas apenas no servidor) */}
-
-          {/* EvoPay (gateway de pagamento ativo) */}
-          <div className="glass-card p-6 space-y-4 border-2 border-primary/20">
-            <div className="flex justify-between items-center">
-              <h3 className="font-bold text-foreground">Credenciais EvoPay (PIX) <span className="text-[10px] text-primary">• Gateway ativo</span></h3>
-              <div className="flex gap-1 bg-muted rounded-xl p-1">
-                <button onClick={() => setEvopayMode("automatic")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${evopayMode === "automatic" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Automático</button>
-                <button onClick={() => setEvopayMode("manual")} className={`px-3 py-1.5 text-xs font-bold rounded-lg ${evopayMode === "manual" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Manual</button>
-              </div>
-            </div>
-            <div>
-              <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Webhook URL (cole no painel EvoPay)</label>
-              <input readOnly value={state.config.evopayWebhookUrl} onClick={(e) => { (e.target as HTMLInputElement).select(); }} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono select-all" />
-            </div>
-            {evopayMode === "manual" ? (
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">API Key</label>
-                <input type="password" value={evopayApiKey} onChange={(e) => setEvopayApiKey(e.target.value)} placeholder={state.config.evopayApiKey ? "•••••••• (já configurada — preencha para alterar)" : "Cole sua API Key da EvoPay"} className="w-full p-3 rounded-xl bg-muted text-sm text-foreground font-mono" />
-                <p className="text-[10px] text-muted-foreground mt-1">A chave é guardada com segurança no servidor e usada para gerar cobranças e saques. Deixe em branco para manter a atual.</p>
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">Usando a API Key padrão configurada nos secrets do backend (EVOPAY_API_KEY).</p>
-            )}
-          </div>
-
-
 
           {/* Regras */}
           <div className="glass-card p-6 space-y-4">
@@ -966,6 +881,226 @@ export default function AdminView() {
                   {u} <button onClick={async () => { const ok = await unbanUser(u); ok ? toast.success("Desbanido.") : toast.error("Não foi possível desbanir."); }}><X className="w-3 h-3"/></button>
                 </span>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Fila de moderação: pré-visualização completa, busca, motivo de reprovação e
+ * confirmação para a ação destrutiva. Toda decisão fica em `admin_audit_log`. */
+function AdminProductModeration() {
+  const { state, approveProduct, rejectProduct, refreshProducts } = useStore();
+  const [query, setQuery] = useState("");
+  const [preview, setPreview] = useState<Product | null>(null);
+  const [rejecting, setRejecting] = useState<Product | null>(null);
+  const [reason, setReason] = useState("");
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [removeId, setRemoveId] = useState("");
+  const [removeReason, setRemoveReason] = useState("");
+  const [confirmingRemoval, setConfirmingRemoval] = useState(false);
+  const [removalBusy, setRemovalBusy] = useState(false);
+  const PAGE = 10;
+  const [shown, setShown] = useState(PAGE);
+
+  const pending = state.products.filter((p) => !p.approved);
+  const filtered = pending.filter((p) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return p.name.toLowerCase().includes(q)
+      || p.category.toLowerCase().includes(q)
+      || (p.seller || "").toLowerCase().includes(q)
+      || String(p.id) === q;
+  });
+
+  const sellerEmail = (p: Product) => state.userDirectory?.[p.sellerId]?.email || p.sellerEmail || "e-mail não disponível";
+
+  const handleApprove = async (p: Product) => {
+    setBusyId(p.id);
+    const ok = await approveProduct(p.id);
+    setBusyId(null);
+    if (ok) toast.success(`"${p.name}" aprovado e publicado.`);
+  };
+
+  const handleReject = async () => {
+    if (!rejecting) return;
+    setBusyId(rejecting.id);
+    const ok = await rejectProduct(rejecting.id, reason);
+    setBusyId(null);
+    if (ok) toast.success("Anúncio reprovado e retirado da vitrine.");
+    setRejecting(null);
+    setReason("");
+  };
+
+  const openAdminRemoval = (event: React.FormEvent) => {
+    event.preventDefault();
+    const id = Number(removeId);
+    if (!Number.isInteger(id) || id <= 0) return toast.error("Informe um ID numérico de anúncio.");
+    if (removeReason.trim().length < 3) return toast.error("Informe um motivo de ao menos 3 caracteres.");
+    setConfirmingRemoval(true);
+  };
+
+  const handleAdminRemoval = async () => {
+    const productId = Number(removeId);
+    if (!Number.isInteger(productId) || productId <= 0) return;
+    setRemovalBusy(true);
+    const { data, error } = await supabase.functions.invoke("admin-remove-product", {
+      body: { productId, reason: removeReason.trim() },
+    });
+    setRemovalBusy(false);
+    if (error || data?.error || !["deleted", "paused"].includes(String(data?.product?.status || ""))) {
+      return toast.error("Não foi possível retirar este anúncio. Nenhuma confirmação foi aplicada.");
+    }
+    await refreshProducts();
+    toast.success(data.product.status === "paused" ? "Anúncio retirado da vitrine e preservado por ter pedidos." : "Anúncio removido com registro de auditoria.");
+    setConfirmingRemoval(false);
+    setRemoveId("");
+    setRemoveReason("");
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="font-bold text-foreground">Produtos pendentes ({pending.length})</h3>
+        <input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setShown(PAGE); }}
+          placeholder="Buscar por nome, categoria, vendedor ou ID"
+          aria-label="Buscar anúncios pendentes"
+          className="w-full sm:w-80 p-2.5 rounded-xl bg-background border border-border text-foreground text-sm outline-none focus:border-primary"
+        />
+      </div>
+
+      <form onSubmit={openAdminRemoval} className="rounded-2xl border border-destructive/25 bg-destructive/5 p-4 space-y-3" aria-label="Retirar anúncio por ID">
+        <div>
+          <p className="text-sm font-bold text-foreground">Retirar anúncio por ID</p>
+          <p className="text-xs text-muted-foreground mt-1">Ação administrativa auditada. Anúncios com pedidos são retirados da vitrine, sem apagar o histórico.</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-[12rem_1fr_auto]">
+          <input value={removeId} onChange={(e) => setRemoveId(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="ID do anúncio" aria-label="ID do anúncio para retirada" className="p-2.5 rounded-xl bg-background border border-border text-foreground text-sm outline-none focus:border-destructive" />
+          <input value={removeReason} onChange={(e) => setRemoveReason(e.target.value.slice(0, 500))} placeholder="Motivo para o vendedor" aria-label="Motivo da retirada" className="p-2.5 rounded-xl bg-background border border-border text-foreground text-sm outline-none focus:border-destructive" />
+          <button type="submit" className="px-4 py-2.5 rounded-xl bg-destructive text-white text-sm font-bold">Revisar retirada</button>
+        </div>
+      </form>
+
+      {filtered.length === 0 ? (
+        <div className="bg-card rounded-3xl p-10 text-center border-2 border-dashed border-border">
+          <p className="text-muted-foreground">
+            {pending.length === 0 ? "Nenhum produto aguardando aprovação." : "Nenhum pendente para essa busca."}
+          </p>
+        </div>
+      ) : (
+        <>
+          {filtered.slice(0, shown).map((p) => (
+            <div key={p.id} className="glass-card p-5 flex flex-col sm:flex-row sm:items-center gap-5">
+              <img src={p.image} className="w-16 h-16 rounded-xl object-cover bg-muted shrink-0" alt="" />
+              <div className="flex-1 min-w-0">
+                <h4 className="font-bold text-foreground truncate">{p.name}</h4>
+                <p className="text-xs text-muted-foreground truncate">
+                  ID do anúncio #{p.id} · {p.category} · {p.seller} ({sellerEmail(p)})
+                </p>
+                <p className="text-sm font-black text-primary mt-1">
+                  {formatBRL(p.price)}
+                  {p.variations && p.variations.length > 0 && (
+                    <span className="text-muted-foreground font-normal text-xs"> · {p.variations.length} variação(ões)</span>
+                  )}
+                </p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button onClick={() => setPreview(p)} aria-label={`Revisar ${p.name}`} className="p-3 bg-muted text-foreground rounded-xl hover:bg-muted/70 transition">
+                  <Eye className="w-5 h-5" />
+                </button>
+                <button onClick={() => void handleApprove(p)} disabled={busyId === p.id} aria-label={`Aprovar ${p.name}`} className="p-3 bg-success/10 text-success rounded-xl hover:bg-success/20 transition disabled:opacity-40">
+                  <Check className="w-5 h-5" />
+                </button>
+                <button onClick={() => { setRejecting(p); setReason(""); }} disabled={busyId === p.id} aria-label={`Reprovar ${p.name}`} className="p-3 bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition disabled:opacity-40">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          ))}
+          {shown < filtered.length && (
+            <button onClick={() => setShown((v) => v + PAGE)} className="w-full py-3 rounded-xl bg-card border border-border text-sm font-bold text-foreground">
+              Carregar mais ({filtered.length - shown})
+            </button>
+          )}
+        </>
+      )}
+
+      {preview && (
+        <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPreview(null)}>
+          <div role="dialog" aria-modal="true" aria-label="Revisar anúncio" className="bg-card border border-border rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="text-lg font-black text-foreground">{preview.name}</h3>
+              <button onClick={() => setPreview(null)} aria-label="Fechar" className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+            </div>
+            <img src={preview.banner || preview.image} alt="" className="w-full rounded-xl object-cover max-h-56 bg-muted" />
+            <dl className="grid grid-cols-2 gap-3 text-xs">
+              <div><dt className="text-muted-foreground">Preço</dt><dd className="font-bold text-foreground">{formatBRL(preview.price)}</dd></div>
+              <div><dt className="text-muted-foreground">Categoria</dt><dd className="font-bold text-foreground">{preview.category}</dd></div>
+              <div><dt className="text-muted-foreground">Entrega</dt><dd className="font-bold text-foreground">{preview.deliveryType === "auto" ? "Automática" : "Manual"}</dd></div>
+              <div><dt className="text-muted-foreground">Prazo</dt><dd className="font-bold text-foreground">{preview.deliveryTime || "não informado"}</dd></div>
+              <div><dt className="text-muted-foreground">Estoque</dt><dd className="font-bold text-foreground">{preview.stock ?? "não informado"}</dd></div>
+              <div><dt className="text-muted-foreground">Qtd. mínima</dt><dd className="font-bold text-foreground">{preview.minQuantity ?? "não informada"}</dd></div>
+            </dl>
+            <div>
+              <p className="text-xs font-bold uppercase text-muted-foreground mb-1">Descrição</p>
+              <p className="text-sm text-foreground whitespace-pre-wrap break-words">{preview.description || "—"}</p>
+            </div>
+            {preview.variations && preview.variations.length > 0 && (
+              <div>
+                <p className="text-xs font-bold uppercase text-muted-foreground mb-1">Variações</p>
+                <ul className="space-y-1">
+                  {preview.variations.map((v, i) => (
+                    <li key={i} className="flex justify-between text-sm text-foreground bg-muted/40 rounded-lg px-3 py-1.5">
+                      <span className="truncate">{v.name}</span><span className="font-bold">{formatBRL(v.price)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => { const p = preview; setPreview(null); void handleApprove(p); }} className="flex-1 bg-success text-white py-3 rounded-xl font-bold text-sm">Aprovar</button>
+              <button onClick={() => { setRejecting(preview); setReason(""); setPreview(null); }} className="flex-1 bg-destructive text-white py-3 rounded-xl font-bold text-sm">Reprovar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {rejecting && (
+        <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setRejecting(null)}>
+          <div role="alertdialog" aria-modal="true" aria-label="Confirmar reprovação" className="bg-card border border-border rounded-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-black text-foreground">Reprovar anúncio?</h3>
+            <p className="text-sm text-muted-foreground">
+              <span className="font-bold text-foreground">{rejecting.name}</span> será retirado da vitrine. A decisão, com o motivo informado, ficará registrada na auditoria e será enviada ao vendedor quando o e-mail estiver configurado.
+            </p>
+            <label htmlFor="reject-reason" className="block text-xs font-bold uppercase text-muted-foreground">Motivo (registrado na auditoria)</label>
+            <textarea
+              id="reject-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={3}
+              placeholder="Ex.: imagem imprópria, preço incoerente, produto proibido pelas regras"
+              className="w-full p-3 rounded-xl bg-background border border-border text-foreground text-sm outline-none focus:border-primary resize-none"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setRejecting(null)} className="flex-1 bg-muted text-foreground py-3 rounded-xl font-bold text-sm">Cancelar</button>
+              <button onClick={() => void handleReject()} disabled={!reason.trim() || busyId === rejecting.id} className="flex-1 bg-destructive text-white py-3 rounded-xl font-bold text-sm disabled:opacity-40">
+                Confirmar reprovação
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmingRemoval && (
+        <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => !removalBusy && setConfirmingRemoval(false)}>
+          <div role="alertdialog" aria-modal="true" aria-label="Confirmar retirada administrativa" className="bg-card border border-destructive/35 rounded-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-black text-foreground">Confirmar retirada do anúncio #{removeId}?</h3>
+            <p className="text-sm text-muted-foreground">A decisão será auditada. Se houver pedidos, o anúncio ficará indisponível em vez de ter seu histórico apagado. O motivo será usado somente na notificação autorizada ao vendedor.</p>
+            <div className="rounded-xl bg-muted/60 p-3 text-sm text-foreground break-words"><span className="text-xs font-bold uppercase text-muted-foreground">Motivo</span><br />{removeReason}</div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setConfirmingRemoval(false)} disabled={removalBusy} className="flex-1 bg-muted text-foreground py-3 rounded-xl font-bold text-sm">Cancelar</button>
+              <button type="button" onClick={() => void handleAdminRemoval()} disabled={removalBusy} className="flex-1 bg-destructive text-white py-3 rounded-xl font-bold text-sm disabled:opacity-40">{removalBusy ? "Retirando…" : "Confirmar retirada"}</button>
             </div>
           </div>
         </div>

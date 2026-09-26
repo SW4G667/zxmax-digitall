@@ -28,3 +28,13 @@ supabase/.temp
 .env
 .env.*
 !.env.example
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Audit output
+audit-report.json
+
+# Local reference screenshots
+image-search/
+.refs-ggmax/

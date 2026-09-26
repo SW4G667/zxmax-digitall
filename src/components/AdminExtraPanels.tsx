@@ -101,7 +101,7 @@ export function AdminStatsPanel() {
     const sellerRev = new Map<string, { name: string; count: number; total: number }>();
     for (const p of sales) {
       const dir = state.userDirectory?.[p.sellerId];
-      const name = dir?.name || p.sellerEmail || p.sellerId;
+      const name = dir?.name || (p.sellerPublicId ? `ID ${p.sellerPublicId}` : "Vendedor em validação");
       const cur = sellerRev.get(p.sellerId) || { name, count: 0, total: 0 };
       cur.count += 1;
       cur.total += Number(p.amount || 0);
@@ -211,8 +211,6 @@ export function AdminPurchasesPanel() {
       if (!query) return true;
       return (
         String(p.id).includes(query) ||
-        (p.buyerEmail || "").toLowerCase().includes(query) ||
-        (p.sellerEmail || "").toLowerCase().includes(query) ||
         (p.buyerPublicId || "").includes(query) ||
         (p.sellerPublicId || "").includes(query)
       );
@@ -227,7 +225,7 @@ export function AdminPurchasesPanel() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por ID, e-mail ou ID público"
+            placeholder="Buscar por pedido ou ID público"
             className="flex-1 bg-transparent py-3 text-sm outline-none"
           />
         </div>
@@ -246,7 +244,7 @@ export function AdminPurchasesPanel() {
           <div className="flex-1 min-w-[180px]">
             <p className="text-sm font-bold">Pedido #{p.id} · {brl(Number(p.amount))}</p>
             <p className="text-[11px] text-muted-foreground truncate">
-              {p.buyerEmail} → {p.sellerEmail} · {p.status}
+              Comprador {p.buyerPublicId ? `ID ${p.buyerPublicId}` : "em validação"} → Vendedor {p.sellerPublicId ? `ID ${p.sellerPublicId}` : "em validação"} · {p.status}
             </p>
             <p className="text-[10px] text-muted-foreground">{new Date(p.createdAt).toLocaleString("pt-BR")}</p>
           </div>
@@ -404,8 +402,8 @@ export function AdminToolsPanel() {
   const exportSales = () => {
     downloadCsv(
       "zxmax-vendas.csv",
-      ["id", "produto", "comprador", "vendedor", "status", "valor", "criado_em"],
-      state.purchases.map((p) => [p.id, p.productId, p.buyerEmail, p.sellerEmail, p.status, Number(p.amount).toFixed(2).replace(".", ","), p.createdAt]),
+      ["id", "produto", "comprador_id_publico", "vendedor_id_publico", "status", "valor", "criado_em"],
+      state.purchases.map((p) => [p.id, p.productId, p.buyerPublicId || "", p.sellerPublicId || "", p.status, Number(p.amount).toFixed(2).replace(".", ","), p.createdAt]),
     );
     toast.success("CSV de vendas baixado.");
   };
@@ -422,8 +420,8 @@ export function AdminToolsPanel() {
   const exportUsers = () => {
     downloadCsv(
       "zxmax-usuarios.csv",
-      ["uuid", "id_publico", "nome", "email", "verificado"],
-      Object.values(state.userDirectory || {}).map((u) => [u.userId, u.publicId, u.name, u.email, u.isVerified ? "sim" : "nao"]),
+      ["id_publico", "nome", "verificado"],
+      Object.values(state.userDirectory || {}).map((u) => [u.publicId, u.name, u.isVerified ? "sim" : "nao"]),
     );
     toast.success("CSV de usuários baixado.");
   };

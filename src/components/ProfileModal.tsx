@@ -124,6 +124,8 @@ export default function ProfileModal({ open, onClose }: Props) {
   };
 
   const displayName = profile?.display_name || storeUser.name;
+  const publicId = profile?.public_id ?? storeUser.publicId;
+  const verifiedSeller = profile?.is_verified_seller ?? storeUser.isVerified;
 
 
   return (
@@ -154,8 +156,8 @@ export default function ProfileModal({ open, onClose }: Props) {
                 <button onClick={() => setEditing(true)}><Edit className="w-4 h-4 text-muted-foreground" /></button>
               </div>
             )}
-            <p className="text-muted-foreground text-xs mt-0.5 font-mono break-all">ID: {storeUser.publicId}</p>
-            {storeUser.isVerified && (
+            <p className="text-muted-foreground text-xs mt-0.5 font-mono break-all">ID público: {publicId}</p>
+            {verifiedSeller && (
               <p className="text-success text-sm mt-0.5 font-semibold flex items-center gap-1">
                 <Shield className="w-3 h-3" /> Vendedor Verificado
               </p>

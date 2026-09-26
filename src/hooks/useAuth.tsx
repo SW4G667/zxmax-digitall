@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session, Factor } from "@supabase/supabase-js";
+import { clearAdminGate, peekStoredSession, readAdminGate, wipePersistedAuth, withTimeout, writeAdminGate } from "@/lib/authSession";
 
 interface Profile {
   id: string;
@@ -39,9 +40,15 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   session: Session | null;
+  /** True somente após o SDK confirmar ou rejeitar a sessão persistida. */
+  sessionReady: boolean;
   loading: boolean;
   banned: BanInfo | null;
   isAdmin: boolean;
+  /** Papel operacional limitado, confirmado no banco e distinto de admin. */
+  isSupport: boolean;
+  /** Indica que o RPC de papel respondeu para o usuário autenticado atual. */
+  adminRoleResolved: boolean;
   mfaEnabled: boolean;
   /** True when this browser already confirmed the authenticator code for the
    * current admin. Persisted in localStorage: the code is only asked again
@@ -67,6 +74,8 @@ interface AuthContextType {
   refreshAdminGate: () => void;
   signOut: (scope?: "local" | "global" | "others") => Promise<void>;
   refreshProfile: () => Promise<void>;
+  /** Revalida banimento, papel administrativo e fatores para a sessão atual. */
+  refreshAuthorization: () => Promise<void>;
   updateProfile: (data: Partial<Pick<Profile, "display_name" | "avatar_url" | "pix_key" | "document_type">>) => Promise<void>;
 }
 
@@ -76,87 +85,6 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be inside AuthProvider");
   return ctx;
-}
-
-const ENROLL_STORAGE_KEY = "zxmax_mfa_enroll";
-const ADMIN_ROLE_CACHE_PREFIX = "zxmax_admin_role_";
-const ADMIN_GATE_PREFIX = "zxmax_admin_gate_ok_";
-
-function withTimeout<T>(promise: PromiseLike<T>, ms: number, fallback: T): Promise<T> {
-  return Promise.race([
-    Promise.resolve(promise),
-    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
-  ]);
-}
-
-function readAdminCache(userId: string): boolean {
-  try {
-    return localStorage.getItem(ADMIN_ROLE_CACHE_PREFIX + userId) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeAdminCache(userId: string, isAdmin: boolean) {
-  try {
-    if (isAdmin) localStorage.setItem(ADMIN_ROLE_CACHE_PREFIX + userId, "1");
-    else localStorage.removeItem(ADMIN_ROLE_CACHE_PREFIX + userId);
-  } catch { /* noop */ }
-}
-
-function readAdminGate(userId: string): boolean {
-  try {
-    return !!localStorage.getItem(ADMIN_GATE_PREFIX + userId);
-  } catch {
-    return false;
-  }
-}
-
-function writeAdminGate(userId: string) {
-  try {
-    localStorage.setItem(ADMIN_GATE_PREFIX + userId, String(Date.now()));
-  } catch { /* noop */ }
-}
-
-function clearAdminGate(userId: string) {
-  try {
-    localStorage.removeItem(ADMIN_GATE_PREFIX + userId);
-  } catch { /* noop */ }
-}
-
-/** Drops persisted Supabase session keys and ZXMAX admin caches so the UI
- * can log out even if supabase.auth.signOut() is stuck on the auth lock. */
-function wipePersistedAuth(userId?: string | null) {
-  try {
-    if (userId) {
-      localStorage.removeItem(ADMIN_ROLE_CACHE_PREFIX + userId);
-      localStorage.removeItem(ADMIN_GATE_PREFIX + userId);
-    }
-    for (const k of Object.keys(localStorage)) {
-      if (k.startsWith("sb-") && k.includes("auth")) localStorage.removeItem(k);
-      if (k.startsWith(ADMIN_ROLE_CACHE_PREFIX)) localStorage.removeItem(k);
-      if (k.startsWith(ADMIN_GATE_PREFIX)) localStorage.removeItem(k);
-    }
-    sessionStorage.removeItem("zxmax_admin_mfa_verified");
-    localStorage.removeItem(ENROLL_STORAGE_KEY);
-  } catch { /* noop */ }
-}
-
-/** Synchronously peeks the session Supabase persists in localStorage
- * (sb-<project>-auth-token). Lets the app boot already logged in — no
- * "Carregando..." screen — while the real getSession()/refresh runs. */
-function peekStoredSession(): Session | null {
-  try {
-    const key = Object.keys(localStorage).find((k) => /^sb-.+-auth-token$/.test(k));
-    if (!key) return null;
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (parsed?.user && parsed?.access_token) return parsed as Session;
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 function friendlyMfaError(message: string): string {
@@ -170,16 +98,20 @@ function friendlyMfaError(message: string): string {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Boot straight from the session Supabase stored in this browser. When it
-  // exists, `loading` starts false and the user/admin/gate states come from
-  // the local caches immediately — nothing flashes or disappears on return.
+  // A sessão pode iniciar do armazenamento do SDK, mas nunca aceitamos um
+  // papel administrativo vindo do navegador. O papel é confirmado no banco.
   const [bootSession] = useState<Session | null>(() => peekStoredSession());
   const [user, setUser] = useState<User | null>(() => bootSession?.user ?? null);
   const [session, setSession] = useState<Session | null>(bootSession);
+  // O usuário armazenado localmente é apenas otimista. Consumidores que fazem
+  // chamadas protegidas aguardam este sinal antes de usarem o token do SDK.
+  const [sessionReady, setSessionReady] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(() => !bootSession);
   const [banned, setBanned] = useState<BanInfo | null>(null);
-  const [isAdmin, setIsAdmin] = useState(() => (bootSession?.user ? readAdminCache(bootSession.user.id) : false));
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isSupport, setIsSupport] = useState(false);
+  const [adminRoleResolved, setAdminRoleResolved] = useState(false);
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [adminGateUnlocked, setAdminGateUnlocked] = useState(() => (bootSession?.user ? readAdminGate(bootSession.user.id) : false));
 
@@ -193,9 +125,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(sess);
     setUser(u);
     if (u) {
-      // Admin permission and gate unlock are read from the cache instantly so
-      // the Admin button never disappears while the network confirms them.
-      setIsAdmin(readAdminCache(u.id));
+      // Nunca mostrar privilégios até a confirmação do banco; cache local não
+      // é uma fonte de autorização.
+      setIsAdmin(false);
+      setIsSupport(false);
+      setAdminRoleResolved(false);
       setAdminGateUnlocked(readAdminGate(u.id));
     }
   }, []);
@@ -236,17 +170,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkAdmin = useCallback(async (userId: string) => {
     try {
       const res = await withTimeout(
-        supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle(),
+        (supabase as any).rpc("has_role", { _user_id: userId, _role: "admin" }),
         8000,
         null as any
       );
-      // On timeout/error keep whatever the cache said — the Admin button must
-      // not vanish just because the network hiccuped.
-      if (!res || res.error) return;
-      const admin = !!res.data;
-      writeAdminCache(userId, admin);
-      if (userRef.current?.id === userId) setIsAdmin(admin);
-    } catch { /* noop */ }
+      // Em timeout/erro, falha fechada: o painel não fica acessível até haver
+      // confirmação. As operações administrativas também validam o papel no
+      // servidor, independentemente desta indicação visual.
+      if (!res || res.error) {
+        if (userRef.current?.id === userId) {
+          setIsAdmin(false);
+          setAdminRoleResolved(true);
+        }
+        return;
+      }
+      const admin = res.data === true;
+      if (userRef.current?.id === userId) {
+        setIsAdmin(admin);
+        setAdminRoleResolved(true);
+      }
+    } catch {
+      if (userRef.current?.id === userId) {
+        setIsAdmin(false);
+        setAdminRoleResolved(true);
+      }
+    }
+  }, []);
+
+  const checkSupport = useCallback(async (userId: string) => {
+    try {
+      const res = await withTimeout(
+        (supabase as any).rpc("has_role", { _user_id: userId, _role: "support" }),
+        8000,
+        null as any,
+      );
+      if (userRef.current?.id === userId) setIsSupport(res?.data === true && !res?.error);
+    } catch {
+      if (userRef.current?.id === userId) setIsSupport(false);
+    }
   }, []);
 
   const refreshMfaFlag = useCallback(async () => {
@@ -265,10 +226,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         fetchProfile(userId).catch(() => null),
         checkBan(userId).catch(() => null),
         checkAdmin(userId).catch(() => null),
+        checkSupport(userId).catch(() => null),
         refreshMfaFlag().catch(() => null),
       ]);
     },
-    [fetchProfile, checkBan, checkAdmin, refreshMfaFlag]
+    [fetchProfile, checkBan, checkAdmin, checkSupport, refreshMfaFlag]
   );
 
   useEffect(() => {
@@ -290,14 +252,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // If Supabase dropped the session (e.g. a token refresh that failed
         // while the tab was in the background), try to recover it silently
         // once before falling back to the login screen.
-        if (!sess) {
+        if (!sess && !ignoreSignedOutRecoveryRef.current) {
           try {
             const { data } = await supabase.auth.refreshSession();
             sess = data.session;
           } catch { /* noop */ }
         }
         if (!mounted) return;
+        if (ignoreSignedOutRecoveryRef.current) {
+          setSessionReady(true);
+          setLoading(false);
+          return;
+        }
         applySession(sess);
+        setSessionReady(true);
         if (sess?.user) {
           setLoading(false);
           hydrateAccount(sess.user.id);
@@ -306,13 +274,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setProfile(null);
           setBanned(null);
           setIsAdmin(false);
+          setIsSupport(false);
+          setAdminRoleResolved(false);
           setMfaEnabled(false);
           setAdminGateUnlocked(false);
           setLoading(false);
         }
       } catch (e) {
         console.error("Auth init error", e);
-        if (mounted) setLoading(false);
+        if (mounted) {
+          // Não mantemos uma identidade otimista quando o SDK não conseguiu
+          // confirmar a sessão; evita queries RLS com token ainda indisponível.
+          applySession(null);
+          setSessionReady(true);
+          setLoading(false);
+        }
       }
     };
 
@@ -320,19 +296,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, sess) => {
       if (!mounted) return;
+      setSessionReady(true);
       const nextUser = sess?.user ?? null;
       const prevId = userRef.current?.id ?? null;
 
+      if (ignoreSignedOutRecoveryRef.current && nextUser) return;
+
       if (!nextUser) {
-        // Intentional logout already wiped the UI — do not try to recover.
+        // Intentional logout already wiped the UI — do not try to recover and
+        // keep the flag armed until a fresh signIn disarms it (a SIGNED_OUT
+        // event from the SDK must not let a later TOKEN_REFRESHED restore).
         if (ignoreSignedOutRecoveryRef.current) {
-          ignoreSignedOutRecoveryRef.current = false;
           userRef.current = null;
           setSession(null);
           setUser(null);
           setProfile(null);
           setBanned(null);
           setIsAdmin(false);
+          setIsSupport(false);
+          setAdminRoleResolved(false);
           setMfaEnabled(false);
           setAdminGateUnlocked(false);
           setLoading(false);
@@ -358,6 +340,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setBanned(null);
         setIsAdmin(false);
+        setIsSupport(false);
+        setAdminRoleResolved(false);
         setMfaEnabled(false);
         setAdminGateUnlocked(false);
         setLoading(false);
@@ -365,11 +349,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (nextUser.id === prevId) {
-        // Same user (token refreshed / tab refocused): only swap the tokens.
-        // No data reload, no loading flash, admin state untouched.
+        // AAL2 verification and token refresh keep the same user id. Recheck
+        // server-backed authorization so maintenance cannot use stale roles.
         setSession(sess);
         setUser(nextUser);
         setLoading(false);
+        hydrateAccount(nextUser.id);
         return;
       }
 
@@ -554,32 +539,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   }, []);
 
-  const signOut = useCallback(async () => {
-    const u = userRef.current;
-    // Solicitar o código novamente só depois de sair da conta e clicar em Admin:
-    // o desbloqueio do gate morre aqui.
-    if (u) clearAdminGate(u.id);
-    try {
-      await supabase.auth.signOut();
-    } catch { /* noop */ }
+  const signOut = useCallback(async (scope: "local" | "global" | "others" = "local") => {
+    // Ending other sessions must not affect this device's UI or browser session.
+    if (scope === "others") {
+      try { await supabase.auth.signOut({ scope: "others" }); } catch { /* noop */ }
+      return;
+    }
+    // Intentional logout: arm the recovery guard FIRST so no auth event
+    // (TOKEN_REFRESHED, INITIAL_SESSION, a refreshSession, or onAuthStateChange)
+    // can restore the session while we are logging out.
+    ignoreSignedOutRecoveryRef.current = true;
+
+    // Wipe React state immediately — the UI must read as logged out even if
+    // the Supabase SDK lock stalls or the user reloads before it releases.
     userRef.current = null;
     setSession(null);
+    setSessionReady(false);
     setUser(null);
     setProfile(null);
     setBanned(null);
     setIsAdmin(false);
+    setIsSupport(false);
+    setAdminRoleResolved(false);
     setMfaEnabled(false);
     setAdminGateUnlocked(false);
+    setLoading(false);
+
+    // Remove persisted credentials BEFORE awaiting the SDK. If the Supabase
+    // storage lock hangs or the user reloads mid-call, there is no sb-*-auth*
+    // token left in localStorage to silently restore the admin session.
+    wipePersistedAuth();
+
     try {
-      sessionStorage.removeItem("zxmax_admin_mfa_verified");
-      localStorage.removeItem(ENROLL_STORAGE_KEY);
-    } catch { /* noop */ }
+      // Best-effort remote sign-out, bounded so a stuck lock can never block
+      // the local logout for more than 2 seconds.
+      await withTimeout(
+        supabase.auth.signOut({ scope: scope === "global" ? "global" : "local" }),
+        2000,
+        null as any,
+      );
+    } catch { /* network/lock failure — local wipe already happened */ }
+
+    // Wipe again: the SDK can recreate sb-*-auth* keys as it tears down its
+    // internal storage during signOut, so a second pass guarantees they are gone.
+    wipePersistedAuth();
   }, []);
 
   const refreshProfile = useCallback(async () => {
     const u = userRef.current;
     if (u) await fetchProfile(u.id);
   }, [fetchProfile]);
+
+  const refreshAuthorization = useCallback(async () => {
+    const u = userRef.current;
+    if (!u) return;
+    setAdminRoleResolved(false);
+    await Promise.all([
+      checkBan(u.id).catch(() => null),
+      checkAdmin(u.id).catch(() => null),
+      checkSupport(u.id).catch(() => null),
+      refreshMfaFlag().catch(() => null),
+    ]);
+  }, [checkBan, checkAdmin, checkSupport, refreshMfaFlag]);
 
   const updateProfileFn = useCallback(
     async (data: Partial<Pick<Profile, "display_name" | "avatar_url" | "pix_key" | "document_type">>) => {
@@ -597,9 +618,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         profile,
         session,
+        sessionReady,
         loading,
         banned,
         isAdmin,
+        isSupport,
+        adminRoleResolved,
         mfaEnabled,
         adminGateUnlocked,
         signUp,
@@ -615,6 +639,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshAdminGate,
         signOut,
         refreshProfile,
+        refreshAuthorization,
         updateProfile: updateProfileFn,
       }}
     >

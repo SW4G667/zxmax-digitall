@@ -19,14 +19,51 @@ serve(async (req) => {
     const { data: userData } = await anonClient.auth.getUser(token);
     if (!userData.user) throw new Error("Unauthorized");
 
-    // Check admin role
-    const { data: roleData } = await serviceClient.from("user_roles").select("role").eq("user_id", userData.user.id).eq("role", "admin").maybeSingle();
-    if (!roleData) throw new Error("Acesso negado: só admin");
-
     const body = await req.json();
     const action = body.action;
     const userId = body.userId;
     const documentId = body.documentId;
+
+    const requiredCapabilities: Record<string, string> = {
+      verify_user: "review_identity",
+      reject_user: "review_identity",
+      get_documents: "review_identity",
+      get_verifications: "review_identity",
+      get_document_url: "review_identity",
+      approve_all_products: "moderate_catalog",
+      ban_user: "manage_user_safety",
+      unban_user: "manage_user_safety",
+      get_webhook_logs: "view_sanitized_webhooks",
+    };
+    const requiredCapability = requiredCapabilities[action];
+    if (!requiredCapability) throw new Error("Ação inválida");
+
+    // A checagem roda com o JWT já validado, não com service role. Admin passa
+    // por definição; suporte precisa ter a capacidade explícita no banco.
+    const authorizationClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: allowed, error: capabilityError } = await authorizationClient.rpc("has_capability", {
+      _user_id: userData.user.id,
+      _capability: requiredCapability,
+    });
+    if (capabilityError || allowed !== true) {
+      throw new Error("Você não tem a permissão necessária para esta ação.");
+    }
+
+    const resolveTargetUserId = async (identifier: unknown) => {
+      const normalized = typeof identifier === "string" ? identifier.trim() : "";
+      if (!normalized || normalized.length > 254) throw new Error("Identificador de usuário inválido");
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalized)) return normalized;
+
+      const query = serviceClient.from("profiles").select("user_id");
+      const { data, error } = /^[0-9]+$/.test(normalized)
+        ? await query.eq("public_id", Number(normalized)).maybeSingle()
+        : await query.eq("email", normalized.toLowerCase()).maybeSingle();
+      if (error) throw error;
+      if (!data?.user_id) throw new Error("Usuário não encontrado");
+      return data.user_id as string;
+    };
 
     if (action === "verify_user") {
       if (!userId) throw new Error("userId obrigatório");
@@ -96,6 +133,38 @@ serve(async (req) => {
       return new Response(JSON.stringify({ documents: enriched }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    if (action === "get_webhook_logs") {
+      const { data, error } = await serviceClient
+        .from("webhook_logs")
+        .select("id, source, event_type, status, order_id, created_at, error")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+
+      const logs = (data || []).map((log: any) => ({
+        id: log.id,
+        source: log.source,
+        event_type: log.event_type,
+        status: log.status,
+        order_id: log.order_id,
+        created_at: log.created_at,
+        has_error: Boolean(log.error),
+      }));
+      return new Response(JSON.stringify({ logs }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    if (action === "get_verifications") {
+      const { data, error } = await serviceClient
+        .from("profiles")
+        .select("user_id, public_id, email, display_name, full_name, cpf, birth_date, phone, city, state, verification_selfie_path, verification_status, verification_notes, verification_submitted_at, is_verified_seller")
+        .not("verification_status", "is", null)
+        .neq("verification_status", "none")
+        .order("verification_submitted_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return new Response(JSON.stringify({ verifications: data || [] }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     if (action === "get_document_url") {
       const filePath = body.filePath;
       if (!filePath) throw new Error("filePath obrigatório");
@@ -107,6 +176,52 @@ serve(async (req) => {
     if (action === "approve_all_products") {
       const { error } = await serviceClient.from("products").update({ approved: true }).eq("approved", false);
       if (error) throw error;
+      return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    if (action === "ban_user") {
+      const targetUserId = await resolveTargetUserId(body.identifier);
+      const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+      if (!reason || reason.length > 500) throw new Error("Motivo de banimento inválido");
+      if (targetUserId === userData.user.id) throw new Error("Não é permitido banir a própria conta");
+
+      const { data: targetAdmin } = await serviceClient
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", targetUserId)
+        .eq("role", "admin")
+        .maybeSingle();
+      if (targetAdmin) throw new Error("Não é possível banir uma conta administradora");
+
+      const { error } = await serviceClient.from("bans").insert({
+        user_id: targetUserId,
+        banned_by: userData.user.id,
+        reason,
+        active: true,
+      });
+      if (error) throw error;
+      await serviceClient.from("admin_audit_log").insert({
+        actor_id: userData.user.id,
+        action: "user.banned",
+        target_table: "bans",
+        target_id: targetUserId,
+        reason,
+        metadata: {},
+      });
+      return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    if (action === "unban_user") {
+      const targetUserId = await resolveTargetUserId(body.identifier);
+      const { error } = await serviceClient.from("bans").update({ active: false }).eq("user_id", targetUserId).eq("active", true);
+      if (error) throw error;
+      await serviceClient.from("admin_audit_log").insert({
+        actor_id: userData.user.id,
+        action: "user.unbanned",
+        target_table: "bans",
+        target_id: targetUserId,
+        metadata: {},
+      });
       return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 

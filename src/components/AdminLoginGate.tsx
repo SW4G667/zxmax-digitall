@@ -21,6 +21,7 @@ export default function AdminLoginGate() {
     needsCodeToManageMfa,
     unlockAdminGate,
     refreshAdminGate,
+    refreshAuthorization,
   } = useAuth();
 
   const [hasTotp, setHasTotp] = useState(false);
@@ -166,6 +167,7 @@ export default function AdminLoginGate() {
         if (error) throw new Error(error);
       }
 
+      await refreshAuthorization();
       unlockAdminGate();
       setTotpCode("");
       toast.success("Código confirmado com sucesso! Painel admin liberado.");
@@ -179,7 +181,7 @@ export default function AdminLoginGate() {
     } finally {
       setTotpBusy(false);
     }
-  }, [totpCode, totpStage, totpFactorId, enrollTotpVerify, verifyMfa, unlockAdminGate, refreshAdminGate]);
+  }, [totpCode, totpStage, totpFactorId, enrollTotpVerify, verifyMfa, unlockAdminGate, refreshAdminGate, refreshAuthorization]);
 
   const confirmCodeRef = useRef(confirmCode);
   confirmCodeRef.current = confirmCode;

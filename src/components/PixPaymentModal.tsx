@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import { X, Copy, Check, Loader2 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface PixCharge {
   evopayId: string;
+  provider?: string;
   qrCodeText: string;
   amount: number;
   qrCodeUrl?: string | null;
@@ -36,8 +38,11 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
       if (paidRef.current) return;
       attempts += 1;
       try {
-        const { data, error } = await supabase.functions.invoke("check-evopay-status", {
-          body: { id: charge.evopayId },
+        const checker = charge.provider === "magnuspay_pix" ? "check-magnuspay-status" : "check-evopay-status";
+        const { data, error } = await supabase.functions.invoke(checker, {
+          body: charge.provider === "magnuspay_pix" && charge.purchaseId
+            ? { purchaseId: charge.purchaseId }
+            : { id: charge.evopayId },
         });
         const gatewayPaid = !error && (
           PAID_STATUSES.includes(data?.status) ||
@@ -48,11 +53,13 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
         let localPaid = false;
         let purchaseId: number | null = charge.purchaseId || null;
         try {
-          const { data: latest } = await (supabase as any)
+          let query = (supabase as any)
             .from("purchases")
-            .select("id, status")
-            .eq("evopay_charge_id", charge.evopayId)
-            .maybeSingle();
+            .select("id, status, payment_status, provider_payment_id");
+          query = charge.purchaseId
+            ? query.eq("id", charge.purchaseId)
+            : query.eq("evopay_charge_id", charge.evopayId);
+          const { data: latest } = await query.maybeSingle();
           if (latest) {
             if (["paid", "delivered"].includes(latest.status)) localPaid = true;
             purchaseId = latest.id;
@@ -66,17 +73,6 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
           clearInterval(interval);
           onPaid();
 
-          // Trigger transactional emails (idempotent)
-          if (purchaseId) {
-            try {
-              await supabase.functions.invoke("send-email", {
-                body: { type: "purchase_confirmed", purchaseId },
-              });
-              await supabase.functions.invoke("send-email", {
-                body: { type: "new_sale", purchaseId },
-              });
-            } catch {}
-          }
         } else if (data?.status === "EXPIRED" || data?.status === "CANCELED" || data?.status === "FAILED") {
           clearInterval(interval);
           toast.error("O pagamento expirou ou foi cancelado. Gere um novo PIX.");
@@ -92,7 +88,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [charge?.evopayId]);
+  }, [charge?.evopayId, charge?.provider, charge?.purchaseId]);
 
   if (!charge) return null;
 
@@ -106,8 +102,6 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
       toast.error("Não foi possível copiar. Copie manualmente.");
     }
   };
-
-  const qrImg = charge.qrCodeUrl || `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(charge.qrCodeText)}`;
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-foreground/50 backdrop-blur-sm" onClick={onClose}>
@@ -132,7 +126,9 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
             <p className="text-center text-xs text-muted-foreground mb-5">Escaneie o QR Code ou copie o código abaixo</p>
 
             <div className="flex justify-center mb-5">
-              <img src={qrImg} alt="QR Code PIX" className="w-56 h-56 rounded-2xl bg-white p-2 shadow-md" />
+              <div className="rounded-2xl bg-white p-3 shadow-md" role="img" aria-label="QR Code PIX gerado a partir do código de pagamento">
+                <QRCodeSVG value={charge.qrCodeText} size={224} level="M" includeMargin />
+              </div>
             </div>
 
             <div className="bg-muted rounded-xl p-3 mb-3">

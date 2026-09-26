@@ -13,12 +13,11 @@ export function AdminCategoriesPanel() {
     const list = cats.split("\n").map((c) => c.trim()).filter(Boolean);
     if (!list.length) return toast.error("Inclua ao menos uma categoria.");
     setSaving(true);
-    updateConfig({ categories: list });
-    const { data: existing } = await (supabase as any).from("app_settings").select("value").eq("key", "platform").maybeSingle();
-    const value = { ...(existing?.value || {}), categories: list };
-    const { error } = await (supabase as any).from("app_settings").upsert({ key: "platform", value }, { onConflict: "key" });
+    const { data, error } = await (supabase as any).rpc("update_platform_categories", { _categories: list });
     setSaving(false);
-    error ? toast.error(error.message) : toast.success("Categorias salvas. Aparecem na loja e no formulário de anúncio.");
+    if (error) return toast.error(error.message);
+    updateConfig({ categories: Array.isArray(data?.categories) ? data.categories : list });
+    toast.success("Categorias salvas. Aparecem na loja e no formulário de anúncio.");
   };
 
   return (
@@ -102,7 +101,7 @@ export function AdminPurchasesPanel() {
           <ShoppingBag className="w-4 h-4 text-primary" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold">Pedido #{p.id} · R$ {Number(p.amount).toFixed(2)}</p>
-            <p className="text-[11px] text-muted-foreground truncate">{p.buyerEmail} → {p.sellerEmail} · {p.status}</p>
+            <p className="text-[11px] text-muted-foreground truncate">Comprador {p.buyerPublicId ? `ID ${p.buyerPublicId}` : "em validação"} → Vendedor {p.sellerPublicId ? `ID ${p.sellerPublicId}` : "em validação"} · {p.status}</p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => approvePurchase(p.id)} className="px-3 py-1.5 text-[11px] font-bold bg-success/10 text-success rounded-lg">Aprovar</button>
@@ -128,7 +127,7 @@ export function AdminTicketsPanel() {
         {state.tickets.map((t) => (
           <button key={t.id} onClick={() => setSelected(t.id)} className={`w-full text-left glass-card p-4 ${selected === t.id ? "border-primary" : ""}`}>
             <p className="text-sm font-bold truncate">{t.subject}</p>
-            <p className="text-[11px] text-muted-foreground">{t.userEmail} · {t.status}</p>
+            <p className="text-[11px] text-muted-foreground">{state.userDirectory?.[t.userId]?.publicId ? `ID ${state.userDirectory[t.userId].publicId}` : "Solicitante"} · {t.status}</p>
           </button>
         ))}
       </div>
@@ -144,7 +143,7 @@ export function AdminTicketsPanel() {
             <div className="space-y-2 max-h-64 overflow-y-auto mb-3">
               {active.messages.map((m, i) => (
                 <div key={i} className="bg-muted rounded-xl p-2 text-xs">
-                  <p className="font-bold">{m.from}</p>
+                  <p className="font-bold">{m.from === active.userEmail ? "Solicitante" : "Equipe ZXMAX"}</p>
                   <p>{m.text}</p>
                 </div>
               ))}
@@ -161,11 +160,27 @@ export function AdminTicketsPanel() {
 }
 
 export function AdminTagsPanel() {
-  const { state, createUserTag, deleteUserTag, assignUserTag } = useStore();
+  const { state, createUserTag, deleteUserTag, assignUserTag, refreshUserTags } = useStore();
   const [name, setName] = useState("");
   const [color, setColor] = useState("#8B5CF6");
-  const [email, setEmail] = useState("");
-  const [tagId, setTagId] = useState<number | "">("");
+  const [publicId, setPublicId] = useState("");
+  const [tagId, setTagId] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const create = async () => {
+    setBusy(true);
+    const ok = await createUserTag(name, color);
+    setBusy(false);
+    ok ? (setName(""), toast.success("Tag criada e persistida.")) : toast.error("Não foi possível criar a tag.");
+  };
+
+  const assign = async () => {
+    if (!publicId || !tagId) return toast.error("Informe o ID público e a tag.");
+    setBusy(true);
+    const ok = await assignUserTag(publicId, tagId);
+    setBusy(false);
+    ok ? toast.success("Tag atribuída e persistida.") : toast.error("Não foi possível atribuir. Confira o ID público.");
+  };
 
   return (
     <div className="space-y-6">
@@ -174,25 +189,26 @@ export function AdminTagsPanel() {
         <div className="flex gap-2">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome" className="flex-1 p-3 rounded-xl bg-muted text-sm" />
           <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="w-12 h-12 rounded-xl" />
-          <button onClick={() => { createUserTag(name, color); setName(""); toast.success("Tag criada"); }} className="btn-gradient px-4 rounded-xl"><Plus className="w-4 h-4" /></button>
+          <button onClick={() => void create()} disabled={busy || !name.trim()} className="btn-gradient px-4 rounded-xl disabled:opacity-50"><Plus className="w-4 h-4" /></button>
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
         {(state.userTags || []).map((t) => (
           <span key={t.id} className="px-3 py-1.5 rounded-full text-xs font-bold text-white flex items-center gap-2" style={{ background: t.color }}>
             {t.name}
-            <button onClick={() => deleteUserTag(t.id)}><Trash2 className="w-3 h-3" /></button>
+            <button onClick={() => void deleteUserTag(t.id)} title="Excluir tag"><Trash2 className="w-3 h-3" /></button>
           </span>
         ))}
       </div>
       <div className="glass-card p-6 space-y-3">
         <h3 className="font-bold">Atribuir tag</h3>
-        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail do usuário" className="w-full p-3 rounded-xl bg-muted text-sm" />
-        <select value={tagId} onChange={(e) => setTagId(e.target.value ? Number(e.target.value) : "")} className="w-full p-3 rounded-xl bg-muted text-sm">
+        <p className="text-xs text-muted-foreground">Use o ID público exibido no perfil. Nenhum e-mail é necessário para atribuir a tag.</p>
+        <input value={publicId} onChange={(e) => setPublicId(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="ID público do usuário" className="w-full p-3 rounded-xl bg-muted text-sm" />
+        <select value={tagId} onChange={(e) => setTagId(e.target.value)} className="w-full p-3 rounded-xl bg-muted text-sm">
           <option value="">Selecione</option>
           {(state.userTags || []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
-        <button onClick={() => { if (email && tagId) { assignUserTag(email, Number(tagId)); toast.success("Tag atribuída"); } }} className="btn-gradient px-4 py-2 rounded-xl text-sm font-bold">Atribuir</button>
+        <div className="flex gap-2"><button onClick={() => void assign()} disabled={busy} className="btn-gradient px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-50">Atribuir</button><button onClick={() => void refreshUserTags()} disabled={busy} className="px-4 py-2 rounded-xl text-sm font-bold bg-muted">Atualizar</button></div>
       </div>
     </div>
   );
@@ -206,26 +222,27 @@ export function AdminPlatformPanel() {
 
   useEffect(() => {
     void (async () => {
-      const { data } = await (supabase as any).from("app_settings").select("value").eq("key", "platform").maybeSingle();
-      if (data?.value) {
-        setMaintenance(!!data.value.maintenance);
-        setMessage(data.value.maintenance_message || "");
-        setMinPrice(Number(data.value.min_product_price || 2));
-        setMinWithdraw(Number(data.value.min_withdraw || 5.0));
+      const { data, error } = await (supabase as any).rpc("get_admin_platform_settings");
+      if (error) {
+        toast.error("Não foi possível carregar as configurações da plataforma.");
+        return;
+      }
+      if (data) {
+        setMaintenance(!!data.maintenance);
+        setMessage(data.message || "");
+        setMinPrice(Number(data.minProductPrice || 2));
+        setMinWithdraw(Number(data.minWithdraw || 5.0));
       }
     })();
   }, []);
 
   const save = async () => {
-    const { data: existing } = await (supabase as any).from("app_settings").select("value").eq("key", "platform").maybeSingle();
-    const value = {
-      ...(existing?.value || {}),
-      maintenance,
-      maintenance_message: message,
-      min_product_price: minPrice,
-      min_withdraw: minWithdraw,
-    };
-    const { error } = await (supabase as any).from("app_settings").upsert({ key: "platform", value }, { onConflict: "key" });
+    const { error } = await (supabase as any).rpc("update_platform_settings", {
+      _maintenance: maintenance,
+      _message: message,
+      _min_product_price: minPrice,
+      _min_withdraw: minWithdraw,
+    });
     error ? toast.error(error.message) : toast.success("Plataforma atualizada.");
   };
 
