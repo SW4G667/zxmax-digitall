@@ -249,7 +249,7 @@ export default function ProdutoPage() {
         if (error) throw error;
         if (data?.qrCodeText) {
           savePixCharge(purchaseId, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
-          setPixCharge({ evopayId: data.id, qrCodeText: data.qrCodeText, amount: Number(data.amount), qrCodeUrl: data.qrCodeUrl, purchaseId });
+          setPixCharge({ paymentId: data.id, qrCodeText: data.qrCodeText, amount: Number(data.amount), qrCodeUrl: data.qrCodeUrl, purchaseId });
           setCheckoutOpen(false);
         } else {
           toast.error("Erro ao gerar PIX: " + (data?.error || "tente novamente"));
