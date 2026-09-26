@@ -21,6 +21,8 @@ import Robux from "./pages/Robux.tsx";
 import Favoritos from "./pages/Favoritos.tsx";
 import AuthCallback from "./pages/AuthCallback.tsx";
 import MaintenanceGate from "@/components/MaintenanceGate";
+import AdminBranding from "./pages/AdminBranding.tsx";
+import { SiteBrandingProvider } from "@/context/SiteBrandingContext";
 
 const queryClient = new QueryClient();
 
@@ -28,6 +30,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <ErrorBoundary>
+        <SiteBrandingProvider>
         <AuthProvider>
           <StoreProvider>
             <BrowserRouter>
@@ -45,6 +48,7 @@ const App = () => (
                 <Route path="/minhas-compras" element={<Index view="purchases" />} />
                 <Route path="/suporte" element={<Index view="support" />} />
                 <Route path="/admin" element={<Index view="admin" />} />
+                <Route path="/admin/branding" element={<AdminBranding />} />
                 <Route path="/sacar" element={<Index view="withdraw" />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
@@ -60,6 +64,7 @@ const App = () => (
             </BrowserRouter>
           </StoreProvider>
         </AuthProvider>
+        </SiteBrandingProvider>
       </ErrorBoundary>
     </TooltipProvider>
   </QueryClientProvider>
