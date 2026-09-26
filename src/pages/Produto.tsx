@@ -541,21 +541,6 @@ export default function ProdutoPage() {
     if (clean.length < 1) { toast.error("Escreva a resposta antes de enviar."); return; }
     setSendingAnswer(questionId);
     const { error } = await (supabase as any).rpc("answer_product_question", { _question_id: questionId, _answer: clean });
-    if (error && isSchemaMissing(error)) {
-      const next = (product.questions || []).map((item) =>
-        item.id === questionId ? { ...item, answer: clean, answerDate: new Date().toISOString() } : item,
-      );
-      const upErr = await persistLegacyQuestions(next);
-      setSendingAnswer(null);
-      if (upErr) {
-        toast.error(friendlyQuestionError(upErr, "answer"));
-        return;
-      }
-      answerProductQuestion(product.id, questionId, clean);
-      toast.success("Resposta publicada.");
-      setAnswerDrafts((drafts) => ({ ...drafts, [questionId]: "" }));
-      return;
-    }
     setSendingAnswer(null);
     if (error) { toast.error(friendlyQuestionError(error, "answer")); return; }
     toast.success("Resposta publicada.");
