@@ -3,7 +3,9 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
 const DEFAULTS = {
+  magnuspay: { pixEnabled: true, pixFee: 0 },
   zennithpay: { pixEnabled: false, pixFee: 0.9 },
   vexopay: { pixEnabled: false, cryptoEnabled: false, pixFee: 1.2 },
   stripe: { cardEnabled: false, boletoEnabled: false, boletoExpiresAfterDays: 3 },
@@ -26,111 +28,119 @@ serve(async (req) => {
   try {
     const user = await caller(req);
     if (!user) return json({ error: "Unauthorized" }, 401);
+
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "get");
-    const { data: rows, error } = await admin.from("app_settings").select("key,value").in("key", ["zennithpay", "vexopay", "stripe"]);
-    if (error) return json({ error: "Não foi possível consultar a configuração de pagamentos.", code: "payment_settings_unavailable" }, 503);
+    const keys = ["magnuspay", "zennithpay", "vexopay", "stripe"];
+    const { data: rows, error } = await admin.from("app_settings").select("key,value").in("key", keys);
+    if (error) return json({ error: "Não foi possível consultar a configuração de pagamentos." }, 503);
+
     const row = <T extends keyof typeof DEFAULTS>(name: T) => {
       const raw = (rows || []).find((item: any) => item.key === name)?.value;
-      const { baseUrl: _legacyBaseUrl, ...safeValues } = raw && typeof raw === "object" ? raw : {};
-      return { ...DEFAULTS[name], ...safeValues };
+      return { ...DEFAULTS[name], ...(raw && typeof raw === "object" ? raw : {}) };
     };
+
+    const magnus = row("magnuspay");
     const zennith = row("zennithpay");
     const vexopay = row("vexopay");
     const stripe = row("stripe");
+
+    const magnusReady = Boolean(Deno.env.get("MAGNUSPAY_API_KEY"));
     const zennithReady = Boolean(Deno.env.get("ZENNITH_API_KEY"));
     const vexoReady = Boolean(Deno.env.get("VEXOPAY_CLIENT_ID") && Deno.env.get("VEXOPAY_CLIENT_SECRET"));
     const stripeReady = Boolean(Deno.env.get("STRIPE_SECRET_KEY") && Deno.env.get("STRIPE_WEBHOOK_SECRET"));
-    const siteUrl = String(Deno.env.get("SITE_URL") || "https://zxmax.vercel.app").replace(/\/$/, "");
-    let discordEnabled = false;
-    try {
-      const authSettings = await fetch(`${Deno.env.get("SUPABASE_URL")}/auth/v1/settings`, {
-        headers: { apikey: Deno.env.get("SUPABASE_ANON_KEY")! },
-      });
-      const settings = await authSettings.json().catch(() => ({} as Record<string, any>));
-      discordEnabled = settings?.external?.discord === true;
-    } catch { /* indisponibilidade de status não deve afetar pagamentos */ }
 
-    // PIX é uma única forma de pagamento para o comprador. Se uma configuração
-    // legada deixar ambos ativos, Zennith tem precedência determinística até o
-    // administrador salvar a escolha exclusiva no painel.
-    const zennithPixActive = zennithReady && zennith.pixEnabled === true;
-    const vexopayPixActive = vexoReady && vexopay.pixEnabled === true;
-    const selectedPix = zennithPixActive ? "zennith_pix" : vexopayPixActive ? "vexopay_pix" : null;
+    const selectedPix = magnusReady && magnus.pixEnabled === true
+      ? "magnuspay_pix"
+      : zennithReady && zennith.pixEnabled === true
+        ? "zennith_pix"
+        : vexoReady && vexopay.pixEnabled === true
+          ? "vexopay_pix"
+          : null;
+
     if (action === "payment_methods") return json({
-      v: 3,
+      v: 4,
       methods: {
+        magnuspay_pix: selectedPix === "magnuspay_pix",
         zennith_pix: selectedPix === "zennith_pix",
         vexopay_pix: selectedPix === "vexopay_pix",
         crypto: vexoReady && vexopay.cryptoEnabled === true,
         card: stripeReady && stripe.cardEnabled === true,
         boleto: stripeReady && stripe.boletoEnabled === true,
       },
-      fees: { zennith_pix: clampFee(zennith.pixFee, 0.9), vexopay_pix: clampFee(vexopay.pixFee, 1.2) },
+      selectedPix,
+      fees: {
+        magnuspay_pix: clampFee(magnus.pixFee, 0),
+        zennith_pix: clampFee(zennith.pixFee, 0.9),
+        vexopay_pix: clampFee(vexopay.pixFee, 1.2),
+      },
     });
 
     const { data: hasAdmin } = await admin.rpc("has_role", { _user_id: user.id, _role: "admin" });
     if (!hasAdmin) return json({ error: "Apenas administradores." }, 403);
+
     const secretStatus = {
+      MAGNUSPAY_API_KEY: magnusReady,
       ZENNITH_API_KEY: zennithReady,
-      ZENNITH_WEBHOOK_SECRET: Boolean(Deno.env.get("ZENNITH_WEBHOOK_SECRET")),
       VEXOPAY_CLIENT_ID: Boolean(Deno.env.get("VEXOPAY_CLIENT_ID")),
       VEXOPAY_CLIENT_SECRET: Boolean(Deno.env.get("VEXOPAY_CLIENT_SECRET")),
-      VEXOPAY_WEBHOOK_SECRET: Boolean(Deno.env.get("VEXOPAY_WEBHOOK_SECRET")),
       STRIPE_SECRET_KEY: Boolean(Deno.env.get("STRIPE_SECRET_KEY")),
       STRIPE_WEBHOOK_SECRET: Boolean(Deno.env.get("STRIPE_WEBHOOK_SECRET")),
     };
+
     if (action === "get") return json({
-      integrations: { zennithpay: zennith, vexopay, stripe },
+      integrations: { magnuspay: magnus, zennithpay: zennith, vexopay, stripe },
       secretStatus,
-      discord: {
-        enabled: discordEnabled,
-        providerCallback: `${Deno.env.get("SUPABASE_URL")}/auth/v1/callback`,
-        appCallback: `${siteUrl}/auth/callback`,
-      },
     });
-    const provider = body.provider === "vexopay" ? "vexopay" : body.provider === "zennithpay" ? "zennithpay" : body.provider === "stripe" ? "stripe" : null;
+
+    const provider = body.provider === "magnuspay" || body.provider === "zennithpay" || body.provider === "vexopay" || body.provider === "stripe"
+      ? body.provider as keyof typeof DEFAULTS
+      : null;
     if (!provider) return json({ error: "Provedor inválido." }, 400);
+
     if (action === "save") {
       const incoming = body.values || {};
       const current = row(provider);
       const next = provider === "stripe"
         ? {
-          cardEnabled: incoming.cardEnabled === true,
-          boletoEnabled: incoming.boletoEnabled === true,
-          boletoExpiresAfterDays: Number.isInteger(Number(incoming.boletoExpiresAfterDays)) && Number(incoming.boletoExpiresAfterDays) >= 0 && Number(incoming.boletoExpiresAfterDays) <= 60 ? Number(incoming.boletoExpiresAfterDays) : current.boletoExpiresAfterDays,
-        }
+            cardEnabled: incoming.cardEnabled === true,
+            boletoEnabled: incoming.boletoEnabled === true,
+            boletoExpiresAfterDays: Number.isInteger(Number(incoming.boletoExpiresAfterDays)) ? Math.max(0, Math.min(60, Number(incoming.boletoExpiresAfterDays))) : current.boletoExpiresAfterDays,
+          }
         : {
-          pixEnabled: incoming.pixEnabled === true,
-          pixFee: clampFee(incoming.pixFee, current.pixFee),
-          ...(provider === "vexopay" ? { cryptoEnabled: incoming.cryptoEnabled === true } : {}),
-        };
+            pixEnabled: incoming.pixEnabled === true,
+            pixFee: clampFee(incoming.pixFee, (current as any).pixFee),
+            ...(provider === "vexopay" ? { cryptoEnabled: incoming.cryptoEnabled === true } : {}),
+          };
+
       const { error: saveError } = await admin.from("app_settings").upsert({ key: provider, value: next }, { onConflict: "key" });
       if (saveError) return json({ error: "Não foi possível salvar a configuração." }, 400);
-      // Ao escolher PIX em um provedor, desligue o PIX no outro. Crypto segue
-      // independente da escolha de PIX e não é afetado por esta operação.
-      if (provider !== "stripe" && next.pixEnabled === true) {
-        const otherProvider = provider === "zennithpay" ? "vexopay" : "zennithpay";
-        const otherCurrent = row(otherProvider as "zennithpay" | "vexopay");
-        const { error: otherSaveError } = await admin.from("app_settings").upsert({
-          key: otherProvider,
-          value: { ...otherCurrent, pixEnabled: false },
-        }, { onConflict: "key" });
-        if (otherSaveError) return json({ error: "Não foi possível manter a seleção PIX exclusiva." }, 400);
+
+      if (provider !== "stripe" && (next as any).pixEnabled === true) {
+        for (const other of ["magnuspay", "zennithpay", "vexopay"] as const) {
+          if (other === provider) continue;
+          const otherCurrent = row(other);
+          await admin.from("app_settings").upsert({ key: other, value: { ...otherCurrent, pixEnabled: false } }, { onConflict: "key" });
+        }
       }
-      await admin.from("admin_audit_log").insert({ actor_id: user.id, action: "gateway.config_updated", target_table: "app_settings", target_id: provider, metadata: provider === "stripe" ? { cardEnabled: next.cardEnabled, boletoEnabled: next.boletoEnabled, boletoExpiresAfterDays: next.boletoExpiresAfterDays } : { pixEnabled: next.pixEnabled, pixFee: next.pixFee, cryptoEnabled: (next as any).cryptoEnabled ?? false } });
       return json({ saved: true });
     }
+
     if (action === "test") {
-      if (provider === "zennithpay" && !zennithReady) return json({ ok: false, message: "A secret ZENNITH_API_KEY ainda não foi configurada no Supabase." });
-      if (provider === "vexopay" && !vexoReady) return json({ ok: false, message: "As secrets da VexoPay ainda não foram configuradas no Supabase." });
-      if (provider === "stripe" && !stripeReady) return json({ ok: false, message: "As secrets STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET ainda não foram configuradas no Supabase." });
-      return json({ ok: true, message: "Credenciais detectadas no servidor. Nenhuma cobrança foi criada." });
+      if (provider === "magnuspay") {
+        if (!magnusReady) return json({ ok: false, message: "Configure MAGNUSPAY_API_KEY nos Secrets do Supabase." });
+        return json({ ok: true, message: "MAGNUSPAY_API_KEY detectada no servidor." });
+      }
+      if (provider === "zennithpay" && !zennithReady) return json({ ok: false, message: "ZENNITH_API_KEY não configurada." });
+      if (provider === "vexopay" && !vexoReady) return json({ ok: false, message: "Credenciais VexoPay não configuradas." });
+      if (provider === "stripe" && !stripeReady) return json({ ok: false, message: "Credenciais Stripe não configuradas." });
+      return json({ ok: true, message: "Credenciais detectadas no servidor." });
     }
+
     return json({ error: "Ação inválida." }, 400);
-  } catch (error: any) {
-    console.error("integrations-config", error?.message || error);
+  } catch (error) {
+    console.error("integrations-config", error instanceof Error ? error.message : error);
     return json({ error: "Erro inesperado ao configurar integrações." }, 500);
   }
 });
