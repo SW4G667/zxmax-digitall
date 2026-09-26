@@ -173,7 +173,7 @@ export default function IntegrationsPanel() {
     <section className="space-y-5">
       <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
         <div className="flex gap-2 font-semibold"><ShieldCheck className="h-5 w-5 shrink-0" />Segredos permanecem fora do navegador</div>
-        <p className="mt-1 text-amber-100/80">Este painel só administra disponibilidade e taxas. Escolha no máximo um provedor de PIX; ao habilitar um, o outro é desativado. Chaves de gateways são lidas exclusivamente como secrets pelas funções Edge.</p>
+        <p className="mt-1 text-amber-100/80">Este painel só administra disponibilidade e taxas. Escolha no máximo um provedor de PIX; ao habilitar um, os demais são desativados. Chaves de gateways são lidas exclusivamente como secrets pelas funções Edge.</p>
       </div>
       {PROVIDERS.map((provider) => {
         const config = configs[provider.id];
@@ -184,6 +184,7 @@ export default function IntegrationsPanel() {
               <div><h3 className="font-bold text-card-foreground">{provider.name}</h3><p className="mt-1 max-w-2xl text-sm text-muted-foreground">{provider.description}</p></div>
               <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold ${ready ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}><BadgeCheck className="h-3.5 w-3.5" />{ready ? "Secrets detectados" : "Secrets pendentes"}</span>
             </div>
+            <p className="mt-3 text-xs text-muted-foreground">Secrets necessários: <code>{provider.secretNames.join(", ")}</code>. Os valores nunca são enviados ao navegador.</p>
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
                 <p className="font-semibold text-foreground">Endpoint protegido</p>
