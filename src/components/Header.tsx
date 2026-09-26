@@ -126,6 +126,10 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
 
             <NotificationBell />
 
+            <a href={branding.supportUrl || state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noopener noreferrer" className="zx-icon-action hidden sm:flex border-[#5865F2]/25" title="Comunidade" aria-label="Abrir comunidade no Discord">
+              <DiscordIcon className="h-4 w-4" />
+            </a>
+
             {isAdmin && (
               <button onClick={() => navigate("/admin/branding")} className="zx-header-action hidden sm:flex" title="Personalizar site" aria-label="Personalizar site">
                 <Settings className="h-4 w-4" />
