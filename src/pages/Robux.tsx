@@ -198,7 +198,7 @@ export default function RobuxPage() {
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.17em] text-[#68b7fa]">Comparador</p>
               <h2 className="mt-1 text-xl font-black text-white">Ofertas disponíveis</h2>
-              <p className="mt-1 text-xs text-white/35">Somente anúncios aprovados com identidade pública válida entram nesta lista.</p>
+              <p className="mt-1 text-xs text-white/35">Somente anúncios aprovados com perfil público válido aparecem neste mercado.</p>
             </div>
             <div className="flex min-w-0 flex-1 flex-col gap-2 xl:max-w-3xl xl:flex-row xl:justify-end">
               <label className="flex min-h-11 flex-1 items-center gap-2 rounded-xl border border-white/[0.09] bg-black/[0.15] px-3 text-white/50 focus-within:border-[#168cff]/55">
@@ -223,7 +223,7 @@ export default function RobuxPage() {
             <div className="mt-5 rounded-2xl border border-dashed border-white/[0.12] bg-black/[0.12] px-5 py-12 text-center">
               <Coins className="mx-auto h-7 w-7 text-[#67b8ff]" />
               <h3 className="mt-3 text-base font-black text-white">Nenhuma oferta corresponde à busca.</h3>
-              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-white/42">Tente limpar a busca ou atualizar o catálogo.</p>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-white/42">Somente anúncios aprovados com perfil público válido aparecem neste mercado.</p>
               <button type="button" onClick={() => { setSearch(""); void refreshProducts(); }} className="mt-5 rounded-xl border border-[#168cff]/30 bg-[#168cff]/10 px-4 py-2.5 text-xs font-black text-[#9bd5ff]">Atualizar ofertas</button>
             </div>
           ) : (
