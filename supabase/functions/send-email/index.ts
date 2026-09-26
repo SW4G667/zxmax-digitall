@@ -138,12 +138,12 @@ serve(async (req) => {
         branding,
         "Nova pergunta",
         "Você recebeu uma nova pergunta",
-        `Um interessado enviou uma pergunta sobre <strong style="color:#fff">${escapeHtml(product.name)}</strong>. Responda dentro da ZXMAX para manter a negociação protegida.`,
+        `Um interessado enviou uma pergunta sobre <strong style="color:#fff">${escapeHtml(product.name)}</strong>. Responda dentro da ${escapeHtml(branding.siteName)} para manter a negociação protegida.`,
         `<strong style="color:#fff">Produto</strong><br>${escapeHtml(product.name)}<br><br><strong style="color:#fff">Pergunta</strong><br>${escapeHtml(question.body)}`,
         "Responder pergunta",
         `${SITE_URL}/produto/${question.product_id}#perguntas`,
       );
-      text = `Nova pergunta sobre ${String(product.name || "seu produto")}\n\nPergunta: ${String(question.body || "")}\n\nResponda dentro da ZXMAX: ${SITE_URL}/produto/${question.product_id}#perguntas`;
+      text = `Nova pergunta sobre ${String(product.name || "seu produto")}\n\nPergunta: ${String(question.body || "")}\n\nResponda dentro da ${branding.siteName}: ${SITE_URL}/produto/${question.product_id}#perguntas`;
     } else if (type === "new_review") {
       const reviewId = Number(body.reviewId);
       if (!Number.isInteger(reviewId) || reviewId <= 0) return json({ error: "Avaliação inválida." }, 400);
@@ -199,7 +199,7 @@ serve(async (req) => {
         approved ? "Anúncio aprovado" : removed ? "Anúncio retirado" : "Anúncio reprovado",
         approved ? "Seu anúncio foi aprovado" : removed ? "Seu anúncio foi retirado" : "Seu anúncio precisa de ajustes",
         approved
-          ? "Sua publicação passou pela revisão e já pode ser encontrada na ZXMAX."
+          ? `Sua publicação passou pela revisão e já pode ser encontrada na ${escapeHtml(branding.siteName)}.`
           : removed ? "Uma revisão administrativa retirou este anúncio da vitrine. Consulte o motivo e ajuste a publicação antes de reenviá-la."
           : "Seu anúncio foi retirado da vitrine. Ajuste o que for necessário e publique novamente quando estiver de acordo com as regras.",
         details,
@@ -258,12 +258,12 @@ serve(async (req) => {
         branding,
           "Pedido criado",
           "Seu pedido foi reservado",
-          "O pedido foi criado e está aguardando a confirmação do pagamento. Use somente a cobrança exibida dentro da ZXMAX.",
+          `O pedido foi criado e está aguardando a confirmação do pagamento. Use somente a cobrança exibida dentro da ${escapeHtml(branding.siteName)}.`,
           details,
           "Continuar pagamento",
           orderUrl,
         );
-        text = `Pedido #${purchaseId} criado\n\nProduto: ${productName}\nValor: ${formatBRL(purchase.amount)}\nStatus: aguardando pagamento.\n\nContinue pela ZXMAX: ${orderUrl}`;
+        text = `Pedido #${purchaseId} criado\n\nProduto: ${productName}\nValor: ${formatBRL(purchase.amount)}\nStatus: aguardando pagamento.\n\nContinue pela ${branding.siteName}: ${orderUrl}`;
       } else if (type === "purchase_confirmed") {
         subject = `Pagamento confirmado — ${productName}`;
         html = shell(
@@ -282,7 +282,7 @@ serve(async (req) => {
         branding,
           "Nova venda",
           "Você realizou uma venda",
-          "O pagamento foi confirmado e o pedido está pronto para atendimento. Faça a entrega e mantenha toda a conversa dentro da ZXMAX.",
+          `O pagamento foi confirmado e o pedido está pronto para atendimento. Faça a entrega e mantenha toda a conversa dentro da ${escapeHtml(branding.siteName)}.`,
           details,
           "Atender pedido",
           orderUrl,
@@ -306,7 +306,7 @@ serve(async (req) => {
         branding,
           "Pedido concluído",
           "Recebimento confirmado",
-          "Sua confirmação foi registrada e o pedido foi concluído. Você pode revisar os detalhes e avaliar a experiência pela ZXMAX.",
+          `Sua confirmação foi registrada e o pedido foi concluído. Você pode revisar os detalhes e avaliar a experiência pela ${escapeHtml(branding.siteName)}.`,
           details,
           "Ver pedido",
           orderUrl,
@@ -349,12 +349,12 @@ serve(async (req) => {
           sellerCopy ? "Uma disputa foi aberta nesta venda" : "Sua disputa foi registrada",
           sellerCopy
             ? "O pedido entrou em análise. Não tente resolver a situação fora da plataforma; mantenha evidências e mensagens no chat do pedido."
-            : "A disputa foi registrada e o pedido entrou em análise. Mantenha evidências e mensagens dentro da ZXMAX.",
+            : `A disputa foi registrada e o pedido entrou em análise. Mantenha evidências e mensagens dentro da ${escapeHtml(branding.siteName)}.`,
           details,
           "Acompanhar disputa",
           orderUrl,
         );
-        text = `Disputa aberta\n\nPedido: #${purchaseId}\nProduto: ${productName}\nStatus: em análise.\n\nAcompanhe pela ZXMAX: ${orderUrl}`;
+        text = `Disputa aberta\n\nPedido: #${purchaseId}\nProduto: ${productName}\nStatus: em análise.\n\nAcompanhe pela ${branding.siteName}: ${orderUrl}`;
       }
     }
 
@@ -377,10 +377,10 @@ serve(async (req) => {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      await admin.from("webhook_logs").insert({ source: "email", event_type: type, status: `error_${response.status}`, order_id: logId, charge_id: idempotencyKey, payload: { recipient: sellerRecipientTypes.has(type) || type === "new_question" || type === "product_approved" || type === "product_rejected" || type === "product_removed" ? "seller" : "buyer", subject }, error: "provider_rejected" });
+      await admin.from("webhook_logs").insert({ source: "email", event_type: type, status: `error_${response.status}`, order_id: logId, charge_id: idempotencyKey, payload: { recipient: sellerRecipientTypes.has(type) || type === "new_question" || type === "new_review" || type === "product_approved" || type === "product_rejected" || type === "product_removed" ? "seller" : "buyer", subject }, error: "provider_rejected" });
       return json({ error: "Não foi possível entregar a notificação." }, 502);
     }
-    await admin.from("webhook_logs").insert({ source: "email", event_type: type, status: "sent", order_id: logId, charge_id: idempotencyKey || result.id || null, payload: { recipient: sellerRecipientTypes.has(type) || type === "new_question" || type === "product_approved" || type === "product_rejected" || type === "product_removed" ? "seller" : "buyer", subject, resend_id: result.id || null }, error: null });
+    await admin.from("webhook_logs").insert({ source: "email", event_type: type, status: "sent", order_id: logId, charge_id: idempotencyKey || result.id || null, payload: { recipient: sellerRecipientTypes.has(type) || type === "new_question" || type === "new_review" || type === "product_approved" || type === "product_rejected" || type === "product_removed" ? "seller" : "buyer", subject, resend_id: result.id || null }, error: null });
     return json({ sent: true, id: result.id });
   } catch (error) {
     console.error("send-email failure", error instanceof Error ? error.message : "unknown");
