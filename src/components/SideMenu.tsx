@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { X, Store, Package, ShoppingBag, Headset, Shield, User, Wallet, FileText, HelpCircle, Lock, ScrollText, Heart, ShieldCheck, Sparkles, TrendingUp } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import useFavorites from "@/hooks/useFavorites";
+import useSiteBranding from "@/hooks/useSiteBranding";
 
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "withdraw";
 
@@ -16,6 +17,7 @@ interface Props {
 export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: Props) {
   const { isAdmin, user, profile, mfaEnabled } = useAuth();
   const { count } = useFavorites();
+  const { branding } = useSiteBranding();
 
   useEffect(() => {
     if (open) {
@@ -74,9 +76,11 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
         <div className="relative z-10 p-6 pb-4 shrink-0">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-black tracking-tighter text-white">
-                ZX<span className="text-primary">MAX</span>
-              </h2>
+              {branding.logoUrl ? (
+                <img src={branding.logoUrl} alt={branding.siteName} className="h-10 max-w-[180px] object-contain object-left" />
+              ) : (
+                <h2 className="text-2xl font-black tracking-tighter text-white">{branding.siteName}</h2>
+              )}
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/30 mt-1 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-success animate-pulse" /> Marketplace Seguro
               </p>
@@ -197,7 +201,7 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
         </div>
 
         <div className="p-4 border-t border-white/5 shrink-0">
-          <p className="text-[10px] text-white/20 text-center font-mono">ZXMAX v2 • GGMAX Edition • Seguro</p>
+          <p className="text-[10px] text-white/20 text-center font-mono">{branding.siteName} • Marketplace Digital • Seguro</p>
         </div>
       </aside>
     </div>
