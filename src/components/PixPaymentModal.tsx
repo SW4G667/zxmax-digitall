@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface PixCharge {
-  evopayId: string;
+  paymentId: string;
   qrCodeText: string;
   amount: number;
   qrCodeUrl?: string | null;
@@ -36,53 +36,38 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
       if (paidRef.current) return;
       attempts += 1;
       try {
-        const { data, error } = await supabase.functions.invoke("check-evopay-status", {
-          body: { id: charge.evopayId },
-        });
-        const gatewayPaid = !error && (
-          PAID_STATUSES.includes(data?.status) ||
-          String(data?.status || "").toUpperCase() === "COMPLETED" ||
-          String(data?.status || "").toUpperCase() === "PAID"
-        );
+        if (!charge.purchaseId) return;
 
-        let localPaid = false;
-        let purchaseId: number | null = charge.purchaseId || null;
-        try {
-          const { data: latest } = await (supabase as any)
-            .from("purchases")
-            .select("id, status")
-            .eq("evopay_charge_id", charge.evopayId)
-            .maybeSingle();
-          if (latest) {
-            if (["paid", "delivered"].includes(latest.status)) localPaid = true;
-            purchaseId = latest.id;
-          }
-        } catch {}
+        const { data: latest, error } = await (supabase as any)
+          .from("purchases")
+          .select("id,status,pix_expires_at")
+          .eq("id", charge.purchaseId)
+          .maybeSingle();
 
-        if (gatewayPaid || localPaid) {
+        if (!error && latest && ["paid", "delivered"].includes(String(latest.status))) {
           if (paidRef.current) return;
           paidRef.current = true;
           setStatus("paid");
           clearInterval(interval);
           onPaid();
 
-          // Trigger transactional emails (idempotent)
-          if (purchaseId) {
-            try {
-              await supabase.functions.invoke("send-email", {
-                body: { type: "purchase_confirmed", purchaseId },
-              });
-              await supabase.functions.invoke("send-email", {
-                body: { type: "new_sale", purchaseId },
-              });
-            } catch {}
-          }
-        } else if (data?.status === "EXPIRED" || data?.status === "CANCELED" || data?.status === "FAILED") {
+          try {
+            await supabase.functions.invoke("send-email", {
+              body: { type: "purchase_confirmed", purchaseId: charge.purchaseId },
+            });
+            await supabase.functions.invoke("send-email", {
+              body: { type: "new_sale", purchaseId: charge.purchaseId },
+            });
+          } catch {}
+          return;
+        }
+
+        if (latest?.pix_expires_at && new Date(latest.pix_expires_at).getTime() < Date.now()) {
           clearInterval(interval);
-          toast.error("O pagamento expirou ou foi cancelado. Gere um novo PIX.");
+          toast.error("Este PIX expirou. Gere uma nova cobrança.");
         }
       } catch {
-        /* keep polling */
+        /* mantém a consulta local; nunca libera pedido por erro de rede */
       }
       if (attempts >= MAX_ATTEMPTS) clearInterval(interval);
     };
@@ -92,7 +77,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [charge?.evopayId]);
+  }, [charge?.paymentId, charge?.purchaseId]);
 
   if (!charge) return null;
 
