@@ -18,6 +18,7 @@ export default function Categorias() {
   const categories = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("pt-BR");
     return state.config.categories
+      .filter((category) => category !== ROBUX_CATEGORY)
       .map((category) => ({
         name: category,
         count: approved.filter((product) => product.category === category).length,
@@ -25,6 +26,12 @@ export default function Categorias() {
       .filter((category) => !normalized || category.name.toLocaleLowerCase("pt-BR").includes(normalized))
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [approved, query, state.config.categories]);
+
+  const robuxCount = useMemo(
+    () => approved.filter((product) => product.category === ROBUX_CATEGORY).length,
+    [approved],
+  );
+  const queryMatchesRobux = !query.trim() || "robux".includes(query.trim().toLocaleLowerCase("pt-BR"));
 
   const openCategory = (category: string) => {
     if (category === ROBUX_CATEGORY) {
@@ -52,6 +59,19 @@ export default function Categorias() {
             className="ml-2 min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/28"
           />
         </label>
+
+        {queryMatchesRobux ? (
+          <button
+            onClick={() => navigate("/robux")}
+            className="mb-3 flex w-full items-center justify-between rounded-lg border border-[#168cff]/20 bg-[#168cff]/[0.05] px-4 py-4 text-left transition hover:border-[#168cff]/35 hover:bg-[#168cff]/[0.08]"
+          >
+            <span>
+              <span className="block text-sm font-semibold text-white">Robux</span>
+              <span className="mt-0.5 block text-[10px] text-white/35">{robuxCount} {robuxCount === 1 ? "oferta" : "ofertas"} na página exclusiva</span>
+            </span>
+            <span className="text-xs font-semibold text-[#66b4ff]">Abrir mercado →</span>
+          </button>
+        ) : null}
 
         <div className="rounded-lg border border-white/[0.08] bg-[#101013]">
           {categories.length === 0 ? (

@@ -52,35 +52,40 @@ export default function MarketplaceHome() {
     [state.products, state.currentUser?.id],
   );
 
+  const generalProducts = useMemo(
+    () => approved.filter((product) => product.category !== ROBUX_CATEGORY),
+    [approved],
+  );
+
   const popularCategories = useMemo(
     () => state.config.categories
+      .filter((category) => category !== ROBUX_CATEGORY)
       .map((category) => ({
         name: category,
-        count: approved.filter((product) => product.category === category).length,
+        count: generalProducts.filter((product) => product.category === category).length,
       }))
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "pt-BR"))
       .slice(0, 8),
-    [approved, state.config.categories],
+    [generalProducts, state.config.categories],
   );
 
   const featured = useMemo(
-    () => [...approved]
-      .filter((product) => product.category !== ROBUX_CATEGORY)
+    () => [...generalProducts]
       .sort((a, b) => (b.sales + b.rating) - (a.sales + a.rating) || b.id - a.id)
       .slice(0, 5),
-    [approved],
+    [generalProducts],
   );
 
   const popular = useMemo(
-    () => [...approved]
+    () => [...generalProducts]
       .sort((a, b) => b.sales - a.sales || b.rating - a.rating || b.id - a.id)
       .slice(0, 5),
-    [approved],
+    [generalProducts],
   );
 
   const newest = useMemo(
-    () => [...approved].sort((a, b) => b.id - a.id).slice(0, 5),
-    [approved],
+    () => [...generalProducts].sort((a, b) => b.id - a.id).slice(0, 5),
+    [generalProducts],
   );
 
   const submitSearch = (event: React.FormEvent) => {
@@ -125,7 +130,7 @@ export default function MarketplaceHome() {
             {branding.heroTitle || "Comprar e vender produtos digitais"}
           </h1>
           <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-white/48 sm:text-base">
-            {branding.heroSubtitle || "Contas, jogos, Robux, gift cards, serviços e produtos digitais em um só lugar."}
+            {branding.heroSubtitle || "Contas, bots, jogos, serviços e outros produtos digitais em um só lugar."}
           </p>
 
           <form onSubmit={submitSearch} className="mx-auto mt-6 flex max-w-2xl items-center rounded-lg border border-white/[0.12] bg-white p-1.5 shadow-sm">

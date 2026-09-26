@@ -1,11 +1,10 @@
 import React, { useMemo, useState } from "react";
-import { BadgeCheck, ChevronRight, Search, Star } from "lucide-react";
+import { BadgeCheck, ChevronRight, RefreshCw, Search, Star } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import AppShell from "@/components/AppShell";
 import { useStore } from "@/store/StoreContext";
 import {
   formatBRL,
-  formatRobuxPackage,
   formatRobuxUnitPrice,
   formatStockLabel,
   productMinQuantity,
@@ -36,8 +35,8 @@ interface RobuxOffer {
 }
 
 const SORT_OPTIONS: { id: SortKey; label: string }[] = [
-  { id: "barato", label: "Menor preço" },
-  { id: "min", label: "Menor mínimo" },
+  { id: "barato", label: "Menor preço por unidade" },
+  { id: "min", label: "Menor compra mínima" },
   { id: "recomendado", label: "Mais avaliações" },
 ];
 
@@ -56,7 +55,7 @@ export default function RobuxPage() {
       .filter((product) => product.category === ROBUX_CATEGORY && product.approved)
       .map((product) => {
         const identity = state.userDirectory?.[product.sellerId];
-        const sellerPublicId = product.sellerPublicId || identity?.publicId || "";
+        const sellerPublicId = String(product.sellerPublicId || identity?.publicId || "");
         const reviewCount = Number(product.reviewCount || 0);
         const positive = Number(product.reviewPositive || 0);
 
@@ -67,7 +66,7 @@ export default function RobuxPage() {
           sellerName: identity?.name || product.seller || "",
           sellerPublicId,
           verified: Boolean(identity?.isVerified),
-          packagePrice: product.price,
+          packagePrice: Number(product.price) || 0,
           packageUnits: robuxPackageUnits(product),
           pricePerUnit: unitPriceFromPackage(product),
           stock: productStock(product),
@@ -96,11 +95,12 @@ export default function RobuxPage() {
   }, [maxPrice, search, sort, state.products, state.userDirectory]);
 
   const isLoading = catalogStatus === "loading" && state.products.length === 0;
+  const hasFilters = Boolean(search.trim() || maxPrice);
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-[1180px]">
-        <nav className="mb-5 flex items-center gap-2 text-[11px] text-white/35" aria-label="Navegação estrutural">
+      <div className="mx-auto max-w-[1120px]">
+        <nav className="mb-5 flex items-center gap-2 text-[11px] text-white/32" aria-label="Navegação estrutural">
           <Link to="/" className="hover:text-white">Início</Link>
           <ChevronRight className="h-3 w-3" />
           <Link to="/categorias" className="hover:text-white">Categorias</Link>
@@ -108,156 +108,154 @@ export default function RobuxPage() {
           <span className="text-white/70">Robux</span>
         </nav>
 
-        <header className="mb-6 border-b border-white/[0.07] pb-5">
-          <p className="text-xs font-medium text-white/35">Mercado de Robux</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-[-0.035em] text-white">Robux Roblox</h1>
+        <header className="flex flex-col gap-4 border-b border-white/[0.07] pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#66b4ff]">Mercado de Robux</p>
+            <h1 className="mt-1 text-3xl font-bold tracking-[-0.04em] text-white sm:text-4xl">Robux Roblox</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/42">
+              Compare ofertas reais pelo valor por unidade, quantidade mínima, estoque, prazo e histórico do vendedor.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void refreshProducts()}
+            className="inline-flex h-9 items-center justify-center gap-1.5 self-start rounded-md border border-white/[0.09] px-3 text-[11px] font-semibold text-white/48 transition hover:bg-white/[0.035] hover:text-white sm:self-auto"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${catalogStatus === "loading" ? "animate-spin" : ""}`} />
+            Atualizar
+          </button>
         </header>
 
-        <div className="grid gap-6 lg:grid-cols-[230px_minmax(0,1fr)]">
-          <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
-            <section>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/35">Categorias</h2>
-              <div className="overflow-hidden rounded-lg border border-white/[0.08] bg-[#101013]">
-                {[
-                  ["Robux", "/robux"],
-                  ["Roblox no catálogo", "/loja?q=Roblox"],
-                  ["Contas", "/loja?cat=Contas"],
-                  ["Jogos e itens", "/loja?cat=Jogos%20e%20Itens"],
-                  ["Todas as categorias", "/categorias"],
-                ].map(([label, to], index, all) => (
-                  <Link
-                    key={to}
-                    to={to}
-                    className={`block px-3 py-3 text-xs transition hover:bg-white/[0.035] ${index < all.length - 1 ? "border-b border-white/[0.06]" : ""} ${to === "/robux" ? "font-semibold text-white" : "text-white/48"}`}
-                  >
-                    {label}
-                  </Link>
-                ))}
-              </div>
-            </section>
+        <section className="mt-5 grid gap-3 rounded-lg border border-white/[0.08] bg-[#101013] p-3 sm:grid-cols-[minmax(0,1fr)_210px_200px_auto]">
+          <label className="flex h-10 min-w-0 items-center rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 focus-within:border-[#168cff]/60">
+            <Search className="h-4 w-4 shrink-0 text-white/28" />
+            <span className="sr-only">Buscar oferta de Robux</span>
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar vendedor ou oferta..."
+              className="ml-2 min-w-0 flex-1 bg-transparent text-xs text-white outline-none placeholder:text-white/24"
+            />
+          </label>
 
-            <section>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/35">Filtros</h2>
-              <div className="space-y-3 rounded-lg border border-white/[0.08] bg-[#101013] p-3">
-                <label className="block">
-                  <span className="mb-1.5 block text-[11px] text-white/42">Vendedor ou anúncio</span>
-                  <div className="flex h-10 items-center rounded-md border border-white/[0.09] bg-[#0b0b0e] px-2.5 focus-within:border-[#168cff]/60">
-                    <Search className="h-3.5 w-3.5 text-white/28" />
-                    <input
-                      value={search}
-                      onChange={(event) => setSearch(event.target.value)}
-                      placeholder="Filtrar..."
-                      className="ml-2 min-w-0 flex-1 bg-transparent text-xs text-white outline-none placeholder:text-white/24"
-                    />
-                  </div>
-                </label>
+          <label className="block">
+            <span className="sr-only">Preço máximo do pacote</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={maxPrice}
+              onChange={(event) => setMaxPrice(event.target.value)}
+              placeholder="Preço máximo"
+              className="h-10 w-full rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 text-xs text-white outline-none placeholder:text-white/24 focus:border-[#168cff]/60"
+            />
+          </label>
 
-                <label className="block">
-                  <span className="mb-1.5 block text-[11px] text-white/42">Preço máximo do pacote</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={maxPrice}
-                    onChange={(event) => setMaxPrice(event.target.value)}
-                    placeholder="R$ 0,00"
-                    className="h-10 w-full rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 text-xs text-white outline-none placeholder:text-white/24 focus:border-[#168cff]/60"
-                  />
-                </label>
+          <label className="block">
+            <span className="sr-only">Ordenar ofertas</span>
+            <select
+              value={sort}
+              onChange={(event) => setSort(event.target.value as SortKey)}
+              className="h-10 w-full rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 text-xs text-white outline-none focus:border-[#168cff]/60"
+            >
+              {SORT_OPTIONS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+            </select>
+          </label>
 
-                <label className="block">
-                  <span className="mb-1.5 block text-[11px] text-white/42">Ordenar por</span>
-                  <select
-                    value={sort}
-                    onChange={(event) => setSort(event.target.value as SortKey)}
-                    className="h-10 w-full rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 text-xs text-white outline-none focus:border-[#168cff]/60"
-                  >
-                    {SORT_OPTIONS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-                  </select>
-                </label>
+          <button
+            type="button"
+            disabled={!hasFilters}
+            onClick={() => { setSearch(""); setMaxPrice(""); }}
+            className="h-10 rounded-md border border-white/[0.08] px-3 text-[11px] font-semibold text-white/42 transition hover:bg-white/[0.035] hover:text-white disabled:cursor-default disabled:opacity-30"
+          >
+            Limpar
+          </button>
+        </section>
 
-                {(search || maxPrice) ? (
-                  <button
-                    type="button"
-                    onClick={() => { setSearch(""); setMaxPrice(""); }}
-                    className="text-[11px] font-semibold text-[#63afff] hover:text-white"
-                  >
-                    Limpar filtros
-                  </button>
-                ) : null}
-              </div>
-            </section>
-          </aside>
-
-          <main>
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold text-white">Ofertas de Robux</h2>
-                <p className="mt-0.5 text-[11px] text-white/32">Somente anúncios aprovados com perfil público válido aparecem neste mercado.</p>
-              </div>
-              <span className="text-[11px] text-white/28">{offers.length} ofertas</span>
-            </div>
-
-            {isLoading ? (
-              <div className="space-y-2" aria-busy="true">
-                {Array.from({ length: 5 }).map((_, index) => <div key={index} className="h-28 animate-pulse rounded-lg bg-white/[0.035]" />)}
-              </div>
-            ) : offers.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-white/[0.1] bg-[#101013] px-5 py-12 text-center">
-                <p className="text-sm font-semibold text-white">Nenhuma oferta encontrada.</p>
-                <p className="mt-1 text-xs text-white/38">Somente anúncios aprovados com perfil público válido aparecem neste mercado.</p>
-                <button type="button" onClick={() => void refreshProducts()} className="mt-4 text-xs font-semibold text-[#62afff] hover:text-white">Atualizar ofertas</button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {offers.map((offer) => (
-                  <article key={offer.productId} className="rounded-lg border border-white/[0.08] bg-[#111114] p-4 transition hover:border-white/[0.17]">
-                    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px_145px] md:items-center">
-                      <div className="flex min-w-0 gap-3">
-                        <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-md border border-white/[0.08] bg-[#19191e] text-xs font-bold text-white/60">
-                          {offer.image ? <img src={offer.image} alt="" className="h-full w-full object-cover" /> : "R$"}
-                        </div>
-                        <div className="min-w-0">
-                          <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-white">{offer.productName}</h3>
-                          <p className="mt-1 flex items-center gap-1 truncate text-[11px] text-white/42">
-                            {offer.sellerName}
-                            {offer.verified ? <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[#55a9ff]" aria-label="Vendedor verificado" /> : null}
-                          </p>
-                          <p className="mt-0.5 text-[10px] text-white/25">ID público: {offer.sellerPublicId}</p>
-                          <p className="mt-1 text-[10px] text-white/30">
-                            {offer.reviewCount > 0 ? (
-                              <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-[#f5b642] text-[#f5b642]" /> {offer.positivePct}% positivas · {offer.reviewCount} avaliações</span>
-                            ) : "Sem avaliações registradas"}
-                          </p>
-                        </div>
-                      </div>
-
-                      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
-                        <div><dt className="text-white/28">Valor/un.</dt><dd className="mt-0.5 font-semibold text-white">{formatRobuxUnitPrice(offer.pricePerUnit)}</dd></div>
-                        <div><dt className="text-white/28">Mínimo</dt><dd className="mt-0.5 font-medium text-white/72">{offer.minQty.toLocaleString("pt-BR")}</dd></div>
-                        <div><dt className="text-white/28">Estoque</dt><dd className="mt-0.5 font-medium text-white/72">{formatStockLabel(offer.stock)}</dd></div>
-                        <div><dt className="text-white/28">Prazo</dt><dd className="mt-0.5 truncate font-medium text-white/72">{offer.delivery}</dd></div>
-                      </dl>
-
-                      <div className="md:text-right">
-                        <p className="text-[10px] text-white/28">Pacote anunciado</p>
-                        <p className="mt-1 text-sm font-bold text-white">{formatBRL(offer.packagePrice)}</p>
-                        <p className="mt-0.5 text-[10px] text-white/32">{formatRobuxPackage({ price: offer.packagePrice, category: ROBUX_CATEGORY, variations: [{ name: `${offer.packageUnits} Robux` }] })}</p>
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/produto/${offer.productId}`)}
-                          className="mt-3 rounded-md bg-[#168cff] px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-[#0878dc]"
-                        >
-                          Ver oferta
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </main>
+        <div className="mt-6 flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-white">Ofertas disponíveis</h2>
+            <p className="mt-0.5 text-[11px] text-white/30">Somente anúncios aprovados com perfil público válido aparecem neste mercado.</p>
+          </div>
+          <span className="shrink-0 text-[11px] text-white/25">{offers.length} {offers.length === 1 ? "oferta" : "ofertas"}</span>
         </div>
+
+        {isLoading ? (
+          <div className="mt-3 space-y-2" aria-busy="true" aria-live="polite">
+            {Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-28 animate-pulse rounded-lg bg-white/[0.035]" />)}
+          </div>
+        ) : catalogStatus === "error" && offers.length === 0 ? (
+          <div className="mt-3 rounded-lg border border-red-400/15 bg-red-500/[0.04] px-5 py-10 text-center">
+            <p className="text-sm font-semibold text-white">Não foi possível carregar as ofertas agora.</p>
+            <button type="button" onClick={() => void refreshProducts()} className="mt-3 text-xs font-semibold text-[#66b4ff] hover:text-white">Tentar novamente</button>
+          </div>
+        ) : offers.length === 0 ? (
+          <div className="mt-3 rounded-lg border border-dashed border-white/[0.1] bg-[#101013] px-5 py-12 text-center">
+            <p className="text-sm font-semibold text-white">Nenhuma oferta encontrada.</p>
+            <p className="mt-1 text-xs text-white/36">Ajuste os filtros ou aguarde novos anúncios aprovados.</p>
+          </div>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {offers.map((offer) => (
+              <article key={offer.productId} className="rounded-lg border border-white/[0.08] bg-[#111114] p-4 transition hover:border-white/[0.16]">
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1.25fr)_minmax(250px,.9fr)_150px] md:items-center">
+                  <div className="flex min-w-0 gap-3">
+                    <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-md border border-white/[0.08] bg-[#19191e] text-xs font-bold text-white/50">
+                      {offer.image ? <img src={offer.image} alt="" className="h-full w-full object-cover" loading="lazy" /> : "R$"}
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-white">{offer.productName}</h3>
+                      <p className="mt-1 flex items-center gap-1 truncate text-[11px] text-white/42">
+                        {offer.sellerName}
+                        {offer.verified ? <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[#55a9ff]" aria-label="Vendedor verificado" /> : null}
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-white/25">ID público: {offer.sellerPublicId}</p>
+                      <p className="mt-1 text-[10px] text-white/30">
+                        {offer.reviewCount > 0 ? (
+                          <span className="inline-flex items-center gap-1">
+                            <Star className="h-3 w-3 fill-[#f5b642] text-[#f5b642]" />
+                            {offer.positivePct}% positivas · {offer.reviewCount} avaliações
+                          </span>
+                        ) : "Sem avaliações registradas"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <dl className="grid grid-cols-2 gap-x-5 gap-y-2 text-[11px] sm:grid-cols-4 md:grid-cols-2">
+                    <div>
+                      <dt className="text-white/28">Valor/un.</dt>
+                      <dd className="mt-0.5 font-semibold text-[#66b4ff]">{formatRobuxUnitPrice(offer.pricePerUnit)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-white/28">Mínimo</dt>
+                      <dd className="mt-0.5 font-medium text-white/72">{offer.minQty.toLocaleString("pt-BR")} Robux</dd>
+                    </div>
+                    <div>
+                      <dt className="text-white/28">Estoque</dt>
+                      <dd className="mt-0.5 font-medium text-white/72">{formatStockLabel(offer.stock)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-white/28">Prazo</dt>
+                      <dd className="mt-0.5 truncate font-medium text-white/72">{offer.delivery}</dd>
+                    </div>
+                  </dl>
+
+                  <div className="border-t border-white/[0.06] pt-3 md:border-l md:border-t-0 md:pl-4 md:pt-0 md:text-right">
+                    <p className="text-[10px] text-white/28">{offer.packageUnits.toLocaleString("pt-BR")} Robux</p>
+                    <p className="mt-1 text-base font-bold text-white">{formatBRL(offer.packagePrice)}</p>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/produto/${offer.productId}`)}
+                      className="mt-3 w-full rounded-md bg-[#168cff] px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-[#0878dc] md:w-auto"
+                    >
+                      Ver oferta
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </div>
     </AppShell>
   );

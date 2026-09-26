@@ -22,7 +22,7 @@ export default function ResetPassword() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.length < 6) return toast.error("A senha deve ter pelo menos 6 caracteres.");
+    if (password.length < 8) return toast.error("A senha deve ter pelo menos 8 caracteres.");
     if (password !== confirm) return toast.error("As senhas não coincidem.");
     setLoading(true);
     const { error } = await supabase.auth.updateUser({ password });
@@ -43,7 +43,7 @@ export default function ResetPassword() {
         {done ? (
           <div className="space-y-4 text-center">
             <p className="text-sm text-foreground">Sua senha foi alterada. Já pode acessar sua conta normalmente.</p>
-            <a href="/" className="btn-gradient inline-block w-full p-4 text-sm rounded-2xl font-bold">Voltar para o site</a>
+            <a href="/" className="btn-gradient inline-block w-full p-4 text-sm rounded-lg font-bold">Voltar para o site</a>
           </div>
         ) : !ready ? (
           <p className="text-sm text-muted-foreground text-center">
@@ -56,14 +56,14 @@ export default function ResetPassword() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Nova senha"
-              className="w-full p-4 rounded-2xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground text-sm"
+              className="w-full p-4 rounded-lg bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground text-sm"
             />
             <input
               type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               placeholder="Confirmar nova senha"
-              className="w-full p-4 rounded-2xl bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground text-sm"
+              className="w-full p-4 rounded-lg bg-muted border-none focus:ring-2 ring-primary outline-none text-foreground text-sm"
             />
             <button type="submit" disabled={loading} className="w-full btn-gradient p-4 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
               <KeyEmoji className="w-5 h-5" />
