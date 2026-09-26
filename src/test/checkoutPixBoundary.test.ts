@@ -10,8 +10,11 @@ describe("checkout PIX exclusivo e neutro", () => {
     const integrations = await source("supabase/functions/integrations-config/index.ts");
     const purchase = await source("supabase/functions/create-purchase/index.ts");
     const panel = await source("src/components/IntegrationsPanel.tsx");
-    expect(methods).toContain("vexopay_pix: raw.zennith_pix ? false : raw.vexopay_pix");
-    expect(integrations).toContain("const selectedPix = zennithPixActive ? \"zennith_pix\" : vexopayPixActive ? \"vexopay_pix\" : null;");
+    expect(methods).toContain("zennith_pix: raw.magnuspay_pix ? false : raw.zennith_pix");
+    expect(methods).toContain("vexopay_pix: raw.magnuspay_pix || raw.zennith_pix ? false : raw.vexopay_pix");
+    expect(integrations).toContain('? "magnuspay_pix"');
+    expect(integrations).toContain('? "zennith_pix"');
+    expect(integrations).toContain('? "vexopay_pix"');
     expect(purchase).toContain("paymentMethod !== selectedPix");
     expect(panel).toContain('if (key === "pixEnabled" && value === true)');
     expect(panel).toContain("Usar como PIX único");
@@ -20,8 +23,8 @@ describe("checkout PIX exclusivo e neutro", () => {
   it("não apresenta marca de gateway nem imagem externa para o QR PIX do comprador", async () => {
     const product = await source("src/pages/Produto.tsx");
     const pix = await source("src/components/PixPaymentModal.tsx");
-    expect(product).toContain('{ id: "zennith_pix", label: "PIX"');
-    expect(product).toContain('method === "zennith_pix" || method === "vexopay_pix" ? "Pagar com PIX"');
+    expect(product).toContain('{ id: "magnuspay_pix", label: "PIX"');
+    expect(product).toContain('method === "magnuspay_pix" || method === "zennith_pix" || method === "vexopay_pix" ? "Pagar com PIX"');
     expect(product).not.toContain('label: "PIX · Zennith"');
     expect(product).not.toContain('label: "PIX · Vexo"');
     expect(pix).toContain('import { QRCodeSVG } from "qrcode.react";');
@@ -50,9 +53,12 @@ describe("checkout PIX exclusivo e neutro", () => {
   it("não devolve detalhes ou marca do gateway em erros de geração PIX ao comprador", async () => {
     const zennith = await source("supabase/functions/create-zennith-pix/index.ts");
     const vexo = await source("supabase/functions/create-evopay-pix/index.ts");
+    const magnus = await source("supabase/functions/create-magnuspay-pix/index.ts");
     expect(zennith).toContain('code: "pix_provider_unavailable"');
     expect(zennith).not.toContain('error: `Não foi possível gerar o PIX: ${detail');
     expect(vexo).toContain('error: "PIX temporariamente indisponível."');
     expect(vexo).not.toContain('error: "Não foi possível gerar o PIX via VexoPay."');
+    expect(magnus).toContain('payment_provider: "magnuspay_pix"');
+    expect(magnus).not.toContain("MAGNUSPAY_API_KEY:");
   });
 });
