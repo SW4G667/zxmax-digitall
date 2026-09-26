@@ -46,9 +46,9 @@ export default function Categorias() {
   const categories = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("pt-BR");
     return state.config.categories
-      .map((name) => ({
-        name,
-        count: approved.filter((product) => product.category === name).length,
+      .map((category) => ({
+        name: category,
+        count: approved.filter((product) => product.category === category).length,
       }))
       .filter((category) => !q || category.name.toLocaleLowerCase("pt-BR").includes(q))
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "pt-BR"));
