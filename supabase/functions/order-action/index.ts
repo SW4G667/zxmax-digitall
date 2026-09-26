@@ -40,6 +40,32 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+async function notifyOrderEmail(type: string, purchaseId: number) {
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceKey) return;
+  try {
+    const response = await fetch(`${url}/functions/v1/send-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceKey}`,
+        apikey: serviceKey,
+      },
+      body: JSON.stringify({ type, purchaseId }),
+    });
+    if (!response.ok && response.status !== 202) {
+      console.warn("order email not delivered", type, purchaseId, response.status);
+    }
+  } catch (error) {
+    console.warn("order email failed", type, purchaseId, error instanceof Error ? error.message : "unknown");
+  }
+}
+
+async function notifyOrderEmails(types: string[], purchaseId: number) {
+  await Promise.all(types.map((type) => notifyOrderEmail(type, purchaseId)));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -127,6 +153,7 @@ serve(async (req) => {
         .eq("id", order.id);
 
       if (error) throw error;
+      await notifyOrderEmail("delivery_marked", Number(order.id));
       return json({ success: true, status: "delivered_pending_confirmation", autoReleaseAt: autoReleaseDate.toISOString() });
     }
 
@@ -158,6 +185,7 @@ serve(async (req) => {
         .eq("id", order.id);
 
       if (error) throw error;
+      await notifyOrderEmails(["receipt_confirmed_buyer", "receipt_confirmed_seller"], Number(order.id));
       return json({ success: true, status: "delivered", releasedAt: now });
     }
 
@@ -202,6 +230,7 @@ serve(async (req) => {
         .eq("id", order.id);
 
       if (error) throw error;
+      await notifyOrderEmails(["dispute_opened_buyer", "dispute_opened_seller"], Number(order.id));
       return json({ success: true, status: "dispute" });
     }
 
