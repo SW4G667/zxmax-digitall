@@ -41,7 +41,7 @@ describe("notificações de moderação", () => {
     expect(edge).toContain("Authorization: `Bearer ${serviceRoleKey}`");
     expect(edge).toContain("notification = delivery.sent === true");
     expect(email).toContain('"product_removed"');
-    expect(email).toContain("type === \"product_removed\") && !internalCall");
+    expect(email).toContain('if (type !== "new_question" && !internalCall)');
     expect(email).toContain("name: String(body.productName");
     expect(migration).toContain("'seller_id', target_product.seller_id");
   });
