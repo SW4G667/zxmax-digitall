@@ -151,10 +151,10 @@ export default function SideMenu({ open, onClose, onNavigate, onOpenProfile }: P
               <ChevronRight className="h-4 w-4 text-white/25" />
             </button>
           ) : (
-            <button onClick={() => { onNavigate("store"); onClose(); }} className="mt-4 flex w-full items-center gap-3 rounded-2xl border border-[#168cff]/20 bg-[#168cff]/[0.08] p-3.5 text-left">
+            <Link to="/loja?login=1" onClick={onClose} className="mt-4 flex w-full items-center gap-3 rounded-2xl border border-[#168cff]/20 bg-[#168cff]/[0.08] p-3.5 text-left">
               <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#168cff]/15 text-[#7dc7ff]"><LogIn className="h-4 w-4" /></span>
               <span><span className="block text-xs font-black text-white">Entre para acessar sua conta</span><span className="mt-0.5 block text-[10px] text-white/35">Pedidos, anúncios, favoritos e suporte</span></span>
-            </button>
+            </Link>
           )}
         </div>
 
