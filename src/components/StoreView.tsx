@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useStore } from "@/store/StoreContext";
-import { Search, Shield, CheckCircle, Zap, Flame, RefreshCw, AlertTriangle, PackageOpen, SlidersHorizontal, BadgeCheck } from "lucide-react";
+import { Search, Flame, RefreshCw, AlertTriangle, PackageOpen, SlidersHorizontal, BadgeCheck } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import AuthScreen from "@/components/AuthScreen";
 import UserProfileModal from "@/components/UserProfileModal";
 import { formatBRL, ROBUX_CATEGORY, robuxPackageUnits, storefrontProducts } from "@/lib/catalog";
-import { useSiteBranding } from "@/context/SiteBrandingContext";
 
 const PAGE_SIZE = 20;
 
@@ -21,7 +20,7 @@ const SORT_OPTIONS: { id: SortKey; label: string }[] = [
 
 function ProductSkeleton() {
   return (
-    <div className="bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden">
+    <div className="bg-[#111114] border border-[#1e1e28] rounded-lg overflow-hidden">
       <div className="aspect-[4/3] bg-white/5 animate-pulse" />
       <div className="p-3 space-y-2">
         <div className="h-3 rounded bg-white/5 animate-pulse" />
@@ -34,7 +33,6 @@ function ProductSkeleton() {
 
 export default function StoreView() {
   const { state, catalogStatus, refreshProducts } = useStore();
-  const { branding } = useSiteBranding();
   const navigate = useNavigate();
   const location = useLocation();
   const [search, setSearch] = useState("");
@@ -177,14 +175,42 @@ export default function StoreView() {
 
   return (
     <div className="space-y-5">
-      {/* Top filters — compact controls keep the catalog scannable on mobile. */}
+      <div className="flex flex-col gap-4 border-b border-white/[0.07] pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-[-0.03em] text-white">Marketplace</h1>
+          <p className="mt-1 text-sm text-white/38">Encontre produtos e serviços digitais publicados por vendedores da plataforma.</p>
+        </div>
+
+        <div className="flex w-full gap-2 sm:max-w-md">
+          <label className="flex h-10 min-w-0 flex-1 items-center rounded-lg border border-white/[0.09] bg-[#151519] px-3 focus-within:border-[#168cff]/60">
+            <Search className="h-4 w-4 shrink-0 text-white/28" aria-hidden />
+            <span className="sr-only">Buscar produtos</span>
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => handleSearch(event.target.value)}
+              placeholder="Buscar anúncios..."
+              className="ml-2 min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/25"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => setShowFilters((value) => !value)}
+            aria-expanded={showFilters}
+            className={`flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition ${showFilters ? "border-[#168cff]/45 bg-[#168cff]/10 text-[#7cc4ff]" : "border-white/[0.09] text-white/55 hover:bg-white/[0.035] hover:text-white"}`}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" /> Filtros
+          </button>
+        </div>
+      </div>
+
       <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1" role="tablist" aria-label="Categorias">
         <button
+          type="button"
           onClick={() => navigate("/robux")}
-          className="shrink-0 px-5 py-2.5 rounded-full text-sm font-black tracking-wide bg-[#ffbd2e] text-black hover:bg-[#e6a829] transition-all flex items-center gap-1.5"
+          className="shrink-0 rounded-md border border-[#168cff]/30 px-3 py-2 text-xs font-semibold text-[#72baff] transition hover:bg-[#168cff]/[0.07]"
         >
-          R$ ROBUX
-          <span className="text-[10px] uppercase bg-black/15 px-1.5 py-0.5 rounded-full">Ver loja</span>
+          Robux
         </button>
         {categories.map((cat) => (
           <button
@@ -192,58 +218,19 @@ export default function StoreView() {
             role="tab"
             aria-selected={category === cat}
             onClick={() => handleCategorySelect(cat)}
-            className={`shrink-0 px-4 py-2.5 rounded-full text-xs font-bold transition-all whitespace-nowrap ${
-              category === cat ? "bg-white text-black" : "bg-[#1a1a20] border border-[#25252e] text-white/60 hover:text-white hover:border-white/20"
-            }`}
+            className={`shrink-0 rounded-md border px-3 py-2 text-xs font-medium transition ${category === cat ? "border-white/[0.18] bg-white/[0.07] text-white" : "border-white/[0.07] text-white/45 hover:bg-white/[0.03] hover:text-white"}`}
           >
             {cat}
           </button>
         ))}
-        <button onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters} className={`shrink-0 px-3.5 py-2.5 rounded-full text-xs font-bold border transition flex items-center gap-1.5 ${showFilters ? "bg-[#0084ff] border-[#0084ff] text-white" : "bg-[#1a1a20] border-[#25252e] text-white/70 hover:text-white hover:border-white/20"}`}>
-          <SlidersHorizontal className="w-3.5 h-3.5" /> Filtros
-        </button>
-      </div>
-
-      {/* Hero */}
-      <div className="bg-[#111114] border border-[#1e1e28] rounded-2xl p-6 md:p-8">
-        <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <span className="bg-[#1a1a20] border border-[#25252e] px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide text-white/50">Marketplace de produtos digitais</span>
-          <span className="bg-[#00c950]/10 border border-[#00c950]/20 px-3 py-1 rounded-full text-[10px] font-bold text-[#00c950] flex items-center gap-1"><Shield className="w-3 h-3" /> Compra Protegida</span>
-        </div>
-        <h1 className="text-2xl md:text-4xl font-black tracking-tight text-white mb-2 leading-tight">
-          {branding.heroTitle}
-        </h1>
-        <p className="text-white/40 text-sm mb-5">{branding.heroSubtitle}</p>
-
-        <div className="flex items-center bg-white rounded-xl px-4 py-3 max-w-xl">
-          <Search className="w-5 h-5 text-black/30" aria-hidden />
-          <label htmlFor="store-search" className="sr-only">Buscar produtos</label>
-          <input
-            id="store-search"
-            type="search"
-            value={search}
-            onChange={(e) => handleSearch(e.target.value)}
-            placeholder="Buscar Robux, bots, contas, scripts..."
-            className="bg-transparent border-none focus:ring-0 focus:outline-none text-sm w-full ml-3 text-black placeholder:text-black/40"
-          />
-          <button onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters} className="ml-2 bg-[#0084ff] hover:bg-[#0066cc] text-white px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-1.5">
-            <SlidersHorizontal className="w-4 h-4" /> Ajustar
-          </button>
-        </div>
-
-        <div className="flex flex-wrap gap-2 mt-5">
-          <span className="flex items-center gap-1.5 text-[11px] text-white/40 bg-[#1a1a20] border border-[#25252e] px-3 py-1.5 rounded-full"><CheckCircle className="w-3.5 h-3.5 text-[#00c950]" /> Entrega Automática</span>
-          <span className="flex items-center gap-1.5 text-[11px] text-white/40 bg-[#1a1a20] border border-[#25252e] px-3 py-1.5 rounded-full"><Zap className="w-3.5 h-3.5 text-[#ffbd2e]" /> Suporte 24h</span>
-          <span className="flex items-center gap-1.5 text-[11px] text-white/40 bg-[#1a1a20] border border-[#25252e] px-3 py-1.5 rounded-full"><Shield className="w-3.5 h-3.5 text-[#0084ff]" /> Reembolso Garantido</span>
-        </div>
       </div>
 
       {/* Filters panel */}
       {showFilters && (
-        <div className="bg-[#111114] border border-[#1e1e28] rounded-2xl p-4 grid gap-4 md:grid-cols-4">
+        <div className="bg-[#111114] border border-[#1e1e28] rounded-lg p-4 grid gap-4 md:grid-cols-4">
           <div>
             <label htmlFor="sort" className="text-[10px] font-black uppercase tracking-wide text-white/30 block mb-1.5">Ordenar por</label>
-            <select id="sort" value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="w-full p-2.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none">
+            <select id="sort" value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="w-full p-2.5 rounded-lg bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none">
               {SORT_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
             </select>
           </div>
@@ -260,7 +247,7 @@ export default function StoreView() {
           </div>
           <div>
             <label htmlFor="delivery" className="text-[10px] font-black uppercase tracking-wide text-white/30 block mb-1.5">Entrega</label>
-            <select id="delivery" value={deliveryFilter} onChange={(e) => setDeliveryFilter(e.target.value as typeof deliveryFilter)} className="w-full p-2.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none">
+            <select id="delivery" value={deliveryFilter} onChange={(e) => setDeliveryFilter(e.target.value as typeof deliveryFilter)} className="w-full p-2.5 rounded-lg bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none">
               <option value="todos">Todas</option>
               <option value="auto">Automática</option>
               <option value="manual">Manual</option>
@@ -287,11 +274,11 @@ export default function StoreView() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
             {trending.map((p) => (
-              <button key={`trend-${p.id}`} onClick={() => navigate(`/produto/${p.id}`)} className="text-left bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden cursor-pointer hover:border-[#2a2a36] focus:outline-none focus:ring-2 focus:ring-[#0084ff] transition group">
-                <div className="aspect-[4/3] bg-[#1a1a20] overflow-hidden"><img src={p.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-300" loading="lazy" /></div>
+              <button key={`trend-${p.id}`} onClick={() => navigate(`/produto/${p.id}`)} className="text-left bg-[#111114] border border-[#1e1e28] rounded-lg overflow-hidden cursor-pointer hover:border-[#2a2a36] focus:outline-none focus:ring-2 focus:ring-[#0084ff] transition group">
+                <div className="aspect-[4/3] bg-[#1a1a20] overflow-hidden"><img src={p.image} alt="" className="w-full h-full object-cover group-hover:scale-[1.02] transition duration-300" loading="lazy" /></div>
                 <div className="p-2.5 sm:p-3">
                   <p className="text-xs font-bold text-white truncate">{p.name}</p>
-                  <p className="mt-2 inline-flex rounded-lg border border-[#0084ff]/25 bg-[#0084ff]/10 px-2 py-1 text-xs font-black text-[#45a7ff]">{priceLabel(p)}</p>
+                  <p className="mt-2 text-sm font-bold text-white">{priceLabel(p)}</p>
                 </div>
               </button>
             ))}
@@ -324,16 +311,16 @@ export default function StoreView() {
             <span className="sr-only">Carregando produtos…</span>
           </div>
         ) : catalogStatus === "error" && approved.length === 0 ? (
-          <div className="text-center py-16 bg-[#111114] border border-[#ef4444]/20 rounded-2xl" role="alert">
+          <div className="text-center py-16 bg-[#111114] border border-[#ef4444]/20 rounded-lg" role="alert">
             <AlertTriangle className="w-8 h-8 mx-auto text-[#ef4444] mb-3" aria-hidden />
             <p className="text-white font-bold text-sm">Não conseguimos carregar o catálogo</p>
             <p className="text-xs text-white/40 mt-1 max-w-sm mx-auto">Isso é uma falha de conexão com o servidor, não uma loja vazia. Tente novamente em instantes.</p>
-            <button onClick={() => void refreshProducts()} className="mt-4 bg-[#0084ff] hover:bg-[#0066cc] text-white px-5 py-2.5 rounded-xl text-sm font-bold transition">
+            <button onClick={() => void refreshProducts()} className="mt-4 bg-[#0084ff] hover:bg-[#0066cc] text-white px-5 py-2.5 rounded-lg text-sm font-bold transition">
               Tentar novamente
             </button>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-16 bg-[#111114] border border-[#1e1e28] rounded-2xl">
+          <div className="text-center py-16 bg-[#111114] border border-[#1e1e28] rounded-lg">
             <PackageOpen className="w-8 h-8 mx-auto text-white/20 mb-3" aria-hidden />
             <p className="text-white font-bold text-sm">
               {hasActiveFilters ? "Nenhum produto para esses filtros" : "Ainda não há anúncios publicados"}
@@ -342,7 +329,7 @@ export default function StoreView() {
               {hasActiveFilters ? "Ajuste a busca ou limpe os filtros." : "Assim que a moderação aprovar os primeiros anúncios, eles aparecem aqui."}
             </p>
             {hasActiveFilters && (
-              <button onClick={clearFilters} className="mt-4 bg-[#1a1a20] border border-[#25252e] hover:border-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition">
+              <button onClick={clearFilters} className="mt-4 bg-[#1a1a20] border border-[#25252e] hover:border-white/20 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition">
                 Limpar filtros
               </button>
             )}
@@ -359,10 +346,10 @@ export default function StoreView() {
                 <button
                   key={p.id}
                   onClick={() => navigate(`/produto/${p.id}`)}
-                  className="text-left bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden cursor-pointer hover:border-[#2a2a36] focus:outline-none focus:ring-2 focus:ring-[#0084ff] transition group flex flex-col"
+                  className="text-left bg-[#111114] border border-[#1e1e28] rounded-lg overflow-hidden cursor-pointer hover:border-[#2a2a36] focus:outline-none focus:ring-2 focus:ring-[#0084ff] transition group flex flex-col"
                 >
                   <div className="relative aspect-[4/3] bg-[#1a1a20] overflow-hidden">
-                    <img src={p.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-300" loading="lazy" />
+                    <img src={p.image} alt="" className="w-full h-full object-cover group-hover:scale-[1.02] transition duration-300" loading="lazy" />
                     <div className="absolute top-2 left-2 flex gap-1">
                       {!p.approved && <span className="bg-[#ffbd2e] text-black text-[9px] px-2 py-0.5 rounded-full font-black">EM ANÁLISE</span>}
                       {p.deliveryType === "auto" && <span className="bg-[#00c950] text-white text-[9px] px-2 py-0.5 rounded-full font-black">AUTO</span>}
@@ -375,7 +362,7 @@ export default function StoreView() {
                       por <span className="text-[#0084ff]">{p.seller}</span>
                       {isVerifiedSeller(p.sellerId) && <BadgeCheck className="w-3 h-3 text-[#0084ff] shrink-0" aria-label="Vendedor verificado" />}
                     </p>
-                    <p className="mt-2 inline-flex self-start rounded-lg border border-[#0084ff]/25 bg-[#0084ff]/10 px-2 py-1 text-xs font-black text-[#45a7ff]">{priceLabel(p)}</p>
+                    <p className="mt-2 text-sm font-bold text-white">{priceLabel(p)}</p>
                     {p.sales > 0 && <p className="text-[10px] text-white/30 mt-1">{p.sales} vendas</p>}
                   </div>
                 </button>
@@ -383,7 +370,7 @@ export default function StoreView() {
             </div>
             {visible < filtered.length && (
               <div className="flex justify-center mt-5">
-                <button onClick={() => setVisible((v) => v + PAGE_SIZE)} className="bg-[#1a1a20] border border-[#25252e] hover:border-white/20 text-white px-6 py-3 rounded-xl text-sm font-bold transition">
+                <button onClick={() => setVisible((v) => v + PAGE_SIZE)} className="bg-[#1a1a20] border border-[#25252e] hover:border-white/20 text-white px-6 py-3 rounded-lg text-sm font-bold transition">
                   Carregar mais ({filtered.length - visible})
                 </button>
               </div>
