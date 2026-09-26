@@ -23,7 +23,7 @@ type DiscordOAuthStatus = {
 };
 
 type Provider = {
-  id: "zennithpay" | "vexopay";
+  id: "magnuspay" | "zennithpay" | "vexopay";
   name: string;
   description: string;
   secretNames: string[];
@@ -47,6 +47,7 @@ const PROVIDERS: Provider[] = [
 ];
 
 const emptyConfig: Record<Provider["id"], GatewayConfig> = {
+  magnuspay: { pixEnabled: true, pixFee: 0 },
   zennithpay: { pixEnabled: false, pixFee: 0.9 },
   vexopay: { pixEnabled: false, cryptoEnabled: false, pixFee: 1.2 },
 };
@@ -68,6 +69,7 @@ export default function IntegrationsPanel() {
     if (result.errorMessage) toast.error(result.errorMessage);
     const received = result.data?.integrations || {};
     setConfigs({
+      magnuspay: { ...emptyConfig.magnuspay, ...(received.magnuspay || {}) },
       zennithpay: { ...emptyConfig.zennithpay, ...(received.zennithpay || {}) },
       vexopay: { ...emptyConfig.vexopay, ...(received.vexopay || {}) },
     });
@@ -85,8 +87,9 @@ export default function IntegrationsPanel() {
       // A interface acompanha a regra do servidor: habilitar PIX em um
       // provedor desmarca imediatamente o outro, sem interferir em Crypto.
       if (key === "pixEnabled" && value === true) {
-        const other = id === "zennithpay" ? "vexopay" : "zennithpay";
-        next[other] = { ...next[other], pixEnabled: false };
+        for (const other of ["magnuspay", "zennithpay", "vexopay"] as const) {
+          if (other !== id) next[other] = { ...next[other], pixEnabled: false };
+        }
       }
       return next;
     });
