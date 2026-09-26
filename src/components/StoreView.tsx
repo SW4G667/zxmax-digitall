@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import AuthScreen from "@/components/AuthScreen";
 import UserProfileModal from "@/components/UserProfileModal";
 import useSiteBranding from "@/hooks/useSiteBranding";
+import ProductCard from "@/components/ProductCard";
 
 export default function StoreView() {
   const { state } = useStore();
@@ -208,15 +209,7 @@ export default function StoreView() {
             <span className="text-[10px] bg-[#ff4444] text-white px-2 py-0.5 rounded-full font-black">HOT</span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {trending.map((p) => (
-              <div key={`trend-${p.id}`} onClick={() => navigate(`/produto/${p.id}`)} className="bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden cursor-pointer hover:border-[#2a2a36] transition group">
-                <div className="aspect-[4/3] bg-[#1a1a20] overflow-hidden"><img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" /></div>
-                <div className="p-3">
-                  <p className="text-xs font-bold text-white truncate">{p.name}</p>
-                  <p className="text-sm font-black text-white mt-1">R$ {p.price.toFixed(2)}</p>
-                </div>
-              </div>
-            ))}
+            {trending.map((p) => <ProductCard key={`trend-${p.id}`} product={p} />)}
           </div>
         </div>
       )}
@@ -232,19 +225,7 @@ export default function StoreView() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {filtered.map((p) => (
-              <div key={p.id} onClick={() => navigate(`/produto/${p.id}`)} className="bg-[#111114] border border-[#1e1e28] rounded-xl overflow-hidden cursor-pointer hover:border-[#2a2a36] transition group">
-                <div className="relative aspect-[4/3] bg-[#1a1a20] overflow-hidden">
-                  <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" loading="lazy" />
-                  {p.sales > 50 && <span className="absolute top-2 left-2 bg-[#ef4444] text-white text-[9px] px-2 py-0.5 rounded-full font-black">HOT</span>}
-                </div>
-                <div className="p-3">
-                  <h3 className="font-bold text-white text-xs leading-tight line-clamp-2 min-h-[32px]">{p.name}</h3>
-                  <p className="text-[11px] text-white/40 mt-1 truncate">por <span className="text-[#0084ff]">{p.seller}</span></p>
-                  <p className="text-sm font-black text-white mt-2">R$ {p.price.toFixed(2)}</p>
-                </div>
-              </div>
-            ))}
+            {filtered.map((p) => <ProductCard key={p.id} product={p} />)}
           </div>
         )}
       </div>
