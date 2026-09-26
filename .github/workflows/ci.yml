@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "feat/**"
+      - maina
+  pull_request:
+    branches:
+      - maina
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test -- --passWithNoTests
