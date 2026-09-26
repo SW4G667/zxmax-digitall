@@ -162,43 +162,31 @@ const CONTENT: Record<MarketplaceInfoKind, {
 
 export default function MarketplaceInfo({ kind }: { kind: MarketplaceInfoKind }) {
   const page = CONTENT[kind];
+
   return (
     <AppShell>
-      <div className="mx-auto max-w-6xl">
-        <section className="relative overflow-hidden rounded-[2rem] border border-white/[0.08] bg-[#0d1118] px-5 py-8 sm:px-8 sm:py-10 lg:px-10">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_88%_0%,rgba(22,140,255,.22),transparent_34%)]" />
-          <div className="relative max-w-3xl">
-            <p className="text-[10px] font-black uppercase tracking-[0.19em] text-[#73c1ff]">{page.eyebrow}</p>
-            <h1 className="mt-3 text-3xl font-black tracking-[-0.05em] text-white sm:text-5xl">{page.title}</h1>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-white/55 sm:text-base">{page.intro}</p>
-            <div className="mt-6 flex flex-wrap gap-2">
-              <Link to={page.primary.to} className="inline-flex items-center gap-2 rounded-xl bg-[#168cff] px-4 py-3 text-xs font-black text-white transition hover:bg-[#0877e6]">{page.primary.label}<ArrowRight className="h-3.5 w-3.5" /></Link>
-              {page.secondary && <Link to={page.secondary.to} className="inline-flex items-center gap-2 rounded-xl border border-white/[0.11] bg-white/[0.035] px-4 py-3 text-xs font-black text-white/70 transition hover:bg-white/[0.07] hover:text-white">{page.secondary.label}</Link>}
-            </div>
+      <div className="mx-auto max-w-[900px]">
+        <header className="border-b border-white/[0.07] pb-6">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/30">{page.eyebrow}</p>
+          <h1 className="mt-2 text-3xl font-bold tracking-[-0.035em] text-white sm:text-4xl">{page.title}</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-white/45">{page.intro}</p>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Link to={page.primary.to} className="rounded-md bg-[#168cff] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#0878dc]">{page.primary.label}</Link>
+            {page.secondary ? <Link to={page.secondary.to} className="rounded-md border border-white/[0.1] px-4 py-2.5 text-xs font-medium text-white/60 hover:bg-white/[0.035] hover:text-white">{page.secondary.label}</Link> : null}
           </div>
-        </section>
+        </header>
 
-        <section className="mt-6 grid gap-3 sm:grid-cols-2">
-          {page.sections.map((section, index) => (
-            <article key={section.title} className="rounded-2xl border border-white/[0.075] bg-[#101319] p-5 sm:p-6">
-              <div className="flex items-start gap-4">
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-[#168cff]/15 bg-[#168cff]/10 text-[#72c0ff]"><section.icon className="h-5 w-5" /></span>
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/28">Etapa {String(index + 1).padStart(2, "0")}</p>
-                  <h2 className="mt-1 text-base font-black text-white">{section.title}</h2>
-                  <p className="mt-2 text-sm leading-6 text-white/45">{section.text}</p>
-                </div>
+        <div className="mt-6 divide-y divide-white/[0.07] rounded-lg border border-white/[0.08] bg-[#101013]">
+          {page.sections.map((section) => (
+            <article key={section.title} className="flex gap-3 p-4 sm:p-5">
+              <section.icon className="mt-0.5 h-4 w-4 shrink-0 text-[#5eafff]" />
+              <div>
+                <h2 className="text-sm font-semibold text-white">{section.title}</h2>
+                <p className="mt-1 text-sm leading-6 text-white/40">{section.text}</p>
               </div>
             </article>
           ))}
-        </section>
-
-        <section className="mt-6 rounded-2xl border border-white/[0.075] bg-[#101319] p-5 sm:p-6">
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-            <div><p className="text-sm font-black text-white">Ainda precisa de ajuda?</p><p className="mt-1 text-xs text-white/40">Use o FAQ para dúvidas gerais ou o suporte autenticado para problemas ligados à sua conta.</p></div>
-            <div className="flex gap-2"><Link to="/faq" className="rounded-xl border border-white/[0.1] px-4 py-2.5 text-xs font-black text-white/70 hover:text-white">FAQ</Link><Link to="/central-de-ajuda" className="rounded-xl bg-white px-4 py-2.5 text-xs font-black text-black">Central de ajuda</Link></div>
-          </div>
-        </section>
+        </div>
       </div>
     </AppShell>
   );
