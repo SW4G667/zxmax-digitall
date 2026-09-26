@@ -37,6 +37,20 @@ Deno.serve(async (req) => {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
     body: JSON.stringify({ userId: ownerId, eventType, eventId }),
   });
-  if (!response.ok && response.status !== 202) return json({ error: "O evento foi registrado, mas a notificação não foi entregue." }, 202);
-  return json({ accepted: true });
+  const discordAccepted = response.ok || response.status === 202;
+  let emailAccepted = false;
+  try {
+    const emailResponse = await fetch(`${url}/functions/v1/send-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
+      body: JSON.stringify(eventType === "product_question"
+        ? { type: "new_question", questionId: eventId }
+        : { type: "new_review", reviewId: eventId }),
+    });
+    emailAccepted = emailResponse.ok || emailResponse.status === 202;
+  } catch {
+    emailAccepted = false;
+  }
+  if (!discordAccepted && !emailAccepted) return json({ error: "O evento foi registrado, mas as notificações não puderam ser entregues." }, 202);
+  return json({ accepted: true, notifications: { discord: discordAccepted, email: emailAccepted } });
 });
