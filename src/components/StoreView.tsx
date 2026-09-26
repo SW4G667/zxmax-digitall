@@ -39,6 +39,8 @@ export default function StoreView() {
               seller: p.seller_name,
               sellerId: p.seller_id,
               sellerPublicId: p.seller_public_id,
+              sellerAvatar: p.seller_avatar || undefined,
+              sellerVerified: !!p.seller_verified,
               sales: p.sales || 0,
               rating: Number(p.rating || 0),
               image: p.image,
@@ -238,7 +240,17 @@ export default function StoreView() {
                 </div>
                 <div className="p-3">
                   <h3 className="font-bold text-white text-xs leading-tight line-clamp-2 min-h-[32px]">{p.name}</h3>
-                  <p className="text-[11px] text-white/40 mt-1 truncate">por <span className="text-[#0084ff]">{p.seller}</span></p>
+                  <div className="flex items-center gap-2 mt-2 min-w-0">
+                    <img
+                      src={state.userDirectory?.[p.sellerId]?.avatar || p.sellerAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(p.seller || "V")}`}
+                      alt=""
+                      className="w-6 h-6 rounded-full object-cover border border-white/10 bg-[#1a1a20] shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-[11px] text-white/60 truncate">{p.seller}</p>
+                      <p className="text-[9px] text-white/30 font-mono truncate">ID {p.sellerPublicId || "—"} · Produto #{p.id}</p>
+                    </div>
+                  </div>
                   <p className="text-sm font-black text-white mt-2">R$ {p.price.toFixed(2)}</p>
                 </div>
               </div>
