@@ -6,6 +6,13 @@ export interface SiteBranding {
   faviconUrl: string;
   heroTitle: string;
   heroSubtitle: string;
+  heroBannerUrl: string;
+  socialPreviewUrl: string;
+  robuxBannerUrl: string;
+  promoBanner1Url: string;
+  promoBanner2Url: string;
+  promoBanner3Url: string;
+  accentColor: string;
   supportUrl: string;
 }
 
@@ -13,8 +20,15 @@ const defaults: SiteBranding = {
   siteName: "ZXMAX",
   logoUrl: "",
   faviconUrl: "",
-  heroTitle: "Compre e venda produtos digitais com segurança",
-  heroSubtitle: "Marketplace para produtos, serviços e itens digitais.",
+  heroTitle: "Compre e venda produtos digitais",
+  heroSubtitle: "Encontre ofertas, acompanhe seus pedidos e anuncie com um fluxo simples e seguro.",
+  heroBannerUrl: "",
+  socialPreviewUrl: "",
+  robuxBannerUrl: "",
+  promoBanner1Url: "",
+  promoBanner2Url: "",
+  promoBanner3Url: "",
+  accentColor: "#168cff",
   supportUrl: "https://discord.gg/zxmax",
 };
 
@@ -25,14 +39,21 @@ type Ctx = {
 
 const SiteBrandingContext = createContext<Ctx>({ branding: defaults, refreshBranding: async () => {} });
 
+function upsertMeta(selector: string, attr: "property" | "name", key: string, value: string) {
+  let tag = document.head.querySelector<HTMLMetaElement>(selector);
+  if (!tag) {
+    tag = document.createElement("meta");
+    tag.setAttribute(attr, key);
+    document.head.appendChild(tag);
+  }
+  tag.content = value;
+}
+
 export function SiteBrandingProvider({ children }: { children: React.ReactNode }) {
   const [branding, setBranding] = useState<SiteBranding>(defaults);
 
   const refreshBranding = async () => {
     try {
-      // Lazy-load the configured client only when the provider actually needs
-      // remote branding. Consumers can use the safe defaults without requiring
-      // Supabase environment variables at module-import time.
       const { supabase } = await import("@/integrations/supabase/client");
       const { data, error } = await supabase.functions.invoke("site-config", { body: { action: "get" } });
       if (!error && data?.branding) setBranding({ ...defaults, ...data.branding });
@@ -44,16 +65,33 @@ export function SiteBrandingProvider({ children }: { children: React.ReactNode }
   useEffect(() => { void refreshBranding(); }, []);
 
   useEffect(() => {
-    document.title = branding.siteName || "ZXMAX";
-    if (!branding.faviconUrl) return;
+    const siteName = branding.siteName || "ZXMAX";
+    document.title = `${siteName} | Marketplace Digital`;
+
     let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
     if (!link) {
       link = document.createElement("link");
       link.rel = "icon";
       document.head.appendChild(link);
     }
-    link.href = branding.faviconUrl;
-  }, [branding.siteName, branding.faviconUrl]);
+    link.href = branding.faviconUrl || "/favicon.ico";
+
+    document.documentElement.style.setProperty("--zx-accent", branding.accentColor || "#168cff");
+    document.documentElement.style.setProperty("--zx-accent-soft", `${branding.accentColor || "#168cff"}20`);
+
+    const description = branding.heroSubtitle || defaults.heroSubtitle;
+    upsertMeta('meta[name="description"]', "name", "description", description);
+    upsertMeta('meta[property="og:title"]', "property", "og:title", `${siteName} | Marketplace Digital`);
+    upsertMeta('meta[property="og:description"]', "property", "og:description", description);
+    upsertMeta('meta[name="twitter:title"]', "name", "twitter:title", `${siteName} | Marketplace Digital`);
+    upsertMeta('meta[name="twitter:description"]', "name", "twitter:description", description);
+
+    if (branding.socialPreviewUrl) {
+      upsertMeta('meta[property="og:image"]', "property", "og:image", branding.socialPreviewUrl);
+      upsertMeta('meta[name="twitter:image"]', "name", "twitter:image", branding.socialPreviewUrl);
+      upsertMeta('meta[name="twitter:card"]', "name", "twitter:card", "summary_large_image");
+    }
+  }, [branding]);
 
   const value = useMemo(() => ({ branding, refreshBranding }), [branding]);
   return <SiteBrandingContext.Provider value={value}>{children}</SiteBrandingContext.Provider>;
