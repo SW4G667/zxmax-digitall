@@ -110,7 +110,7 @@ serve(async (req) => {
     const limits = rateInfo(response);
 
     if (response.status === 429) {
-      await admin.from("webhook_logs").insert({
+      await writeMagnusLog(admin, {
         source: "magnuspay", event_type: "CREATE_PIX", status: "rate_limited",
         order_id: purchase.id, payload: { limits }, error: "Rate limit da MagnusPay atingido",
       });
@@ -119,7 +119,7 @@ serve(async (req) => {
 
     if (!response.ok || parsed?.success === false) {
       const providerMessage = String(parsed?.message || "Falha ao criar PIX").slice(0, 500);
-      await admin.from("webhook_logs").insert({
+      await writeMagnusLog(admin, {
         source: "magnuspay", event_type: "CREATE_PIX", status: `error_${response.status}`,
         order_id: purchase.id, payload: { code: parsed?.code || null, limits }, error: providerMessage,
       });
@@ -139,7 +139,7 @@ serve(async (req) => {
     const rawExpires = first(nodes, ["expires_at", "expiresAt", "expiration", "pix_expires_at"]);
 
     if (!id || !qrCodeText) {
-      await admin.from("webhook_logs").insert({
+      await writeMagnusLog(admin, {
         source: "magnuspay", event_type: "CREATE_PIX", status: "invalid_response",
         order_id: purchase.id,
         payload: { keys: Object.keys(data || {}).slice(0, 30), limits },
@@ -165,7 +165,7 @@ serve(async (req) => {
 
     if (saveError) return json({ error: "PIX criado, mas não foi possível vincular ao pedido." }, 500);
 
-    await admin.from("webhook_logs").insert({
+    await writeMagnusLog(admin, {
       source: "magnuspay", event_type: "CREATE_PIX", status: "created",
       order_id: purchase.id, charge_id: id,
       payload: { status: first(nodes, ["status"]) || "pending", limits }, error: null,
