@@ -86,7 +86,7 @@
 
   .zx-icon-action,
   .zx-header-action {
-    @apply flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.085] bg-white/[0.015] text-white/52 transition;
+    @apply flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.085] bg-white/[0.015] text-white/55 transition;
   }
   .zx-icon-action:hover,
   .zx-header-action:hover {
