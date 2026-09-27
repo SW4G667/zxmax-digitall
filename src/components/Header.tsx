@@ -7,6 +7,7 @@ import NotificationBell from "@/components/NotificationBell";
 import DiscordIcon from "@/components/DiscordIcon";
 import useFavorites from "@/hooks/useFavorites";
 import BrandMark from "@/components/BrandMark";
+import { useSiteBranding } from "@/context/SiteBrandingContext";
 
 interface Props {
   onProfileClick?: () => void;
@@ -20,6 +21,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
   const { profile, user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { branding } = useSiteBranding();
   const routeOwnsMobileSearch = ["/", "/loja", "/robux", "/categorias"].includes(location.pathname);
   const { count } = useFavorites();
   const [favCount, setFavCount] = useState(count);
