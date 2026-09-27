@@ -10,14 +10,34 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   status,
   headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
 });
+
 const DEFAULTS = {
   siteName: "ZXMAX",
   logoUrl: "",
   faviconUrl: "",
-  heroTitle: "Compre e venda produtos digitais com segurança",
-  heroSubtitle: "Marketplace para produtos, serviços e itens digitais.",
+  heroTitle: "Compre e venda produtos digitais",
+  heroSubtitle: "Encontre ofertas, acompanhe seus pedidos e anuncie com um fluxo simples e seguro.",
+  heroBannerUrl: "",
+  socialPreviewUrl: "",
+  robuxBannerUrl: "",
+  promoBanner1Url: "",
+  promoBanner2Url: "",
+  promoBanner3Url: "",
+  accentColor: "#168cff",
   supportUrl: "https://discord.gg/zxmax",
 };
+
+const UPLOAD_SLOTS: Record<string, { field: keyof typeof DEFAULTS; maxBytes: number }> = {
+  logo: { field: "logoUrl", maxBytes: 2 * 1024 * 1024 },
+  favicon: { field: "faviconUrl", maxBytes: 2 * 1024 * 1024 },
+  heroBanner: { field: "heroBannerUrl", maxBytes: 5 * 1024 * 1024 },
+  socialPreview: { field: "socialPreviewUrl", maxBytes: 5 * 1024 * 1024 },
+  robuxBanner: { field: "robuxBannerUrl", maxBytes: 5 * 1024 * 1024 },
+  promoBanner1: { field: "promoBanner1Url", maxBytes: 5 * 1024 * 1024 },
+  promoBanner2: { field: "promoBanner2Url", maxBytes: 5 * 1024 * 1024 },
+  promoBanner3: { field: "promoBanner3Url", maxBytes: 5 * 1024 * 1024 },
+};
+
 const safeText = (value: unknown, max: number) => String(value ?? "").trim().slice(0, max);
 const safeUrl = (value: unknown) => {
   const raw = String(value ?? "").trim();
@@ -26,6 +46,10 @@ const safeUrl = (value: unknown) => {
     const u = new URL(raw);
     return u.protocol === "https:" ? u.toString() : "";
   } catch { return ""; }
+};
+const safeColor = (value: unknown) => {
+  const raw = String(value ?? "").trim();
+  return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw.toLowerCase() : DEFAULTS.accentColor;
 };
 
 async function requireAdmin(req: Request, admin: any) {
@@ -49,34 +73,47 @@ serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     if (body.action === "get") return json({ branding: current });
+
     const user = await requireAdmin(req, admin);
     if (!user) return json({ error: "Apenas administradores." }, 403);
 
     if (body.action === "upload") {
-      const slot = body.slot === "favicon" ? "favicon" : "logo";
+      const slot = String(body.slot || "");
+      const config = UPLOAD_SLOTS[slot];
+      if (!config) return json({ error: "Tipo de imagem inválido." }, 400);
+
       const dataUrl = String(body.dataUrl || "");
-      const match = dataUrl.match(/^data:(image\/(?:png|jpeg|webp|x-icon));base64,([A-Za-z0-9+/=]+)$/);
-      if (!match) return json({ error: "Use PNG, JPG, WEBP ou ICO." }, 400);
+      const match = dataUrl.match(/^data:(image\/(?:png|jpeg|webp|x-icon|gif));base64,([A-Za-z0-9+/=]+)$/);
+      if (!match) return json({ error: "Use PNG, JPG, WEBP, GIF ou ICO." }, 400);
+
       const mime = match[1];
       const bytes = Uint8Array.from(atob(match[2]), (c) => c.charCodeAt(0));
-      if (bytes.byteLength > 2 * 1024 * 1024) return json({ error: "A imagem deve ter no máximo 2 MB." }, 413);
+      if (bytes.byteLength > config.maxBytes) {
+        return json({ error: `A imagem deve ter no máximo ${Math.round(config.maxBytes / 1024 / 1024)} MB.` }, 413);
+      }
+
       const ext = mime === "image/jpeg" ? "jpg" : mime === "image/x-icon" ? "ico" : mime.split("/")[1];
-      const path = `branding/${slot}.${ext}`;
-      const { error: uploadError } = await admin.storage.from("site-assets").upload(path, bytes, {
+      const storagePath = `branding/${slot}.${ext}`;
+      const { error: uploadError } = await admin.storage.from("site-assets").upload(storagePath, bytes, {
         contentType: mime,
         cacheControl: "3600",
         upsert: true,
       });
       if (uploadError) return json({ error: "Falha ao enviar a imagem." }, 400);
-      const { data: publicData } = admin.storage.from("site-assets").getPublicUrl(path);
-      const field = slot === "favicon" ? "faviconUrl" : "logoUrl";
-      const next = { ...current, [field]: `${publicData.publicUrl}?v=${Date.now()}` };
+
+      const { data: publicData } = admin.storage.from("site-assets").getPublicUrl(storagePath);
+      const next = { ...current, [config.field]: `${publicData.publicUrl}?v=${Date.now()}` };
       const { error } = await admin.from("app_settings").upsert({ key: "site_branding", value: next }, { onConflict: "key" });
       if (error) return json({ error: "Falha ao salvar a identidade visual." }, 400);
+
       await admin.from("admin_audit_log").insert({
-        actor_id: user.id, action: "site.branding_upload", target_table: "app_settings",
-        target_id: "site_branding", metadata: { slot },
+        actor_id: user.id,
+        action: "site.branding_upload",
+        target_table: "app_settings",
+        target_id: "site_branding",
+        metadata: { slot, field: config.field },
       }).catch(() => {});
+
       return json({ branding: next });
     }
 
@@ -87,15 +124,28 @@ serve(async (req) => {
         logoUrl: values.logoUrl === undefined ? current.logoUrl : safeUrl(values.logoUrl),
         faviconUrl: values.faviconUrl === undefined ? current.faviconUrl : safeUrl(values.faviconUrl),
         heroTitle: safeText(values.heroTitle ?? current.heroTitle, 100) || DEFAULTS.heroTitle,
-        heroSubtitle: safeText(values.heroSubtitle ?? current.heroSubtitle, 180) || DEFAULTS.heroSubtitle,
+        heroSubtitle: safeText(values.heroSubtitle ?? current.heroSubtitle, 220) || DEFAULTS.heroSubtitle,
+        heroBannerUrl: values.heroBannerUrl === undefined ? current.heroBannerUrl : safeUrl(values.heroBannerUrl),
+        socialPreviewUrl: values.socialPreviewUrl === undefined ? current.socialPreviewUrl : safeUrl(values.socialPreviewUrl),
+        robuxBannerUrl: values.robuxBannerUrl === undefined ? current.robuxBannerUrl : safeUrl(values.robuxBannerUrl),
+        promoBanner1Url: values.promoBanner1Url === undefined ? current.promoBanner1Url : safeUrl(values.promoBanner1Url),
+        promoBanner2Url: values.promoBanner2Url === undefined ? current.promoBanner2Url : safeUrl(values.promoBanner2Url),
+        promoBanner3Url: values.promoBanner3Url === undefined ? current.promoBanner3Url : safeUrl(values.promoBanner3Url),
+        accentColor: safeColor(values.accentColor ?? current.accentColor),
         supportUrl: values.supportUrl === undefined ? current.supportUrl : safeUrl(values.supportUrl),
       };
+
       const { error } = await admin.from("app_settings").upsert({ key: "site_branding", value: next }, { onConflict: "key" });
       if (error) return json({ error: "Falha ao salvar a identidade visual." }, 400);
+
       await admin.from("admin_audit_log").insert({
-        actor_id: user.id, action: "site.branding_updated", target_table: "app_settings",
-        target_id: "site_branding", metadata: { fields: Object.keys(values).filter((k) => !k.toLowerCase().includes("secret")) },
+        actor_id: user.id,
+        action: "site.branding_updated",
+        target_table: "app_settings",
+        target_id: "site_branding",
+        metadata: { fields: Object.keys(values).filter((k) => !k.toLowerCase().includes("secret")) },
       }).catch(() => {});
+
       return json({ branding: next });
     }
 
