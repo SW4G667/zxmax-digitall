@@ -34,7 +34,7 @@ export function classifyPaymentMethods(result: EdgeCallResult<{ methods?: unknow
     // Defesa em profundidade para uma configuração legada: o cliente nunca
     // apresenta dois PIX. A função Edge aplica a mesma precedência.
     const methods = { ...raw, zennith_pix: raw.magnuspay_pix ? false : raw.zennith_pix, vexopay_pix: raw.magnuspay_pix || raw.zennith_pix ? false : raw.vexopay_pix };
-    return { status: "ok", methods, fees: { magnuspay_pix: safeFee(rawFees.magnuspay_pix), zennith_pix: safeFee(rawFees.zennith_pix), vexopay_pix: safeFee(rawFees.vexopay_pix) } };
+    return { status: "ok", methods, fees: { magnuspay_pix: safeFee(rawFees.magnuspay_pix), zennith_pix: safeFee(rawFees.zennith_pix), vexopay_pix: safeFee(rawFees.vexopay_pix), crypto: safeFee(rawFees.crypto), card: safeFee(rawFees.card), boleto: safeFee(rawFees.boleto) } };
   }
   if (result.status === 401) return { status: "session" };
   if (result.status === 503) return { status: "network" };
