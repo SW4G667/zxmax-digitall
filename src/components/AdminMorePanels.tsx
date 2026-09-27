@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useStore } from "@/store/StoreContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Check, Pause, Search, Trash2, Plus, RefreshCw, Tag, ShoppingBag, Headset, Megaphone } from "lucide-react";
+import { Check, Pause, Play, Search, Trash2, Plus, RefreshCw, Tag, ShoppingBag, Headset, Megaphone } from "lucide-react";
+import { listingStatus } from "@/lib/catalog";
 
 export function AdminCategoriesPanel() {
   const { state, updateConfig } = useStore();
@@ -33,20 +34,23 @@ export function AdminCategoriesPanel() {
 export function AdminAllProductsPanel() {
   const { state, approveProduct, rejectProduct, refreshProducts } = useStore();
   const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<"all" | "pending" | "live">("all");
+  const [filter, setFilter] = useState<"all" | "pending" | "live" | "rejected" | "paused">("all");
 
   const list = useMemo(() => {
     return state.products.filter((p) => {
       const matchQ = !q || p.name.toLowerCase().includes(q.toLowerCase()) || p.seller.toLowerCase().includes(q.toLowerCase());
-      const matchF = filter === "all" || (filter === "pending" ? !p.approved : p.approved);
+      const status = listingStatus(p);
+      const matchF = filter === "all" || (filter === "pending" ? status === "pending" : filter === "live" ? status === "approved" || status === "soldout" : status === filter);
       return matchQ && matchF;
     });
   }, [state.products, q, filter]);
 
-  const pause = async (id: number) => {
-    const { error } = await supabase.functions.invoke("admin-verify", { body: { action: "pause_product", productId: id } });
-    if (error) return toast.error("Não foi possível pausar.");
-    toast.success("Produto pausado (some da loja pública).");
+  const setPaused = async (id: number, paused: boolean) => {
+    const { data, error } = await supabase.functions.invoke("admin-verify", {
+      body: { action: paused ? "pause_product" : "resume_product", productId: id },
+    });
+    if (error || data?.error) return toast.error(data?.error || (paused ? "Não foi possível pausar." : "Não foi possível reativar."));
+    toast.success(paused ? "Anúncio pausado e removido da vitrine." : "Anúncio reativado.");
     void refreshProducts();
   };
 
@@ -57,28 +61,36 @@ export function AdminAllProductsPanel() {
           <Search className="w-4 h-4 text-muted-foreground" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar produto ou vendedor" className="flex-1 bg-transparent py-3 text-sm outline-none" />
         </div>
-        {(["all", "pending", "live"] as const).map((f) => (
+        {(["all", "pending", "live", "rejected", "paused"] as const).map((f) => (
           <button key={f} onClick={() => setFilter(f)} className={`px-4 py-2 rounded-xl text-xs font-bold ${filter === f ? "btn-gradient" : "bg-card border border-border/40"}`}>
-            {f === "all" ? "Todos" : f === "pending" ? "Pendentes" : "No ar"}
+            {f === "all" ? "Todos" : f === "pending" ? "Em análise" : f === "live" ? "No ar" : f === "rejected" ? "Rejeitados" : "Pausados"}
           </button>
         ))}
         <button onClick={() => void refreshProducts()} className="p-2.5 rounded-xl bg-card border border-border/40"><RefreshCw className="w-4 h-4" /></button>
       </div>
-      {list.map((p) => (
+      {list.map((p) => {
+        const status = listingStatus(p);
+        const meta = status === "approved" ? ["No ar", "bg-success/10 text-success"]
+          : status === "soldout" ? ["Esgotado", "bg-white/[0.06] text-white/55"]
+          : status === "rejected" ? ["Rejeitado", "bg-destructive/10 text-destructive"]
+          : status === "paused" ? ["Pausado", "bg-white/[0.06] text-white/55"]
+          : ["Em análise", "bg-amber-400/10 text-amber-300"];
+        return (
         <div key={p.id} className="glass-card p-4 flex items-center gap-4">
-          <img src={p.image} className="w-14 h-14 rounded-xl object-cover" alt="" />
+          {p.image ? <img src={p.image} className="w-14 h-14 rounded-xl object-cover" alt="" /> : <div className="w-14 h-14 rounded-xl bg-muted grid place-items-center text-muted-foreground"><ShoppingBag className="w-5 h-5" /></div>}
           <div className="flex-1 min-w-0">
             <p className="font-bold text-sm truncate">{p.name}</p>
             <p className="text-[11px] text-muted-foreground">{p.category} · {p.seller} · R$ {p.price.toFixed(2)}</p>
           </div>
-          <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${p.approved ? "bg-success/10 text-success" : "bg-primary/10 text-primary"}`}>{p.approved ? "No ar" : "Pendente"}</span>
+          <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${meta[1]}`}>{meta[0]}</span>
           <div className="flex gap-1">
-            {!p.approved && <button onClick={() => { void approveProduct(p.id); toast.success("Aprovado"); }} className="p-2 bg-success/10 text-success rounded-lg"><Check className="w-4 h-4" /></button>}
-            {p.approved && <button onClick={() => void pause(p.id)} className="p-2 bg-muted rounded-lg" title="Pausar"><Pause className="w-4 h-4" /></button>}
-            <button onClick={() => { if (confirm("Remover este anúncio?")) void rejectProduct(p.id); }} className="p-2 bg-destructive/10 text-destructive rounded-lg"><Trash2 className="w-4 h-4" /></button>
+            {(status === "pending" || status === "rejected") && <button onClick={() => { void approveProduct(p.id); }} className="p-2 bg-success/10 text-success rounded-lg" title="Aprovar"><Check className="w-4 h-4" /></button>}
+            {(status === "approved" || status === "soldout") && <button onClick={() => void setPaused(p.id, true)} className="p-2 bg-muted rounded-lg" title="Pausar"><Pause className="w-4 h-4" /></button>}
+            {status === "paused" && <button onClick={() => void setPaused(p.id, false)} className="p-2 bg-success/10 text-success rounded-lg" title="Reativar"><Play className="w-4 h-4" /></button>}
+            <button onClick={() => { const reason = window.prompt("Motivo da reprovação/retirada:"); if (reason?.trim()) void rejectProduct(p.id, reason.trim()); }} className="p-2 bg-destructive/10 text-destructive rounded-lg" title="Rejeitar"><Trash2 className="w-4 h-4" /></button>
           </div>
         </div>
-      ))}
+      )})}
       {list.length === 0 && <p className="text-center text-sm text-muted-foreground py-10">Nenhum produto neste filtro.</p>}
     </div>
   );
