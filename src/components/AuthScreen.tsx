@@ -167,7 +167,7 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
 
           {mode === "register" && password ? (
             <div className="flex gap-1">
-              {[0, 1, 2, 3].map((index) => <span key={index} className={`h-1 flex-1 rounded-full ${index < passStrength ? "bg-[#168cff]" : "bg-white/[0.08]"}`} />)}
+              {[0, 1, 2, 3].map((index) => <span key={index} className={`h-1 flex-1 rounded-full ${index < passStrength ? "bg-[var(--zx-accent)]" : "bg-white/[0.08]"}`} />)}
             </div>
           ) : null}
 
@@ -179,7 +179,7 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
         </form>
 
         {mode === "login" ? (
-          <button type="button" onClick={handleForgot} disabled={loading} className="mt-3 text-xs font-medium text-[#6ab6ff] hover:text-white disabled:opacity-50">Esqueceu sua senha?</button>
+          <button type="button" onClick={handleForgot} disabled={loading} className="mt-3 text-xs font-medium text-[var(--zx-accent)] hover:text-white disabled:opacity-50">Esqueceu sua senha?</button>
         ) : null}
 
         <div className="my-5 flex items-center gap-3"><span className="h-px flex-1 bg-white/[0.07]" /><span className="text-[10px] uppercase tracking-wide text-white/25">ou</span><span className="h-px flex-1 bg-white/[0.07]" /></div>
