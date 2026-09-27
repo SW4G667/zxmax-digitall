@@ -11,6 +11,8 @@ vi.mock("@/hooks/useAuth", () => ({
     profile: { is_verified_seller: true },
     mfaEnabled: true,
     loading: false,
+    adminRoleResolved: true,
+    refreshAuthorization: vi.fn(),
     signOut: vi.fn(),
   }),
 }));
@@ -50,5 +52,6 @@ describe("SideMenu administrativo", () => {
     fireEvent.click(screen.getByRole("button", { name: "Abrir navegação" }));
     expect(screen.getByText("Tags de usuários")).toBeInTheDocument();
     expect(screen.getByText("Cargos e permissões")).toBeInTheDocument();
+    expect(screen.getByText("Aparência do site")).toBeInTheDocument();
   });
 });

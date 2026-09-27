@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   BadgeCheck, ClipboardCheck, Headset, Heart, HelpCircle, Home, KeyRound, LayoutGrid,
   LogIn, LogOut, Moon, Package, Receipt, Settings, Shield, ShoppingBag, Store, Sun,
-  Tag, User, Users, Wallet, X,
+  Tag, User, Users, Wallet, X, Palette,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useStore } from "@/store/StoreContext";
@@ -41,19 +41,19 @@ function MenuLink({ item, active, onClose }: { item: MenuItem; active: boolean; 
       to={item.to}
       onClick={onClose}
       aria-current={active ? "page" : undefined}
-      className={`flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#168cff] ${active ? "bg-white/[0.07] text-white" : "text-white/56 hover:bg-white/[0.035] hover:text-white"}`}
+      className={`flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--zx-accent)] ${active ? "bg-white/[0.07] text-white" : "text-white/56 hover:bg-white/[0.035] hover:text-white"}`}
     >
-      <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? "text-[#67b5ff]" : "text-white/28"}`} />
+      <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? "text-[var(--zx-accent)]" : "text-white/28"}`} />
       <span className="min-w-0 flex-1 truncate text-[11.5px] font-semibold">{item.label}</span>
       {item.badge !== undefined && item.badge !== 0 && item.badge !== "" ? (
-        <span className="rounded-full bg-[#168cff] px-1.5 py-0.5 text-[9px] font-black text-white">{item.badge}</span>
+        <span className="rounded-full bg-[var(--zx-accent)] px-1.5 py-0.5 text-[9px] font-black text-white">{item.badge}</span>
       ) : null}
     </Link>
   );
 }
 
 export default function SideMenu({ open, onClose, onNavigate: _onNavigate, onOpenProfile }: Props) {
-  const { user, profile, isAdmin, isSupport, signOut } = useAuth();
+  const { user, profile, isAdmin, isSupport, adminRoleResolved, refreshAuthorization, signOut } = useAuth();
   const { state, isDark, toggleDark } = useStore();
   const { count } = useFavorites();
   const location = useLocation();
@@ -145,6 +145,7 @@ export default function SideMenu({ open, onClose, onNavigate: _onNavigate, onOpe
           { key: "admin-roles", label: "Cargos e permissões", to: "/admin?tab=roles", icon: Users },
           { key: "admin-apis", label: "Pagamentos e integrações", to: "/admin?tab=apis", icon: KeyRound },
           { key: "admin-config", label: "Operação e manutenção", to: "/admin?tab=config", icon: Settings },
+          { key: "admin-branding", label: "Aparência do site", to: "/admin/branding", icon: Palette },
         ] : [
           { key: "support-console", label: "Console de operações", to: "/admin", icon: Shield },
         ],
@@ -153,6 +154,10 @@ export default function SideMenu({ open, onClose, onNavigate: _onNavigate, onOpe
 
     return result;
   }, [user, isAdmin, isSupport, isSeller, count, openOrders, sellerOrders, pendingModeration]);
+
+  useEffect(() => {
+    if (open && user && !adminRoleResolved) void refreshAuthorization();
+  }, [open, user, adminRoleResolved, refreshAuthorization]);
 
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";

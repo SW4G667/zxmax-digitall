@@ -3,7 +3,7 @@ import { useStore, Product } from "@/store/StoreContext";
 import { Plus, X, Trash2, Upload, Users, Clock, MessageSquare, Pencil, Package, Coins } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { formatBRL, formatRobuxPackage, formatStockLabel, isValidProductPrice, MIN_PRODUCT_PRICE, parsePriceInput, productStock, ROBUX_CATEGORY } from "@/lib/catalog";
+import { formatBRL, formatRobuxPackage, formatStockLabel, isValidProductPrice, listingStatus, MIN_PRODUCT_PRICE, parsePriceInput, productStock, ROBUX_CATEGORY } from "@/lib/catalog";
 
 interface Variation {
   name: string;
@@ -364,9 +364,23 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
         <div className="grid gap-3">
           {myProducts.map((p) => {
             const productSales = mySales.filter((s) => s.productId === p.id);
+            const status = listingStatus(p);
+            const statusMeta = status === "approved"
+              ? { label: "Aprovado", className: "bg-[#00c950]/10 text-[#00c950] border border-[#00c950]/20" }
+              : status === "rejected"
+                ? { label: "Rejeitado", className: "bg-red-500/10 text-red-300 border border-red-500/20" }
+                : status === "paused"
+                  ? { label: "Pausado", className: "bg-white/[0.05] text-white/55 border border-white/[0.09]" }
+                  : status === "soldout"
+                    ? { label: "Esgotado", className: "bg-white/[0.05] text-white/55 border border-white/[0.09]" }
+                    : { label: "Em análise", className: "bg-[#ffbd2e]/10 text-[#ffbd2e] border border-[#ffbd2e]/20" };
             return (
               <div key={p.id} className="bg-[#15151a] border border-[#25252e] rounded-2xl p-4 flex gap-4">
-                <img src={p.image} className="w-16 h-16 rounded-xl object-cover bg-[#0a0a0f]" alt="" />
+                {p.image ? (
+                  <img src={p.image} className="w-16 h-16 rounded-xl object-cover bg-[#0a0a0f]" alt="" />
+                ) : (
+                  <div className="grid w-16 h-16 shrink-0 place-items-center rounded-xl bg-[#0a0a0f] border border-white/[0.06] text-white/20"><Package className="w-6 h-6" /></div>
+                )}
                 <div className="flex-1 min-w-0">
                   <h4 className="font-bold text-white truncate text-sm">{p.name}</h4>
                   <p className="text-xs text-white/40">ID do anúncio #{p.id} • {p.category} • {p.sales} vendas</p>
@@ -376,7 +390,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                   </p>
                 </div>
                 <div className="flex flex-col gap-2">
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full text-center ${p.approved ? "bg-[#00c950]/10 text-[#00c950] border border-[#00c950]/20" : "bg-[#ffbd2e]/10 text-[#ffbd2e] border border-[#ffbd2e]/20"}`}>{p.approved ? "Aprovado" : "Pendente"}</span>
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full text-center ${statusMeta.className}`}>{statusMeta.label}</span>
                   <div className="flex gap-1">
                     <button onClick={() => setShowSales(p.id)} className="p-2 bg-[#1a1a20] border border-[#25252e] rounded-xl text-white/40 hover:text-white"><Users className="w-4 h-4" /></button>
                     <button onClick={() => openEdit(p)} className="p-2 bg-[#1a1a20] border border-[#25252e] rounded-xl text-white/40 hover:text-[#0084ff]"><Pencil className="w-4 h-4" /></button>

@@ -24,6 +24,8 @@
     --input: 240 5% 14%;
     --ring: 211 100% 55%;
     --radius: .5rem;
+    --zx-accent: #168cff;
+    --zx-accent-soft: #168cff20;
   }
 
   * { @apply border-border; }
@@ -40,7 +42,7 @@
   }
 
   ::selection {
-    background: rgba(22, 140, 255, .28);
+    background: color-mix(in srgb, var(--zx-accent) 28%, transparent);
     color: #fff;
   }
 
@@ -60,9 +62,10 @@
   }
 
   .btn-gradient {
-    @apply rounded-md bg-[#168cff] font-semibold text-white transition;
+    @apply rounded-md font-semibold text-white transition;
+    background: var(--zx-accent);
   }
-  .btn-gradient:hover { background: #0878dc; }
+  .btn-gradient:hover { filter: brightness(1.08); }
 
   .nav-bottom-bar {
     @apply border-t border-white/[0.07];
@@ -81,7 +84,7 @@
   .badge-auto { background: #16a365; }
 
   .input-gg {
-    @apply w-full rounded-lg border border-white/[0.1] bg-[#151519] px-3.5 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#168cff]/60;
+    @apply w-full rounded-lg border border-white/[0.1] bg-[#151519] px-3.5 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[var(--zx-accent)];
   }
 
   .zx-icon-action,
@@ -106,7 +109,7 @@
     @apply flex w-full items-center gap-2.5 rounded-lg border border-transparent px-2.5 py-2 text-left transition;
   }
   .zx-menu-entry:hover { background: rgba(255,255,255,.035); }
-  .zx-menu-entry-active { background: rgba(22,140,255,.10); }
+  .zx-menu-entry-active { background: var(--zx-accent-soft); }
 
   .zx-auth-panel {
     border: 1px solid rgba(255,255,255,.10);
@@ -142,12 +145,13 @@
   }
 
   .zx-auth-field input::placeholder { color: rgba(255,255,255,.22); }
-  .zx-auth-field input:focus { border-color: rgba(22,140,255,.68); }
+  .zx-auth-field input:focus { border-color: var(--zx-accent); }
 
   .zx-auth-submit {
-    @apply flex w-full items-center justify-center rounded-md bg-[#168cff] py-3 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50;
+    @apply flex w-full items-center justify-center rounded-lg py-3 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50;
+    background: var(--zx-accent);
   }
-  .zx-auth-submit:hover { background: #0878dc; }
+  .zx-auth-submit:hover { filter: brightness(1.08); }
 
   .zx-auth-discord {
     @apply flex w-full items-center justify-center gap-2 rounded-md border border-white/[0.1] bg-transparent p-3 text-sm font-semibold text-white/70 transition;
