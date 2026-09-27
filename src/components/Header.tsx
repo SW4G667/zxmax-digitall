@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import NotificationBell from "@/components/NotificationBell";
 import DiscordIcon from "@/components/DiscordIcon";
 import useFavorites from "@/hooks/useFavorites";
-import { useSiteBranding } from "@/context/SiteBrandingContext";
+import BrandMark from "@/components/BrandMark";
 
 interface Props {
   onProfileClick?: () => void;
@@ -18,9 +18,9 @@ interface Props {
 export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuOpen = false }: Props) {
   const { state } = useStore();
   const { profile, user, isAdmin } = useAuth();
-  const { branding } = useSiteBranding();
   const navigate = useNavigate();
   const location = useLocation();
+  const routeOwnsMobileSearch = ["/", "/loja", "/robux", "/categorias"].includes(location.pathname);
   const { count } = useFavorites();
   const [favCount, setFavCount] = useState(count);
   const [query, setQuery] = useState("");
@@ -64,13 +64,9 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
   return (
     <header className="sticky top-0 z-50 border-b border-white/[0.08] bg-[#0b0b0e]/95 backdrop-blur-lg">
       <div className="mx-auto max-w-[1240px] px-3 sm:px-4">
-        <div className="flex h-16 items-center gap-2 sm:gap-3">
+        <div className="flex h-14 items-center gap-2 sm:h-16 sm:gap-3">
           <button onClick={() => navigate("/")} className="shrink-0" aria-label="Ir para a página inicial">
-            {branding.logoUrl ? (
-              <img src={branding.logoUrl} alt={branding.siteName} className="h-8 max-w-[140px] object-contain object-left" />
-            ) : (
-              <span className="text-xl font-extrabold tracking-[-0.05em] text-white">{branding.siteName || "ZXMAX"}</span>
-            )}
+            <BrandMark compact />
           </button>
 
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Navegação principal">
@@ -156,25 +152,20 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
           </div>
         </div>
 
-        <form onSubmit={submitSearch} className="pb-3 md:hidden">
-          <div className="flex h-10 items-center rounded-lg border border-white/[0.09] bg-[#151519] px-3 focus-within:border-[#168cff]/60">
-            <Search className="h-4 w-4 shrink-0 text-white/30" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Buscar anúncios..."
-              aria-label="Buscar no marketplace"
-              className="ml-2 min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/28"
-            />
-          </div>
-        </form>
-
-        <nav className="flex gap-4 overflow-x-auto pb-3 text-[11px] font-medium text-white/42 lg:hidden" aria-label="Atalhos do marketplace">
-          <button onClick={() => navigate("/loja")} className="shrink-0 hover:text-white">Loja</button>
-          <button onClick={() => navigate("/categorias")} className="shrink-0 hover:text-white">Categorias</button>
-          <button onClick={() => navigate("/robux")} className={`shrink-0 ${location.pathname === "/robux" ? "text-[#67b5ff]" : "hover:text-white"}`}>Robux</button>
-          <button onClick={() => navigate("/como-funciona")} className="shrink-0 hover:text-white">Como funciona</button>
-        </nav>
+        {!routeOwnsMobileSearch ? (
+          <form onSubmit={submitSearch} className="pb-3 md:hidden">
+            <div className="flex h-9 items-center rounded-lg border border-white/[0.09] bg-[#131317] px-3 focus-within:border-[#168cff]/60">
+              <Search className="h-3.5 w-3.5 shrink-0 text-white/28" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Buscar no marketplace"
+                aria-label="Buscar no marketplace"
+                className="ml-2 min-w-0 flex-1 bg-transparent text-xs text-white outline-none placeholder:text-white/26"
+              />
+            </div>
+          </form>
+        ) : null}
       </div>
     </header>
   );
