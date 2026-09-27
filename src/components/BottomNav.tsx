@@ -30,7 +30,7 @@ function pathToView(path: string): View {
 }
 
 export default function BottomNav({ current: propCurrent, onChange: propOnChange }: Props) {
-  const { isAdmin, user } = useAuth();
+  const { isAdmin, isSupport, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [authOpen, setAuthOpen] = useState(false);
@@ -56,8 +56,8 @@ export default function BottomNav({ current: propCurrent, onChange: propOnChange
     { key: "support", label: "Suporte", icon: Headset },
   ];
 
-  if (isAdmin) {
-    items.push({ key: "admin", label: "Admin", icon: Shield });
+  if (isAdmin || isSupport) {
+    items.push({ key: "admin", label: isAdmin ? "Admin" : "Operações", icon: Shield });
   }
 
   return (
@@ -72,10 +72,10 @@ export default function BottomNav({ current: propCurrent, onChange: propOnChange
               key={item.key}
               onClick={() => handleChange(item.key)}
               className={`flex min-w-0 flex-col items-center gap-1 rounded-md px-1 py-2 transition-colors ${
-                active ? "text-[#58adff]" : "text-white/35 hover:text-white/75"
+                active ? "text-[var(--zx-accent)]" : "text-white/35 hover:text-white/75"
               }`}
             >
-              <Icon className={`h-[19px] w-[19px] ${active ? "text-[#58adff]" : "text-white/35"}`} />
+              <Icon className={`h-[19px] w-[19px] ${active ? "text-[var(--zx-accent)]" : "text-white/35"}`} />
               <span className="max-w-full truncate text-[9px] font-semibold">{item.label}</span>
             </button>
           );
