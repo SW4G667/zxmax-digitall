@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Heart, Menu, Search, Settings, Wallet } from "lucide-react";
+import { Heart, Menu, Search, Shield, UserRound, Wallet } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useStore } from "@/store/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
@@ -74,11 +74,11 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Navegação principal">
             <button onClick={() => navigate("/loja")} className="rounded-md px-2.5 py-2 text-xs font-medium text-white/52 transition hover:bg-white/[0.04] hover:text-white">Loja</button>
             <button onClick={() => navigate("/categorias")} className="rounded-md px-2.5 py-2 text-xs font-medium text-white/52 transition hover:bg-white/[0.04] hover:text-white">Categorias</button>
-            <button onClick={() => navigate("/robux")} className={`rounded-md px-2.5 py-2 text-xs font-semibold transition ${location.pathname === "/robux" ? "bg-[#168cff]/10 text-[#67b5ff]" : "text-white/52 hover:bg-white/[0.04] hover:text-white"}`}>Robux</button>
+            <button onClick={() => navigate("/robux")} className={`rounded-md px-2.5 py-2 text-xs font-semibold transition ${location.pathname === "/robux" ? "bg-white/[0.05] text-[var(--zx-accent)]" : "text-white/52 hover:bg-white/[0.04] hover:text-white"}`}>Robux</button>
           </nav>
 
           <form onSubmit={submitSearch} className="hidden min-w-0 flex-1 md:flex">
-            <div className="flex h-10 w-full max-w-xl items-center rounded-lg border border-white/[0.1] bg-[#151519] px-3 focus-within:border-[#168cff]/60">
+            <div className="flex h-10 w-full max-w-xl items-center rounded-lg border border-white/[0.1] bg-[#151519] px-3 focus-within:border-[var(--zx-accent)]">
               <Search className="h-4 w-4 shrink-0 text-white/30" />
               <input
                 value={query}
@@ -94,14 +94,14 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
             <button
               onClick={openListing}
               aria-label={user ? "Abrir meus anúncios" : "Anunciar"}
-              className="hidden h-9 items-center rounded-md bg-[#168cff] px-4 text-xs font-bold text-white transition hover:bg-[#0878dc] sm:flex"
+              className="hidden h-9 items-center rounded-lg bg-[var(--zx-accent)] px-4 text-xs font-bold text-white transition hover:brightness-110 sm:flex"
             >
               Anunciar
             </button>
 
             <button onClick={() => navigate("/favoritos")} className="zx-icon-action relative hidden sm:flex" aria-label="Favoritos" title="Favoritos">
               <Heart className={`h-4 w-4 ${favCount ? "fill-[#57aaff] text-[#57aaff]" : ""}`} />
-              {favCount > 0 ? <span className="absolute -right-1 -top-1 rounded-full bg-[#168cff] px-1 text-[8px] font-bold text-white">{favCount > 99 ? "99+" : favCount}</span> : null}
+              {favCount > 0 ? <span className="absolute -right-1 -top-1 rounded-full bg-[var(--zx-accent)] px-1 text-[8px] font-bold text-white">{favCount > 99 ? "99+" : favCount}</span> : null}
             </button>
 
             <NotificationBell />
@@ -118,18 +118,14 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
             </a>
 
             {isAdmin ? (
-              <button onClick={() => navigate("/admin/branding")} className="zx-icon-action hidden sm:flex" aria-label="Personalizar site" title="Personalizar site">
-                <Settings className="h-4 w-4" />
+              <button onClick={() => navigate("/admin")} className="zx-icon-action flex" aria-label="Abrir painel administrativo" title="Admin">
+                <Shield className="h-4 w-4" />
               </button>
             ) : null}
 
             {user ? (
-              <button onClick={onProfileClick} className="flex h-10 items-center gap-2 rounded-lg border border-white/[0.09] bg-[#151519] px-2 transition hover:border-white/[0.16]">
-                {profile?.avatar_url || state.currentUser?.avatar ? (
-                  <img src={profile?.avatar_url || state.currentUser?.avatar} alt="Avatar" className="h-7 w-7 rounded-full object-cover" />
-                ) : (
-                  <span className="grid h-7 w-7 place-items-center rounded-full bg-[#222228] text-[10px] font-bold text-white">{(profile?.display_name || user.email || "U").slice(0, 1).toUpperCase()}</span>
-                )}
+              <button onClick={onProfileClick} className="flex h-9 items-center gap-2 rounded-lg border border-white/[0.085] bg-white/[0.02] px-2.5 transition hover:border-white/[0.16] hover:bg-white/[0.04]" aria-label="Abrir minha conta">
+                <UserRound className="h-4 w-4 text-white/62" />
                 <span className="hidden text-left lg:block">
                   <span className="block max-w-[90px] truncate text-[11px] font-semibold text-white">{profile?.display_name || user.email?.split("@")[0]}</span>
                   <span className="mt-0.5 flex items-center gap-1 text-[9px] text-white/35"><Wallet className="h-3 w-3" /> R$ {Number(state.currentUser?.balance ?? 0).toFixed(2)}</span>
