@@ -28,6 +28,15 @@ const rateInfo = (response: Response) => ({
   retryAfter: response.headers.get("Retry-After"),
 });
 
+async function writeMagnusLog(client: any, row: Record<string, unknown>) {
+  try {
+    const result = await client.from("webhook_logs").insert(row);
+    if (result.error) console.warn("magnuspay log insert failed", result.error.message);
+  } catch (error) {
+    console.warn("magnuspay log insert failed", error instanceof Error ? error.message : "unknown");
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Método não permitido." }, 405);
