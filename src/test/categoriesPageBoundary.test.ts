@@ -9,9 +9,9 @@ describe("página de categorias", () => {
     const page = await source("src/pages/Categorias.tsx");
     expect(page).toContain("state.config.categories");
     expect(page).toContain("storefrontProducts(state.products, state.currentUser?.id)");
-    expect(page).toContain("approved.filter((product) => product.category === category).length");
-    expect(page).toContain('navigate(`/loja?cat=${encodeURIComponent(category)}`)');
-    expect(page).toContain('navigate("/robux")');
+    expect(page).toContain("approved.filter((product) => product.category === category)");
+    expect(page).toContain('"/loja?cat=" + encodeURIComponent(category)');
+    expect(page).toContain('category === ROBUX_CATEGORY ? "/robux"');
   });
 
   it("mantém descoberta no menu sem duplicar todos os filtros do catálogo", async () => {
