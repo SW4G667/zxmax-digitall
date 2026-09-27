@@ -10,7 +10,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
 });
 
-const API = String(Deno.env.get("MAGNUSPAY_BASE_URL") || "https://magnuspay.onrender.com/api").replace(/\/$/, "");
+const API = "https://magnuspay.onrender.com/api";
 
 const unwrap = (body: any) => body?.data && typeof body.data === "object" ? body.data : body || {};
 const first = (objects: any[], keys: string[]) => {
@@ -118,12 +118,17 @@ serve(async (req) => {
     }
 
     if (!response.ok || parsed?.success === false) {
-      const providerMessage = String(parsed?.message || "Falha ao criar PIX").slice(0, 500);
+      const providerMessage = String(parsed?.message || `MagnusPay respondeu HTTP ${response.status}`).slice(0, 500);
       await writeMagnusLog(admin, {
         source: "magnuspay", event_type: "CREATE_PIX", status: `error_${response.status}`,
-        order_id: purchase.id, payload: { code: parsed?.code || null, limits }, error: providerMessage,
+        order_id: purchase.id,
+        payload: { code: parsed?.code || null, limits, endpoint: "/transactions/create", contentType: response.headers.get("content-type") },
+        error: providerMessage,
       });
-      return json({ error: String(parsed?.message || "Não foi possível gerar o PIX.").slice(0, 240), code: parsed?.code || null }, 502);
+      return json({
+        error: String(parsed?.message || `A MagnusPay recusou a criação do PIX (HTTP ${response.status}).`).slice(0, 240),
+        code: parsed?.code || `magnus_http_${response.status}`,
+      }, 502);
     }
 
     const data = unwrap(parsed);
