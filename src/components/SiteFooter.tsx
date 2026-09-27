@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { useSiteBranding } from "@/context/SiteBrandingContext";
+import BrandMark from "@/components/BrandMark";
 
 const columns = [
   {
@@ -45,18 +46,14 @@ export default function SiteFooter() {
   const { branding } = useSiteBranding();
 
   return (
-    <footer className="mt-12 border-t border-white/[0.07] bg-[#09090c]">
-      <div className="mx-auto max-w-[1240px] px-4 py-10">
+    <footer className="mt-10 border-t border-white/[0.065] bg-[#090a0d]">
+      <div className="mx-auto max-w-[1180px] px-4 py-8 sm:py-10">
         <div className="grid gap-9 lg:grid-cols-[1.2fr_2fr]">
           <div className="max-w-sm">
-            <Link to="/">
-              {branding.logoUrl ? (
-                <img src={branding.logoUrl} alt={branding.siteName} className="h-7 max-w-[140px] object-contain object-left" />
-              ) : (
-                <span className="text-xl font-extrabold tracking-[-0.05em] text-white">{branding.siteName || "ZXMAX"}</span>
-              )}
+            <Link to="/" className="inline-flex">
+              <BrandMark />
             </Link>
-            <p className="mt-4 text-xs leading-5 text-white/35">
+            <p className="mt-4 max-w-xs text-[11px] leading-5 text-white/32">
               Marketplace para compra e venda de produtos e serviços digitais, com pedidos e pagamentos organizados pela plataforma.
             </p>
           </div>

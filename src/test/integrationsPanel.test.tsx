@@ -8,8 +8,8 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: { functions: { invo
 // eslint-disable-next-line import/first
 import IntegrationsPanel from "@/components/IntegrationsPanel";
 
-describe("IntegrationsPanel — Stripe seguro", () => {
-  it("mostra configurações de cartão e boleto sem criar campos para segredos", async () => {
+describe("IntegrationsPanel — gateways seguros", () => {
+  it("mostra métodos e instruções da MagnusPay sem criar campos para segredos", async () => {
     invoke.mockResolvedValue({
       data: {
         integrations: {
@@ -32,7 +32,8 @@ describe("IntegrationsPanel — Stripe seguro", () => {
 
     await waitFor(() => expect(screen.getByText("Stripe · cartão e boleto")).toBeInTheDocument());
     expect(screen.getByText("MagnusPay PIX")).toBeInTheDocument();
-    expect(screen.getByText(/MAGNUSPAY_API_KEY/)).toBeInTheDocument();
+    expect(screen.getAllByText(/MAGNUSPAY_API_KEY/).length).toBeGreaterThan(0);
+    expect(screen.getByText("https://magnuspay.onrender.com/api")).toBeInTheDocument();
     expect(screen.getByLabelText("Oferecer cartão")).toBeChecked();
     expect(screen.getByLabelText("Oferecer boleto")).toBeChecked();
     expect(screen.getByLabelText("Validade do boleto (dias)")).toHaveValue(3);

@@ -1,29 +1,34 @@
 import React, { useState } from "react";
-import { Wallet, ShieldCheck, Clock3, RotateCcw, AlertTriangle } from "lucide-react";
+import { Wallet, ShieldCheck, Clock3, RotateCcw, AlertTriangle, CircleDollarSign } from "lucide-react";
 import { toast } from "sonner";
 import { useStore } from "@/store/StoreContext";
 import { Button } from "@/components/ui/button";
 import { formatBRL } from "@/lib/catalog";
-import { WITHDRAW_FEE, WITHDRAW_MIN, withdrawTotals } from "@/lib/fees";
+import { withdrawTotals } from "@/lib/fees";
 
 export default function WithdrawView() {
   const { state, requestWithdraw } = useStore();
   const [submitting, setSubmitting] = useState(false);
   const user = state.currentUser;
-  const totals = withdrawTotals(user?.balance ?? 0);
+  const minWithdraw = Number(state.config.withdrawMin ?? 5);
+  const withdrawFee = Number(state.config.withdrawFee ?? 3.5);
+  const totals = withdrawTotals(user?.balance ?? 0, { min: minWithdraw, fee: withdrawFee });
 
   const myWithdrawals = state.withdrawals.filter((w) => w.userId === user?.id);
   const pending = myWithdrawals.filter((w) => w.status === "pending");
   const rejected = myWithdrawals.filter((w) => w.status === "rejected" && !myWithdrawals.some((r) => r.retryOf === w.id));
 
-  const submit = async (retryOf?: number) => {
+  const submit = async (retry?: { id: number; amount: number }) => {
     if (!user?.isVerified) return toast.error("Conclua a verificação de identidade antes de sacar.");
     if (!user.pixKey) return toast.error("Cadastre uma chave Pix no seu perfil.");
-    if (!totals.canWithdraw) return toast.error(totals.reason || `O saque mínimo é ${formatBRL(WITHDRAW_MIN)}.`);
+    const amount = retry?.amount ?? totals.balance;
+    const check = withdrawTotals(amount, { min: minWithdraw, fee: withdrawFee });
+    if (!check.canWithdraw) return toast.error(check.reason || `O saque mínimo é ${formatBRL(minWithdraw)}.`);
+
     setSubmitting(true);
     try {
-      await requestWithdraw("normal", retryOf ? { retryOf } : undefined);
-      toast.success(retryOf ? "Saque reenviado para análise." : "Solicitação registrada. Após aprovação o Pix sai pela ZennithPay.");
+      await requestWithdraw("normal", retry ? { retryOf: retry.id, amount: retry.amount } : undefined);
+      toast.success(retry ? "Saque reenviado para análise." : "Solicitação registrada. O valor líquido fica congelado com a taxa vigente deste pedido.");
     } catch (e: any) {
       toast.error(e?.message || "Não foi possível registrar o saque.");
     } finally {
@@ -32,72 +37,89 @@ export default function WithdrawView() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto animate-fade-in-up pb-20">
-      <div className="mb-8">
-        <h1 className="text-3xl font-black text-white flex items-center gap-3">
-          <Wallet className="w-7 h-7 text-[#0084ff]" /> Sacar dinheiro
+    <div className="mx-auto max-w-2xl animate-fade-in-up pb-20">
+      <header className="mb-6 border-b border-white/[0.07] pb-5">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#67b4ff]">Carteira</p>
+        <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold tracking-[-0.03em] text-white">
+          <Wallet className="h-5 w-5 text-[#67b4ff]" /> Sacar por Pix
         </h1>
-        <p className="text-white/40 mt-2">Receba seu saldo por Pix. Mínimo {formatBRL(WITHDRAW_MIN)}, taxa fixa de {formatBRL(WITHDRAW_FEE)}.</p>
-      </div>
+        <p className="mt-2 text-sm text-white/40">Saque mínimo {formatBRL(minWithdraw)} · taxa atual {formatBRL(withdrawFee)}.</p>
+      </header>
 
-      <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6 mb-4">
-        <p className="text-xs font-bold uppercase text-white/30">Saldo disponível</p>
-        <p className="text-3xl font-black text-white mt-1">{formatBRL(user?.balance ?? 0)}</p>
-        <div className="mt-5 space-y-2 text-sm">
-          <div className="flex justify-between text-white/60"><span>Taxa de saque</span><span className="text-[#ffbd2e] font-bold">− {formatBRL(WITHDRAW_FEE)}</span></div>
-          <div className="flex justify-between text-white font-black"><span>Você recebe</span><span>{formatBRL(totals.net)}</span></div>
-        </div>
-        <div className="grid sm:grid-cols-2 gap-3 mt-6 text-sm">
-          <div className="bg-[#0a0a0f] border border-[#25252e] p-4 rounded-xl flex gap-3 text-white/70">
-            <ShieldCheck className="w-5 h-5 text-[#00c950] shrink-0" />
-            <span>Conta {user?.isVerified ? "verificada" : "ainda não verificada"}</span>
-          </div>
-          <div className="bg-[#0a0a0f] border border-[#25252e] p-4 rounded-xl flex gap-3 text-white/70">
-            <Clock3 className="w-5 h-5 text-[#0084ff] shrink-0" />
-            <span>Pix via ZennithPay após aprovação</span>
-          </div>
-        </div>
-      </div>
+      <section className="rounded-xl border border-white/[0.08] bg-[#111114] p-5 sm:p-6">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-white/30">Saldo liberado</p>
+        <p className="mt-1 text-3xl font-bold tracking-tight text-white">{formatBRL(user?.balance ?? 0)}</p>
 
-      <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
-        <p className="text-xs font-bold uppercase text-white/30">Chave Pix</p>
-        <p className="text-sm text-white mt-1 break-all">{user?.pixKey || "Nenhuma chave cadastrada"}</p>
-        <Button onClick={() => submit()} disabled={submitting || !user || !totals.canWithdraw} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black font-black mt-5">
-          {submitting ? "Enviando solicitação..." : `Solicitar saque de ${formatBRL(totals.balance)}`}
+        <div className="mt-5 divide-y divide-white/[0.06] rounded-lg border border-white/[0.07] bg-[#0c0c0f] px-4">
+          <div className="flex items-center justify-between py-3 text-sm text-white/50"><span>Valor solicitado</span><strong className="text-white">{formatBRL(totals.balance)}</strong></div>
+          <div className="flex items-center justify-between py-3 text-sm text-white/50"><span>Taxa de saque</span><strong className="text-white">− {formatBRL(totals.fee)}</strong></div>
+          <div className="flex items-center justify-between py-3 text-sm"><span className="font-semibold text-white">Você recebe</span><strong className="text-base text-[#6bd59a]">{formatBRL(totals.net)}</strong></div>
+        </div>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <div className="flex items-start gap-2 rounded-lg border border-white/[0.07] p-3 text-xs leading-5 text-white/48">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#66d295]" />
+            <span>{user?.isVerified ? "Identidade verificada para saque." : "Verifique sua identidade antes de solicitar saque."}</span>
+          </div>
+          <div className="flex items-start gap-2 rounded-lg border border-white/[0.07] p-3 text-xs leading-5 text-white/48">
+            <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-[#67b4ff]" />
+            <span>Após aprovação administrativa, o Pix é processado pelo gateway de saque configurado.</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-3 rounded-xl border border-white/[0.08] bg-[#111114] p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <CircleDollarSign className="mt-0.5 h-4 w-4 text-[#67b4ff]" />
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-white">Chave Pix cadastrada</p>
+            <p className="mt-1 break-all text-xs text-white/42">{user?.pixKey || "Nenhuma chave cadastrada"}</p>
+          </div>
+        </div>
+
+        <Button onClick={() => submit()} disabled={submitting || !user || !totals.canWithdraw} className="mt-5 w-full bg-[#168cff] font-semibold text-white hover:bg-[#0878dc]">
+          {submitting ? "Registrando..." : `Solicitar saque de ${formatBRL(totals.balance)}`}
         </Button>
-        {!totals.canWithdraw && totals.reason && (
-          <p className="text-xs text-[#ffbd2e] mt-3">{totals.reason}</p>
-        )}
-      </div>
+        {!totals.canWithdraw && totals.reason ? <p className="mt-3 text-xs text-amber-300/75">{totals.reason}</p> : null}
+      </section>
 
-      {rejected.length > 0 && (
-        <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6 mt-4 space-y-3">
-          <p className="text-xs font-bold uppercase text-white/30 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-red-400" /> Saques recusados
-          </p>
-          {rejected.map((w) => (
-            <div key={w.id} className="bg-[#0a0a0f] border border-[#25252e] p-4 rounded-xl">
-              <p className="text-sm font-bold text-white">{formatBRL(w.amount)}</p>
-              <p className="text-xs text-red-400 mt-1">Motivo: {w.rejectionReason || "Não informado"}</p>
-              <Button variant="secondary" onClick={() => submit(w.id)} disabled={submitting} className="mt-3 h-9 text-xs">
-                <RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Reenviar saque
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
+      {rejected.length > 0 ? (
+        <section className="mt-3 rounded-xl border border-white/[0.08] bg-[#111114] p-5">
+          <p className="flex items-center gap-2 text-xs font-semibold text-white"><AlertTriangle className="h-4 w-4 text-red-400" /> Saques recusados</p>
+          <div className="mt-3 space-y-2">
+            {rejected.map((w) => (
+              <div key={w.id} className="rounded-lg border border-white/[0.07] bg-[#0c0c0f] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white">{formatBRL(w.amount)}</p>
+                    <p className="mt-0.5 text-[11px] text-red-300/70">Motivo: {w.rejectionReason || "Não informado"}</p>
+                  </div>
+                  <Button variant="secondary" onClick={() => submit({ id: w.id, amount: w.amount })} disabled={submitting} className="h-8 text-[11px]">
+                    <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Reenviar
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
-      {pending.length > 0 && (
-        <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6 mt-4 space-y-2">
-          <p className="text-xs font-bold uppercase text-white/30">Em análise</p>
-          {pending.map((w) => (
-            <div key={w.id} className="flex items-center justify-between text-sm">
-              <span className="text-white font-bold">{formatBRL(w.amount)}</span>
-              <span className="text-[11px] text-white/40">{new Date(w.createdAt).toLocaleString("pt-BR")}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {pending.length > 0 ? (
+        <section className="mt-3 rounded-xl border border-white/[0.08] bg-[#111114] p-5">
+          <p className="text-xs font-semibold text-white">Em análise</p>
+          <div className="mt-3 divide-y divide-white/[0.06]">
+            {pending.map((w) => (
+              <div key={w.id} className="flex items-center justify-between gap-3 py-3 text-sm">
+                <div>
+                  <p className="font-semibold text-white">{formatBRL(w.netAmount ?? Math.max(0, w.amount - (w.fee ?? withdrawFee)))} líquido</p>
+                  <p className="text-[10px] text-white/30">Solicitado: {formatBRL(w.amount)} · taxa: {formatBRL(w.fee ?? withdrawFee)}</p>
+                </div>
+                <span className="text-[10px] text-white/30">{new Date(w.createdAt).toLocaleString("pt-BR")}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

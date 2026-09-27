@@ -77,7 +77,7 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { data: gatewayRows } = await admin.from("app_settings").select("key,value").in("key", ["magnuspay", "zennithpay", "vexopay", "stripe"]);
+    const { data: gatewayRows } = await admin.from("app_settings").select("key,value").in("key", ["platform", "magnuspay", "zennithpay", "vexopay", "stripe"]);
     const gateway = (key: string) => (gatewayRows || []).find((row: any) => row.key === key)?.value || {};
     const magnus = gateway("magnuspay") as Record<string, unknown>;
     const magnusReady = Boolean(Deno.env.get("MAGNUSPAY_API_KEY"));
@@ -95,14 +95,22 @@ serve(async (req) => {
     if ((paymentMethod === "magnuspay_pix" || paymentMethod === "zennith_pix" || paymentMethod === "vexopay_pix") && paymentMethod !== selectedPix) {
       return json({ error: "PIX indisponível no momento. Tente novamente mais tarde." }, 503);
     }
-    const configuredFee = paymentMethod === "magnuspay_pix"
+    const platform = gateway("platform") as Record<string, unknown>;
+    const configuredBaseFee = Number(platform.buyer_fee);
+    const baseBuyerFee = Number.isFinite(configuredBaseFee) && configuredBaseFee >= 0 && configuredBaseFee <= 1000
+      ? roundMoney(configuredBaseFee)
+      : 0.90;
+    const configuredGatewayFee = paymentMethod === "magnuspay_pix"
       ? Number(gateway("magnuspay").pixFee)
       : paymentMethod === "zennith_pix"
         ? Number(gateway("zennithpay").pixFee)
         : paymentMethod === "vexopay_pix"
           ? Number(gateway("vexopay").pixFee)
           : 0;
-    const buyerFee = Number.isFinite(configuredFee) && configuredFee >= 0 && configuredFee <= 1000 ? roundMoney(configuredFee) : 0;
+    const gatewayFee = Number.isFinite(configuredGatewayFee) && configuredGatewayFee >= 0 && configuredGatewayFee <= 1000
+      ? roundMoney(configuredGatewayFee)
+      : 0;
+    const buyerFee = roundMoney(baseBuyerFee + gatewayFee);
     const stripe = gateway("stripe") as Record<string, unknown>;
     const stripeReady = Boolean(Deno.env.get("STRIPE_SECRET_KEY") && Deno.env.get("STRIPE_WEBHOOK_SECRET"));
     if (paymentMethod === "card" && (!stripeReady || stripe.cardEnabled !== true)) {

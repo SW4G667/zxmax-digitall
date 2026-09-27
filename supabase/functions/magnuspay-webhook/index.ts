@@ -3,9 +3,9 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
-  headers: { "Content-Type": "application/json" },
+  headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
 });
-const API = String(Deno.env.get("MAGNUSPAY_BASE_URL") || "https://magnuscash.com.br/api").replace(/\/$/, "");
+const API = String(Deno.env.get("MAGNUSPAY_BASE_URL") || "https://magnuspay.onrender.com/api").replace(/\/$/, "");
 const normalizeMoney = (value: unknown) => Math.round(Number(value) * 100);
 
 function hex(bytes: ArrayBuffer) {
@@ -32,6 +32,24 @@ async function hmac(secret: string, raw: string) {
   );
   return await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(raw));
 }
+async function verifyOptionalSignature(req: Request, raw: string) {
+  const secret = String(Deno.env.get("MAGNUSPAY_WEBHOOK_SECRET") || "").trim();
+  if (!secret) return true;
+
+  const receivedRaw = String(
+    req.headers.get("X-Magnus-Signature")
+    || req.headers.get("X-Webhook-Signature")
+    || req.headers.get("X-Signature")
+    || "",
+  ).trim();
+  if (!receivedRaw) return false;
+
+  const received = receivedRaw.replace(/^(sha256=|v1=)/i, "").trim();
+  const signature = await hmac(secret, raw);
+  const expectedHex = hex(signature).toLowerCase();
+  const expectedB64 = base64(signature);
+  return safeEqual(received.toLowerCase(), expectedHex) || safeEqual(received, expectedB64);
+}
 async function verifyWithMagnus(apiKey: string, transactionId: string) {
   const response = await fetch(`${API}/transactions/check`, {
     method: "POST",
@@ -39,7 +57,12 @@ async function verifyWithMagnus(apiKey: string, transactionId: string) {
     body: JSON.stringify({ transactionId }),
   });
   const body = await response.json().catch(() => ({} as any));
-  return { ok: response.ok && body?.success !== false, body };
+  return {
+    ok: response.ok && body?.success !== false && body?.data,
+    data: body?.data || {},
+    code: body?.code || null,
+    message: body?.message || null,
+  };
 }
 async function notify(purchaseId: number) {
   const url = Deno.env.get("SUPABASE_URL")!;
@@ -61,26 +84,19 @@ serve(async (req) => {
     const apiKey = String(Deno.env.get("MAGNUSPAY_API_KEY") || "").trim();
     if (!apiKey) return json({ error: "Webhook not configured" }, 503);
 
-    const receivedRaw = String(req.headers.get("X-Magnus-Signature") || "").trim();
-    if (!receivedRaw) return json({ error: "Unauthorized" }, 401);
-
-    const received = receivedRaw.replace(/^(sha256=|v1=)/i, "").trim();
-    const signature = await hmac(apiKey, raw);
-    const expectedHex = hex(signature).toLowerCase();
-    const expectedB64 = base64(signature);
-    const valid = safeEqual(received.toLowerCase(), expectedHex) || safeEqual(received, expectedB64);
-    if (!valid) {
+    const signatureOk = await verifyOptionalSignature(req, raw);
+    if (!signatureOk) {
       await admin.from("webhook_logs").insert({
-        source: "magnuspay", event_type: "AUTH", status: "rejected", payload: null, error: "Assinatura HMAC inválida",
+        source: "magnuspay", event_type: "AUTH", status: "rejected",
+        payload: null, error: "Assinatura do webhook inválida",
       }).catch(() => {});
       return json({ error: "Unauthorized" }, 401);
     }
 
     const event = raw ? JSON.parse(raw) : {};
-    const data = event?.data && typeof event.data === "object" ? event.data : {};
-    const eventName = String(event?.event || "");
-    const providerId = String(data?.id || "");
-    const status = String(data?.status || "").toUpperCase();
+    const data = event?.data && typeof event.data === "object" ? event.data : event;
+    const eventName = String(event?.event || event?.type || data?.event || "").trim();
+    const providerId = String(data?.id || data?.transactionId || data?.transaction_id || "").trim();
 
     if (!providerId) return json({ received: true });
 
@@ -92,21 +108,25 @@ serve(async (req) => {
 
     if (!purchase) return json({ received: true });
 
-    if (eventName === "payment.completed" || status === "COMPLETED") {
-      const verified = await verifyWithMagnus(apiKey, providerId);
-      const node = verified.body?.data || {};
-      const verifiedStatus = String(node?.status || "").toUpperCase();
-      const verifiedAmount = normalizeMoney(node?.amount);
-      const expectedAmount = normalizeMoney(purchase.amount);
+    // Nunca confia no status recebido para liberar ou cancelar valor. O evento
+    // apenas dispara uma nova consulta autenticada diretamente à MagnusPay.
+    const verified = await verifyWithMagnus(apiKey, providerId);
+    const node = verified.data || {};
+    const verifiedId = String(node?.id || node?.transactionId || node?.transaction_id || "");
+    const verifiedStatus = String(node?.status || "").toUpperCase();
+    const verifiedAmount = normalizeMoney(node?.amount);
+    const expectedAmount = normalizeMoney(purchase.amount);
 
-      if (!verified.ok || verifiedStatus !== "COMPLETED" || verifiedAmount !== expectedAmount || String(node?.id || "") !== providerId) {
-        await admin.from("webhook_logs").insert({
-          source: "magnuspay", event_type: eventName || "payment.completed", status: "unverified",
-          order_id: purchase.id, charge_id: providerId, payload: event, error: "Confirmação server-to-server divergente",
-        }).catch(() => {});
-        return json({ received: true });
-      }
+    if (!verified.ok || verifiedId !== providerId || !Number.isFinite(verifiedAmount) || verifiedAmount !== expectedAmount) {
+      await admin.from("webhook_logs").insert({
+        source: "magnuspay", event_type: eventName || "webhook", status: "unverified",
+        order_id: purchase.id, charge_id: providerId,
+        payload: { event, providerCode: verified.code }, error: String(verified.message || "Confirmação server-to-server divergente").slice(0, 500),
+      }).catch(() => {});
+      return json({ received: true });
+    }
 
+    if (verifiedStatus === "COMPLETED") {
       const { data: applied, error: applyError } = await admin.rpc("apply_verified_payment_v2", {
         _provider: "magnuspay",
         _event_key: `magnuspay:${providerId}:COMPLETED`,
@@ -128,15 +148,15 @@ serve(async (req) => {
       return json({ received: true });
     }
 
-    if (eventName === "payment.expired" || status === "EXPIRED" || status === "FAILED") {
+    if (verifiedStatus === "EXPIRED" || verifiedStatus === "FAILED") {
       await admin.from("purchases").update({
-        payment_status: status === "FAILED" ? "failed" : "expired",
+        payment_status: verifiedStatus === "FAILED" ? "failed" : "expired",
         updated_at: new Date().toISOString(),
       }).eq("id", purchase.id).eq("provider_payment_id", providerId);
 
       await admin.from("webhook_logs").insert({
-        source: "magnuspay", event_type: eventName || status,
-        status: status || "expired", order_id: purchase.id,
+        source: "magnuspay", event_type: eventName || verifiedStatus,
+        status: verifiedStatus, order_id: purchase.id,
         charge_id: providerId, payload: event, error: null,
       }).catch(() => {});
     }

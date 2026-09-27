@@ -13,7 +13,7 @@ import {
   sanitizePrice,
   SAFE_PRODUCT_COLUMNS,
 } from "@/lib/catalog";
-import { WITHDRAW_FEE, WITHDRAW_MIN, withdrawTotals } from "@/lib/fees";
+import { BUYER_FEE, WITHDRAW_FEE, WITHDRAW_MIN, withdrawTotals } from "@/lib/fees";
 import { logProductError, productErrorMessage } from "@/lib/productErrors";
 import { unwrapEdgeCall } from "@/lib/edgeErrors";
 
@@ -136,6 +136,8 @@ export interface Withdrawal {
   rejectionReason?: string;
   providerTxId?: string;
   retryOf?: number | null;
+  fee?: number;
+  netAmount?: number;
 }
 
 export interface SupportTicket {
@@ -176,6 +178,9 @@ export interface UserDirectoryEntry {
 export interface AppConfig {
   commission: number;
   instantFee: number;
+  buyerFee: number;
+  withdrawMin: number;
+  withdrawFee: number;
   discordLink: string;
   categories: string[];
   globalNotice: string;
@@ -220,7 +225,7 @@ interface StoreContextType {
   markPurchasePaid: (purchaseId: number) => void;
   approvePurchase: (id: number) => void;
   revertPurchase: (id: number) => void;
-  requestWithdraw: (method: "normal" | "instant", options?: { retryOf?: number }) => Promise<void>;
+  requestWithdraw: (method: "normal" | "instant", options?: { retryOf?: number; amount?: number }) => Promise<void>;
   approveWithdraw: (id: number) => Promise<void>;
   rejectWithdraw: (id: number, reason?: string) => Promise<void>;
   updateConfig: (c: Partial<AppConfig>) => void;
@@ -259,6 +264,9 @@ interface StoreContextType {
 const defaultConfig: AppConfig = {
   commission: 10,
   instantFee: 7,
+  buyerFee: BUYER_FEE,
+  withdrawMin: WITHDRAW_MIN,
+  withdrawFee: WITHDRAW_FEE,
   discordLink: "https://discord.gg/zxmax",
   categories: ["Robux e Gift Cards", "Bots Discord", "Contas", "Scripts", "Assinaturas", "Designs Digitais", "Serviços Online", "Consultoria Virtual", "Keys de Software", "Arquivos", "Jogos e Itens"],
   globalNotice: "",
@@ -348,6 +356,8 @@ const mapWithdrawalRow = (w: any): Withdrawal => ({
   rejectionReason: w.rejection_reason || undefined,
   providerTxId: w.provider_tx || w.provider_tx_id || undefined,
   retryOf: w.retry_of ?? null,
+  fee: Number.isFinite(Number(w.fee)) ? Number(w.fee) : undefined,
+  netAmount: Number.isFinite(Number(w.net_amount)) ? Number(w.net_amount) : undefined,
 });
 
 export function StoreProvider({ children }: { children: ReactNode }) {
@@ -447,6 +457,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [isAdmin, isSupport]);
 
   useEffect(() => { void refreshUserTags(); }, [refreshUserTags]);
+
+  useEffect(() => {
+    void (async () => {
+      const { data, error } = await (supabase as any).rpc("get_public_platform_fees");
+      if (error || !data) return;
+      const buyerFee = Number(data.buyerFee);
+      const withdrawMin = Number(data.minWithdraw);
+      const withdrawFee = Number(data.withdrawFee);
+      setState((s) => ({
+        ...s,
+        config: {
+          ...s.config,
+          buyerFee: Number.isFinite(buyerFee) && buyerFee >= 0 ? buyerFee : s.config.buyerFee,
+          withdrawMin: Number.isFinite(withdrawMin) && withdrawMin >= 0 ? withdrawMin : s.config.withdrawMin,
+          withdrawFee: Number.isFinite(withdrawFee) && withdrawFee >= 0 ? withdrawFee : s.config.withdrawFee,
+        },
+      }));
+    })();
+  }, []);
 
   /** Runs a products query and, if the database has not received the latest
    * migrations yet, retries without the newer optional columns. Without this a
@@ -930,13 +959,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void refreshBalance();
   }, [authUserId, refreshWithdrawals, refreshBalance]);
 
-  const requestWithdraw = async (method: "normal" | "instant", options?: { retryOf?: number }) => {
+  const requestWithdraw = async (method: "normal" | "instant", options?: { retryOf?: number; amount?: number }) => {
     if (!state.currentUser || state.currentUser.balance <= 0) return;
-    const totals = withdrawTotals(state.currentUser.balance);
-    if (!totals.canWithdraw) throw new Error(totals.reason || `O saque mínimo é R$ ${WITHDRAW_MIN.toFixed(2).replace(".", ",")}.`);
-    const amount = totals.balance;
-    // Idempotency: the same user + amount + method within the same minute never
-    // creates two withdrawals, even if the request is retried on a flaky network.
+    const configured = { min: state.config.withdrawMin, fee: state.config.withdrawFee };
+    const availableTotals = withdrawTotals(state.currentUser.balance, configured);
+    const amount = options?.amount == null ? availableTotals.balance : Math.round(Number(options.amount) * 100) / 100;
+    const requestedTotals = withdrawTotals(amount, configured);
+    if (!requestedTotals.canWithdraw) throw new Error(requestedTotals.reason || "O valor solicitado não atende às regras de saque.");
+    if (amount > availableTotals.balance) throw new Error("Saldo disponível insuficiente para este saque.");
+
     const minuteBucket = new Date().toISOString().slice(0, 16);
     const idempotencyKey = `${state.currentUser.id}:${amount}:${method}:${options?.retryOf ?? "new"}:${minuteBucket}`;
     const { error } = await (supabase as any).rpc("request_withdrawal", {
@@ -944,6 +975,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       _method: method,
       _idempotency_key: idempotencyKey,
       _retry_of: options?.retryOf ?? null,
+      _pix_key: state.currentUser.pixKey || null,
     });
     if (error) throw new Error(error.message || "Não foi possível solicitar o saque");
     await Promise.all([refreshWithdrawals(), refreshBalance()]);
@@ -952,11 +984,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const approveWithdraw = async (id: number) => {
     const withdrawal = state.withdrawals.find((w) => w.id === id);
     if (!withdrawal?.pixKey) throw new Error("Este saque não tem chave Pix cadastrada.");
-    const net = Math.round((Number(withdrawal.amount) - WITHDRAW_FEE) * 100) / 100;
+    const storedNet = Number(withdrawal.netAmount);
+    const storedFee = Number(withdrawal.fee);
+    const net = Number.isFinite(storedNet) && storedNet > 0
+      ? storedNet
+      : Math.round((Number(withdrawal.amount) - (Number.isFinite(storedFee) ? storedFee : state.config.withdrawFee)) * 100) / 100;
+    if (!Number.isFinite(net) || net <= 0) throw new Error("Valor líquido do saque inválido.");
     const res = await unwrapEdgeCall<{ id?: string; status?: string; error?: string }>(
       await supabase.functions.invoke("zennith-withdraw", {
         body: {
-          amount: net > 0 ? net : Number(withdrawal.amount),
+          amount: net,
           pixKey: withdrawal.pixKey,
           clientReference: `zxmax-withdraw-${id}`,
         },
