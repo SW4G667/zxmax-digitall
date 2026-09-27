@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useStore } from "@/store/StoreContext";
-import { Search, Flame, RefreshCw, AlertTriangle, PackageOpen, SlidersHorizontal, BadgeCheck } from "lucide-react";
+import { Search, RefreshCw, AlertTriangle, PackageOpen, SlidersHorizontal, BadgeCheck } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import AuthScreen from "@/components/AuthScreen";
 import UserProfileModal from "@/components/UserProfileModal";
@@ -139,7 +139,6 @@ export default function StoreView() {
   }, [nonRobux, debouncedSearch, category, maxPrice, deliveryFilter, onlyVerified, sort, isVerifiedSeller]);
 
   const page = filtered.slice(0, visible);
-  const trending = useMemo(() => [...nonRobux].sort((a, b) => b.sales - a.sales).filter((p) => p.sales > 0).slice(0, 4), [nonRobux]);
 
   const handleCategorySelect = (cat: string) => {
     setCategory(cat);
@@ -175,10 +174,10 @@ export default function StoreView() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-4 border-b border-white/[0.07] pb-5 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-3 border-b border-white/[0.07] pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-[-0.03em] text-white">Marketplace</h1>
-          <p className="mt-1 text-sm text-white/38">Encontre produtos e serviços digitais publicados por vendedores da plataforma.</p>
+          <h1 className="text-xl font-extrabold tracking-[-0.035em] text-white sm:text-2xl">Todos os anúncios</h1>
+          <p className="mt-1 text-xs text-white/38 sm:text-sm">Busque, filtre e compare sem repetir a navegação da home.</p>
         </div>
 
         <div className="flex w-full gap-2 sm:max-w-md">
@@ -227,7 +226,7 @@ export default function StoreView() {
 
       {/* Filters panel */}
       {showFilters && (
-        <div className="bg-[#111114] border border-[#1e1e28] rounded-lg p-4 grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 rounded-xl border border-white/[0.08] bg-[#101013] p-4 md:grid-cols-4">
           <div>
             <label htmlFor="sort" className="text-[10px] font-black uppercase tracking-wide text-white/30 block mb-1.5">Ordenar por</label>
             <select id="sort" value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="w-full p-2.5 rounded-lg bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none">
@@ -261,27 +260,6 @@ export default function StoreView() {
             {hasActiveFilters && (
               <button onClick={clearFilters} className="mt-2 text-xs font-bold text-[#0084ff] hover:underline text-left">Limpar filtros</button>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Em alta */}
-      {category === "Todos" && !debouncedSearch && trending.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Flame className="w-4 h-4 text-[#ff4444]" aria-hidden />
-            <h2 className="text-sm font-black text-white uppercase tracking-wide">Em alta</h2>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
-            {trending.map((p) => (
-              <button key={`trend-${p.id}`} onClick={() => navigate(`/produto/${p.id}`)} className="text-left bg-[#111114] border border-[#1e1e28] rounded-lg overflow-hidden cursor-pointer hover:border-[#2a2a36] focus:outline-none focus:ring-2 focus:ring-[#0084ff] transition group">
-                <div className="aspect-[4/3] bg-[#1a1a20] overflow-hidden"><img src={p.image} alt="" className="w-full h-full object-cover group-hover:scale-[1.02] transition duration-300" loading="lazy" /></div>
-                <div className="p-2.5 sm:p-3">
-                  <p className="text-xs font-bold text-white truncate">{p.name}</p>
-                  <p className="mt-2 text-sm font-bold text-[#45a7ff]">{priceLabel(p)}</p>
-                </div>
-              </button>
-            ))}
           </div>
         </div>
       )}
@@ -346,13 +324,22 @@ export default function StoreView() {
                 <button
                   key={p.id}
                   onClick={() => navigate(`/produto/${p.id}`)}
-                  className="text-left bg-[#111114] border border-[#1e1e28] rounded-lg overflow-hidden cursor-pointer hover:border-[#2a2a36] focus:outline-none focus:ring-2 focus:ring-[#0084ff] transition group flex flex-col"
+                  className="group flex flex-col overflow-hidden rounded-xl border border-white/[0.08] bg-[#111114] text-left transition hover:-translate-y-0.5 hover:border-white/[0.17] hover:bg-[#131317] focus:outline-none focus:ring-2 focus:ring-[#168cff]"
                 >
-                  <div className="relative aspect-[4/3] bg-[#1a1a20] overflow-hidden">
-                    <img src={p.image} alt="" className="w-full h-full object-cover group-hover:scale-[1.02] transition duration-300" loading="lazy" />
-                    <div className="absolute top-2 left-2 flex gap-1">
-                      {!p.approved && <span className="bg-[#ffbd2e] text-black text-[9px] px-2 py-0.5 rounded-full font-black">EM ANÁLISE</span>}
-                      {p.deliveryType === "auto" && <span className="bg-[#00c950] text-white text-[9px] px-2 py-0.5 rounded-full font-black">AUTO</span>}
+                  <div className="relative aspect-[16/10] overflow-hidden bg-[#18181d]">
+                    {p.image ? (
+                      <img src={p.image} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" loading="lazy" />
+                    ) : (
+                      <div className="grid h-full place-items-center text-white/22">
+                        <div className="text-center">
+                          <PackageOpen className="mx-auto h-7 w-7" aria-hidden />
+                          <span className="mt-2 block text-[9px] font-semibold uppercase tracking-[0.12em]">Sem imagem</span>
+                        </div>
+                      </div>
+                    )}
+                    <div className="absolute left-2 top-2 flex gap-1">
+                      {!p.approved && <span className="rounded-md bg-[#ffbd2e] px-2 py-1 text-[8px] font-black text-black">EM ANÁLISE</span>}
+                      {p.deliveryType === "auto" && <span className="rounded-md bg-emerald-400/90 px-2 py-1 text-[8px] font-black text-[#06120b]">AUTOMÁTICO</span>}
                     </div>
                   </div>
                   <div className="p-2.5 sm:p-3 flex flex-col flex-1">
@@ -362,7 +349,7 @@ export default function StoreView() {
                       por <span className="text-[#0084ff]">{p.seller}</span>
                       {isVerifiedSeller(p.sellerId) && <BadgeCheck className="w-3 h-3 text-[#0084ff] shrink-0" aria-label="Vendedor verificado" />}
                     </p>
-                    <p className="mt-2 text-sm font-bold text-[#45a7ff]">{priceLabel(p)}</p>
+                    <p className="mt-2 text-sm font-extrabold tracking-[-0.02em] text-white">{priceLabel(p)}</p>
                     {p.sales > 0 && <p className="text-[10px] text-white/30 mt-1">{p.sales} vendas</p>}
                   </div>
                 </button>
