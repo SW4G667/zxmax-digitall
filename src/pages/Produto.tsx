@@ -222,6 +222,7 @@ export default function ProdutoPage() {
   const [pixCharge, setPixCharge] = useState<PixCharge | null>(null);
   const [cryptoCharge, setCryptoCharge] = useState<CryptoCharge | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [prefetchedMethods, setPrefetchedMethods] = useState<PaymentMethodsState>({ status: "loading" });
   const [quantity, setQuantity] = useState(1);
   const [quantityDraft, setQuantityDraft] = useState("1");
   const [sortBy, setSortBy] = useState<"recomendado" | "barato" | "min">("barato");
