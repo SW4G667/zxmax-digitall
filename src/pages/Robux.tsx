@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { BadgeCheck, ChevronRight, RefreshCw, Search, Star } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import AppShell from "@/components/AppShell";
+import { useSiteBranding } from "@/context/SiteBrandingContext";
 import { useStore } from "@/store/StoreContext";
 import {
   formatBRL,
@@ -42,6 +43,7 @@ const SORT_OPTIONS: { id: SortKey; label: string }[] = [
 
 export default function RobuxPage() {
   const { state, catalogStatus, refreshProducts } = useStore();
+  const { branding } = useSiteBranding();
   const navigate = useNavigate();
   const [sort, setSort] = useState<SortKey>("barato");
   const [search, setSearch] = useState("");
@@ -108,26 +110,34 @@ export default function RobuxPage() {
           <span className="text-white/70">Robux</span>
         </nav>
 
-        <header className="flex flex-col gap-4 border-b border-white/[0.07] pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#66b4ff]">Mercado de Robux</p>
-            <h1 className="mt-1 text-3xl font-bold tracking-[-0.04em] text-white sm:text-4xl">Robux Roblox</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/42">
-              Compare ofertas reais pelo valor por unidade, quantidade mínima, estoque, prazo e histórico do vendedor.
-            </p>
+        <header className="relative overflow-hidden rounded-2xl border border-white/[0.075] bg-[#101013]">
+          {branding.robuxBannerUrl ? (
+            <>
+              <img src={branding.robuxBannerUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-45" />
+              <div className="absolute inset-0 bg-gradient-to-r from-[#090a0d] via-[#090a0d]/88 to-[#090a0d]/35" />
+            </>
+          ) : null}
+          <div className="relative flex min-h-[180px] flex-col justify-end gap-4 p-5 sm:min-h-[210px] sm:flex-row sm:items-end sm:justify-between sm:p-7">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[var(--zx-accent)]">Mercado de Robux</p>
+              <h1 className="mt-1.5 text-3xl font-extrabold tracking-[-0.04em] text-white sm:text-4xl">Robux Roblox</h1>
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-white/45 sm:text-sm sm:leading-6">
+                Compare ofertas reais pelo valor por unidade, quantidade mínima, estoque, prazo e histórico do vendedor.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void refreshProducts()}
+              className="inline-flex h-9 items-center justify-center gap-1.5 self-start rounded-lg border border-white/[0.1] bg-black/10 px-3 text-[10px] font-semibold text-white/55 transition hover:bg-white/[0.05] hover:text-white sm:self-auto"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${catalogStatus === "loading" ? "animate-spin" : ""}`} />
+              Atualizar
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => void refreshProducts()}
-            className="inline-flex h-9 items-center justify-center gap-1.5 self-start rounded-md border border-white/[0.09] px-3 text-[11px] font-semibold text-white/48 transition hover:bg-white/[0.035] hover:text-white sm:self-auto"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${catalogStatus === "loading" ? "animate-spin" : ""}`} />
-            Atualizar
-          </button>
         </header>
 
         <section className="mt-5 grid gap-3 rounded-lg border border-white/[0.08] bg-[#101013] p-3 sm:grid-cols-[minmax(0,1fr)_210px_200px_auto]">
-          <label className="flex h-10 min-w-0 items-center rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 focus-within:border-[#168cff]/60">
+          <label className="flex h-10 min-w-0 items-center rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 focus-within:border-[var(--zx-accent)]">
             <Search className="h-4 w-4 shrink-0 text-white/28" />
             <span className="sr-only">Buscar oferta de Robux</span>
             <input
@@ -147,7 +157,7 @@ export default function RobuxPage() {
               value={maxPrice}
               onChange={(event) => setMaxPrice(event.target.value)}
               placeholder="Preço máximo"
-              className="h-10 w-full rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 text-xs text-white outline-none placeholder:text-white/24 focus:border-[#168cff]/60"
+              className="h-10 w-full rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 text-xs text-white outline-none placeholder:text-white/24 focus:border-[var(--zx-accent)]"
             />
           </label>
 
@@ -156,7 +166,7 @@ export default function RobuxPage() {
             <select
               value={sort}
               onChange={(event) => setSort(event.target.value as SortKey)}
-              className="h-10 w-full rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 text-xs text-white outline-none focus:border-[#168cff]/60"
+              className="h-10 w-full rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 text-xs text-white outline-none focus:border-[var(--zx-accent)]"
             >
               {SORT_OPTIONS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
             </select>
@@ -187,7 +197,7 @@ export default function RobuxPage() {
         ) : catalogStatus === "error" && offers.length === 0 ? (
           <div className="mt-3 rounded-lg border border-red-400/15 bg-red-500/[0.04] px-5 py-10 text-center">
             <p className="text-sm font-semibold text-white">Não foi possível carregar as ofertas agora.</p>
-            <button type="button" onClick={() => void refreshProducts()} className="mt-3 text-xs font-semibold text-[#66b4ff] hover:text-white">Tentar novamente</button>
+            <button type="button" onClick={() => void refreshProducts()} className="mt-3 text-xs font-semibold text-[var(--zx-accent)] hover:text-white">Tentar novamente</button>
           </div>
         ) : offers.length === 0 ? (
           <div className="mt-3 rounded-lg border border-dashed border-white/[0.1] bg-[#101013] px-5 py-12 text-center">
@@ -207,7 +217,7 @@ export default function RobuxPage() {
                       <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-white">{offer.productName}</h3>
                       <p className="mt-1 flex items-center gap-1 truncate text-[11px] text-white/42">
                         {offer.sellerName}
-                        {offer.verified ? <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[#55a9ff]" aria-label="Vendedor verificado" /> : null}
+                        {offer.verified ? <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[var(--zx-accent)]" aria-label="Vendedor verificado" /> : null}
                       </p>
                       <p className="mt-0.5 text-[10px] text-white/25">ID público: {offer.sellerPublicId}</p>
                       <p className="mt-1 text-[10px] text-white/30">
@@ -224,7 +234,7 @@ export default function RobuxPage() {
                   <dl className="grid grid-cols-2 gap-x-5 gap-y-2 text-[11px] sm:grid-cols-4 md:grid-cols-2">
                     <div>
                       <dt className="text-white/28">Valor/un.</dt>
-                      <dd className="mt-0.5 font-semibold text-[#66b4ff]">{formatRobuxUnitPrice(offer.pricePerUnit)}</dd>
+                      <dd className="mt-0.5 font-semibold text-[var(--zx-accent)]">{formatRobuxUnitPrice(offer.pricePerUnit)}</dd>
                     </div>
                     <div>
                       <dt className="text-white/28">Mínimo</dt>
@@ -246,7 +256,7 @@ export default function RobuxPage() {
                     <button
                       type="button"
                       onClick={() => navigate(`/produto/${offer.productId}`)}
-                      className="mt-3 w-full rounded-md bg-[#168cff] px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-[#0878dc] md:w-auto"
+                      className="mt-3 w-full rounded-md bg-[var(--zx-accent)] px-4 py-2 text-[11px] font-semibold text-white transition hover:brightness-110 md:w-auto"
                     >
                       Ver oferta
                     </button>
