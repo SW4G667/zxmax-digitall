@@ -1,6 +1,6 @@
 /** Columns the client is allowed to read from `public.products`.
  * Deliberately excludes `seller_email` and `delivery_content`. */
-export const SAFE_PRODUCT_COLUMNS = "id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,delivery_type,variations,questions,sales,rating,created_at,updated_at,stock,min_quantity,delivery_time,review_count,review_avg,review_positive";
+export const SAFE_PRODUCT_COLUMNS = "id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,listing_status,delivery_type,variations,questions,sales,rating,created_at,updated_at,stock,min_quantity,delivery_time,review_count,review_avg,review_positive";
 
 /** Same list without the columns added by the 2026-08 migrations. Used as a
  * degraded retry so an out-of-date database still returns a catalog instead of
@@ -189,13 +189,38 @@ export function mergeCatalog<T extends Identified>(incoming: T[], previous: T[],
   return incoming;
 }
 
-/** Customers only see approved listings; sellers retain visibility of their pending work.
- * Admins pass `isAdmin` to keep every row (moderation queue). */
-export function storefrontProducts<T extends { approved: boolean; sellerId: string }>(
+export type ListingStatus = "pending" | "approved" | "rejected" | "paused" | "soldout";
+
+export function listingStatus(product: {
+  approved: boolean;
+  listingStatus?: string | null;
+  stock?: number | null;
+}): ListingStatus {
+  const stock = Number(product.stock);
+  if (product.approved && Number.isFinite(stock) && stock <= 0) return "soldout";
+  const persisted = String(product.listingStatus || "").toLowerCase();
+  if (persisted === "approved" || persisted === "rejected" || persisted === "paused" || persisted === "pending") {
+    return persisted;
+  }
+  return product.approved ? "approved" : "pending";
+}
+
+export const LISTING_STATUS_META: Record<ListingStatus, { label: string; tone: string }> = {
+  pending: { label: "Em análise", tone: "amber" },
+  approved: { label: "Aprovado", tone: "green" },
+  rejected: { label: "Rejeitado", tone: "red" },
+  paused: { label: "Pausado", tone: "slate" },
+  soldout: { label: "Esgotado", tone: "slate" },
+};
+
+/** Public storefronts are public: even the seller must not see a pending row
+ * mixed into Home/Loja/Categorias just because they are logged in. Pending,
+ * rejected and paused listings belong only to seller/admin management areas. */
+export function storefrontProducts<T extends { approved: boolean; sellerId: string; listingStatus?: string | null; stock?: number | null }>(
   products: T[],
-  currentUserId?: string | null,
+  _currentUserId?: string | null,
   isAdmin = false,
 ): T[] {
   if (isAdmin) return products;
-  return products.filter((product) => product.approved || (!!currentUserId && product.sellerId === currentUserId));
+  return products.filter((product) => listingStatus(product) === "approved");
 }
