@@ -31,6 +31,8 @@ serve(async (req) => {
       get_verifications: "review_identity",
       get_document_url: "review_identity",
       approve_all_products: "moderate_catalog",
+      pause_product: "moderate_catalog",
+      resume_product: "moderate_catalog",
       ban_user: "manage_user_safety",
       unban_user: "manage_user_safety",
       get_webhook_logs: "view_sanitized_webhooks",
@@ -174,9 +176,38 @@ serve(async (req) => {
     }
 
     if (action === "approve_all_products") {
-      const { error } = await serviceClient.from("products").update({ approved: true }).eq("approved", false);
+      const { error } = await serviceClient.from("products").update({ approved: true, listing_status: "approved" }).eq("approved", false);
       if (error) throw error;
       return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    if (action === "pause_product" || action === "resume_product") {
+      const productId = Number(body.productId);
+      if (!Number.isSafeInteger(productId) || productId <= 0) throw new Error("productId inválido");
+      const resume = action === "resume_product";
+      const { data: product, error } = await serviceClient
+        .from("products")
+        .update({
+          approved: resume,
+          listing_status: resume ? "approved" : "paused",
+          updated_at: new Date().toISOString(),
+        } as any)
+        .eq("id", productId)
+        .select("id,seller_id,name,approved,listing_status")
+        .maybeSingle();
+      if (error) throw error;
+      if (!product) throw new Error("Anúncio não encontrado");
+
+      await serviceClient.from("admin_audit_log").insert({
+        actor_id: userData.user.id,
+        action: resume ? "product.resumed" : "product.paused",
+        target_table: "products",
+        target_id: String(productId),
+        reason: null,
+        metadata: { seller_id: product.seller_id, name: product.name },
+      }).catch(() => {});
+
+      return new Response(JSON.stringify({ success: true, product }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     if (action === "ban_user") {
