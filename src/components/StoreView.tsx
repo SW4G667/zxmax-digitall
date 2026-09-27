@@ -181,7 +181,7 @@ export default function StoreView() {
         </div>
 
         <div className="flex w-full gap-2 sm:max-w-md">
-          <label className="flex h-10 min-w-0 flex-1 items-center rounded-lg border border-white/[0.09] bg-[#151519] px-3 focus-within:border-[#168cff]/60">
+          <label className="flex h-10 min-w-0 flex-1 items-center rounded-lg border border-white/[0.09] bg-[#151519] px-3 focus-within:border-[var(--zx-accent)]">
             <Search className="h-4 w-4 shrink-0 text-white/28" aria-hidden />
             <span className="sr-only">Buscar produtos</span>
             <input
@@ -196,7 +196,7 @@ export default function StoreView() {
             type="button"
             onClick={() => setShowFilters((value) => !value)}
             aria-expanded={showFilters}
-            className={`flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition ${showFilters ? "border-[#168cff]/45 bg-[#168cff]/10 text-[#7cc4ff]" : "border-white/[0.09] text-white/55 hover:bg-white/[0.035] hover:text-white"}`}
+            className={`flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition ${showFilters ? "border-[var(--zx-accent)] bg-white/[0.04] text-[var(--zx-accent)]" : "border-white/[0.09] text-white/55 hover:bg-white/[0.035] hover:text-white"}`}
           >
             <SlidersHorizontal className="h-3.5 w-3.5" /> Filtros
           </button>
@@ -207,7 +207,7 @@ export default function StoreView() {
         <button
           type="button"
           onClick={() => navigate("/robux")}
-          className="shrink-0 rounded-md border border-[#168cff]/30 px-3 py-2 text-xs font-semibold text-[#72baff] transition hover:bg-[#168cff]/[0.07]"
+          className="shrink-0 rounded-md border border-white/[0.09] px-3 py-2 text-xs font-semibold text-[var(--zx-accent)] transition hover:bg-white/[0.04]"
         >
           Robux
         </button>
@@ -229,7 +229,7 @@ export default function StoreView() {
         <div className="grid gap-4 rounded-xl border border-white/[0.08] bg-[#101013] p-4 md:grid-cols-4">
           <div>
             <label htmlFor="sort" className="text-[10px] font-black uppercase tracking-wide text-white/30 block mb-1.5">Ordenar por</label>
-            <select id="sort" value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="w-full p-2.5 rounded-lg bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none">
+            <select id="sort" value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="w-full p-2.5 rounded-lg bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[var(--zx-accent)] outline-none">
               {SORT_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
             </select>
           </div>
@@ -241,12 +241,12 @@ export default function StoreView() {
               id="price" type="range" min={2} max={priceCeiling} step={1}
               value={maxPrice ?? priceCeiling}
               onChange={(e) => { const v = Number(e.target.value); setMaxPrice(v >= priceCeiling ? null : v); }}
-              className="w-full accent-[#0084ff]"
+              className="w-full accent-[var(--zx-accent)]"
             />
           </div>
           <div>
             <label htmlFor="delivery" className="text-[10px] font-black uppercase tracking-wide text-white/30 block mb-1.5">Entrega</label>
-            <select id="delivery" value={deliveryFilter} onChange={(e) => setDeliveryFilter(e.target.value as typeof deliveryFilter)} className="w-full p-2.5 rounded-lg bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none">
+            <select id="delivery" value={deliveryFilter} onChange={(e) => setDeliveryFilter(e.target.value as typeof deliveryFilter)} className="w-full p-2.5 rounded-lg bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[var(--zx-accent)] outline-none">
               <option value="todos">Todas</option>
               <option value="auto">Automática</option>
               <option value="manual">Manual</option>
@@ -254,11 +254,11 @@ export default function StoreView() {
           </div>
           <div className="flex flex-col justify-between">
             <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
-              <input type="checkbox" checked={onlyVerified} onChange={(e) => setOnlyVerified(e.target.checked)} className="accent-[#0084ff] w-4 h-4" />
+              <input type="checkbox" checked={onlyVerified} onChange={(e) => setOnlyVerified(e.target.checked)} className="accent-[var(--zx-accent)] w-4 h-4" />
               Somente vendedores verificados
             </label>
             {hasActiveFilters && (
-              <button onClick={clearFilters} className="mt-2 text-xs font-bold text-[#0084ff] hover:underline text-left">Limpar filtros</button>
+              <button onClick={clearFilters} className="mt-2 text-xs font-bold text-[var(--zx-accent)] hover:underline text-left">Limpar filtros</button>
             )}
           </div>
         </div>
@@ -272,7 +272,7 @@ export default function StoreView() {
             {category === "Todos" ? (debouncedSearch ? `Resultados para "${search}"` : "Todos os produtos") : category}{" "}
             {!isFirstLoad && <span className="text-white/30">({filtered.length})</span>}
           </h2>
-          <p className="mt-0.5 text-[11px] text-white/35">Produtos publicados, entrega e vendedor sinalizados em cada anúncio.</p>
+          <p className="mt-0.5 text-[11px] text-white/35">Somente anúncios aprovados aparecem aqui. Use os filtros para encontrar mais rápido.</p>
           </div>
           <button
             onClick={() => void refreshProducts()}
@@ -293,7 +293,7 @@ export default function StoreView() {
             <AlertTriangle className="w-8 h-8 mx-auto text-[#ef4444] mb-3" aria-hidden />
             <p className="text-white font-bold text-sm">Não conseguimos carregar o catálogo</p>
             <p className="text-xs text-white/40 mt-1 max-w-sm mx-auto">Isso é uma falha de conexão com o servidor, não uma loja vazia. Tente novamente em instantes.</p>
-            <button onClick={() => void refreshProducts()} className="mt-4 bg-[#0084ff] hover:bg-[#0066cc] text-white px-5 py-2.5 rounded-lg text-sm font-bold transition">
+            <button onClick={() => void refreshProducts()} className="mt-4 bg-[var(--zx-accent)] hover:brightness-110 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition">
               Tentar novamente
             </button>
           </div>
@@ -324,21 +324,20 @@ export default function StoreView() {
                 <button
                   key={p.id}
                   onClick={() => navigate(`/produto/${p.id}`)}
-                  className="group flex flex-col overflow-hidden rounded-xl border border-white/[0.08] bg-[#111114] text-left transition hover:-translate-y-0.5 hover:border-white/[0.17] hover:bg-[#131317] focus:outline-none focus:ring-2 focus:ring-[#168cff]"
+                  className="group flex flex-col overflow-hidden rounded-xl border border-white/[0.075] bg-[#101013] text-left transition duration-200 hover:-translate-y-0.5 hover:border-white/[0.16] hover:bg-[#121216] focus:outline-none focus:ring-2 focus:ring-[var(--zx-accent)]"
                 >
-                  <div className="relative aspect-[16/10] overflow-hidden bg-[#18181d]">
+                  <div className="relative aspect-[4/3] overflow-hidden bg-[#17171c]">
                     {p.image ? (
                       <img src={p.image} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" loading="lazy" />
                     ) : (
                       <div className="grid h-full place-items-center text-white/22">
                         <div className="text-center">
                           <PackageOpen className="mx-auto h-7 w-7" aria-hidden />
-                          <span className="mt-2 block text-[9px] font-semibold uppercase tracking-[0.12em]">Sem imagem</span>
+                          <span className="mt-2 block text-[8px] font-semibold uppercase tracking-[0.12em]">Imagem não enviada</span>
                         </div>
                       </div>
                     )}
                     <div className="absolute left-2 top-2 flex gap-1">
-                      {!p.approved && <span className="rounded-md bg-[#ffbd2e] px-2 py-1 text-[8px] font-black text-black">EM ANÁLISE</span>}
                       {p.deliveryType === "auto" && <span className="rounded-md bg-emerald-400/90 px-2 py-1 text-[8px] font-black text-[#06120b]">AUTOMÁTICO</span>}
                     </div>
                   </div>
@@ -346,8 +345,8 @@ export default function StoreView() {
                     <p className="mb-1 text-[9px] font-black uppercase tracking-wide text-white/35 truncate">{p.category}</p>
                     <h3 className="font-bold text-white text-xs leading-tight line-clamp-2 min-h-[32px]">{p.name}</h3>
                     <p className="text-[11px] text-white/40 mt-1 truncate flex items-center gap-1">
-                      por <span className="text-[#0084ff]">{p.seller}</span>
-                      {isVerifiedSeller(p.sellerId) && <BadgeCheck className="w-3 h-3 text-[#0084ff] shrink-0" aria-label="Vendedor verificado" />}
+                      por <span className="text-[var(--zx-accent)]">{p.seller}</span>
+                      {isVerifiedSeller(p.sellerId) && <BadgeCheck className="w-3 h-3 text-[var(--zx-accent)] shrink-0" aria-label="Vendedor verificado" />}
                     </p>
                     <p className="mt-2 text-sm font-extrabold tracking-[-0.02em] text-white">{priceLabel(p)}</p>
                     {p.sales > 0 && <p className="text-[10px] text-white/30 mt-1">{p.sales} vendas</p>}
