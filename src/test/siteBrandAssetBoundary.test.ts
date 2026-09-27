@@ -1,15 +1,21 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const assetPath = "https://files.manuscdn.com/user_upload_by_module/session_file/310519663136807726/ICombMzdoKrpWdhG.jpg";
+describe("ativos visuais do site", () => {
+  it("não depende de branding externo fixo e permite assets administráveis", async () => {
+    const html = await readFile(join(process.cwd(), "index.html"), "utf8");
+    const branding = await readFile(join(process.cwd(), "src/context/SiteBrandingContext.tsx"), "utf8");
+    const admin = await readFile(join(process.cwd(), "src/pages/AdminBranding.tsx"), "utf8");
 
-describe("ativo visual do site", () => {
-  it("mantém a referência persistente do logo sem mídia local ou segredo embutido", async () => {
-    expect(assetPath).toMatch(/^https:\/\/files\.manuscdn\.com\/user_upload_by_module\/session_file\/[0-9]+\/[A-Za-z0-9]+\.jpg$/);
-    expect(assetPath).not.toContain("base64");
-    expect(assetPath).not.toContain("?");
-
-    const response = await fetch(assetPath, { method: "HEAD" });
-    expect([200, 302, 307, 401, 403]).toContain(response.status);
-    expect(response.status).not.toBe(404);
+    expect(html).not.toContain("manuscdn");
+    expect(html).not.toContain("@Lovable");
+    expect(html).toContain('href="/favicon.ico"');
+    expect(branding).toContain("heroBannerUrl");
+    expect(branding).toContain("socialPreviewUrl");
+    expect(branding).toContain("robuxBannerUrl");
+    expect(admin).toContain("Imagem de compartilhamento");
+    expect(admin).toContain("Banner de Robux");
+    expect(admin).toContain("Capa principal");
   });
 });
