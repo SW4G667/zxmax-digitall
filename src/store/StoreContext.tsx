@@ -74,6 +74,7 @@ export interface Product {
   banner?: string;
   description: string;
   approved: boolean;
+  listingStatus?: "pending" | "approved" | "rejected" | "paused";
   deliveryType: "auto" | "manual";
   deliveryContent?: string;
   variations?: ProductVariation[];
@@ -550,6 +551,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           seller: p.seller_name, sellerId: p.seller_id,
           sellerPublicId: p.seller_public_id, sales: p.sales || 0, rating: Number(p.rating || 0),
           image: p.image, banner: p.banner || undefined, description: p.description, approved: !!p.approved,
+          listingStatus: (p.listing_status || (p.approved ? "approved" : "pending")) as Product["listingStatus"],
           deliveryType: p.delivery_type, variations: p.variations || [], questions: p.questions || [],
           stock: productStock({ stock: p.stock, variations: p.variations }) ?? undefined,
           minQuantity: productMinQuantity({ minQuantity: p.min_quantity, variations: p.variations, category: p.category }) ?? undefined,

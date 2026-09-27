@@ -169,46 +169,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const checkAdmin = useCallback(async (userId: string) => {
+    let resolved: boolean | null = null;
     try {
-      const res = await withTimeout(
+      const rpc = await withTimeout(
         (supabase as any).rpc("has_role", { _user_id: userId, _role: "admin" }),
-        8000,
-        null as any
+        6500,
+        null as any,
       );
-      // Em timeout/erro, falha fechada: o painel não fica acessível até haver
-      // confirmação. As operações administrativas também validam o papel no
-      // servidor, independentemente desta indicação visual.
-      if (!res || res.error) {
-        if (userRef.current?.id === userId) {
-          setIsAdmin(false);
-          setAdminRoleResolved(true);
-        }
-        return;
+      if (rpc && !rpc.error && typeof rpc.data === "boolean") {
+        resolved = rpc.data;
       }
-      const admin = res.data === true;
-      if (userRef.current?.id === userId) {
-        setIsAdmin(admin);
-        setAdminRoleResolved(true);
+
+      // If the RPC timed out or the PostgREST schema cache is stale, fall back
+      // to the user's own RLS-protected role row. This prevents a transient
+      // networking problem from making the Admin entry disappear for the rest
+      // of the session while keeping authorization server-backed.
+      if (resolved === null) {
+        const fallback = await withTimeout(
+          (supabase as any).from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle(),
+          6500,
+          null as any,
+        );
+        if (fallback && !fallback.error) resolved = Boolean(fallback.data);
       }
     } catch {
-      if (userRef.current?.id === userId) {
-        setIsAdmin(false);
-        setAdminRoleResolved(true);
-      }
+      resolved = null;
     }
+
+    if (userRef.current?.id !== userId) return;
+    if (resolved === null) {
+      setIsAdmin(false);
+      setAdminRoleResolved(false);
+      return;
+    }
+    setIsAdmin(resolved);
+    setAdminRoleResolved(true);
   }, []);
 
   const checkSupport = useCallback(async (userId: string) => {
+    let resolved: boolean | null = null;
     try {
-      const res = await withTimeout(
+      const rpc = await withTimeout(
         (supabase as any).rpc("has_role", { _user_id: userId, _role: "support" }),
-        8000,
+        6500,
         null as any,
       );
-      if (userRef.current?.id === userId) setIsSupport(res?.data === true && !res?.error);
+      if (rpc && !rpc.error && typeof rpc.data === "boolean") resolved = rpc.data;
+      if (resolved === null) {
+        const fallback = await withTimeout(
+          (supabase as any).from("user_roles").select("role").eq("user_id", userId).eq("role", "support").maybeSingle(),
+          6500,
+          null as any,
+        );
+        if (fallback && !fallback.error) resolved = Boolean(fallback.data);
+      }
     } catch {
-      if (userRef.current?.id === userId) setIsSupport(false);
+      resolved = null;
     }
+    if (userRef.current?.id === userId && resolved !== null) setIsSupport(resolved);
   }, []);
 
   const refreshMfaFlag = useCallback(async () => {

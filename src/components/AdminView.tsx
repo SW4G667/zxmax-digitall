@@ -19,7 +19,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useSearchParams } from "react-router-dom";
-import { formatBRL, isValidProductPrice, parsePriceInput } from "@/lib/catalog";
+import { formatBRL, isValidProductPrice, listingStatus, parsePriceInput } from "@/lib/catalog";
 
 interface WebhookLog {
   id: number;
@@ -900,7 +900,7 @@ function AdminProductModeration() {
   const PAGE = 10;
   const [shown, setShown] = useState(PAGE);
 
-  const pending = state.products.filter((p) => !p.approved);
+  const pending = state.products.filter((p) => listingStatus(p) === "pending");
   const filtered = pending.filter((p) => {
     const q = query.trim().toLowerCase();
     if (!q) return true;
@@ -990,7 +990,7 @@ function AdminProductModeration() {
         <>
           {filtered.slice(0, shown).map((p) => (
             <div key={p.id} className="glass-card p-5 flex flex-col sm:flex-row sm:items-center gap-5">
-              <img src={p.image} className="w-16 h-16 rounded-xl object-cover bg-muted shrink-0" alt="" />
+              {p.image ? <img src={p.image} className="w-16 h-16 rounded-xl object-cover bg-muted shrink-0" alt="" /> : <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground"><ShoppingBag className="h-5 w-5" /></div>}
               <div className="flex-1 min-w-0">
                 <h4 className="font-bold text-foreground truncate">{p.name}</h4>
                 <p className="text-xs text-muted-foreground truncate">
@@ -1031,7 +1031,7 @@ function AdminProductModeration() {
               <h3 className="text-lg font-black text-foreground">{preview.name}</h3>
               <button onClick={() => setPreview(null)} aria-label="Fechar" className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
             </div>
-            <img src={preview.banner || preview.image} alt="" className="w-full rounded-xl object-cover max-h-56 bg-muted" />
+            {preview.banner || preview.image ? <img src={preview.banner || preview.image} alt="" className="w-full rounded-xl object-cover max-h-56 bg-muted" /> : <div className="grid h-40 w-full place-items-center rounded-xl bg-muted text-muted-foreground"><ShoppingBag className="h-7 w-7" /></div>}
             <dl className="grid grid-cols-2 gap-3 text-xs">
               <div><dt className="text-muted-foreground">Preço</dt><dd className="font-bold text-foreground">{formatBRL(preview.price)}</dd></div>
               <div><dt className="text-muted-foreground">Categoria</dt><dd className="font-bold text-foreground">{preview.category}</dd></div>

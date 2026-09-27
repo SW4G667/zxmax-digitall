@@ -1,47 +1,116 @@
 import React, { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, BadgeCheck, Package, Search, ShieldCheck, Store, Zap } from "lucide-react";
+import {
+  ArrowRight,
+  BadgeCheck,
+  Bot,
+  Boxes,
+  Gamepad2,
+  Package,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Zap,
+} from "lucide-react";
 import AppShell from "@/components/AppShell";
-import { useStore } from "@/store/StoreContext";
+import { Product, useStore } from "@/store/StoreContext";
 import { formatBRL, ROBUX_CATEGORY, storefrontProducts } from "@/lib/catalog";
 import { useSiteBranding } from "@/context/SiteBrandingContext";
 
-function ProductCard({ product, onOpen }: { product: any; onOpen: () => void }) {
+const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  "Bots Discord": Bot,
+  "Contas": BadgeCheck,
+  "Scripts": Boxes,
+  "Jogos e Itens": Gamepad2,
+};
+
+function MarketplaceCard({
+  product,
+  verified,
+  onOpen,
+}: {
+  product: Product;
+  verified?: boolean;
+  onOpen: () => void;
+}) {
   return (
     <button
+      type="button"
       onClick={onOpen}
-      className="group flex h-full min-w-0 flex-col overflow-hidden rounded-xl border border-white/[0.08] bg-[#111114] text-left transition hover:-translate-y-0.5 hover:border-white/[0.17] hover:bg-[#131317] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#168cff]"
+      className="group flex h-full min-w-0 flex-col overflow-hidden rounded-xl border border-white/[0.075] bg-[#101013] text-left transition duration-200 hover:-translate-y-0.5 hover:border-white/[0.16] hover:bg-[#121216] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--zx-accent)]"
     >
-      <div className="relative aspect-[16/10] overflow-hidden bg-[#17171c]">
+      <div className="relative aspect-[4/3] overflow-hidden bg-[#17171c]">
         {product.image ? (
-          <img src={product.image} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" loading="lazy" />
+          <img src={product.image} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.025]" loading="lazy" />
         ) : (
-          <div className="grid h-full place-items-center">
-            <div className="text-center text-white/25">
+          <div className="grid h-full place-items-center bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,.06),transparent_42%)]">
+            <div className="text-center text-white/20">
               <Package className="mx-auto h-7 w-7" />
-              <span className="mt-2 block text-[9px] font-semibold uppercase tracking-[0.14em]">Sem imagem</span>
+              <span className="mt-2 block text-[8px] font-bold uppercase tracking-[0.14em]">Imagem não enviada</span>
             </div>
           </div>
         )}
-        {product.deliveryType === "auto" ? (
-          <span className="absolute left-2 top-2 rounded-md border border-emerald-300/15 bg-emerald-400/90 px-2 py-1 text-[8px] font-black uppercase tracking-wide text-[#06120b]">
-            Automático
-          </span>
-        ) : null}
+        <div className="absolute left-2 top-2 flex flex-wrap gap-1">
+          {product.deliveryType === "auto" ? (
+            <span className="rounded-md border border-emerald-300/15 bg-emerald-400/90 px-1.5 py-1 text-[7px] font-black uppercase tracking-wide text-[#06120b]">Entrega automática</span>
+          ) : null}
+        </div>
       </div>
 
       <div className="flex flex-1 flex-col p-3">
-        <p className="truncate text-[9px] font-bold uppercase tracking-[0.12em] text-white/30">{product.category}</p>
-        <h3 className="mt-1.5 line-clamp-2 min-h-10 text-[13px] font-bold leading-5 text-white">{product.name}</h3>
-        <p className="mt-2 truncate text-[10px] text-white/36">
-          por <span className="font-semibold text-white/58">{product.seller || "Vendedor"}</span>
-        </p>
+        <p className="truncate text-[8px] font-black uppercase tracking-[0.12em] text-white/27">{product.category}</p>
+        <h3 className="mt-1.5 line-clamp-2 min-h-9 text-[12px] font-bold leading-[18px] text-white sm:text-[13px]">{product.name}</h3>
+        <div className="mt-2 flex min-w-0 items-center gap-1 text-[9.5px] text-white/36">
+          <span className="truncate">{product.seller || "Vendedor"}</span>
+          {verified ? <BadgeCheck className="h-3 w-3 shrink-0 text-[var(--zx-accent)]" /> : null}
+        </div>
         <div className="mt-auto pt-3">
-          <p className="text-[9px] text-white/28">a partir de</p>
-          <p className="mt-0.5 text-base font-extrabold tracking-[-0.025em] text-white">{formatBRL(product.price)}</p>
+          <p className="text-[8px] text-white/24">a partir de</p>
+          <p className="mt-0.5 text-[15px] font-extrabold tracking-[-0.025em] text-white sm:text-base">{formatBRL(product.price)}</p>
         </div>
       </div>
     </button>
+  );
+}
+
+function ProductRow({
+  title,
+  subtitle,
+  products,
+  onOpen,
+  verified,
+  moreTo,
+}: {
+  title: string;
+  subtitle?: string;
+  products: Product[];
+  onOpen: (id: number) => void;
+  verified: (sellerId: string) => boolean;
+  moreTo: string;
+}) {
+  if (!products.length) return null;
+  return (
+    <section>
+      <div className="mb-3 flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-extrabold tracking-[-0.025em] text-white sm:text-xl">{title}</h2>
+          {subtitle ? <p className="mt-1 text-[10px] leading-4 text-white/30 sm:text-[11px]">{subtitle}</p> : null}
+        </div>
+        <Link to={moreTo} className="inline-flex shrink-0 items-center gap-1 text-[10px] font-bold text-[var(--zx-accent)] transition hover:text-white">
+          Ver todos <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {products.slice(0, 4).map((product) => (
+          <MarketplaceCard
+            key={product.id}
+            product={product}
+            verified={verified(product.sellerId)}
+            onOpen={() => onOpen(product.id)}
+          />
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -51,43 +120,51 @@ export default function MarketplaceHome() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
 
-  const approved = useMemo(
+  const publicProducts = useMemo(
     () => storefrontProducts(state.products, state.currentUser?.id),
     [state.products, state.currentUser?.id],
   );
 
-  const generalProducts = useMemo(
-    () => approved.filter((product) => product.category !== ROBUX_CATEGORY),
-    [approved],
-  );
+  const verifiedSeller = (sellerId: string) => Boolean(state.userDirectory?.[sellerId]?.isVerified);
 
-  const popularCategories = useMemo(
-    () => state.config.categories
-      .filter((category) => category !== ROBUX_CATEGORY)
-      .map((category) => ({
-        name: category,
-        count: generalProducts.filter((product) => product.category === category).length,
-      }))
-      .filter((category) => category.count > 0)
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "pt-BR"))
-      .slice(0, 6),
-    [generalProducts, state.config.categories],
+  const newest = useMemo(
+    () => [...publicProducts].sort((a, b) => Number(b.id) - Number(a.id)).slice(0, 4),
+    [publicProducts],
   );
 
   const featured = useMemo(
-    () => [...generalProducts]
-      .sort((a, b) => (b.sales + b.rating) - (a.sales + a.rating) || b.id - a.id)
-      .slice(0, 6),
-    [generalProducts],
+    () => [...publicProducts]
+      .sort((a, b) => (Number(b.sales || 0) + Number(b.rating || 0) * 2) - (Number(a.sales || 0) + Number(a.rating || 0) * 2) || b.id - a.id)
+      .slice(0, 4),
+    [publicProducts],
   );
 
-  const newest = useMemo(() => {
-    const featuredIds = new Set(featured.map((product) => product.id));
-    return [...generalProducts]
-      .filter((product) => !featuredIds.has(product.id))
-      .sort((a, b) => b.id - a.id)
-      .slice(0, 4);
-  }, [generalProducts, featured]);
+  const robux = useMemo(
+    () => publicProducts.filter((product) => product.category === ROBUX_CATEGORY).slice(0, 4),
+    [publicProducts],
+  );
+
+  const namedSections = useMemo(
+    () => ["Bots Discord", "Contas", "Scripts"]
+      .map((category) => ({
+        category,
+        products: publicProducts.filter((product) => product.category === category).slice(0, 4),
+      }))
+      .filter((section) => section.products.length > 0),
+    [publicProducts],
+  );
+
+  const categoryTiles = useMemo(() => {
+    const configured = state.config.categories.filter((category) => category !== ROBUX_CATEGORY);
+    const categories = [ROBUX_CATEGORY, ...configured].slice(0, 8);
+    return categories.map((category) => {
+      const products = publicProducts.filter((product) => product.category === category);
+      const image = products.find((product) => Boolean(product.image))?.image || "";
+      return { category, count: products.length, image };
+    });
+  }, [publicProducts, state.config.categories]);
+
+  const promoBanners = [branding.promoBanner1Url, branding.promoBanner2Url, branding.promoBanner3Url].filter(Boolean);
 
   const submitSearch = (event: React.FormEvent) => {
     event.preventDefault();
@@ -96,137 +173,181 @@ export default function MarketplaceHome() {
   };
 
   const openCategory = (category: string) => {
-    if (category === ROBUX_CATEGORY) navigate("/robux");
-    else navigate(`/loja?cat=${encodeURIComponent(category)}`);
+    navigate(category === ROBUX_CATEGORY ? "/robux" : `/loja?cat=${encodeURIComponent(category)}`);
   };
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-[1180px] space-y-9 pb-4">
-        <section className="border-b border-white/[0.07] pb-8 pt-3 sm:pb-10 sm:pt-7">
-          <div className="max-w-3xl">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#66b5ff]">Marketplace digital</p>
-            <h1 className="mt-3 text-3xl font-extrabold tracking-[-0.045em] text-white sm:text-5xl">
-              {branding.heroTitle || "Encontre o que você precisa sem complicação"}
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/46 sm:text-[15px]">
-              {branding.heroSubtitle || "Produtos e serviços digitais com preço, vendedor, entrega e pagamento organizados em um único fluxo."}
-            </p>
-          </div>
+      <div className="mx-auto max-w-[1180px] space-y-9 pb-3">
+        <section className="relative overflow-hidden rounded-2xl border border-white/[0.075] bg-[#0f0f13]">
+          {branding.heroBannerUrl ? (
+            <>
+              <img src={branding.heroBannerUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-55" />
+              <div className="absolute inset-0 bg-gradient-to-r from-[#090a0d] via-[#090a0d]/90 to-[#090a0d]/35" />
+            </>
+          ) : (
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_5%,rgba(22,140,255,.18),transparent_34%),radial-gradient(circle_at_10%_100%,rgba(91,33,182,.10),transparent_36%)]" />
+          )}
 
-          <form onSubmit={submitSearch} className="mt-6 flex max-w-2xl items-center rounded-xl border border-white/[0.11] bg-[#131317] p-1.5 focus-within:border-[#168cff]/55">
-            <Search className="ml-2 h-4 w-4 shrink-0 text-white/30" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Buscar produto, serviço ou vendedor"
-              className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm text-white outline-none placeholder:text-white/28"
-              aria-label="Buscar no marketplace"
-            />
-            <button type="submit" className="rounded-lg bg-[#168cff] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#0f7fdf]">
-              Buscar
-            </button>
-          </form>
+          <div className="relative px-4 py-6 sm:px-7 sm:py-9 lg:px-10 lg:py-11">
+            <div className="max-w-[650px]">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-black/20 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/48">
+                <Sparkles className="h-3 w-3 text-[var(--zx-accent)]" /> Marketplace digital
+              </div>
+              <h1 className="mt-4 max-w-[620px] text-[31px] font-extrabold leading-[1.04] tracking-[-0.05em] text-white sm:text-5xl">
+                {branding.heroTitle}
+              </h1>
+              <p className="mt-3 max-w-[560px] text-xs leading-5 text-white/48 sm:text-sm sm:leading-6">
+                {branding.heroSubtitle}
+              </p>
 
-          <div className="mt-4 flex flex-wrap gap-2.5">
-            <Link to="/loja" className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.09] bg-white/[0.035] px-3 py-2 text-[11px] font-semibold text-white/68 transition hover:bg-white/[0.06] hover:text-white">
-              Explorar anúncios <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-            <Link to="/meus-produtos" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold text-white/48 transition hover:text-white">
-              Quero anunciar
-            </Link>
+              <form onSubmit={submitSearch} className="mt-5 flex max-w-[610px] items-center rounded-xl border border-white/[0.12] bg-[#111116]/95 p-1.5 shadow-2xl shadow-black/15 focus-within:border-[var(--zx-accent)]">
+                <Search className="ml-2 h-4 w-4 shrink-0 text-white/28" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="O que você está procurando?"
+                  className="min-w-0 flex-1 bg-transparent px-2 py-2 text-xs text-white outline-none placeholder:text-white/28 sm:text-sm"
+                  aria-label="Buscar no marketplace"
+                />
+                <button type="submit" className="rounded-lg bg-[var(--zx-accent)] px-4 py-2.5 text-[11px] font-bold text-white transition hover:brightness-110 sm:px-5">
+                  Buscar
+                </button>
+              </form>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <Link to="/loja" className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.035] px-3 py-2 text-[10px] font-bold text-white/78 transition hover:bg-white/[0.07] hover:text-white">
+                  Explorar anúncios <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+                <Link to="/meus-produtos" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[10px] font-bold text-white/45 transition hover:text-white">
+                  Quero anunciar
+                </Link>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section className="grid gap-5 lg:grid-cols-[1fr_300px]">
-          <div className="min-w-0">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-base font-bold text-white sm:text-lg">Em destaque</h2>
-                <p className="mt-0.5 text-[11px] text-white/32">Uma seleção curta para a home não virar um catálogo duplicado.</p>
-              </div>
-              <Link to="/loja" className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-[#66b5ff] hover:text-white">
-                Ver todos <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
+        <section>
+          <div className="mb-3 flex items-end justify-between">
+            <div>
+              <h2 className="text-lg font-extrabold tracking-[-0.025em] text-white sm:text-xl">Categorias populares</h2>
+              <p className="mt-1 text-[10px] text-white/30">Acesse rapidamente o tipo de produto que procura.</p>
             </div>
+            <Link to="/categorias" className="text-[10px] font-bold text-[var(--zx-accent)] hover:text-white">Ver todas</Link>
+          </div>
+          <div className="-mx-3 flex snap-x gap-2.5 overflow-x-auto px-3 pb-1 sm:mx-0 sm:grid sm:grid-cols-4 sm:px-0 lg:grid-cols-8">
+            {categoryTiles.map(({ category, count, image }) => {
+              const Icon = category === ROBUX_CATEGORY ? Zap : CATEGORY_ICONS[category] || Package;
+              return (
+                <button
+                  key={category}
+                  type="button"
+                  onClick={() => openCategory(category)}
+                  className="group relative min-w-[105px] snap-start overflow-hidden rounded-xl border border-white/[0.075] bg-[#101013] text-left transition hover:border-white/[0.16] sm:min-w-0"
+                >
+                  <div className="relative aspect-[4/3] overflow-hidden bg-[#17171c]">
+                    {image ? (
+                      <img src={image} alt="" className="h-full w-full object-cover opacity-75 transition duration-300 group-hover:scale-[1.04]" />
+                    ) : (
+                      <div className="grid h-full place-items-center bg-[radial-gradient(circle_at_50%_0%,rgba(22,140,255,.15),transparent_65%)]">
+                        <Icon className="h-6 w-6 text-white/24" />
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" />
+                  </div>
+                  <div className="p-2.5">
+                    <p className="truncate text-[10px] font-bold text-white">{category === ROBUX_CATEGORY ? "Robux" : category}</p>
+                    <p className="mt-0.5 text-[8px] text-white/28">{count} anúncio{count === 1 ? "" : "s"}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
 
-            {featured.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-white/[0.1] bg-[#101013] px-4 py-9 text-center text-sm text-white/38">
-                {catalogStatus === "loading" ? "Carregando anúncios…" : "Ainda não há anúncios aprovados para destacar."}
+        {promoBanners.length ? (
+          <section className="grid gap-3 sm:grid-cols-3">
+            {promoBanners.map((url, index) => (
+              <div key={url} className="overflow-hidden rounded-xl border border-white/[0.07] bg-[#101013]">
+                <img src={url} alt={`Banner promocional ${index + 1}`} className="aspect-[16/6] h-full w-full object-cover" />
               </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-                {featured.map((product) => (
-                  <ProductCard key={product.id} product={product} onOpen={() => navigate(`/produto/${product.id}`)} />
+            ))}
+          </section>
+        ) : null}
+
+        {robux.length ? (
+          <section className="overflow-hidden rounded-2xl border border-white/[0.075] bg-[#0f0f13]">
+            <div className="grid lg:grid-cols-[280px_1fr]">
+              <button onClick={() => navigate("/robux")} className="relative min-h-[170px] overflow-hidden border-b border-white/[0.07] text-left lg:border-b-0 lg:border-r">
+                {branding.robuxBannerUrl || robux[0]?.image ? (
+                  <img src={branding.robuxBannerUrl || robux[0]?.image} alt="" className="absolute inset-0 h-full w-full object-cover opacity-60" />
+                ) : null}
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/55 to-black/10" />
+                <div className="relative flex h-full min-h-[170px] flex-col justify-end p-5">
+                  <span className="text-[8px] font-black uppercase tracking-[0.16em] text-[var(--zx-accent)]">Mercado dedicado</span>
+                  <h2 className="mt-1 text-2xl font-extrabold tracking-[-0.04em] text-white">Robux</h2>
+                  <p className="mt-1 text-[10px] leading-4 text-white/42">Compare pacotes e vendedores em uma página própria.</p>
+                  <span className="mt-3 inline-flex items-center gap-1 text-[10px] font-bold text-white">Abrir mercado <ArrowRight className="h-3.5 w-3.5" /></span>
+                </div>
+              </button>
+              <div className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-4">
+                {robux.map((product) => (
+                  <MarketplaceCard key={product.id} product={product} verified={verifiedSeller(product.sellerId)} onOpen={() => navigate(`/produto/${product.id}`)} />
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          </section>
+        ) : null}
 
-          <aside className="h-fit rounded-xl border border-white/[0.08] bg-[#101013] p-4">
-            <div className="flex items-center gap-2">
-              <Store className="h-4 w-4 text-[#67b5ff]" />
-              <h2 className="text-sm font-bold text-white">Acesso rápido</h2>
-            </div>
-            <p className="mt-1 text-[11px] leading-5 text-white/34">Entre direto na área que faz sentido para você.</p>
+        <ProductRow
+          title="Em destaque"
+          subtitle="Ofertas públicas aprovadas, sem misturar anúncios que ainda estão em análise."
+          products={featured}
+          onOpen={(id) => navigate(`/produto/${id}`)}
+          verified={verifiedSeller}
+          moreTo="/loja?sort=vendidos"
+        />
 
-            <div className="mt-4 space-y-1">
-              {popularCategories.length > 0 ? popularCategories.map((category) => (
-                <button
-                  key={category.name}
-                  onClick={() => openCategory(category.name)}
-                  className="flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2.5 text-left text-[11px] font-semibold text-white/58 transition hover:bg-white/[0.04] hover:text-white"
-                >
-                  <span className="truncate">{category.name}</span>
-                  <span className="shrink-0 text-[9px] font-medium text-white/25">{category.count}</span>
-                </button>
-              )) : (
-                <p className="rounded-lg bg-white/[0.025] px-3 py-3 text-[11px] text-white/34">As categorias aparecem aqui assim que tiverem anúncios aprovados.</p>
-              )}
-            </div>
+        <ProductRow
+          title="Novidades"
+          subtitle={catalogStatus === "loading" ? "Carregando anúncios…" : "Os anúncios aprovados mais recentes da plataforma."}
+          products={newest}
+          onOpen={(id) => navigate(`/produto/${id}`)}
+          verified={verifiedSeller}
+          moreTo="/loja?sort=recentes"
+        />
 
-            <div className="mt-4 border-t border-white/[0.07] pt-4">
-              <button
-                type="button"
-                onClick={() => navigate("/robux")}
-                className="flex w-full items-center justify-between rounded-lg border border-[#168cff]/20 bg-[#168cff]/[0.07] px-3 py-3 text-left transition hover:bg-[#168cff]/[0.11]"
-              >
-                <span>
-                  <span className="block text-[11px] font-bold text-white">Mercado de Robux</span>
-                  <span className="mt-0.5 block text-[9px] text-white/35">Página exclusiva</span>
-                </span>
-                <ArrowRight className="h-3.5 w-3.5 text-[#67b5ff]" />
-              </button>
-            </div>
-          </aside>
-        </section>
+        {namedSections.map((section) => (
+          <ProductRow
+            key={section.category}
+            title={section.category}
+            products={section.products}
+            onOpen={(id) => navigate(`/produto/${id}`)}
+            verified={verifiedSeller}
+            moreTo={`/loja?cat=${encodeURIComponent(section.category)}`}
+          />
+        ))}
 
-        {newest.length > 0 ? (
-          <section className="border-t border-white/[0.07] pt-7">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-bold text-white">Chegaram agora</h2>
-              <Link to="/loja?sort=recentes" className="text-[11px] font-semibold text-white/42 hover:text-white">Ver novidades</Link>
-            </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {newest.map((product) => (
-                <ProductCard key={product.id} product={product} onOpen={() => navigate(`/produto/${product.id}`)} />
-              ))}
-            </div>
+        {publicProducts.length === 0 && catalogStatus !== "loading" ? (
+          <section className="rounded-xl border border-dashed border-white/[0.1] bg-[#101013] px-5 py-10 text-center">
+            <Package className="mx-auto h-7 w-7 text-white/20" />
+            <h2 className="mt-3 text-sm font-bold text-white">A vitrine está sendo preparada</h2>
+            <p className="mx-auto mt-1 max-w-sm text-[11px] leading-5 text-white/34">Anúncios em análise ficam somente no painel do vendedor e da moderação. Quando forem aprovados, aparecem aqui.</p>
           </section>
         ) : null}
 
         <section className="grid gap-2.5 border-t border-white/[0.07] pt-7 sm:grid-cols-3">
           <div className="flex items-start gap-3 rounded-xl border border-white/[0.06] bg-[#101013] p-4">
-            <ShieldCheck className="mt-0.5 h-4.5 w-4.5 shrink-0 text-[#67b5ff]" />
-            <div><h3 className="text-xs font-bold text-white">Pedido rastreável</h3><p className="mt-1 text-[10px] leading-4 text-white/34">Pagamento, entrega e histórico ficam ligados ao mesmo pedido.</p></div>
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[var(--zx-accent)]" />
+            <div><h3 className="text-xs font-bold text-white">Pedido organizado</h3><p className="mt-1 text-[9.5px] leading-4 text-white/32">Pagamento, entrega e histórico permanecem ligados ao mesmo pedido.</p></div>
           </div>
           <div className="flex items-start gap-3 rounded-xl border border-white/[0.06] bg-[#101013] p-4">
-            <Zap className="mt-0.5 h-4.5 w-4.5 shrink-0 text-emerald-300" />
-            <div><h3 className="text-xs font-bold text-white">Entrega automática</h3><p className="mt-1 text-[10px] leading-4 text-white/34">Quando o anúncio oferece automação, a liberação acontece após a confirmação do pagamento.</p></div>
+            <Zap className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+            <div><h3 className="text-xs font-bold text-white">Entrega automática</h3><p className="mt-1 text-[9.5px] leading-4 text-white/32">Anúncios compatíveis liberam a entrega após a confirmação do pagamento.</p></div>
           </div>
           <div className="flex items-start gap-3 rounded-xl border border-white/[0.06] bg-[#101013] p-4">
-            <BadgeCheck className="mt-0.5 h-4.5 w-4.5 shrink-0 text-[#67b5ff]" />
-            <div><h3 className="text-xs font-bold text-white">Contexto do vendedor</h3><p className="mt-1 text-[10px] leading-4 text-white/34">Perfil público e sinais de verificação ajudam a avaliar antes da compra.</p></div>
+            <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0 text-[var(--zx-accent)]" />
+            <div><h3 className="text-xs font-bold text-white">Vendedores identificados</h3><p className="mt-1 text-[9.5px] leading-4 text-white/32">Perfis e sinais de verificação ajudam na decisão de compra.</p></div>
           </div>
         </section>
       </div>

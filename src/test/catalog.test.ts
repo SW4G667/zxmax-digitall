@@ -5,6 +5,7 @@ import {
   formatStockLabel,
   isValidProductPrice,
   MIN_PRODUCT_PRICE,
+  listingStatus,
   mergeCatalog,
   normalizeProductPrice,
   parsePriceInput,
@@ -143,14 +144,25 @@ describe("matriz de visibilidade da loja", () => {
     expect(storefrontProducts(catalogo, undefined).map((p) => p.id)).toEqual([1]);
   });
 
-  it("usuário comum: vê aprovados e o próprio pendente, nunca o pendente alheio", () => {
+  it("usuário logado continua vendo apenas aprovados na vitrine pública", () => {
     const visiveis = storefrontProducts(catalogo, "eu").map((p) => p.id);
-    expect(visiveis).toEqual([1, 2]);
+    expect(visiveis).toEqual([1]);
+    expect(visiveis).not.toContain(2);
     expect(visiveis).not.toContain(3);
   });
 
   it("administrador: vê tudo", () => {
     expect(storefrontProducts(catalogo, "admin", true).map((p) => p.id)).toEqual([1, 2, 3]);
+  });
+});
+
+describe("status de anúncio", () => {
+  it("distingue moderação, pausa e estoque sem vazar estado na vitrine", () => {
+    expect(listingStatus({ approved: false, listingStatus: "pending" })).toBe("pending");
+    expect(listingStatus({ approved: false, listingStatus: "rejected" })).toBe("rejected");
+    expect(listingStatus({ approved: false, listingStatus: "paused" })).toBe("paused");
+    expect(listingStatus({ approved: true, listingStatus: "approved", stock: 0 })).toBe("soldout");
+    expect(listingStatus({ approved: true, listingStatus: "approved", stock: 5 })).toBe("approved");
   });
 });
 
