@@ -28,6 +28,15 @@ const rateInfo = (response: Response) => ({
   retryAfter: response.headers.get("Retry-After"),
 });
 
+async function writeMagnusLog(client: any, row: Record<string, unknown>) {
+  try {
+    const result = await client.from("webhook_logs").insert(row);
+    if (result.error) console.warn("magnuspay log insert failed", result.error.message);
+  } catch (error) {
+    console.warn("magnuspay log insert failed", error instanceof Error ? error.message : "unknown");
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Método não permitido." }, 405);
@@ -101,19 +110,19 @@ serve(async (req) => {
     const limits = rateInfo(response);
 
     if (response.status === 429) {
-      await admin.from("webhook_logs").insert({
+      await writeMagnusLog(admin, {
         source: "magnuspay", event_type: "CREATE_PIX", status: "rate_limited",
         order_id: purchase.id, payload: { limits }, error: "Rate limit da MagnusPay atingido",
-      }).catch(() => {});
+      });
       return json({ error: "A MagnusPay atingiu o limite temporário de requisições. Tente novamente em instantes.", retryAfter: limits.retryAfter }, 429);
     }
 
     if (!response.ok || parsed?.success === false) {
       const providerMessage = String(parsed?.message || "Falha ao criar PIX").slice(0, 500);
-      await admin.from("webhook_logs").insert({
+      await writeMagnusLog(admin, {
         source: "magnuspay", event_type: "CREATE_PIX", status: `error_${response.status}`,
         order_id: purchase.id, payload: { code: parsed?.code || null, limits }, error: providerMessage,
-      }).catch(() => {});
+      });
       return json({ error: String(parsed?.message || "Não foi possível gerar o PIX.").slice(0, 240), code: parsed?.code || null }, 502);
     }
 
@@ -130,12 +139,12 @@ serve(async (req) => {
     const rawExpires = first(nodes, ["expires_at", "expiresAt", "expiration", "pix_expires_at"]);
 
     if (!id || !qrCodeText) {
-      await admin.from("webhook_logs").insert({
+      await writeMagnusLog(admin, {
         source: "magnuspay", event_type: "CREATE_PIX", status: "invalid_response",
         order_id: purchase.id,
         payload: { keys: Object.keys(data || {}).slice(0, 30), limits },
         error: "Resposta da MagnusPay sem ID ou código PIX",
-      }).catch(() => {});
+      });
       return json({ error: "A MagnusPay respondeu sem os dados necessários do PIX." }, 502);
     }
 
@@ -156,11 +165,11 @@ serve(async (req) => {
 
     if (saveError) return json({ error: "PIX criado, mas não foi possível vincular ao pedido." }, 500);
 
-    await admin.from("webhook_logs").insert({
+    await writeMagnusLog(admin, {
       source: "magnuspay", event_type: "CREATE_PIX", status: "created",
       order_id: purchase.id, charge_id: id,
       payload: { status: first(nodes, ["status"]) || "pending", limits }, error: null,
-    }).catch(() => {});
+    });
 
     return json({
       id,

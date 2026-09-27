@@ -73,7 +73,7 @@ serve(async (req) => {
         source: "magnuspay", event_type: "CHECK_STATUS", status: `error_${response.status}`,
         order_id: purchase.id, charge_id: purchase.provider_payment_id,
         payload: { code: parsed?.code || null }, error: String(parsed?.message || "Falha na consulta").slice(0, 500),
-      }).catch(() => {});
+      });
       return json({ error: String(parsed?.message || "Não foi possível consultar o pagamento agora.").slice(0, 240) }, 502);
     }
 

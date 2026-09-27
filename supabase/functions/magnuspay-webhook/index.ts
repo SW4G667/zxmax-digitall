@@ -89,7 +89,7 @@ serve(async (req) => {
       await admin.from("webhook_logs").insert({
         source: "magnuspay", event_type: "AUTH", status: "rejected",
         payload: null, error: "Assinatura do webhook inválida",
-      }).catch(() => {});
+      });
       return json({ error: "Unauthorized" }, 401);
     }
 
@@ -122,7 +122,7 @@ serve(async (req) => {
         source: "magnuspay", event_type: eventName || "webhook", status: "unverified",
         order_id: purchase.id, charge_id: providerId,
         payload: { event, providerCode: verified.code }, error: String(verified.message || "Confirmação server-to-server divergente").slice(0, 500),
-      }).catch(() => {});
+      });
       return json({ received: true });
     }
 
@@ -144,7 +144,7 @@ serve(async (req) => {
         source: "magnuspay", event_type: eventName || "payment.completed",
         status: result?.resulting_status || "processed", order_id: purchase.id,
         charge_id: providerId, payload: event, error: null,
-      }).catch(() => {});
+      });
       return json({ received: true });
     }
 
@@ -158,7 +158,7 @@ serve(async (req) => {
         source: "magnuspay", event_type: eventName || verifiedStatus,
         status: verifiedStatus, order_id: purchase.id,
         charge_id: providerId, payload: event, error: null,
-      }).catch(() => {});
+      });
     }
 
     return json({ received: true });
@@ -167,7 +167,7 @@ serve(async (req) => {
     await admin.from("webhook_logs").insert({
       source: "magnuspay", event_type: "error", status: "error",
       payload: null, error: error instanceof Error ? error.message.slice(0, 500) : "unknown",
-    }).catch(() => {});
+    });
     return json({ received: true });
   }
 });

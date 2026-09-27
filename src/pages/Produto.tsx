@@ -38,12 +38,12 @@ type CheckoutMethod = "magnuspay_pix" | "zennith_pix" | "vexopay_pix" | "crypto"
 
 const METHOD_ORDER: CheckoutMethod[] = ["magnuspay_pix", "zennith_pix", "vexopay_pix", "crypto", "card", "boleto"];
 
-function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConfirm, loading }: { product: Product; quantity: number; unitPrice: number; subtotal: number; onClose: () => void; onConfirm: (method: string, cpf: string, network?: string) => void; loading: boolean }) {
+function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConfirm, loading, prefetchedMethods }: { product: Product; quantity: number; unitPrice: number; subtotal: number; onClose: () => void; onConfirm: (method: string, cpf: string, network?: string) => void; loading: boolean; prefetchedMethods?: PaymentMethodsState }) {
   // Sem método selecionado até sabermos o que está ativo: nunca deixamos PIX
   // "escolhido" visualmente quando ele não está disponível.
   const [method, setMethod] = useState<CheckoutMethod | null>(null);
   const [cpf, setCpf] = useState("");
-  const [methodsState, setMethodsState] = useState<PaymentMethodsState>({ status: "loading" });
+  const [methodsState, setMethodsState] = useState<PaymentMethodsState>(prefetchedMethods ?? { status: "loading" });
   const [methodsRetry, setMethodsRetry] = useState(0);
   const [network, setNetwork] = useState("TRC20");
   const fee = method && methodsState.status === "ok" ? Number(methodsState.fees[method] || 0) : 0;
@@ -222,6 +222,7 @@ export default function ProdutoPage() {
   const [pixCharge, setPixCharge] = useState<PixCharge | null>(null);
   const [cryptoCharge, setCryptoCharge] = useState<CryptoCharge | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [prefetchedMethods, setPrefetchedMethods] = useState<PaymentMethodsState>({ status: "loading" });
   const [quantity, setQuantity] = useState(1);
   const [quantityDraft, setQuantityDraft] = useState("1");
   const [sortBy, setSortBy] = useState<"recomendado" | "barato" | "min">("barato");
