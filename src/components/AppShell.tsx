@@ -7,6 +7,7 @@ import AuthScreen from "@/components/AuthScreen";
 import SiteFooter from "@/components/SiteFooter";
 import { useAuth } from "@/hooks/useAuth";
 import { useLocation, useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "withdraw";
 
@@ -37,6 +38,15 @@ export default function AppShell({ children }: Props) {
       setMenuOpen(false);
     }
   }, [user]);
+
+  useEffect(() => {
+    // Warm the lightweight availability endpoint while the visitor is browsing.
+    // Checkout still revalidates immediately before purchase, but the Edge
+    // Function and browser preflight cache are already warm by then.
+    void supabase.functions.invoke("integrations-config", {
+      body: { action: "payment_methods" },
+    }).then(() => undefined, () => undefined);
+  }, []);
 
   const accountArea = ["/meus-produtos", "/minhas-compras", "/suporte", "/admin", "/sacar", "/perfil", "/configuracoes"]
     .some((prefix) => location.pathname.startsWith(prefix));
