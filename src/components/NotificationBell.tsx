@@ -123,7 +123,7 @@ export default function NotificationBell() {
                         onClick={() => { setOpen(false); navigate(`/minhas-compras?order=${p.id}`); }}
                         className="flex w-full items-center gap-3 border-b border-white/[0.055] px-4 py-3 text-left transition hover:bg-white/[0.035]"
                       >
-                        {product && <img src={product.image} className="w-9 h-9 rounded-lg object-cover shrink-0" alt="" />}
+                        {product?.image ? <img src={product.image} className="h-9 w-9 shrink-0 rounded-lg object-cover" alt="" /> : <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/[0.04]"><BagCheckEmoji className="h-4 w-4" /></div>}
                         <div className="flex-1 min-w-0">
                           {p.reviewed ? (
                             <p className="text-xs text-white truncate">
@@ -161,7 +161,7 @@ export default function NotificationBell() {
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-bold text-white truncate">Aviso Global</p>
                       <p className="text-[10px] text-white/35 truncate">{n.text}</p>
-                      <p className="text-[9px] text-white/35/60 mt-0.5">{new Date(n.date).toLocaleDateString("pt-BR")}</p>
+                      <p className="text-[9px] text-white/20 mt-0.5">{new Date(n.date).toLocaleDateString("pt-BR")}</p>
                     </div>
                   </div>
                 ))}
