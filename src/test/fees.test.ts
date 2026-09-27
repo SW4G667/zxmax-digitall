@@ -9,15 +9,15 @@ import {
 } from "@/lib/fees";
 
 describe("checkoutTotals", () => {
-  it("anúncio de R$ 5,00 vira R$ 5,90 para o cliente", () => {
+  it("anúncio de R$ 5,00 usa a taxa fallback quando a configuração remota não chegou", () => {
     expect(checkoutTotals(5)).toEqual({ productAmount: 5, buyerFee: 0.9, total: 5.9 });
   });
 
-  it("anúncio de R$ 2,00 vira R$ 2,90", () => {
-    expect(checkoutTotals(2)).toEqual({ productAmount: 2, buyerFee: 0.9, total: 2.9 });
+  it("aceita taxa do comprador configurada pelo painel", () => {
+    expect(checkoutTotals(5, 1.25)).toEqual({ productAmount: 5, buyerFee: 1.25, total: 6.25 });
   });
 
-  it("taxa é sempre 90 centavos, nunca percentual", () => {
+  it("fallback continua fixo em centavos, nunca percentual", () => {
     expect(checkoutTotals(100).buyerFee).toBe(BUYER_FEE);
     expect(checkoutTotals(100).total).toBe(100.9);
   });
@@ -29,26 +29,30 @@ describe("checkoutTotals", () => {
 });
 
 describe("withdrawTotals", () => {
-  it("mínimo é R$ 10,00 e a taxa é R$ 3,50", () => {
-    expect(WITHDRAW_MIN).toBe(10);
+  it("fallback acompanha a configuração inicial da plataforma", () => {
+    expect(WITHDRAW_MIN).toBe(5);
     expect(WITHDRAW_FEE).toBe(3.5);
   });
 
-  it("bloqueia saldo abaixo do mínimo", () => {
-    const r = withdrawTotals(9.99);
+  it("bloqueia saldo abaixo do mínimo fallback", () => {
+    const r = withdrawTotals(4.99);
     expect(r.canWithdraw).toBe(false);
-    expect(r.reason).toMatch(/R\$ 10,00/);
+    expect(r.reason).toMatch(/R\$ 5,00/);
   });
 
-  it("saque de R$ 10,00 deixa R$ 6,50 líquidos", () => {
+  it("usa mínimo e taxa configurados pelo painel", () => {
+    const r = withdrawTotals(20, { min: 10, fee: 2.75 });
+    expect(r.min).toBe(10);
+    expect(r.fee).toBe(2.75);
+    expect(r.net).toBe(17.25);
+    expect(r.canWithdraw).toBe(true);
+  });
+
+  it("saque fallback de R$ 10,00 deixa R$ 6,50 líquidos", () => {
     const r = withdrawTotals(10);
     expect(r.canWithdraw).toBe(true);
     expect(r.fee).toBe(3.5);
     expect(r.net).toBe(6.5);
-  });
-
-  it("saque de R$ 20,00 deixa R$ 16,50", () => {
-    expect(withdrawTotals(20).net).toBe(16.5);
   });
 });
 

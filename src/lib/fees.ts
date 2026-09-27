@@ -1,16 +1,12 @@
-/**
- * Taxas oficiais da ZXMAX.
- *
- * Comprador paga o preço anunciado + R$ 0,90.
- * Ex.: anúncio de R$ 5,00 → checkout de R$ 5,90. O vendedor recebe R$ 5,00.
- *
- * Saque: mínimo R$ 10,00 e taxa fixa de R$ 3,50.
- * Ex.: saldo R$ 20,00 → líquido R$ 16,50.
- */
+/** Taxas padrão usadas apenas como fallback quando a configuração remota está indisponível. */
+export const BUYER_FEE = 0.90;
+export const WITHDRAW_MIN = 5.00;
+export const WITHDRAW_FEE = 3.50;
 
-export const BUYER_FEE = 0.9;
-export const WITHDRAW_MIN = 10;
-export const WITHDRAW_FEE = 3.5;
+export type WithdrawFeeConfig = {
+  min?: number;
+  fee?: number;
+};
 
 export function roundMoney(value: unknown): number {
   const n = typeof value === "number" ? value : Number(value);
@@ -18,13 +14,13 @@ export function roundMoney(value: unknown): number {
   return Math.round(n * 100) / 100;
 }
 
-export function checkoutTotals(subtotal: unknown): {
+export function checkoutTotals(subtotal: unknown, configuredBuyerFee: unknown = BUYER_FEE): {
   productAmount: number;
   buyerFee: number;
   total: number;
 } {
   const productAmount = roundMoney(subtotal);
-  const buyerFee = BUYER_FEE;
+  const buyerFee = Math.max(0, roundMoney(configuredBuyerFee));
   return {
     productAmount,
     buyerFee,
@@ -32,7 +28,7 @@ export function checkoutTotals(subtotal: unknown): {
   };
 }
 
-export function withdrawTotals(balance: unknown): {
+export function withdrawTotals(balance: unknown, config: WithdrawFeeConfig = {}): {
   balance: number;
   fee: number;
   net: number;
@@ -40,17 +36,19 @@ export function withdrawTotals(balance: unknown): {
   canWithdraw: boolean;
   reason: string | null;
 } {
-  const available = roundMoney(balance);
-  const fee = WITHDRAW_FEE;
+  const available = Math.max(0, roundMoney(balance));
+  const min = Math.max(0, roundMoney(config.min ?? WITHDRAW_MIN));
+  const fee = Math.max(0, roundMoney(config.fee ?? WITHDRAW_FEE));
   const net = roundMoney(available - fee);
-  if (available < WITHDRAW_MIN) {
+
+  if (available < min) {
     return {
       balance: available,
       fee,
       net: Math.max(0, net),
-      min: WITHDRAW_MIN,
+      min,
       canWithdraw: false,
-      reason: `O saque mínimo é R$ ${WITHDRAW_MIN.toFixed(2).replace(".", ",")}.`,
+      reason: `O saque mínimo é R$ ${min.toFixed(2).replace(".", ",")}.`,
     };
   }
   if (net <= 0) {
@@ -58,19 +56,12 @@ export function withdrawTotals(balance: unknown): {
       balance: available,
       fee,
       net: 0,
-      min: WITHDRAW_MIN,
+      min,
       canWithdraw: false,
-      reason: `A taxa de saque é R$ ${WITHDRAW_FEE.toFixed(2).replace(".", ",")}.`,
+      reason: `A taxa de saque é R$ ${fee.toFixed(2).replace(".", ",")}.`,
     };
   }
-  return {
-    balance: available,
-    fee,
-    net,
-    min: WITHDRAW_MIN,
-    canWithdraw: true,
-    reason: null,
-  };
+  return { balance: available, fee, net, min, canWithdraw: true, reason: null };
 }
 
 /** Seller credit for a paid order — never invents a value. */

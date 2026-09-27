@@ -58,6 +58,12 @@ const emptyConfig: Record<Provider["id"], GatewayConfig> = {
   vexopay: { pixEnabled: false, cryptoEnabled: false, pixFee: 1.2 },
 };
 
+const MAGNUSPAY_BASE_URL = "https://magnuspay.onrender.com/api";
+const SUPABASE_PUBLIC_URL = String(import.meta.env.VITE_SUPABASE_URL || "").replace(/\/$/, "");
+const MAGNUSPAY_WEBHOOK_URL = SUPABASE_PUBLIC_URL
+  ? `${SUPABASE_PUBLIC_URL}/functions/v1/magnuspay-webhook`
+  : "https://SEU-PROJETO.supabase.co/functions/v1/magnuspay-webhook";
+
 export default function IntegrationsPanel() {
   const [configs, setConfigs] = useState<Record<Provider["id"], GatewayConfig>>(emptyConfig);
   const [stripe, setStripe] = useState<StripeConfig>({ cardEnabled: false, boletoEnabled: false, boletoExpiresAfterDays: 3 });
@@ -171,20 +177,42 @@ export default function IntegrationsPanel() {
 
   return (
     <section className="space-y-5">
-      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
-        <div className="flex gap-2 font-semibold"><ShieldCheck className="h-5 w-5 shrink-0" />Segredos permanecem fora do navegador</div>
-        <p className="mt-1 text-amber-100/80">Este painel só administra disponibilidade e taxas. Escolha no máximo um provedor de PIX; ao habilitar um, os demais são desativados. Chaves de gateways são lidas exclusivamente como secrets pelas funções Edge.</p>
+      <div className="rounded-xl border border-white/[0.08] bg-[#101013] p-4 text-sm text-white/70">
+        <div className="flex gap-2 font-semibold text-white"><ShieldCheck className="h-4 w-4 shrink-0 text-[#67b5ff]" />Credenciais ficam somente no servidor</div>
+        <p className="mt-1 text-[11px] leading-5 text-white/40">Aqui você ativa métodos e define taxas. Chaves privadas não aparecem, não são salvas no navegador e não devem ser coladas em campos públicos.</p>
       </div>
       {PROVIDERS.map((provider) => {
         const config = configs[provider.id];
         const ready = provider.secretNames.every((name) => secretStatus[name]);
         return (
-          <article key={provider.id} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <article key={provider.id} className="rounded-xl border border-white/[0.08] bg-[#101013] p-4 sm:p-5">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
               <div><h3 className="font-bold text-card-foreground">{provider.name}</h3><p className="mt-1 max-w-2xl text-sm text-muted-foreground">{provider.description}</p></div>
-              <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold ${ready ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}><BadgeCheck className="h-3.5 w-3.5" />{ready ? "Secrets detectados" : "Secrets pendentes"}</span>
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-bold ${ready ? "border-emerald-300/15 bg-emerald-400/[0.08] text-emerald-300" : "border-white/[0.08] bg-white/[0.025] text-white/40"}`}><BadgeCheck className="h-3.5 w-3.5" />{ready ? "Secrets detectados" : "Secrets pendentes"}</span>
             </div>
-            <p className="mt-3 text-xs text-muted-foreground">Secrets necessários: <code>{provider.secretNames.join(", ")}</code>. Os valores nunca são enviados ao navegador.</p>
+            <p className="mt-3 text-[11px] text-white/38">Secrets necessários: <code className="text-white/62">{provider.secretNames.join(", ")}</code>. Os valores nunca são enviados ao navegador.</p>
+
+            {provider.id === "magnuspay" ? (
+              <div className="mt-4 rounded-lg border border-[#168cff]/20 bg-[#168cff]/[0.055] p-3.5">
+                <p className="text-[11px] font-bold text-white">Configuração da MagnusPay</p>
+                <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-[10px] leading-4 text-white/45">
+                  <li>Gere sua API Key no painel da MagnusPay.</li>
+                  <li>Cadastre a chave no Supabase como <code className="text-white/70">MAGNUSPAY_API_KEY</code>.</li>
+                  <li>No webhook da MagnusPay, use a URL abaixo. O site confirma a transação novamente no servidor antes de liberar o pedido.</li>
+                </ol>
+                <div className="mt-3 grid gap-2">
+                  <div className="rounded-md border border-white/[0.07] bg-black/15 px-3 py-2">
+                    <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-white/25">Base da API</p>
+                    <code className="mt-1 block break-all text-[10px] text-white/62">{MAGNUSPAY_BASE_URL}</code>
+                  </div>
+                  <div className="rounded-md border border-white/[0.07] bg-black/15 px-3 py-2">
+                    <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-white/25">Webhook</p>
+                    <code className="mt-1 block break-all text-[10px] text-white/62">{MAGNUSPAY_WEBHOOK_URL}</code>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
                 <p className="font-semibold text-foreground">Endpoint protegido</p>
@@ -196,7 +224,7 @@ export default function IntegrationsPanel() {
               <label className="flex items-center gap-2"><input type="checkbox" checked={config.pixEnabled === true} onChange={(event) => update(provider.id, "pixEnabled", event.target.checked)} />Usar como PIX único</label>
               {provider.supportsCrypto && <label className="flex items-center gap-2"><input type="checkbox" checked={config.cryptoEnabled === true} onChange={(event) => update(provider.id, "cryptoEnabled", event.target.checked)} />Oferecer Crypto via VexoPay</label>}
             </div>
-            <div className="mt-5 flex flex-wrap gap-3"><button type="button" onClick={() => void save(provider)} disabled={busy !== null} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">{busy === `${provider.id}:save` ? "Salvando…" : "Salvar configuração"}</button><button type="button" onClick={() => void test(provider)} disabled={!ready || busy !== null} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-bold disabled:opacity-50"><KeyRound className="h-4 w-4" />{busy === `${provider.id}:test` ? "Testando…" : "Testar no servidor"}</button></div>
+            <div className="mt-5 flex flex-wrap gap-3"><button type="button" onClick={() => void save(provider)} disabled={busy !== null} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">{busy === `${provider.id}:save` ? "Salvando…" : "Salvar configuração"}</button><button type="button" onClick={() => void test(provider)} disabled={!ready || busy !== null} className="inline-flex items-center gap-2 rounded-lg border border-white/[0.09] px-4 py-2 text-sm font-bold text-white/72 transition hover:bg-white/[0.04] disabled:opacity-50"><KeyRound className="h-4 w-4" />{busy === `${provider.id}:test` ? "Validando…" : "Validar configuração"}</button></div>
           </article>
         );
       })}

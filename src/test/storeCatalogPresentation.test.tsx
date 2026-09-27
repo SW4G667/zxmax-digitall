@@ -22,12 +22,12 @@ vi.mock("@/store/StoreContext", () => ({
 import StoreView from "@/components/StoreView";
 
 describe("StoreView — hierarquia de catálogo", () => {
-  it("mantém filtros acessíveis e destaca preço de cartão publicado em azul", () => {
+  it("mantém filtros acessíveis e preço legível sem poluir o card", () => {
     render(<StoreView />);
     expect(screen.getAllByRole("button", { name: /Filtros|Ajustar/i }).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Bots Discord").length).toBeGreaterThan(1);
     const price = screen.getAllByText(/R\$\s*12,00/)[0];
-    expect(price).toHaveClass("text-[#45a7ff]");
-    expect(screen.getByText("AUTO")).toBeInTheDocument();
+    expect(price).toHaveClass("text-white");
+    expect(screen.getByText("AUTOMÁTICO")).toBeInTheDocument();
   });
 });

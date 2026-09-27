@@ -14,17 +14,17 @@ describe("página de categorias", () => {
     expect(page).toContain('navigate("/robux")');
   });
 
-  it("registra a rota e o atalho de menu para descoberta", async () => {
+  it("mantém descoberta no menu sem duplicar todos os filtros do catálogo", async () => {
     const app = await source("src/App.tsx");
     const menu = await source("src/components/SideMenu.tsx");
     const store = await source("src/components/StoreView.tsx");
     expect(app).toContain('<Route path="/categorias" element={<Categorias />} />');
     expect(menu).toContain('to: "/categorias"');
-    expect(menu).toContain('to: "/loja?sort=recentes"');
-    expect(menu).toContain('to: "/loja?delivery=auto"');
-    expect(menu).toContain('to: "/loja?sort=vendidos"');
-    expect(menu).toContain('to: "/loja?verified=1"');
+    expect(menu).toContain('to: "/loja"');
     expect(menu).toContain('to: "/robux"');
+    expect(menu).not.toContain('label: "Novidades"');
+    expect(menu).not.toContain('label: "Mais vendidos"');
+    expect(menu).not.toContain('label: "Entrega automática"');
     expect(store).toContain('const sortParam = params.get("sort") as SortKey | null;');
     expect(store).toContain('const deliveryParam = params.get("delivery");');
     expect(store).toContain('const verifiedParam = params.get("verified");');
