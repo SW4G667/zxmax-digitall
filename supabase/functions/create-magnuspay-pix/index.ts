@@ -113,7 +113,7 @@ serve(async (req) => {
       await admin.from("webhook_logs").insert({
         source: "magnuspay", event_type: "CREATE_PIX", status: "rate_limited",
         order_id: purchase.id, payload: { limits }, error: "Rate limit da MagnusPay atingido",
-      }).catch(() => {});
+      });
       return json({ error: "A MagnusPay atingiu o limite temporário de requisições. Tente novamente em instantes.", retryAfter: limits.retryAfter }, 429);
     }
 
@@ -122,7 +122,7 @@ serve(async (req) => {
       await admin.from("webhook_logs").insert({
         source: "magnuspay", event_type: "CREATE_PIX", status: `error_${response.status}`,
         order_id: purchase.id, payload: { code: parsed?.code || null, limits }, error: providerMessage,
-      }).catch(() => {});
+      });
       return json({ error: String(parsed?.message || "Não foi possível gerar o PIX.").slice(0, 240), code: parsed?.code || null }, 502);
     }
 
@@ -144,7 +144,7 @@ serve(async (req) => {
         order_id: purchase.id,
         payload: { keys: Object.keys(data || {}).slice(0, 30), limits },
         error: "Resposta da MagnusPay sem ID ou código PIX",
-      }).catch(() => {});
+      });
       return json({ error: "A MagnusPay respondeu sem os dados necessários do PIX." }, 502);
     }
 
@@ -169,7 +169,7 @@ serve(async (req) => {
       source: "magnuspay", event_type: "CREATE_PIX", status: "created",
       order_id: purchase.id, charge_id: id,
       payload: { status: first(nodes, ["status"]) || "pending", limits }, error: null,
-    }).catch(() => {});
+    });
 
     return json({
       id,
