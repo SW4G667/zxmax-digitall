@@ -896,3 +896,23 @@ BEGIN
   RETURN result;
 END;
 $$;
+
+
+-- 7) Periodic release job ----------------------------------------------------
+-- Supabase provides pg_cron; the job only marks balances available after all
+-- order/status/hold checks inside process_auto_release_orders().
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+DO $$
+DECLARE existing_job bigint;
+BEGIN
+  SELECT jobid INTO existing_job FROM cron.job WHERE jobname='zxmax_process_wallet_holds' LIMIT 1;
+  IF existing_job IS NOT NULL THEN
+    PERFORM cron.unschedule(existing_job);
+  END IF;
+  PERFORM cron.schedule(
+    'zxmax_process_wallet_holds',
+    '*/15 * * * *',
+    'SELECT public.process_auto_release_orders();'
+  );
+END $$;
