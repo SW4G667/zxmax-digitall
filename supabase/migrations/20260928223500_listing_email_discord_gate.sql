@@ -6,6 +6,36 @@ ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS discord_guild_id text,
   ADD COLUMN IF NOT EXISTS discord_member_verified_at timestamptz;
 
+
+-- SMS is no longer a public trust signal. Keep any historical private phone
+-- data untouched, but remove the public boolean projection and stop syncing it.
+CREATE OR REPLACE FUNCTION public.sync_public_profile_verification()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $
+BEGIN
+  UPDATE public.profiles_public
+  SET
+    document_verified = (NEW.verification_status = 'approved'),
+    updated_at = now()
+  WHERE user_id = NEW.user_id;
+  RETURN NEW;
+END;
+$;
+
+DROP TRIGGER IF EXISTS zz_sync_public_profile_verification ON public.profiles;
+CREATE TRIGGER zz_sync_public_profile_verification
+AFTER INSERT OR UPDATE OF verification_status ON public.profiles
+FOR EACH ROW EXECUTE FUNCTION public.sync_public_profile_verification();
+
+ALTER TABLE public.profiles_public
+  DROP COLUMN IF EXISTS phone_verified;
+
+REVOKE ALL ON FUNCTION public.sync_public_profile_verification() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.sync_public_profile_verification() TO service_role;
+
 -- Users must never be able to self-assert server membership or verification.
 CREATE OR REPLACE FUNCTION public.protect_profile_verification()
 RETURNS trigger
