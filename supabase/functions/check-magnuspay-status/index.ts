@@ -9,8 +9,17 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   status,
   headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
 });
-const API = String(Deno.env.get("MAGNUSPAY_BASE_URL") || "https://magnuspay.onrender.com/api").replace(/\/$/, "");
+const MAGNUSPAY_API = "https://api.magnuspay.com.br";
 const normalizeMoney = (value: unknown) => Math.round(Number(value) * 100);
+
+async function writeMagnusLog(client: any, row: Record<string, unknown>) {
+  try {
+    const { error } = await client.from("webhook_logs").insert(row);
+    if (error) console.warn("magnuspay log insert failed", error.message);
+  } catch (error) {
+    console.warn("magnuspay log insert failed", error instanceof Error ? error.message : "unknown");
+  }
+}
 
 async function notify(purchaseId: number) {
   const url = Deno.env.get("SUPABASE_URL")!;
@@ -56,7 +65,7 @@ serve(async (req) => {
     const apiKey = String(Deno.env.get("MAGNUSPAY_API_KEY") || "").trim();
     if (!apiKey) return json({ error: "PIX MagnusPay não está configurado no servidor." }, 503);
 
-    const response = await fetch(`${API}/transactions/check`, {
+    const response = await fetch(`${MAGNUSPAY_API}/transactions/check`, {
       method: "POST",
       headers: { "X-API-Key": apiKey, "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ transactionId: purchase.provider_payment_id }),
@@ -66,31 +75,44 @@ serve(async (req) => {
     try { parsed = raw ? JSON.parse(raw) : {}; } catch { parsed = {}; }
 
     if (response.status === 429) {
-      return json({ error: "Limite temporário da MagnusPay atingido. Aguarde alguns instantes.", retryAfter: response.headers.get("Retry-After") }, 429);
+      return json({
+        error: "Limite temporário da MagnusPay atingido. Aguarde alguns instantes.",
+        retryAfter: response.headers.get("Retry-After") || response.headers.get("RateLimit-Reset"),
+      }, 429);
     }
+
     if (!response.ok || parsed?.success === false || !parsed?.data) {
-      await admin.from("webhook_logs").insert({
-        source: "magnuspay", event_type: "CHECK_STATUS", status: `error_${response.status}`,
-        order_id: purchase.id, charge_id: purchase.provider_payment_id,
-        payload: { code: parsed?.code || null }, error: String(parsed?.message || "Falha na consulta").slice(0, 500),
+      const providerMessage = String(parsed?.message || `MagnusPay respondeu HTTP ${response.status}`).slice(0, 500);
+      await writeMagnusLog(admin, {
+        source: "magnuspay",
+        event_type: "CHECK_STATUS",
+        status: `error_${response.status}`,
+        order_id: purchase.id,
+        charge_id: purchase.provider_payment_id,
+        payload: { endpoint: "/transactions/check", code: parsed?.code || null },
+        error: providerMessage,
       });
-      return json({ error: String(parsed?.message || "Não foi possível consultar o pagamento agora.").slice(0, 240) }, 502);
+      return json({ error: providerMessage, code: parsed?.code || `magnus_http_${response.status}` }, 502);
     }
 
     const data = parsed.data;
-    const id = String(data.id || data.transactionId || data.transaction_id || "");
+    const id = String(data.id || data.transactionId || "").trim();
     const status = String(data.status || "").toUpperCase();
     const amountCents = normalizeMoney(data.amount);
     const expectedCents = normalizeMoney(purchase.amount);
 
-    if (id !== String(purchase.provider_payment_id)) return json({ error: "Identificador de pagamento divergente." }, 409);
-    if (!Number.isFinite(amountCents) || amountCents !== expectedCents) return json({ error: "Valor confirmado divergente." }, 409);
+    if (id !== String(purchase.provider_payment_id)) {
+      return json({ error: "Identificador de pagamento divergente." }, 409);
+    }
+    if (!Number.isFinite(amountCents) || amountCents !== expectedCents) {
+      return json({ error: "Valor confirmado divergente." }, 409);
+    }
 
     if (status === "COMPLETED") {
       const { data: applied, error: applyError } = await admin.rpc("apply_verified_payment_v2", {
         _provider: "magnuspay",
         _event_key: `magnuspay:${id}:COMPLETED`,
-        _event_type: "payment.completed",
+        _event_type: "transaction.completed",
         _purchase_id: purchase.id,
         _charge_id: id,
         _confirmed_amount: Number(data.amount),
@@ -99,7 +121,12 @@ serve(async (req) => {
       if (applyError) throw applyError;
       const result = Array.isArray(applied) ? applied[0] : applied;
       if (result?.applied) void notify(purchase.id);
-      return json({ status, purchaseStatus: result?.resulting_status || "paid", paid: true });
+      return json({
+        status,
+        purchaseStatus: result?.resulting_status || "paid",
+        paid: true,
+        completedAt: data.completedAt || null,
+      });
     }
 
     if (status === "EXPIRED" || status === "FAILED") {
