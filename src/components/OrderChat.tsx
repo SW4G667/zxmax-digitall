@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useStore, Purchase } from "@/store/StoreContext";
-import { Send, ImagePlus, Loader2, Clock, CheckCircle2, ShieldCheck, Undo2, AlertCircle, PackageCheck } from "lucide-react";
+import { Send, ImagePlus, Loader2, Clock, CheckCircle2, ShieldCheck, Undo2, AlertCircle, PackageCheck, Crown, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { containsExternalContact } from "@/lib/externalContact";
@@ -12,6 +12,7 @@ interface OrderMessage {
   sender_id: string;
   body: string | null;
   image_path: string | null;
+  sender_role?: "buyer" | "seller" | "admin" | "system" | "participant";
   created_at: string;
   imageUrl?: string;
 }
@@ -171,7 +172,7 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
     const ok = await confirmOrderReceipt(orderId);
     setActionLoading(false);
     if (ok) {
-      toast.success("Recebimento confirmado! Dinheiro liberado para o vendedor.");
+      toast.success("Recebimento confirmado. O saldo do vendedor continua no prazo de segurança.");
       void load();
       if (onRefresh) onRefresh();
     } else {
@@ -193,7 +194,7 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
     setRefunding(false);
 
     if (result.success) {
-      toast.success("Reembolso efetuado! O dinheiro foi devolvido à conta/banco do comprador.");
+      toast.success("Reembolso efetuado para a carteira ZXMAX do comprador.");
       setShowRefundModal(false);
       setRefundReason("");
       void load();
@@ -281,7 +282,7 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
                   : "Aguardando o comprador confirmar o recebimento."}
                 {autoReleaseText && (
                   <span className="block font-semibold text-foreground mt-1">
-                    Liberação automática para o vendedor em {autoReleaseText}.
+                    Conclusão automática do pedido em {autoReleaseText}. O saldo continua seguindo o prazo de segurança.
                   </span>
                 )}
               </p>
@@ -314,7 +315,7 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-xs font-bold text-emerald-500">
                 <CheckCircle2 className="w-4.5 h-4.5 shrink-0" />
-                <span>Pedido Concluído · Dinheiro liberado para o vendedor</span>
+                <span>Pedido concluído · saldo segue o prazo de segurança</span>
               </div>
               {isRefundable && (
                 <div className="pt-1">
@@ -338,7 +339,7 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
                 <span>Pedido Reembolsado pelo Vendedor</span>
               </div>
               <p className="text-xs text-foreground">
-                O valor de R$ {Number(purchase.amount).toFixed(2)} foi devolvido para a conta/banco do comprador.
+                O valor de R$ {Number(purchase.amount).toFixed(2)} foi creditado na carteira ZXMAX do comprador.
               </p>
               {purchase.refundReason && (
                 <p className="text-[11px] text-muted-foreground italic">
@@ -370,9 +371,15 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
                 </div>
               );
             }
+            const isAdminMessage = m.sender_role === "admin";
             return (
               <div key={m.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-secondary text-foreground rounded-bl-md"}`}>
+                <div className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${isAdminMessage ? "border border-amber-400/25 bg-amber-400/[0.07] text-foreground" : isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-secondary text-foreground rounded-bl-md"}`}>
+                  {isAdminMessage && (
+                    <div className="mb-1.5 inline-flex items-center gap-1 rounded-full border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-300">
+                      <Crown className="h-3 w-3" /> Administração ZXMAX
+                    </div>
+                  )}
                   {m.imageUrl && (
                     <a href={m.imageUrl} target="_blank" rel="noreferrer">
                       <img src={m.imageUrl} alt="anexo" className="rounded-lg max-h-48 mb-1 object-cover" />
@@ -421,17 +428,20 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
       {showRefundModal && purchase && (
         <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowRefundModal(false)}>
           <div className="bg-[#15151a] border border-[#25252e] rounded-2xl w-full max-w-md p-6 space-y-4 animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 text-destructive font-black text-lg">
-              <Undo2 className="w-5 h-5" />
-              <h3>Reembolsar Comprador</h3>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-destructive font-black text-lg">
+                <Undo2 className="w-5 h-5" />
+                <h3>Reembolsar Comprador</h3>
+              </div>
+              <button type="button" onClick={() => setShowRefundModal(false)} aria-label="Cancelar reembolso" className="grid h-9 w-9 place-items-center rounded-xl border border-white/[0.08] text-white/45 hover:text-white"><X className="h-4 w-4" /></button>
             </div>
 
             <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3 text-xs text-foreground space-y-1">
               <p className="font-bold">⚠️ Informação importante:</p>
               <p>
-                O valor de <span className="font-black text-destructive">R$ {Number(purchase.amount).toFixed(2)}</span> será devolvido diretamente à conta/banco do comprador através do gateway de pagamento.
+                O valor de <span className="font-black text-destructive">R$ {Number(purchase.amount).toFixed(2)}</span> será creditado na carteira ZXMAX do comprador.
               </p>
-              <p className="text-muted-foreground">O dinheiro NUNCA entra como saldo no site nem em faturamento da plataforma.</p>
+              <p className="text-muted-foreground">O reembolso só é permitido ao vendedor enquanto o saldo da venda ainda estiver retido.</p>
             </div>
 
             <div>
