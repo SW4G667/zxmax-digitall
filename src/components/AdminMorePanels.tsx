@@ -175,15 +175,16 @@ export function AdminTagsPanel() {
   const { state, createUserTag, deleteUserTag, assignUserTag, refreshUserTags } = useStore();
   const [name, setName] = useState("");
   const [color, setColor] = useState("#8B5CF6");
+  const [iconUrl, setIconUrl] = useState("");
   const [publicId, setPublicId] = useState("");
   const [tagId, setTagId] = useState("");
   const [busy, setBusy] = useState(false);
 
   const create = async () => {
     setBusy(true);
-    const ok = await createUserTag(name, color);
+    const ok = await createUserTag(name, color, iconUrl);
     setBusy(false);
-    ok ? (setName(""), toast.success("Tag criada e persistida.")) : toast.error("Não foi possível criar a tag.");
+    ok ? (setName(""), setIconUrl(""), toast.success("Tag criada e persistida.")) : toast.error("Não foi possível criar a tag.");
   };
 
   const assign = async () => {
@@ -198,15 +199,18 @@ export function AdminTagsPanel() {
     <div className="space-y-6">
       <div className="glass-card p-6 space-y-3">
         <h3 className="font-bold flex items-center gap-2"><Tag className="w-4 h-4" /> Nova tag</h3>
-        <div className="flex gap-2">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome" className="flex-1 p-3 rounded-xl bg-muted text-sm" />
+        <div className="grid gap-2 sm:grid-cols-[1fr_12rem_auto_auto]">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome da tag" className="p-3 rounded-xl bg-muted text-sm" />
+          <input value={iconUrl} onChange={(e) => setIconUrl(e.target.value)} placeholder="URL HTTPS do ícone" className="p-3 rounded-xl bg-muted text-sm" />
           <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="w-12 h-12 rounded-xl" />
           <button onClick={() => void create()} disabled={busy || !name.trim()} className="btn-gradient px-4 rounded-xl disabled:opacity-50"><Plus className="w-4 h-4" /></button>
         </div>
+        <p className="text-[10px] text-muted-foreground">O ícone é opcional. Use uma imagem HTTPS pequena, por exemplo uma coroa para uma tag administrativa.</p>
       </div>
       <div className="flex flex-wrap gap-2">
         {(state.userTags || []).map((t) => (
           <span key={t.id} className="px-3 py-1.5 rounded-full text-xs font-bold text-white flex items-center gap-2" style={{ background: t.color }}>
+            {t.iconUrl ? <img src={t.iconUrl} alt="" className="h-4 w-4 rounded object-cover" /> : null}
             {t.name}
             <button onClick={() => void deleteUserTag(t.id)} title="Excluir tag"><Trash2 className="w-3 h-3" /></button>
           </span>
