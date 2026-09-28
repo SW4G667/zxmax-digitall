@@ -231,9 +231,18 @@ export default function AdminBranding() {
               <label className="mt-3 block text-[11px] font-semibold text-white/52">Subtítulo
                 <textarea className={`${inputClass} mt-1.5 min-h-24 resize-none`} value={form.heroSubtitle} onChange={(event) => setField("heroSubtitle", event.target.value)} maxLength={220} />
               </label>
-              <label className="mt-3 block text-[11px] font-semibold text-white/52">Link de suporte
-                <input className={`${inputClass} mt-1.5`} value={form.supportUrl} onChange={(event) => setField("supportUrl", event.target.value)} placeholder="https://..." />
-              </label>
+              <div className="mt-4 rounded-xl border border-[#5865f2]/18 bg-[#5865f2]/[0.045] p-4">
+                <p className="text-xs font-bold text-white">Comunidade e suporte</p>
+                <p className="mt-1 text-[10px] leading-4 text-white/35">O convite oficial do Discord é usado no cabeçalho, na central de suporte e para confirmar a entrada de quem quer anunciar.</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <label className="text-[11px] font-semibold text-white/52">Convite oficial do Discord
+                    <input className={`${inputClass} mt-1.5`} value={form.discordInviteUrl} onChange={(event) => setField("discordInviteUrl", event.target.value)} placeholder="https://discord.gg/seu-convite" />
+                  </label>
+                  <label className="text-[11px] font-semibold text-white/52">Link externo de suporte <span className="text-white/25">(opcional)</span>
+                    <input className={`${inputClass} mt-1.5`} value={form.supportUrl} onChange={(event) => setField("supportUrl", event.target.value)} placeholder="https://..." />
+                  </label>
+                </div>
+              </div>
             </div>
 
             <div>
