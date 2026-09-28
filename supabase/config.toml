@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.site-config]
 verify_jwt = false
+
+[functions.phone-verification]
+verify_jwt = true
