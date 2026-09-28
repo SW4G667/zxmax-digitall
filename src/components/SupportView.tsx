@@ -15,7 +15,6 @@ import {
   ShieldCheck,
   ShoppingBag,
   Users,
-  Wallet,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
