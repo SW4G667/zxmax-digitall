@@ -72,6 +72,7 @@ GRANT EXECUTE ON FUNCTION public.enforce_listing_email_discord() TO service_role
 -- tickets; replies and status changes go through authorization-aware RPCs.
 DROP POLICY IF EXISTS "Users see own tickets, admin sees all" ON public.support_tickets;
 DROP POLICY IF EXISTS "Users and admin can update tickets" ON public.support_tickets;
+DROP POLICY IF EXISTS "Users and staff read support tickets" ON public.support_tickets;
 
 CREATE POLICY "Users and staff read support tickets"
 ON public.support_tickets
