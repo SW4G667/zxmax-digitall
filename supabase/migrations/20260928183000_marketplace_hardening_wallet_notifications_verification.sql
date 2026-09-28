@@ -313,12 +313,18 @@ LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $
 DECLARE
   sales numeric := 0;
   ledger numeric := 0;
   reserved numeric := 0;
 BEGIN
+  IF auth.uid() IS NOT NULL
+     AND auth.uid() IS DISTINCT FROM _user_id
+     AND NOT public.has_role(auth.uid(),'admin'::public.app_role) THEN
+    RAISE EXCEPTION 'Sem permissão para consultar este saldo' USING ERRCODE='42501';
+  END IF;
+
   SELECT COALESCE(SUM(COALESCE(product_amount, GREATEST(amount-COALESCE(buyer_fee,0),0))),0)
     INTO sales
   FROM public.purchases
@@ -352,6 +358,11 @@ DECLARE
   balance numeric := 0;
   excluded numeric := 0;
 BEGIN
+  IF auth.uid() IS NOT NULL
+     AND auth.uid() IS DISTINCT FROM _user_id
+     AND NOT public.has_role(auth.uid(),'admin'::public.app_role) THEN
+    RAISE EXCEPTION 'Sem permissão para consultar este saldo' USING ERRCODE='42501';
+  END IF;
   balance := public.wallet_available_balance(_user_id);
   IF _exclude_id IS NOT NULL THEN
     SELECT COALESCE(amount,0) INTO excluded
@@ -985,3 +996,16 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+
+-- Helper RPCs used only by trusted triggers/server code must not be callable
+-- directly by browsers.
+REVOKE ALL ON FUNCTION public.notification_allowed(uuid,text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.push_notification(uuid,text,text,text,text,text,text,jsonb) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.wallet_available_balance(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.process_auto_release_orders() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.notification_allowed(uuid,text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.push_notification(uuid,text,text,text,text,text,text,jsonb) TO service_role;
+GRANT EXECUTE ON FUNCTION public.wallet_available_balance(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.process_auto_release_orders() TO service_role;
+GRANT EXECUTE ON FUNCTION public.withdrawable_balance(uuid,bigint) TO authenticated, service_role;
