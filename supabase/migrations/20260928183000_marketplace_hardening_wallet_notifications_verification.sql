@@ -809,3 +809,90 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.refund_purchase_to_wallet_server(bigint,text,uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.refund_purchase_to_wallet_server(bigint,text,uuid) TO service_role;
+
+
+-- 6) Trusted chat roles and tag icons ----------------------------------------
+ALTER TABLE public.order_messages
+  ADD COLUMN IF NOT EXISTS sender_role text NOT NULL DEFAULT 'participant'
+  CHECK (sender_role IN ('buyer','seller','admin','system','participant'));
+
+CREATE OR REPLACE FUNCTION public.set_order_message_sender_role()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE p public.purchases%rowtype;
+BEGIN
+  SELECT * INTO p FROM public.purchases WHERE id=NEW.order_id;
+  IF p IS NULL THEN RAISE EXCEPTION 'Pedido não encontrado'; END IF;
+  IF auth.uid() IS NULL THEN
+    NEW.sender_role := 'system';
+  ELSIF public.has_role(auth.uid(),'admin'::public.app_role) THEN
+    NEW.sender_role := 'admin';
+  ELSIF auth.uid()=p.seller_id THEN
+    NEW.sender_role := 'seller';
+  ELSIF auth.uid()=p.buyer_id THEN
+    NEW.sender_role := 'buyer';
+  ELSE
+    RAISE EXCEPTION 'Você não participa deste pedido' USING ERRCODE='42501';
+  END IF;
+  NEW.sender_id := COALESCE(auth.uid(),NEW.sender_id);
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS set_order_message_sender_role_trg ON public.order_messages;
+CREATE TRIGGER set_order_message_sender_role_trg
+BEFORE INSERT ON public.order_messages
+FOR EACH ROW EXECUTE FUNCTION public.set_order_message_sender_role();
+
+CREATE OR REPLACE FUNCTION public.create_admin_user_tag(_name text,_color text,_icon_url text)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  tag_name text:=btrim(coalesce(_name,''));
+  tag_color text:=lower(btrim(coalesce(_color,'')));
+  clean_icon text:=btrim(coalesce(_icon_url,''));
+  tag_id uuid;
+BEGIN
+  PERFORM public.require_admin_capability('manage_tags');
+  IF char_length(tag_name)<2 OR char_length(tag_name)>32 THEN RAISE EXCEPTION 'invalid_tag_name'; END IF;
+  IF tag_color !~ '^#[0-9a-f]{6}$' THEN RAISE EXCEPTION 'invalid_tag_color'; END IF;
+  IF clean_icon<>'' AND clean_icon !~ '^https://[^[:space:]]+$' THEN RAISE EXCEPTION 'invalid_icon_url'; END IF;
+  IF char_length(clean_icon)>800 THEN RAISE EXCEPTION 'invalid_icon_url'; END IF;
+  IF EXISTS(SELECT 1 FROM public.user_tags WHERE lower(name)=lower(tag_name)) THEN RAISE EXCEPTION 'tag_already_exists'; END IF;
+  INSERT INTO public.user_tags(name,color,icon_url) VALUES(tag_name,tag_color,NULLIF(clean_icon,'')) RETURNING id INTO tag_id;
+  INSERT INTO public.admin_audit_log(actor_id,action,target_table,target_id,metadata)
+  VALUES(auth.uid(),'tag.created','user_tags',tag_id::text,jsonb_build_object('name',tag_name,'color',tag_color,'icon',NULLIF(clean_icon,'')));
+  RETURN tag_id;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.create_admin_user_tag(text,text,text) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.get_admin_user_tags()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE result jsonb;
+BEGIN
+  PERFORM public.require_admin_capability('manage_tags');
+  SELECT jsonb_build_object(
+    'tags',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',t.id,'name',t.name,'color',t.color,'iconUrl',t.icon_url) ORDER BY lower(t.name)) FROM public.user_tags t),'[]'::jsonb),
+    'assignments',COALESCE((
+      SELECT jsonb_object_agg(tagged.public_id::text,tagged.tag_ids)
+      FROM (
+        SELECT p.public_id,jsonb_agg(a.tag_id::text ORDER BY a.tag_id::text) tag_ids
+        FROM public.user_tag_assignments a JOIN public.profiles p ON p.user_id=a.user_id
+        GROUP BY p.public_id
+      ) tagged
+    ),'{}'::jsonb)
+  ) INTO result;
+  RETURN result;
+END;
+$$;
