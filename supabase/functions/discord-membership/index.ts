@@ -174,7 +174,7 @@ serve(async (req) => {
         code: "not_member",
         error: "Entre no servidor da ZXMAX e depois verifique novamente.",
         inviteUrl: configured.inviteUrl,
-      }, 409);
+      });
     }
 
     const now = new Date().toISOString();
