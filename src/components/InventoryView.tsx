@@ -37,6 +37,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
   const isRobuxCategory = form.category === ROBUX_CATEGORY;
+  const discordInvite = branding.discordInviteUrl || state.config.discordLink || "";
 
   const canOpenListingForm = () => {
     if (state.currentUser?.isAdmin) return true;
@@ -317,12 +318,16 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
             ) : null}
 
             <div className="mt-5 grid gap-2">
-              <a href={branding.discordInviteUrl || state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noreferrer" className="rounded-xl border border-[#5865f2]/35 bg-[#5865f2]/10 px-4 py-3 text-center text-sm font-bold text-[#aeb4ff] hover:bg-[#5865f2]/15">1. Entrar no servidor do Discord</a>
-              <button type="button" onClick={() => void startDiscordVerification()} disabled={discordStarting || !state.currentUser?.emailConfirmed} className="rounded-xl bg-[#168cff] px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-45">
+              {discordInvite ? (
+                <a href={discordInvite} target="_blank" rel="noreferrer" className="rounded-xl border border-[#5865f2]/35 bg-[#5865f2]/10 px-4 py-3 text-center text-sm font-bold text-[#aeb4ff] hover:bg-[#5865f2]/15">1. Entrar no servidor do Discord</a>
+              ) : (
+                <div className="rounded-xl border border-amber-300/15 bg-amber-300/[0.06] px-4 py-3 text-center text-xs font-bold text-amber-100/70">O convite do servidor ainda não foi configurado pela administração.</div>
+              )}
+              <button type="button" onClick={() => void startDiscordVerification()} disabled={discordStarting || !state.currentUser?.emailConfirmed || !discordInvite} className="rounded-xl bg-[#168cff] px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-45">
                 {discordStarting ? "Abrindo Discord..." : "2. Verificar com Discord"}
               </button>
             </div>
-            <p className="mt-3 text-[10px] leading-4 text-white/28">A verificação consulta apenas se a conta do Discord vinculada está no servidor configurado. CPF e documentos continuam sendo usados somente para carteira e saque.</p>
+            <p className="mt-3 text-[10px] leading-4 text-white/28">A ZXMAX verifica somente se o e-mail foi confirmado e se o Discord vinculado está no servidor oficial. CPF, RG e selfie continuam restritos aos fluxos financeiros de carteira e saque.</p>
           </section>
         </div>
       )}
