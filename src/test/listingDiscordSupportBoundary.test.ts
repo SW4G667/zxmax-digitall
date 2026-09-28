@@ -32,7 +32,7 @@ describe("acesso de vendedor e central de suporte", () => {
     expect(admin).toContain("Convite oficial do Discord");
     expect(admin).toContain("Link externo de suporte");
     expect(siteConfig).toContain("safeDiscordInvite");
-    expect(siteConfig).toContain("resolveDiscordGuildId");
+    expect(siteConfig).toContain("resolveDiscordGuild");
     expect(siteConfig).toContain("discordGuildId");
     expect(membership).toContain("discordInviteUrl");
     expect(membership).toContain("discordGuildId");

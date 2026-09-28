@@ -233,7 +233,7 @@ export default function AdminBranding() {
               </label>
               <div className="mt-4 rounded-xl border border-[#5865f2]/18 bg-[#5865f2]/[0.045] p-4">
                 <p className="text-xs font-bold text-white">Comunidade e suporte</p>
-                <p className="mt-1 text-[10px] leading-4 text-white/35">O convite oficial do Discord é usado no cabeçalho, na central de suporte e para confirmar a entrada de quem quer anunciar.</p>
+                <p className="mt-1 text-[10px] leading-4 text-white/35">O convite oficial do Discord é usado no cabeçalho, na Central de Ajuda e na verificação obrigatória de quem quer anunciar. Ao salvar, a ZXMAX valida o convite e identifica o servidor automaticamente.</p>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <label className="text-[11px] font-semibold text-white/52">Convite oficial do Discord
                     <input className={`${inputClass} mt-1.5`} value={form.discordInviteUrl} onChange={(event) => setField("discordInviteUrl", event.target.value)} placeholder="https://discord.gg/seu-convite" />
@@ -241,6 +241,13 @@ export default function AdminBranding() {
                   <label className="text-[11px] font-semibold text-white/52">Link externo de suporte <span className="text-white/25">(opcional)</span>
                     <input className={`${inputClass} mt-1.5`} value={form.supportUrl} onChange={(event) => setField("supportUrl", event.target.value)} placeholder="https://..." />
                   </label>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/[0.07] bg-black/15 px-3 py-2.5">
+                  <div>
+                    <p className="text-[10px] font-bold text-white/65">Servidor detectado</p>
+                    <p className="mt-0.5 text-[10px] text-white/35">{form.discordGuildName || "Salve um convite válido para identificar o servidor."}</p>
+                  </div>
+                  {form.discordInviteUrl ? <a href={form.discordInviteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-[#5865f2]/25 px-2.5 py-1.5 text-[10px] font-bold text-[#aeb4ff]">Testar convite <ExternalLink className="h-3 w-3" /></a> : null}
                 </div>
               </div>
             </div>

@@ -107,16 +107,18 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
 
             <NotificationBell />
 
-            <a
-              href={branding.discordInviteUrl || state.config.discordLink || "https://discord.gg/zxmax"}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="zx-icon-action hidden sm:flex border-[#5865F2]/25"
-              title="Comunidade"
-              aria-label="Abrir comunidade no Discord"
-            >
-              <DiscordIcon className="h-4 w-4" />
-            </a>
+            {branding.discordInviteUrl || state.config.discordLink ? (
+              <a
+                href={branding.discordInviteUrl || state.config.discordLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="zx-icon-action hidden sm:flex border-[#5865F2]/25"
+                title="Comunidade"
+                aria-label="Abrir comunidade no Discord"
+              >
+                <DiscordIcon className="h-4 w-4" />
+              </a>
+            ) : null}
 
             {isAdmin ? (
               <button onClick={() => navigate("/admin")} className="zx-icon-action flex" aria-label="Abrir painel administrativo" title="Admin">

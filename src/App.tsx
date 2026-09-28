@@ -56,7 +56,7 @@ const App = () => (
                     <Route path="/reembolsos" element={<MarketplaceInfo kind="reembolsos" />} />
                     <Route path="/entrega-automatica" element={<MarketplaceInfo kind="entrega-automatica" />} />
                     <Route path="/vendedores-verificados" element={<MarketplaceInfo kind="vendedores-verificados" />} />
-                    <Route path="/central-de-ajuda" element={<MarketplaceInfo kind="central-ajuda" />} />
+                    <Route path="/central-de-ajuda" element={<Index view="support" />} />
 
                     <Route path="/meus-produtos" element={<Index view="inventory" />} />
                     <Route path="/minhas-compras" element={<Index view="purchases" />} />

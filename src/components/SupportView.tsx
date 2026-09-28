@@ -16,6 +16,9 @@ import {
   ShoppingBag,
   Users,
   X,
+  Search,
+  MailCheck,
+  BadgeCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useStore } from "@/store/StoreContext";
@@ -61,8 +64,10 @@ export default function SupportView() {
   const [showNewTicket, setShowNewTicket] = useState(false);
   const [sending, setSending] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [faqQuery, setFaqQuery] = useState("");
+  const [ticketFilter, setTicketFilter] = useState<"all" | "open" | "closed">("all");
 
-  const discordInvite = branding.discordInviteUrl || state.config.discordLink || "https://discord.gg/zxmax";
+  const discordInvite = branding.discordInviteUrl || state.config.discordLink || "";
   const externalSupport = branding.supportUrl || "";
 
   const myTickets = useMemo(
@@ -77,6 +82,12 @@ export default function SupportView() {
   );
   const active = myTickets.find((ticket) => ticket.id === selectedTicket);
   const openCount = myTickets.filter((ticket) => ticket.status === "open").length;
+  const filteredTickets = myTickets.filter((ticket) => ticketFilter === "all" || (ticketFilter === "open" ? ticket.status === "open" : ticket.status !== "open"));
+  const visibleFaq = FAQ.filter((item) => {
+    const query = faqQuery.trim().toLocaleLowerCase("pt-BR");
+    if (!query) return true;
+    return `${item.title} ${item.body}`.toLocaleLowerCase("pt-BR").includes(query);
+  });
 
   useEffect(() => {
     const raw = searchParams.get("ticket");
@@ -250,12 +261,45 @@ export default function SupportView() {
           <p className="mt-1 text-[10px] leading-4 text-white/34">Anúncios, vendas, entrega e acesso ao Discord.</p>
         </Link>
 
-        <a href={discordInvite} target="_blank" rel="noreferrer" className="rounded-2xl border border-[#5865f2]/20 bg-[#5865f2]/[0.055] p-4 text-left transition hover:border-[#5865f2]/40 hover:bg-[#5865f2]/10">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#5865f2]/15 text-[#aeb4ff]"><Users className="h-4 w-4" /></span>
-          <p className="mt-3 flex items-center gap-1.5 text-sm font-black text-white">Servidor do Discord <ExternalLink className="h-3 w-3 text-white/30" /></p>
-          <p className="mt-1 text-[10px] leading-4 text-white/34">Entre na comunidade oficial configurada pela administração.</p>
-        </a>
+        {discordInvite ? (
+          <a href={discordInvite} target="_blank" rel="noreferrer" className="rounded-2xl border border-[#5865f2]/20 bg-[#5865f2]/[0.055] p-4 text-left transition hover:border-[#5865f2]/40 hover:bg-[#5865f2]/10">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#5865f2]/15 text-[#aeb4ff]"><Users className="h-4 w-4" /></span>
+            <p className="mt-3 flex items-center gap-1.5 text-sm font-black text-white">{branding.discordGuildName || "Servidor do Discord"} <ExternalLink className="h-3 w-3 text-white/30" /></p>
+            <p className="mt-1 text-[10px] leading-4 text-white/34">Entre na comunidade oficial configurada pela administração.</p>
+          </a>
+        ) : (
+          <div className="rounded-2xl border border-amber-400/12 bg-amber-400/[0.035] p-4 text-left">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-amber-400/10 text-amber-200"><Users className="h-4 w-4" /></span>
+            <p className="mt-3 text-sm font-black text-white">Servidor do Discord</p>
+            <p className="mt-1 text-[10px] leading-4 text-amber-100/45">O convite oficial ainda não foi configurado.</p>
+          </div>
+        )}
       </div>
+
+      <section className="mt-4 rounded-2xl border border-white/[0.08] bg-[#111114] p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[var(--zx-accent)]">Para anunciar</p>
+            <h2 className="mt-1 text-base font-black text-white">E-mail confirmado + servidor oficial do Discord</h2>
+            <p className="mt-1 max-w-2xl text-[11px] leading-5 text-white/35">Não existe exigência de telefone para publicar anúncio. CPF, RG e selfie ficam separados e são usados somente para carteira e saque.</p>
+          </div>
+          <Link to={state.currentUser ? "/meus-produtos?new=1" : "/loja?login=1"} className="rounded-lg bg-[var(--zx-accent)] px-4 py-2.5 text-[11px] font-black text-white">
+            {state.currentUser ? "Concluir requisitos" : "Entrar na conta"}
+          </Link>
+        </div>
+        {state.currentUser ? (
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <div className={`flex items-center justify-between rounded-xl border px-3.5 py-3 ${state.currentUser.emailConfirmed ? "border-emerald-400/15 bg-emerald-400/[0.045]" : "border-amber-400/15 bg-amber-400/[0.045]"}`}>
+              <span className="flex items-center gap-2 text-xs font-semibold text-white/65"><MailCheck className="h-4 w-4" /> E-mail</span>
+              <span className={`text-[10px] font-black ${state.currentUser.emailConfirmed ? "text-emerald-300" : "text-amber-200"}`}>{state.currentUser.emailConfirmed ? "CONFIRMADO" : "PENDENTE"}</span>
+            </div>
+            <div className={`flex items-center justify-between rounded-xl border px-3.5 py-3 ${state.currentUser.discordMemberVerified ? "border-emerald-400/15 bg-emerald-400/[0.045]" : "border-[#5865f2]/15 bg-[#5865f2]/[0.045]"}`}>
+              <span className="flex items-center gap-2 text-xs font-semibold text-white/65"><BadgeCheck className="h-4 w-4" /> Discord</span>
+              <span className={`text-[10px] font-black ${state.currentUser.discordMemberVerified ? "text-emerald-300" : "text-[#aeb4ff]"}`}>{state.currentUser.discordMemberVerified ? "VERIFICADO" : "NECESSÁRIO"}</span>
+            </div>
+          </div>
+        ) : null}
+      </section>
 
       {externalSupport ? (
         <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3">
@@ -309,17 +353,24 @@ export default function SupportView() {
 
       <div className="mt-6 grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
         <section>
-          <div className="mb-3 flex items-end justify-between gap-3">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="text-sm font-black text-white">Meus atendimentos</h2>
               <p className="mt-1 text-[10px] text-white/30">Histórico salvo da sua conta.</p>
             </div>
-            {!showNewTicket ? <button type="button" onClick={() => setShowNewTicket(true)} className="text-[11px] font-bold text-[var(--zx-accent)]">+ Novo</button> : null}
+            <div className="flex items-center gap-1">
+              {(["all", "open", "closed"] as const).map((filter) => (
+                <button key={filter} type="button" onClick={() => setTicketFilter(filter)} className={`rounded-lg px-2.5 py-1.5 text-[9px] font-bold ${ticketFilter === filter ? "bg-white/[0.08] text-white" : "text-white/30 hover:text-white"}`}>
+                  {filter === "all" ? "Todos" : filter === "open" ? "Abertos" : "Finalizados"}
+                </button>
+              ))}
+              {!showNewTicket ? <button type="button" onClick={() => setShowNewTicket(true)} className="ml-1 text-[11px] font-bold text-[var(--zx-accent)]">+ Novo</button> : null}
+            </div>
           </div>
 
-          {myTickets.length ? (
+          {filteredTickets.length ? (
             <div className="space-y-2">
-              {myTickets.map((ticket) => {
+              {filteredTickets.map((ticket) => {
                 const last = ticket.messages.at(-1);
                 return (
                   <button key={ticket.id} type="button" onClick={() => setSelectedTicket(ticket.id)} className="flex w-full items-center gap-3 rounded-xl border border-white/[0.07] bg-[#111114] p-4 text-left transition hover:border-white/[0.14] hover:bg-white/[0.025]">
@@ -351,9 +402,14 @@ export default function SupportView() {
           <div className="mb-3">
             <h2 className="text-sm font-black text-white">Dúvidas rápidas</h2>
             <p className="mt-1 text-[10px] text-white/30">Respostas sobre os fluxos principais.</p>
+            <label className="mt-3 flex h-10 items-center rounded-xl border border-white/[0.08] bg-[#0d0d10] px-3 focus-within:border-[var(--zx-accent)]">
+              <Search className="h-3.5 w-3.5 text-white/25" />
+              <input value={faqQuery} onChange={(event) => { setFaqQuery(event.target.value); setOpenFaq(null); }} placeholder="Buscar ajuda..." className="ml-2 min-w-0 flex-1 bg-transparent text-xs text-white outline-none placeholder:text-white/25" />
+            </label>
           </div>
           <div className="overflow-hidden rounded-2xl border border-white/[0.07] bg-[#111114]">
-            {FAQ.map((item, index) => {
+            {visibleFaq.length ? visibleFaq.map((item) => {
+              const index = FAQ.findIndex((candidate) => candidate.title === item.title);
               const open = openFaq === index;
               return (
                 <div key={item.title} className="border-b border-white/[0.06] last:border-b-0">
@@ -364,7 +420,12 @@ export default function SupportView() {
                   {open ? <p className="px-4 pb-4 text-[10px] leading-5 text-white/38">{item.body}</p> : null}
                 </div>
               );
-            })}
+            }) : (
+              <div className="px-5 py-8 text-center">
+                <p className="text-xs font-bold text-white/45">Nada encontrado</p>
+                <p className="mt-1 text-[10px] text-white/25">Tente outra busca ou abra um atendimento.</p>
+              </div>
+            )}
           </div>
 
           <div className="mt-3 rounded-xl border border-amber-400/10 bg-amber-400/[0.04] p-4">

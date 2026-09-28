@@ -15,6 +15,7 @@ export interface SiteBranding {
   accentColor: string;
   supportUrl: string;
   discordInviteUrl: string;
+  discordGuildName: string;
 }
 
 const defaults: SiteBranding = {
@@ -31,7 +32,8 @@ const defaults: SiteBranding = {
   promoBanner3Url: "",
   accentColor: "#168cff",
   supportUrl: "",
-  discordInviteUrl: "https://discord.gg/zxmax",
+  discordInviteUrl: "",
+  discordGuildName: "",
 };
 
 type Ctx = {
