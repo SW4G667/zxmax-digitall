@@ -5,7 +5,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   status,
   headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
 });
-const API = String(Deno.env.get("MAGNUSPAY_BASE_URL") || "https://magnuspay.onrender.com/api").replace(/\/$/, "");
+const API = "https://api.magnuspay.com.br";
 const normalizeMoney = (value: unknown) => Math.round(Number(value) * 100);
 
 function hex(bytes: ArrayBuffer) {
@@ -32,16 +32,13 @@ async function hmac(secret: string, raw: string) {
   );
   return await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(raw));
 }
-async function verifyOptionalSignature(req: Request, raw: string) {
-  const secret = String(Deno.env.get("MAGNUSPAY_WEBHOOK_SECRET") || "").trim();
-  if (!secret) return true;
+async function verifySignature(req: Request, raw: string, apiKey: string) {
+  // A documentação atual define X-Magnus-Signature e HMAC-SHA256. Quando um
+  // secret próprio de webhook não existe, a API Key vinculada é o fallback.
+  const secret = String(Deno.env.get("MAGNUSPAY_WEBHOOK_SECRET") || apiKey || "").trim();
+  if (!secret) return false;
 
-  const receivedRaw = String(
-    req.headers.get("X-Magnus-Signature")
-    || req.headers.get("X-Webhook-Signature")
-    || req.headers.get("X-Signature")
-    || "",
-  ).trim();
+  const receivedRaw = String(req.headers.get("X-Magnus-Signature") || "").trim();
   if (!receivedRaw) return false;
 
   const received = receivedRaw.replace(/^(sha256=|v1=)/i, "").trim();
@@ -84,7 +81,7 @@ serve(async (req) => {
     const apiKey = String(Deno.env.get("MAGNUSPAY_API_KEY") || "").trim();
     if (!apiKey) return json({ error: "Webhook not configured" }, 503);
 
-    const signatureOk = await verifyOptionalSignature(req, raw);
+    const signatureOk = await verifySignature(req, raw, apiKey);
     if (!signatureOk) {
       await admin.from("webhook_logs").insert({
         source: "magnuspay", event_type: "AUTH", status: "rejected",
