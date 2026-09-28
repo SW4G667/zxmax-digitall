@@ -511,7 +511,7 @@ export default function AdminView() {
               <RefreshCw className="w-3 h-3" /> Atualizar
             </button>
           </div>
-          <p className="text-sm text-muted-foreground mb-6">Confira se a foto mostra o rosto, o documento e o papel escrito ZXMAX, e se os dados batem.</p>
+          <p className="text-sm text-muted-foreground mb-6">Revise CPF, dados do perfil, RG frente/verso e selfie. O telefone confirmado por SMS é um sinal separado e não substitui a análise documental.</p>
           {kycLoading ? (
             <p className="text-center text-xs text-muted-foreground py-10">Carregando...</p>
           ) : kyc.length === 0 ? (
@@ -532,7 +532,7 @@ export default function AdminView() {
                   <div className="grid sm:grid-cols-2 gap-1 text-[11px] text-muted-foreground mb-3">
                     <p>CPF: <span className="text-foreground">{k.cpf || "—"}</span></p>
                     <p>Nascimento: <span className="text-foreground">{k.birth_date || "—"}</span></p>
-                    <p>Telefone: <span className="text-foreground">{k.phone || "—"}</span></p>
+                    <p>Telefone: <span className="text-foreground">{k.phone || "—"}</span> {k.phone_verified_at ? <span className="ml-1 text-success font-bold">SMS confirmado</span> : <span className="ml-1 text-amber-400">não confirmado</span>}</p>
                     <p>Cidade/UF: <span className="text-foreground">{[k.city, k.state].filter(Boolean).join("/") || "—"}</span></p>
                   </div>
                   {k.verification_status === "pending" && (
@@ -544,12 +544,22 @@ export default function AdminView() {
                     />
                   )}
                   <div className="flex gap-2 flex-wrap">
-                    {k.verification_selfie_path && (
-                      <button onClick={() => openDocument(k.verification_selfie_path)} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1">
-                        <ExternalLink className="w-3 h-3" /> Ver foto
+                    {k.verification_rg_front_path && (
+                      <button onClick={() => openDocument(k.verification_rg_front_path)} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1">
+                        <ExternalLink className="w-3 h-3" /> RG frente
                       </button>
                     )}
-                    <button onClick={() => reviewKyc(k.user_id, true)} className="px-3 py-2 bg-success text-white text-xs font-bold rounded-lg">Aprovar</button>
+                    {k.verification_rg_back_path && (
+                      <button onClick={() => openDocument(k.verification_rg_back_path)} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1">
+                        <ExternalLink className="w-3 h-3" /> RG verso
+                      </button>
+                    )}
+                    {k.verification_selfie_path && (
+                      <button onClick={() => openDocument(k.verification_selfie_path)} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1">
+                        <ExternalLink className="w-3 h-3" /> Selfie
+                      </button>
+                    )}
+                    <button onClick={() => reviewKyc(k.user_id, true)} disabled={!k.verification_rg_front_path || !k.verification_rg_back_path || !k.verification_selfie_path} className="px-3 py-2 bg-success text-white text-xs font-bold rounded-lg disabled:opacity-40">Aprovar documentos</button>
                     <button onClick={() => reviewKyc(k.user_id, false)} className="px-3 py-2 bg-destructive/10 text-destructive text-xs font-bold rounded-lg">Recusar</button>
                   </div>
                 </div>
