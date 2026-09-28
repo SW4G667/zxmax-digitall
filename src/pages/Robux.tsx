@@ -24,7 +24,6 @@ interface RobuxOffer {
   sellerName: string;
   sellerPublicId: string;
   verified: boolean;
-  phoneVerified: boolean;
   documentVerified: boolean;
   sellerAvatar?: string;
   packagePrice: number;
@@ -71,7 +70,6 @@ export default function RobuxPage() {
           sellerName: identity?.name || product.seller || "",
           sellerPublicId,
           verified: Boolean(identity?.isVerified),
-          phoneVerified: Boolean(identity?.phoneVerified),
           documentVerified: Boolean(identity?.documentVerified),
           sellerAvatar: identity?.avatar,
           packagePrice: Number(product.price) || 0,
@@ -234,7 +232,6 @@ export default function RobuxPage() {
                             {offer.documentVerified ? <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[var(--zx-accent)]" aria-label="Documento verificado" /> : null}
                           </p>
                           <div className="mt-0.5 flex flex-wrap gap-1">
-                            {offer.phoneVerified && <span className="rounded bg-emerald-400/10 px-1.5 py-0.5 text-[8px] font-bold text-emerald-300">SMS</span>}
                             {offer.documentVerified && <span className="rounded bg-[#168cff]/10 px-1.5 py-0.5 text-[8px] font-bold text-[#70bdff]">Documento</span>}
                           </div>
                         </div>
