@@ -39,21 +39,25 @@ BEGIN
     RAISE EXCEPTION 'Confirme seu e-mail antes de anunciar.' USING ERRCODE = '42501';
   END IF;
 
-  SELECT p.discord_member_verified_at, COALESCE(p.discord_guild_id,'')
-    INTO verified_at, verified_guild_id
-  FROM public.profiles p
-  WHERE p.user_id = auth.uid();
-
   SELECT COALESCE(value->>'discordGuildId','')
     INTO configured_guild_id
   FROM public.app_settings
   WHERE key = 'site_branding';
 
+  IF configured_guild_id = '' THEN
+    RAISE EXCEPTION 'O servidor oficial do Discord ainda não foi configurado pela administração.' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT p.discord_member_verified_at, COALESCE(p.discord_guild_id,'')
+    INTO verified_at, verified_guild_id
+  FROM public.profiles p
+  WHERE p.user_id = auth.uid();
+
   IF verified_at IS NULL THEN
     RAISE EXCEPTION 'Entre no servidor do Discord e verifique sua conta antes de anunciar.' USING ERRCODE = '42501';
   END IF;
 
-  IF configured_guild_id <> '' AND verified_guild_id IS DISTINCT FROM configured_guild_id THEN
+  IF verified_guild_id IS DISTINCT FROM configured_guild_id THEN
     RAISE EXCEPTION 'O servidor oficial do Discord mudou. Verifique sua participação novamente antes de anunciar.' USING ERRCODE = '42501';
   END IF;
 
@@ -192,7 +196,7 @@ BEGIN
       'support',
       'Nova resposta do suporte',
       left(clean_text,180),
-      '/suporte?ticket=' || ticket.id,
+      '/central-de-ajuda?ticket=' || ticket.id,
       'support',
       NULL,
       jsonb_build_object('ticketId',ticket.id)
