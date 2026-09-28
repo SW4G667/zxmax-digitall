@@ -25,8 +25,9 @@ const DEFAULTS = {
   promoBanner3Url: "",
   accentColor: "#168cff",
   supportUrl: "",
-  discordInviteUrl: "https://discord.gg/zxmax",
+  discordInviteUrl: "",
   discordGuildId: "",
+  discordGuildName: "",
 };
 
 const UPLOAD_SLOTS: Record<string, { field: keyof typeof DEFAULTS; maxBytes: number }> = {
@@ -76,18 +77,23 @@ const safeDiscordInvite = (value: unknown) => {
   return "";
 };
 
-async function resolveDiscordGuildId(inviteUrl: string) {
+async function resolveDiscordGuild(inviteUrl: string) {
   const code = inviteUrl.split("/").filter(Boolean).at(-1);
-  if (!code) return "";
+  if (!code) return null;
   try {
     const response = await fetch(`https://discord.com/api/v10/invites/${encodeURIComponent(code)}?with_counts=false&with_expiration=false`, {
       headers: { Accept: "application/json" },
     });
-    if (!response.ok) return "";
+    if (!response.ok) return null;
     const payload = await response.json().catch(() => ({}));
-    return payload?.guild?.id ? String(payload.guild.id) : "";
+    const id = payload?.guild?.id ? String(payload.guild.id) : "";
+    if (!id) return null;
+    return {
+      id,
+      name: safeText(payload?.guild?.name, 100) || "Servidor do Discord",
+    };
   } catch {
-    return "";
+    return null;
   }
 }
 
@@ -107,7 +113,7 @@ serve(async (req) => {
   const { data: row } = await admin.from("app_settings").select("value").eq("key", "site_branding").maybeSingle();
   const current = { ...DEFAULTS, ...(row?.value || {}) };
   if (!current.discordInviteUrl) {
-    current.discordInviteUrl = safeDiscordInvite(current.supportUrl) || DEFAULTS.discordInviteUrl;
+    current.discordInviteUrl = safeDiscordInvite(current.supportUrl);
   }
 
   if (req.method === "GET") {
@@ -187,11 +193,14 @@ serve(async (req) => {
       }
 
       let discordGuildId = String(current.discordGuildId || "");
+      let discordGuildName = String(current.discordGuildName || "");
       if (!discordGuildId || discordInviteUrl !== safeDiscordInvite(current.discordInviteUrl)) {
-        discordGuildId = await resolveDiscordGuildId(discordInviteUrl);
-        if (!discordGuildId) {
+        const guild = await resolveDiscordGuild(discordInviteUrl);
+        if (!guild?.id) {
           return json({ error: "Não consegui validar esse convite no Discord. Gere um convite ativo e tente novamente." }, 400);
         }
+        discordGuildId = guild.id;
+        discordGuildName = guild.name;
       }
 
       const next = {
@@ -210,6 +219,7 @@ serve(async (req) => {
         supportUrl: values.supportUrl === undefined ? current.supportUrl : safeUrl(values.supportUrl),
         discordInviteUrl,
         discordGuildId,
+        discordGuildName,
       };
 
       const { error } = await admin.from("app_settings").upsert({ key: "site_branding", value: next }, { onConflict: "key" });
