@@ -21,16 +21,11 @@ export default function BrandMark({ compact = false, className = "" }: Props) {
   }
 
   return (
-    <span className={`inline-flex items-center gap-2 ${className}`} aria-label={name}>
-      <span
-        aria-hidden
-        className={`${compact ? "h-7 w-7 text-[12px]" : "h-8 w-8 text-sm"} grid shrink-0 place-items-center rounded-[9px] border border-white/[0.11] bg-white/[0.055] font-black tracking-[-0.08em] text-white`}
-      >
-        Z
-      </span>
-      <span className={`${compact ? "text-[15px]" : "text-lg"} max-w-[120px] truncate font-extrabold tracking-[-0.045em] text-white`}>
-        {name}
-      </span>
+    <span
+      className={`${compact ? "text-[15px]" : "text-lg"} inline-flex max-w-[150px] truncate font-extrabold tracking-[-0.045em] text-white ${className}`}
+      aria-label={name}
+    >
+      {name}
     </span>
   );
 }
