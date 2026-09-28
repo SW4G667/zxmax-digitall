@@ -916,3 +916,51 @@ BEGIN
     'SELECT public.process_auto_release_orders();'
   );
 END $$;
+
+
+-- 8) Persisted trusted role badge on order chat messages ----------------------
+ALTER TABLE public.order_messages
+  ADD COLUMN IF NOT EXISTS sender_badge_name text,
+  ADD COLUMN IF NOT EXISTS sender_badge_icon_url text;
+
+CREATE OR REPLACE FUNCTION public.set_order_message_sender_role()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  p public.purchases%rowtype;
+  badge record;
+BEGIN
+  SELECT * INTO p FROM public.purchases WHERE id=NEW.order_id;
+  IF p IS NULL THEN RAISE EXCEPTION 'Pedido não encontrado'; END IF;
+
+  NEW.sender_badge_name := NULL;
+  NEW.sender_badge_icon_url := NULL;
+
+  IF auth.uid() IS NULL THEN
+    NEW.sender_role := 'system';
+  ELSIF public.has_role(auth.uid(),'admin'::public.app_role) THEN
+    NEW.sender_role := 'admin';
+    SELECT t.name,t.icon_url
+      INTO badge
+    FROM public.user_tag_assignments a
+    JOIN public.user_tags t ON t.id=a.tag_id
+    WHERE a.user_id=auth.uid()
+    ORDER BY (t.icon_url IS NULL), lower(t.name)
+    LIMIT 1;
+    NEW.sender_badge_name := COALESCE(badge.name,'Administração ZXMAX');
+    NEW.sender_badge_icon_url := badge.icon_url;
+  ELSIF auth.uid()=p.seller_id THEN
+    NEW.sender_role := 'seller';
+  ELSIF auth.uid()=p.buyer_id THEN
+    NEW.sender_role := 'buyer';
+  ELSE
+    RAISE EXCEPTION 'Você não participa deste pedido' USING ERRCODE='42501';
+  END IF;
+
+  NEW.sender_id := COALESCE(auth.uid(),NEW.sender_id);
+  RETURN NEW;
+END;
+$$;
