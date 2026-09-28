@@ -90,6 +90,7 @@ serve(async (req) => {
 
     const secretStatus = {
       MAGNUSPAY_API_KEY: magnusReady,
+      MAGNUSPAY_WEBHOOK_SECRET: Boolean(Deno.env.get("MAGNUSPAY_WEBHOOK_SECRET")),
       ZENNITH_API_KEY: zennithReady,
       VEXOPAY_CLIENT_ID: Boolean(Deno.env.get("VEXOPAY_CLIENT_ID")),
       VEXOPAY_CLIENT_SECRET: Boolean(Deno.env.get("VEXOPAY_CLIENT_SECRET")),
@@ -137,8 +138,38 @@ serve(async (req) => {
 
     if (action === "test") {
       if (provider === "magnuspay") {
-        if (!magnusReady) return json({ ok: false, message: "Configure MAGNUSPAY_API_KEY nos Secrets do Supabase." });
-        return json({ ok: true, message: "MAGNUSPAY_API_KEY detectada no servidor." });
+        const apiKey = String(Deno.env.get("MAGNUSPAY_API_KEY") || "").trim();
+        if (!apiKey) return json({ ok: false, message: "Configure MAGNUSPAY_API_KEY nos Secrets do Supabase." });
+
+        const response = await fetch(MAGNUSPAY_API + "/transactions/fees", {
+          method: "GET",
+          headers: { "X-API-Key": apiKey, Accept: "application/json" },
+        });
+        const raw = await response.text();
+        let parsed: any = {};
+        try { parsed = raw ? JSON.parse(raw) : {}; } catch { parsed = {}; }
+
+        if (!response.ok || parsed?.success === false) {
+          return json({
+            ok: false,
+            message: String(parsed?.message || ("A MagnusPay respondeu HTTP " + response.status + ".")).slice(0, 220),
+            status: response.status,
+          });
+        }
+
+        const fees = parsed?.data || {};
+        const minDeposit = Number(fees.minDeposit || 0);
+        return json({
+          ok: true,
+          message: "MagnusPay conectada. Rota: " + String(fees.route || fees.gateway || "ativa") + ". Depósito mínimo: R$ " + minDeposit.toFixed(2).replace(".", ",") + ".",
+          provider: {
+            route: fees.route || null,
+            gateway: fees.gateway || null,
+            minDeposit: fees.minDeposit ?? null,
+            maxDeposit: fees.maxDeposit ?? null,
+            feeToCustomerForced: fees.feeToCustomerForced ?? null,
+          },
+        });
       }
       if (provider === "zennithpay" && !zennithReady) return json({ ok: false, message: "ZENNITH_API_KEY não configurada." });
       if (provider === "vexopay" && !vexoReady) return json({ ok: false, message: "Credenciais VexoPay não configuradas." });
