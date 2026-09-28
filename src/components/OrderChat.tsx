@@ -13,6 +13,8 @@ interface OrderMessage {
   body: string | null;
   image_path: string | null;
   sender_role?: "buyer" | "seller" | "admin" | "system" | "participant";
+  sender_badge_name?: string | null;
+  sender_badge_icon_url?: string | null;
   created_at: string;
   imageUrl?: string;
 }
@@ -377,7 +379,10 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
                 <div className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${isAdminMessage ? "border border-amber-400/25 bg-amber-400/[0.07] text-foreground" : isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-secondary text-foreground rounded-bl-md"}`}>
                   {isAdminMessage && (
                     <div className="mb-1.5 inline-flex items-center gap-1 rounded-full border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-300">
-                      <Crown className="h-3 w-3" /> Administração ZXMAX
+                      {m.sender_badge_icon_url
+                        ? <img src={m.sender_badge_icon_url} alt="" className="h-3.5 w-3.5 rounded object-cover" />
+                        : <Crown className="h-3 w-3" />}
+                      {m.sender_badge_name || "Administração ZXMAX"}
                     </div>
                   )}
                   {m.imageUrl && (
