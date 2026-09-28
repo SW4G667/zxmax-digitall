@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useStore } from "@/store/StoreContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Check, Pause, Play, Search, Trash2, Plus, RefreshCw, Tag, ShoppingBag, Headset, Megaphone } from "lucide-react";
+import { Check, Pause, Play, Search, Trash2, Plus, RefreshCw, Tag, ShoppingBag, Headset, Megaphone, Upload, Loader2 } from "lucide-react";
 import { listingStatus } from "@/lib/catalog";
 
 export function AdminCategoriesPanel() {
@@ -179,6 +179,30 @@ export function AdminTagsPanel() {
   const [publicId, setPublicId] = useState("");
   const [tagId, setTagId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [iconUploading, setIconUploading] = useState(false);
+
+  const uploadIcon = async (file?: File) => {
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) return toast.error("Use PNG, JPG ou WebP.");
+    if (file.size > 1024 * 1024) return toast.error("O ícone pode ter no máximo 1 MB.");
+    setIconUploading(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("Falha ao ler imagem."));
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.readAsDataURL(file);
+      });
+      const { data, error } = await supabase.functions.invoke("tag-icon-upload", { body: { dataUrl } });
+      if (error || data?.error || !data?.url) throw new Error(data?.error || "Falha ao enviar ícone.");
+      setIconUrl(String(data.url));
+      toast.success("Ícone enviado. Salve a tag para aplicar.");
+    } catch (error: any) {
+      toast.error(error?.message || "Não foi possível enviar o ícone.");
+    } finally {
+      setIconUploading(false);
+    }
+  };
 
   const create = async () => {
     setBusy(true);
@@ -199,13 +223,18 @@ export function AdminTagsPanel() {
     <div className="space-y-6">
       <div className="glass-card p-6 space-y-3">
         <h3 className="font-bold flex items-center gap-2"><Tag className="w-4 h-4" /> Nova tag</h3>
-        <div className="grid gap-2 sm:grid-cols-[1fr_12rem_auto_auto]">
+        <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto_auto]">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome da tag" className="p-3 rounded-xl bg-muted text-sm" />
-          <input value={iconUrl} onChange={(e) => setIconUrl(e.target.value)} placeholder="URL HTTPS do ícone" className="p-3 rounded-xl bg-muted text-sm" />
+          <label className="inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border border-border bg-muted px-3 text-xs font-bold">
+            {iconUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : iconUrl ? <img src={iconUrl} alt="" className="h-6 w-6 rounded object-cover" /> : <Upload className="h-4 w-4" />}
+            {iconUploading ? "Enviando..." : iconUrl ? "Trocar ícone" : "Enviar ícone"}
+            <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={iconUploading || busy} onChange={(event) => void uploadIcon(event.target.files?.[0])} />
+          </label>
           <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="w-12 h-12 rounded-xl" />
-          <button onClick={() => void create()} disabled={busy || !name.trim()} className="btn-gradient px-4 rounded-xl disabled:opacity-50"><Plus className="w-4 h-4" /></button>
+          <button onClick={() => void create()} disabled={busy || iconUploading || !name.trim()} className="btn-gradient px-4 rounded-xl disabled:opacity-50"><Plus className="w-4 h-4" /></button>
         </div>
-        <p className="text-[10px] text-muted-foreground">O ícone é opcional. Use uma imagem HTTPS pequena, por exemplo uma coroa para uma tag administrativa.</p>
+        {iconUrl && <p className="break-all text-[10px] text-muted-foreground">Ícone pronto: {iconUrl}</p>}
+        <p className="text-[10px] text-muted-foreground">O ícone é opcional. Você pode enviar uma imagem pequena (por exemplo uma coroa); ela acompanha a tag e aparece no chat quando a administração participa.</p>
       </div>
       <div className="flex flex-wrap gap-2">
         {(state.userTags || []).map((t) => (
