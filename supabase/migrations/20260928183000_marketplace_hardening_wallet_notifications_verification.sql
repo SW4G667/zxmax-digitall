@@ -24,7 +24,7 @@ RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $
+AS $$
 BEGIN
   UPDATE public.profiles_public
   SET
@@ -34,7 +34,7 @@ BEGIN
   WHERE user_id = NEW.user_id;
   RETURN NEW;
 END;
-$;
+$$;
 
 -- Trigger name starts with zz so the existing profile-projection INSERT triggers
 -- run first when a profile is initially created.
@@ -313,7 +313,7 @@ LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public
-AS $
+AS $$
 DECLARE
   sales numeric := 0;
   ledger numeric := 0;
