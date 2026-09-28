@@ -10,28 +10,20 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
 });
 
-const API = "https://magnuspay.onrender.com/api";
+const MAGNUSPAY_API = "https://api.magnuspay.com.br";
+const PIX_TTL_MS = 15 * 60 * 1000;
 
-const unwrap = (body: any) => body?.data && typeof body.data === "object" ? body.data : body || {};
-const first = (objects: any[], keys: string[]) => {
-  for (const object of objects) {
-    for (const key of keys) {
-      const value = object?.[key];
-      if (value !== undefined && value !== null && value !== "") return value;
-    }
-  }
-  return null;
-};
 const rateInfo = (response: Response) => ({
-  limit: response.headers.get("X-RateLimit-Limit"),
-  remaining: response.headers.get("X-RateLimit-Remaining"),
+  limit: response.headers.get("RateLimit-Limit") || response.headers.get("X-RateLimit-Limit"),
+  remaining: response.headers.get("RateLimit-Remaining") || response.headers.get("X-RateLimit-Remaining"),
+  reset: response.headers.get("RateLimit-Reset"),
   retryAfter: response.headers.get("Retry-After"),
 });
 
 async function writeMagnusLog(client: any, row: Record<string, unknown>) {
   try {
-    const result = await client.from("webhook_logs").insert(row);
-    if (result.error) console.warn("magnuspay log insert failed", result.error.message);
+    const { error } = await client.from("webhook_logs").insert(row);
+    if (error) console.warn("magnuspay log insert failed", error.message);
   } catch (error) {
     console.warn("magnuspay log insert failed", error instanceof Error ? error.message : "unknown");
   }
@@ -60,8 +52,12 @@ serve(async (req) => {
       .eq("id", purchaseId)
       .maybeSingle();
 
-    if (purchaseError || !purchase || purchase.buyer_id !== userData.user.id) return json({ error: "Pedido não encontrado." }, 404);
-    if (String(purchase.status) !== "pending") return json({ error: "Este pedido não está aguardando pagamento." }, 409);
+    if (purchaseError || !purchase || purchase.buyer_id !== userData.user.id) {
+      return json({ error: "Pedido não encontrado." }, 404);
+    }
+    if (String(purchase.status) !== "pending") {
+      return json({ error: "Este pedido não está aguardando pagamento." }, 409);
+    }
     if (purchase.payment_provider && purchase.payment_provider !== "magnuspay_pix") {
       return json({ error: "Forma de pagamento incompatível com PIX MagnusPay." }, 409);
     }
@@ -73,10 +69,11 @@ serve(async (req) => {
 
     if (stillValid) {
       return json({
-        id: purchase.provider_payment_id,
+        id: String(purchase.provider_payment_id),
+        transactionId: String(purchase.provider_payment_id),
         status: "PENDING",
         amount: Number(purchase.amount),
-        qrCodeText: purchase.pix_qr_code,
+        qrCodeText: String(purchase.pix_qr_code),
         qrCodeUrl: null,
         expiresAt: purchase.pix_expires_at,
         reused: true,
@@ -84,24 +81,36 @@ serve(async (req) => {
     }
 
     const apiKey = String(Deno.env.get("MAGNUSPAY_API_KEY") || "").trim();
-    if (!apiKey) return json({ error: "PIX MagnusPay não está configurado no servidor." }, 503);
+    if (!apiKey) return json({ error: "MAGNUSPAY_API_KEY não está configurada no servidor." }, 503);
 
     const amount = Math.round(Number(purchase.amount) * 100) / 100;
-    if (!Number.isFinite(amount) || amount < 0.01) return json({ error: "Valor do pedido inválido." }, 400);
+    if (!Number.isFinite(amount) || amount < 1) {
+      return json({ error: "A MagnusPay exige pagamento mínimo de R$ 1,00." }, 400);
+    }
 
-    // A documentação atual de criação expõe amount + description. Webhooks são
-    // configurados no painel MagnusPay e não são injetados no payload.
-    const response = await fetch(`${API}/transactions/create`, {
+    const payerName = typeof body.buyerName === "string" ? body.buyerName.trim().slice(0, 120) : "";
+    const payerDocument = typeof body.payerDocument === "string"
+      ? body.payerDocument.replace(/\D/g, "").slice(0, 14)
+      : "";
+
+    const providerPayload: Record<string, unknown> = {
+      amount,
+      description: `ZXMAX pedido #${purchase.id}`,
+      // Mantém o valor do checkout exato. A taxa da própria Magnus é descontada
+      // do recebedor, em vez de surgir como cobrança invisível para o cliente.
+      feeToCustomer: false,
+    };
+    if (payerName) providerPayload.payerName = payerName;
+    if (payerDocument.length === 11 || payerDocument.length === 14) providerPayload.payerDocument = payerDocument;
+
+    const response = await fetch(`${MAGNUSPAY_API}/transactions/create`, {
       method: "POST",
       headers: {
         "X-API-Key": apiKey,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({
-        amount,
-        description: `ZXMAX pedido #${purchase.id}`,
-      }),
+      body: JSON.stringify(providerPayload),
     });
 
     const raw = await response.text();
@@ -111,79 +120,122 @@ serve(async (req) => {
 
     if (response.status === 429) {
       await writeMagnusLog(admin, {
-        source: "magnuspay", event_type: "CREATE_PIX", status: "rate_limited",
-        order_id: purchase.id, payload: { limits }, error: "Rate limit da MagnusPay atingido",
+        source: "magnuspay",
+        event_type: "CREATE_PIX",
+        status: "rate_limited",
+        order_id: purchase.id,
+        payload: { endpoint: "/transactions/create", limits },
+        error: "Rate limit da MagnusPay atingido",
       });
-      return json({ error: "A MagnusPay atingiu o limite temporário de requisições. Tente novamente em instantes.", retryAfter: limits.retryAfter }, 429);
+      return json({
+        error: "A MagnusPay atingiu o limite temporário de requisições. Aguarde e tente novamente.",
+        code: "magnus_rate_limited",
+        retryAfter: limits.retryAfter || limits.reset,
+      }, 429);
     }
 
     if (!response.ok || parsed?.success === false) {
       const providerMessage = String(parsed?.message || `MagnusPay respondeu HTTP ${response.status}`).slice(0, 500);
       await writeMagnusLog(admin, {
-        source: "magnuspay", event_type: "CREATE_PIX", status: `error_${response.status}`,
+        source: "magnuspay",
+        event_type: "CREATE_PIX",
+        status: `error_${response.status}`,
         order_id: purchase.id,
-        payload: { code: parsed?.code || null, limits, endpoint: "/transactions/create", contentType: response.headers.get("content-type") },
+        payload: {
+          endpoint: "/transactions/create",
+          code: parsed?.code || null,
+          contentType: response.headers.get("content-type"),
+          limits,
+        },
         error: providerMessage,
       });
       return json({
-        error: String(parsed?.message || `A MagnusPay recusou a criação do PIX (HTTP ${response.status}).`).slice(0, 240),
+        error: providerMessage,
         code: parsed?.code || `magnus_http_${response.status}`,
       }, 502);
     }
 
-    const data = unwrap(parsed);
-    const pix = data?.pix && typeof data.pix === "object" ? data.pix : {};
-    const payment = data?.payment && typeof data.payment === "object" ? data.payment : {};
-    const nodes = [data, pix, payment];
+    const data = parsed?.data && typeof parsed.data === "object" ? parsed.data : {};
+    const transactionId = String(data.transactionId || data.id || "").trim();
+    const copyPaste = String(data.copyPaste || data.pixCode || data.qrCode || "").trim();
+    const qrCodeUrl = data.qrcodeUrl || data.qrCodeUrl || null;
+    const qrCodeBase64 = data.qrCodeBase64 || null;
+    const paymentLink = data.paymentLink || null;
 
-    const id = String(first(nodes, ["id", "transaction_id", "transactionId", "uuid"]) || "");
-    const qrCodeText = String(first(nodes, [
-      "pix_code", "pixCode", "qr_code", "qrCode", "copyPaste", "copy_paste", "copia_cola", "brcode", "emv",
-    ]) || "");
-    const qrCodeUrl = first(nodes, ["qr_code_url", "qrCodeUrl", "qr_url", "qrUrl", "image"]);
-    const rawExpires = first(nodes, ["expires_at", "expiresAt", "expiration", "pix_expires_at"]);
-
-    if (!id || !qrCodeText) {
+    if (!transactionId || !copyPaste) {
       await writeMagnusLog(admin, {
-        source: "magnuspay", event_type: "CREATE_PIX", status: "invalid_response",
+        source: "magnuspay",
+        event_type: "CREATE_PIX",
+        status: "invalid_response",
         order_id: purchase.id,
-        payload: { keys: Object.keys(data || {}).slice(0, 30), limits },
-        error: "Resposta da MagnusPay sem ID ou código PIX",
+        payload: {
+          endpoint: "/transactions/create",
+          keys: Object.keys(data).slice(0, 30),
+          success: parsed?.success,
+          limits,
+        },
+        error: "Resposta da MagnusPay sem transactionId ou copyPaste",
       });
-      return json({ error: "A MagnusPay respondeu sem os dados necessários do PIX." }, 502);
+      return json({
+        error: "A MagnusPay criou uma resposta incompleta para o PIX. Tente novamente.",
+        code: "magnus_invalid_response",
+      }, 502);
     }
 
-    let expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-    if (rawExpires) {
-      const date = new Date(String(rawExpires));
-      if (Number.isFinite(date.getTime())) expiresAt = date.toISOString();
-    }
+    // A documentação atual informa expiração automática em 15 minutos.
+    const expiresAt = new Date(Date.now() + PIX_TTL_MS).toISOString();
 
     const { error: saveError } = await admin.from("purchases").update({
       payment_provider: "magnuspay_pix",
-      provider_payment_id: id,
+      provider_payment_id: transactionId,
       payment_status: "pending",
-      pix_qr_code: qrCodeText,
+      pix_qr_code: copyPaste,
       pix_expires_at: expiresAt,
       updated_at: new Date().toISOString(),
     }).eq("id", purchase.id).eq("buyer_id", userData.user.id);
 
-    if (saveError) return json({ error: "PIX criado, mas não foi possível vincular ao pedido." }, 500);
+    if (saveError) {
+      await writeMagnusLog(admin, {
+        source: "magnuspay",
+        event_type: "CREATE_PIX",
+        status: "local_save_failed",
+        order_id: purchase.id,
+        charge_id: transactionId,
+        payload: { endpoint: "/transactions/create" },
+        error: saveError.message,
+      });
+      return json({ error: "PIX criado, mas não foi possível vinculá-lo ao pedido." }, 500);
+    }
 
     await writeMagnusLog(admin, {
-      source: "magnuspay", event_type: "CREATE_PIX", status: "created",
-      order_id: purchase.id, charge_id: id,
-      payload: { status: first(nodes, ["status"]) || "pending", limits }, error: null,
+      source: "magnuspay",
+      event_type: "CREATE_PIX",
+      status: "created",
+      order_id: purchase.id,
+      charge_id: transactionId,
+      payload: {
+        endpoint: "/transactions/create",
+        status: "PENDING",
+        externalId: data.externalId || null,
+        providerAmount: data.amount ?? null,
+        platformFee: data.platformFee ?? null,
+        netAmount: data.netAmount ?? null,
+        limits,
+      },
+      error: null,
     });
 
     return json({
-      id,
-      status: String(first(nodes, ["status"]) || "pending"),
-      amount,
-      qrCodeText,
+      id: transactionId,
+      transactionId,
+      status: "PENDING",
+      amount: Number(data.amount ?? amount),
+      qrCodeText: copyPaste,
       qrCodeUrl: qrCodeUrl ? String(qrCodeUrl) : null,
+      qrCodeBase64: qrCodeBase64 ? String(qrCodeBase64) : null,
+      paymentLink: paymentLink ? String(paymentLink) : null,
       expiresAt,
-    });
+    }, 201);
   } catch (error) {
     console.error("create-magnuspay-pix", error instanceof Error ? error.message : error);
     return json({ error: "Erro inesperado ao gerar o PIX." }, 500);
