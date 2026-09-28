@@ -12,13 +12,13 @@ const BodySchema = z.object({
   orderId: z.number().int().positive(),
   action: z.enum([
     "confirm_delivery",        // vendedor confirma entrega -> delivered_pending_confirmation
-    "confirm_receipt",         // comprador confirma recebimento -> delivered (liberação imediata)
+    "confirm_receipt",         // comprador confirma recebimento -> delivered; saldo segue retenção
     "seller_refund",           // vendedor reembolsa comprador -> refunded
     "open_dispute",            // comprador abre disputa -> dispute
     "send_message",            // participantes enviam mensagem autorizada ao pedido
     "approve",                 // admin aprova -> delivered
     "revert",                  // admin reverte -> paid
-    "check_auto_release",      // verifica e processa auto-liberações de 3 dias
+    "check_auto_release",      // conclui pedidos vencidos e libera saldos cujo prazo acabou
   ]),
   reason: z.string().trim().optional(),
   message: z.string().trim().min(1).max(1000).optional(),
@@ -91,7 +91,7 @@ serve(async (req) => {
 
     const { data: order } = await admin
       .from("purchases")
-      .select("id, buyer_id, seller_id, status, amount, payment_provider, evopay_charge_id, messages")
+      .select("id, buyer_id, seller_id, status, amount, payment_provider, evopay_charge_id, messages, funds_available_at, seller_released")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -129,15 +129,19 @@ serve(async (req) => {
       if (!isSeller && !isAdmin) return json({ error: "Apenas o vendedor pode marcar a entrega do pedido." }, 403);
       if (order.status !== "paid") return json({ error: "O pedido só pode ser marcado como entregue quando estiver em status pago." }, 400);
 
-      const autoReleaseDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-      const formattedDate = autoReleaseDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
-        " às " + autoReleaseDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      const autoCloseDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+      const formattedCloseDate = autoCloseDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
+        " às " + autoCloseDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      const fundsDate = order.funds_available_at ? new Date(order.funds_available_at) : null;
+      const fundsText = fundsDate && Number.isFinite(fundsDate.getTime())
+        ? " O saldo da venda continua retido até " + fundsDate.toLocaleDateString("pt-BR") + "."
+        : " O saldo continua no período de segurança da carteira.";
 
       messages = [
         ...messages,
         {
           from: "System",
-          text: `📦 O vendedor marcou o pedido como entregue! Aguardando confirmação do comprador.\nLiberação automática para o vendedor em ${formattedDate}.`,
+          text: `📦 O vendedor marcou o pedido como entregue. O comprador pode confirmar ou abrir disputa. Sem ação, o pedido é concluído automaticamente em ${formattedCloseDate}.${fundsText}`,
           date: now,
         },
       ];
@@ -154,11 +158,12 @@ serve(async (req) => {
 
       if (error) throw error;
       await notifyOrderEmail("delivery_marked", Number(order.id));
-      return json({ success: true, status: "delivered_pending_confirmation", autoReleaseAt: autoReleaseDate.toISOString() });
+      return json({ success: true, status: "delivered_pending_confirmation", autoCloseAt: autoCloseDate.toISOString(), fundsAvailableAt: order.funds_available_at || null });
     }
 
     if (action === "confirm_receipt") {
-      // Comprador confirma recebimento -> status delivered (liberação imediata)
+      // Confirma a entrega, mas NÃO antecipa o saldo do vendedor. O prazo de
+      // segurança configurado (5–7 dias) é preservado no banco.
       if (!isBuyer && !isAdmin) return json({ error: "Apenas o comprador pode confirmar o recebimento do produto." }, 403);
       if (!["paid", "delivered_pending_confirmation"].includes(order.status)) {
         return json({ error: "Este pedido não está aguardando confirmação de recebimento." }, 400);
@@ -168,7 +173,7 @@ serve(async (req) => {
         ...messages,
         {
           from: "System",
-          text: "✅ Comprador confirmou o recebimento do produto. Dinheiro liberado para o vendedor!",
+          text: "✅ Comprador confirmou o recebimento. Pedido concluído; o saldo do vendedor continua seguindo o prazo de segurança da carteira.",
           date: now,
         },
       ];
@@ -177,8 +182,8 @@ serve(async (req) => {
         .from("purchases")
         .update({
           status: "delivered",
-          seller_released: true,
-          released_at: now,
+          seller_released: false,
+          released_at: null,
           messages,
           updated_at: now,
         })
@@ -186,31 +191,26 @@ serve(async (req) => {
 
       if (error) throw error;
       await notifyOrderEmails(["receipt_confirmed_buyer", "receipt_confirmed_seller"], Number(order.id));
-      return json({ success: true, status: "delivered", releasedAt: now });
+      return json({ success: true, status: "delivered", fundsAvailableAt: order.funds_available_at || null });
     }
 
     if (action === "seller_refund") {
-      // Vendedor reembolsa comprador
       if (!isSeller && !isAdmin) return json({ error: "Apenas o vendedor do pedido ou um administrador pode realizar o reembolso." }, 403);
-      if (["refunded", "cancelled"].includes(order.status)) {
-        return json({ error: "Este pedido já foi reembolsado ou cancelado." }, 400);
-      }
-      if (order.status === "pending") {
-        return json({ error: "Não é possível reembolsar um pedido pendente de pagamento." }, 400);
-      }
+      if (["refunded", "cancelled"].includes(order.status)) return json({ error: "Este pedido já foi reembolsado ou cancelado." }, 400);
+      if (order.status === "pending") return json({ error: "Não é possível reembolsar um pedido pendente de pagamento." }, 400);
 
       const cleanReason = (reason || "").trim();
-      if (cleanReason.length < 10) {
-        return json({ error: "O motivo do reembolso deve ter pelo menos 10 caracteres." }, 400);
-      }
-      if (containsExternalContact(cleanReason)) {
-        return json({ error: "Não é permitido enviar contatos externos (WhatsApp, Discord, e-mail, links ou telefone)." }, 400);
-      }
+      if (cleanReason.length < 10) return json({ error: "O motivo do reembolso deve ter pelo menos 10 caracteres." }, 400);
+      if (containsExternalContact(cleanReason)) return json({ error: "Não é permitido enviar contatos externos no motivo do reembolso." }, 400);
 
-      const provider = String(order.payment_provider || order.evopay_charge_id || "desconhecido");
-      return json({
-        error: `O reembolso por ${provider} exige endpoint oficial, confirmação verificável do provedor e conciliação antes de alterar o pedido.`,
-      }, 409);
+      const { data, error } = await admin.rpc("refund_purchase_to_wallet_server", {
+        _purchase_id: Number(order.id),
+        _reason: cleanReason,
+        _actor_id: auth.user.id,
+      });
+      if (error) return json({ error: error.message || "Não foi possível concluir o reembolso." }, 409);
+      await notifyOrderEmails(["refund_buyer", "refund_seller"], Number(order.id));
+      return json(data || { success: true, status: "refunded" });
     }
 
     if (action === "open_dispute") {
@@ -246,8 +246,8 @@ serve(async (req) => {
         .from("purchases")
         .update({
           status: nextStatus,
-          seller_released: action === "approve",
-          released_at: action === "approve" ? now : null,
+          seller_released: false,
+          released_at: null,
           messages,
           updated_at: now,
         })
