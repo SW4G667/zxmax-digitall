@@ -19,10 +19,10 @@ const toastMock = vi.hoisted(() => ({
 vi.mock("sonner", () => ({ toast: toastMock }));
 
 const authState = vi.hoisted(() => ({
-  user: { id: "seller-uuid", email: "vendedor@zxmax.dev", user_metadata: {} },
+  user: { id: "seller-uuid", email: "vendedor@zxmax.dev", email_confirmed_at: "2026-09-28T20:00:00Z", confirmed_at: "2026-09-28T20:00:00Z", user_metadata: {} },
   profile: {
     user_id: "seller-uuid", public_id: 123456, email: "vendedor@zxmax.dev",
-    display_name: "Vendedor", avatar_url: "", pix_key: "", is_verified_seller: true, document_type: "",
+    display_name: "Vendedor", avatar_url: "", pix_key: "", is_verified_seller: false, document_type: "", discord_member_verified_at: "2026-09-28T20:00:00Z",
   },
   isAdmin: false,
   signOut: vi.fn(),
@@ -112,7 +112,9 @@ beforeEach(() => {
   insertPayloads.current = [];
   insertResult.current = { data: { id: 42, approved: false }, error: null };
   authState.isAdmin = false;
-  authState.profile.is_verified_seller = true;
+  authState.user.email_confirmed_at = "2026-09-28T20:00:00Z";
+  authState.user.confirmed_at = "2026-09-28T20:00:00Z";
+  authState.profile.discord_member_verified_at = "2026-09-28T20:00:00Z";
 });
 
 describe("addProduct — mensagens de erro reais", () => {
@@ -176,12 +178,29 @@ describe("addProduct — validações antes de chegar ao banco", () => {
     expect(toastMock.error.mock.calls.at(-1)?.[0]).toMatch(/R\$ 2,00/);
   });
 
-  it("bloqueia vendedor não verificado com mensagem específica", async () => {
-    authState.profile.is_verified_seller = false;
+  it("bloqueia conta sem e-mail confirmado", async () => {
+    authState.user.email_confirmed_at = undefined as any;
+    authState.user.confirmed_at = undefined as any;
     renderHarness();
     await click();
     expect(insertPayloads.current).toHaveLength(0);
-    expect(toastMock.error.mock.calls.at(-1)?.[0]).toMatch(/verificad/i);
+    expect(toastMock.error.mock.calls.at(-1)?.[0]).toMatch(/confirme seu e-mail/i);
+  });
+
+  it("bloqueia conta que ainda não confirmou presença no Discord", async () => {
+    authState.profile.discord_member_verified_at = null as any;
+    renderHarness();
+    await click();
+    expect(insertPayloads.current).toHaveLength(0);
+    expect(toastMock.error.mock.calls.at(-1)?.[0]).toMatch(/servidor do Discord/i);
+  });
+
+  it("não exige selo de vendedor nem documentos apenas para criar anúncio", async () => {
+    authState.profile.is_verified_seller = false;
+    authState.profile.verification_status = "none" as any;
+    renderHarness();
+    await click();
+    expect(insertPayloads.current.length).toBeGreaterThan(0);
   });
 });
 
