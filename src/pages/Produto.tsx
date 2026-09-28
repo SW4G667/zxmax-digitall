@@ -183,10 +183,10 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
               </div>
             )}
 
-            <div className="flex justify-between text-xs"><span className="text-white/40">Taxa do método</span><span className="text-[#ffbd2e]">+ {formatBRL(fee)}</span></div>
+            <div className="flex justify-between text-xs"><span className="text-white/40">Taxa do checkout</span><span className="text-[#ffbd2e]">+ {formatBRL(fee)}</span></div>
             <div className="h-px bg-[#1e1e28] my-2" />
             <div className="flex justify-between font-black"><span className="text-white">Total</span><span className="text-white text-lg">{formatBRL(total)}</span></div>
-            <p className="text-[10px] text-white/30">A taxa é definida para o método selecionado. O vendedor recebe {formatBRL(subtotal)}.</p>
+            <p className="text-[10px] text-white/30">A taxa exibida é a mesma aplicada pelo servidor ao método selecionado. O vendedor recebe {formatBRL(subtotal)}.</p>
           </div>
 
           <button onClick={handleConfirm} disabled={loading || loadingMethods || !method || !isAvailable(method)} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
@@ -246,6 +246,20 @@ export default function ProdutoPage() {
   const sellerIdentityReady = Boolean(publicSellerId);
 
   const isRobux = product?.category === ROBUX_CATEGORY;
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const result = await unwrapEdgeCall<{ methods?: Record<string, boolean>; fees?: Record<string, number>; v?: number }>(
+        await supabase.functions.invoke("integrations-config", { body: { action: "payment_methods" } }),
+        "Não foi possível consultar as formas de pagamento.",
+      );
+      if (!active) return;
+      setPrefetchedMethods(classifyPaymentMethods(result));
+    })();
+    return () => { active = false; };
+  }, []);
+
 
   // For Robux, aggregate all sellers in same category as offers
   const sellerOffers: SellerOffer[] = useMemo(() => {
@@ -601,7 +615,7 @@ export default function ProdutoPage() {
           </div>
         </div>
 
-        {checkoutOpen && <CheckoutModal product={product} quantity={quantity} unitPrice={unitPrice} subtotal={subtotal} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} />}
+        {checkoutOpen && <CheckoutModal product={product} quantity={quantity} unitPrice={unitPrice} subtotal={subtotal} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} prefetchedMethods={prefetchedMethods} />}
         {selectedSellerId && <UserProfileModal open={!!selectedSellerId} onClose={() => setSelectedSellerId(null)} userId={selectedSellerId} />}
         <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
         <CryptoPaymentModal charge={cryptoCharge} onClose={() => setCryptoCharge(null)} onPaid={handlePixPaid} />
@@ -770,7 +784,7 @@ export default function ProdutoPage() {
         <section className="mt-8"><h2 className="text-lg font-black text-white">Anúncios parecidos</h2>{relatedProducts.length ? <div className="mt-4 flex gap-4 overflow-x-auto pb-2">{relatedProducts.map((item) => <Link key={item.id} to={`/produto/${item.id}`} className="shrink-0 w-52 rounded-2xl overflow-hidden bg-[#15151a] border border-[#25252e] hover:border-[#0084ff]"><img src={item.image} alt={item.name} className="w-full aspect-video object-cover"/><div className="p-3"><p className="text-sm font-bold text-white line-clamp-2">{item.name}</p><p className="text-sm font-black text-[#5aaeff] mt-2">{formatBRL(item.price)}</p></div></Link>)}</div> : <p className="mt-3 text-sm text-white/40">Não há outros anúncios desta categoria no momento.</p>}</section>
       </div>
       {imageOpen && <div role="dialog" aria-modal="true" aria-label="Imagem ampliada" className="fixed inset-0 z-[100] bg-black/90 p-4 flex items-center justify-center" onClick={() => setImageOpen(false)}><button onClick={() => setImageOpen(false)} className="absolute top-5 right-5 text-white p-3"><X /></button><img onClick={(event) => event.stopPropagation()} src={product.banner || product.image} alt={product.name} className="max-w-full max-h-full object-contain" /></div>}
-      {checkoutOpen && <CheckoutModal product={product} quantity={displayQuantity} unitPrice={unitPrice} subtotal={subtotal} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} />}
+      {checkoutOpen && <CheckoutModal product={product} quantity={displayQuantity} unitPrice={unitPrice} subtotal={subtotal} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} prefetchedMethods={prefetchedMethods} />}
       {selectedSellerId && <UserProfileModal open={!!selectedSellerId} onClose={() => setSelectedSellerId(null)} userId={selectedSellerId} />}
       <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
       <CryptoPaymentModal charge={cryptoCharge} onClose={() => setCryptoCharge(null)} onPaid={handlePixPaid} />

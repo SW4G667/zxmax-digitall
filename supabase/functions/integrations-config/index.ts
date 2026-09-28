@@ -1,14 +1,17 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Max-Age": "86400" };
+const json = (body: unknown, status = 200, cache = "no-store") => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": cache } });
+
+const MAGNUSPAY_API = "https://api.magnuspay.com.br";
 
 const DEFAULTS = {
   magnuspay: { pixEnabled: true, pixFee: 0 },
   zennithpay: { pixEnabled: false, pixFee: 0.9 },
   vexopay: { pixEnabled: false, cryptoEnabled: false, pixFee: 1.2 },
   stripe: { cardEnabled: false, boletoEnabled: false, boletoExpiresAfterDays: 3 },
+  platform: { buyer_fee: 0.9 },
 };
 const clampFee = (value: unknown, fallback: number) => {
   const fee = Number(value);
@@ -26,13 +29,10 @@ async function caller(req: Request) {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const user = await caller(req);
-    if (!user) return json({ error: "Unauthorized" }, 401);
-
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "get");
-    const keys = ["magnuspay", "zennithpay", "vexopay", "stripe"];
+    const keys = ["magnuspay", "zennithpay", "vexopay", "stripe", "platform"];
     const { data: rows, error } = await admin.from("app_settings").select("key,value").in("key", keys);
     if (error) return json({ error: "Não foi possível consultar a configuração de pagamentos." }, 503);
 
@@ -45,8 +45,9 @@ serve(async (req) => {
     const zennith = row("zennithpay");
     const vexopay = row("vexopay");
     const stripe = row("stripe");
+    const platform = row("platform");
 
-    const magnusReady = Boolean(Deno.env.get("MAGNUSPAY_API_KEY"));
+    const magnusReady = Boolean(String(Deno.env.get("MAGNUSPAY_API_KEY") || "").trim());
     const zennithReady = Boolean(Deno.env.get("ZENNITH_API_KEY"));
     const vexoReady = Boolean(Deno.env.get("VEXOPAY_CLIENT_ID") && Deno.env.get("VEXOPAY_CLIENT_SECRET"));
     const stripeReady = Boolean(Deno.env.get("STRIPE_SECRET_KEY") && Deno.env.get("STRIPE_WEBHOOK_SECRET"));
@@ -59,8 +60,10 @@ serve(async (req) => {
           ? "vexopay_pix"
           : null;
 
+    const baseBuyerFee = clampFee((platform as any).buyer_fee, 0.9);
+
     if (action === "payment_methods") return json({
-      v: 4,
+      v: 5,
       methods: {
         magnuspay_pix: selectedPix === "magnuspay_pix",
         zennith_pix: selectedPix === "zennith_pix",
@@ -71,17 +74,23 @@ serve(async (req) => {
       },
       selectedPix,
       fees: {
-        magnuspay_pix: clampFee(magnus.pixFee, 0),
-        zennith_pix: clampFee(zennith.pixFee, 0.9),
-        vexopay_pix: clampFee(vexopay.pixFee, 1.2),
+        magnuspay_pix: Math.round((baseBuyerFee + clampFee(magnus.pixFee, 0)) * 100) / 100,
+        zennith_pix: Math.round((baseBuyerFee + clampFee(zennith.pixFee, 0.9)) * 100) / 100,
+        vexopay_pix: Math.round((baseBuyerFee + clampFee(vexopay.pixFee, 1.2)) * 100) / 100,
+        crypto: baseBuyerFee,
+        card: baseBuyerFee,
+        boleto: baseBuyerFee,
       },
-    });
+    }, 200, "public, max-age=15");
 
+    const user = await caller(req);
+    if (!user) return json({ error: "Unauthorized" }, 401);
     const { data: hasAdmin } = await admin.rpc("has_role", { _user_id: user.id, _role: "admin" });
     if (!hasAdmin) return json({ error: "Apenas administradores." }, 403);
 
     const secretStatus = {
       MAGNUSPAY_API_KEY: magnusReady,
+      MAGNUSPAY_WEBHOOK_SECRET: Boolean(Deno.env.get("MAGNUSPAY_WEBHOOK_SECRET")),
       ZENNITH_API_KEY: zennithReady,
       VEXOPAY_CLIENT_ID: Boolean(Deno.env.get("VEXOPAY_CLIENT_ID")),
       VEXOPAY_CLIENT_SECRET: Boolean(Deno.env.get("VEXOPAY_CLIENT_SECRET")),
@@ -129,8 +138,38 @@ serve(async (req) => {
 
     if (action === "test") {
       if (provider === "magnuspay") {
-        if (!magnusReady) return json({ ok: false, message: "Configure MAGNUSPAY_API_KEY nos Secrets do Supabase." });
-        return json({ ok: true, message: "MAGNUSPAY_API_KEY detectada no servidor." });
+        const apiKey = String(Deno.env.get("MAGNUSPAY_API_KEY") || "").trim();
+        if (!apiKey) return json({ ok: false, message: "Configure MAGNUSPAY_API_KEY nos Secrets do Supabase." });
+
+        const response = await fetch(MAGNUSPAY_API + "/transactions/fees", {
+          method: "GET",
+          headers: { "X-API-Key": apiKey, Accept: "application/json" },
+        });
+        const raw = await response.text();
+        let parsed: any = {};
+        try { parsed = raw ? JSON.parse(raw) : {}; } catch { parsed = {}; }
+
+        if (!response.ok || parsed?.success === false) {
+          return json({
+            ok: false,
+            message: String(parsed?.message || ("A MagnusPay respondeu HTTP " + response.status + ".")).slice(0, 220),
+            status: response.status,
+          });
+        }
+
+        const fees = parsed?.data || {};
+        const minDeposit = Number(fees.minDeposit || 0);
+        return json({
+          ok: true,
+          message: "MagnusPay conectada. Rota: " + String(fees.route || fees.gateway || "ativa") + ". Depósito mínimo: R$ " + minDeposit.toFixed(2).replace(".", ",") + ".",
+          provider: {
+            route: fees.route || null,
+            gateway: fees.gateway || null,
+            minDeposit: fees.minDeposit ?? null,
+            maxDeposit: fees.maxDeposit ?? null,
+            feeToCustomerForced: fees.feeToCustomerForced ?? null,
+          },
+        });
       }
       if (provider === "zennithpay" && !zennithReady) return json({ ok: false, message: "ZENNITH_API_KEY não configurada." });
       if (provider === "vexopay" && !vexoReady) return json({ ok: false, message: "Credenciais VexoPay não configuradas." });

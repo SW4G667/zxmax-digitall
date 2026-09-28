@@ -168,7 +168,7 @@ describe("Produto Robux — regressão de taxa", () => {
     expect(buyButtons.length).toBeGreaterThan(0);
     await act(async () => { buyButtons[0].click(); });
     expect(await screen.findByText("Pagar com PIX")).toBeTruthy();
-    expect(screen.getByText(/Taxa do método/i).parentElement).toHaveTextContent(/R\$\s?0,90/i);
+    expect(screen.getByText(/Taxa do checkout/i).parentElement).toHaveTextContent(/R\$\s?0,90/i);
   });
 });
 

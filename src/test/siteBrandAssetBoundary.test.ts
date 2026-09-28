@@ -12,9 +12,10 @@ describe("ativos visuais do site", () => {
     expect(html).not.toContain("@Lovable");
     expect(html).toContain('href="/favicon.ico"');
     expect(branding).toContain("heroBannerUrl");
-    expect(branding).toContain("socialPreviewUrl");
+    expect(branding).not.toContain("socialPreviewUrl");
     expect(branding).toContain("robuxBannerUrl");
-    expect(admin).toContain("Imagem de compartilhamento");
+    expect(admin).not.toContain("Imagem de compartilhamento");
+    expect(branding).toContain('meta[property="og:image"]');
     expect(admin).toContain("Banner de Robux");
     expect(admin).toContain("Capa principal");
   });

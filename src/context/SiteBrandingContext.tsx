@@ -7,7 +7,6 @@ export interface SiteBranding {
   heroTitle: string;
   heroSubtitle: string;
   heroBannerUrl: string;
-  socialPreviewUrl: string;
   robuxBannerUrl: string;
   promoBanner1Url: string;
   promoBanner2Url: string;
@@ -23,7 +22,6 @@ const defaults: SiteBranding = {
   heroTitle: "Compre e venda produtos digitais",
   heroSubtitle: "Encontre ofertas, acompanhe seus pedidos e anuncie com um fluxo simples e seguro.",
   heroBannerUrl: "",
-  socialPreviewUrl: "",
   robuxBannerUrl: "",
   promoBanner1Url: "",
   promoBanner2Url: "",
@@ -86,11 +84,11 @@ export function SiteBrandingProvider({ children }: { children: React.ReactNode }
     upsertMeta('meta[name="twitter:title"]', "name", "twitter:title", `${siteName} | Marketplace Digital`);
     upsertMeta('meta[name="twitter:description"]', "name", "twitter:description", description);
 
-    if (branding.socialPreviewUrl) {
-      upsertMeta('meta[property="og:image"]', "property", "og:image", branding.socialPreviewUrl);
-      upsertMeta('meta[name="twitter:image"]', "name", "twitter:image", branding.socialPreviewUrl);
-      upsertMeta('meta[name="twitter:card"]', "name", "twitter:card", "summary_large_image");
-    }
+    // O ZXMAX não publica uma imagem de preview social configurável.
+    // Isso evita que uma foto enviada no Admin apareça fora do site quando
+    // alguém compartilha um link.
+    document.head.querySelectorAll('meta[property="og:image"], meta[name="twitter:image"]').forEach((node) => node.remove());
+    upsertMeta('meta[name="twitter:card"]', "name", "twitter:card", "summary");
   }, [branding]);
 
   const value = useMemo(() => ({ branding, refreshBranding }), [branding]);

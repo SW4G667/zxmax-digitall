@@ -33,7 +33,7 @@ describe("IntegrationsPanel — gateways seguros", () => {
     await waitFor(() => expect(screen.getByText("Stripe · cartão e boleto")).toBeInTheDocument());
     expect(screen.getByText("MagnusPay PIX")).toBeInTheDocument();
     expect(screen.getAllByText(/MAGNUSPAY_API_KEY/).length).toBeGreaterThan(0);
-    expect(screen.getByText("https://magnuspay.onrender.com/api")).toBeInTheDocument();
+    expect(screen.getByText("https://api.magnuspay.com.br")).toBeInTheDocument();
     expect(screen.getByLabelText("Oferecer cartão")).toBeChecked();
     expect(screen.getByLabelText("Oferecer boleto")).toBeChecked();
     expect(screen.getByLabelText("Validade do boleto (dias)")).toHaveValue(3);

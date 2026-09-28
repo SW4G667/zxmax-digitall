@@ -13,7 +13,6 @@ type UploadSlot =
   | "logo"
   | "favicon"
   | "heroBanner"
-  | "socialPreview"
   | "robuxBanner"
   | "promoBanner1"
   | "promoBanner2"
@@ -23,7 +22,6 @@ type ImageField =
   | "logoUrl"
   | "faviconUrl"
   | "heroBannerUrl"
-  | "socialPreviewUrl"
   | "robuxBannerUrl"
   | "promoBanner1Url"
   | "promoBanner2Url"
@@ -123,7 +121,6 @@ export default function AdminBranding() {
     logo: "logoUrl",
     favicon: "faviconUrl",
     heroBanner: "heroBannerUrl",
-    socialPreview: "socialPreviewUrl",
     robuxBanner: "robuxBannerUrl",
     promoBanner1: "promoBanner1Url",
     promoBanner2: "promoBanner2Url",
@@ -178,7 +175,6 @@ export default function AdminBranding() {
     { label: "Logo do cabeçalho", hint: "Use uma marca horizontal ou símbolo simples. O cabeçalho fica limpo no celular.", slot: "logo", field: "logoUrl", compact: true },
     { label: "Favicon", hint: "Ícone mostrado na aba do navegador.", slot: "favicon", field: "faviconUrl", compact: true },
     { label: "Capa principal", hint: "Banner da home. Se ficar vazio, a home usa o layout sem imagem.", slot: "heroBanner", field: "heroBannerUrl" },
-    { label: "Imagem de compartilhamento", hint: "Preview usado em links e redes sociais.", slot: "socialPreview", field: "socialPreviewUrl" },
     { label: "Banner de Robux", hint: "Imagem usada para destacar o mercado de Robux.", slot: "robuxBanner", field: "robuxBannerUrl" },
     { label: "Banner promocional 1", hint: "Espaço opcional para campanha ou categoria.", slot: "promoBanner1", field: "promoBanner1Url" },
     { label: "Banner promocional 2", hint: "Segundo espaço promocional opcional.", slot: "promoBanner2", field: "promoBanner2Url" },
@@ -195,7 +191,7 @@ export default function AdminBranding() {
             </Link>
             <p className="mt-4 text-[9px] font-black uppercase tracking-[0.18em] text-[var(--zx-accent)]">Aparência do site</p>
             <h1 className="mt-1.5 text-2xl font-extrabold tracking-[-0.04em] text-white sm:text-3xl">Identidade visual</h1>
-            <p className="mt-2 max-w-2xl text-xs leading-5 text-white/38">Altere textos, cor, logo e banners sem editar o código. O resultado é aplicado à home, cabeçalho e compartilhamento do site.</p>
+            <p className="mt-2 max-w-2xl text-xs leading-5 text-white/38">Altere textos, cor, logo e banners usados dentro do site sem editar o código. Links compartilhados não usam imagem configurável.</p>
           </div>
           <button
             onClick={() => void save()}
