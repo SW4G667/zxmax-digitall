@@ -69,7 +69,7 @@ serve(async (req) => {
     const productId = Number(body.productId);
     const variationName = typeof body.variationName === "string" ? body.variationName : null;
     const requestedQty = Number(body.quantity);
-    const paymentMethod = ["magnuspay_pix", "zennith_pix", "vexopay_pix", "crypto", "card", "boleto"].includes(String(body.paymentMethod)) ? String(body.paymentMethod) : null;
+    const paymentMethod = ["magnuspay_pix", "zennith_pix", "vexopay_pix", "crypto", "card", "boleto", "wallet"].includes(String(body.paymentMethod)) ? String(body.paymentMethod) : null;
     if (!productId || Number.isNaN(productId)) return json({ error: "Produto inválido" }, 400);
 
     const admin = createClient(
@@ -97,9 +97,11 @@ serve(async (req) => {
     }
     const platform = gateway("platform") as Record<string, unknown>;
     const configuredBaseFee = Number(platform.buyer_fee);
-    const baseBuyerFee = Number.isFinite(configuredBaseFee) && configuredBaseFee >= 0 && configuredBaseFee <= 1000
-      ? roundMoney(configuredBaseFee)
-      : 0.90;
+    const baseBuyerFee = paymentMethod === "wallet"
+      ? 0
+      : Number.isFinite(configuredBaseFee) && configuredBaseFee >= 0 && configuredBaseFee <= 1000
+        ? roundMoney(configuredBaseFee)
+        : 0.90;
     const configuredGatewayFee = paymentMethod === "magnuspay_pix"
       ? Number(gateway("magnuspay").pixFee)
       : paymentMethod === "zennith_pix"
