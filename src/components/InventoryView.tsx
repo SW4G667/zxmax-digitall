@@ -4,8 +4,9 @@ import { Plus, X, Trash2, Upload, Users, Clock, MessageSquare, Pencil, Package, 
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { formatBRL, formatRobuxPackage, formatStockLabel, isValidProductPrice, listingStatus, MIN_PRODUCT_PRICE, parsePriceInput, productStock, ROBUX_CATEGORY } from "@/lib/catalog";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { getDiscordListingRedirectTo } from "@/lib/discordAuth";
+import { getAppUrl } from "@/lib/appUrl";
 import { useSiteBranding } from "@/context/SiteBrandingContext";
 
 interface Variation {
@@ -16,11 +17,11 @@ interface Variation {
 export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId: number) => void }) {
   const { state, addProduct, updateProduct, deleteProduct } = useStore();
   const { branding } = useSiteBranding();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   const [discordGateOpen, setDiscordGateOpen] = useState(false);
   const [discordStarting, setDiscordStarting] = useState(false);
+  const [emailResending, setEmailResending] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showSales, setShowSales] = useState<number | null>(null);
   const [uploading, setUploading] = useState<"image" | "banner" | null>(null);
@@ -48,6 +49,25 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
       return false;
     }
     return true;
+  };
+
+  const resendConfirmationEmail = async () => {
+    const email = state.currentUser?.email?.trim();
+    if (!email || emailResending || state.currentUser?.emailConfirmed) return;
+    setEmailResending(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email,
+        options: { emailRedirectTo: getAppUrl("/meus-produtos?new=1") },
+      });
+      if (error) throw error;
+      toast.success("E-mail de confirmação reenviado. Confira também a caixa de spam.");
+    } catch (error: any) {
+      toast.error(error?.message || "Não foi possível reenviar o e-mail agora.");
+    } finally {
+      setEmailResending(false);
+    }
   };
 
   const startDiscordVerification = async () => {
@@ -288,7 +308,12 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
             </div>
 
             {!state.currentUser?.emailConfirmed ? (
-              <p className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.06] p-3 text-xs leading-5 text-amber-100/75">Abra o e-mail de confirmação enviado pela ZXMAX e confirme a conta. Depois volte aqui.</p>
+              <div className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.06] p-3">
+                <p className="text-xs leading-5 text-amber-100/75">Abra o e-mail de confirmação enviado pela ZXMAX e confirme a conta. Depois volte aqui.</p>
+                <button type="button" onClick={() => void resendConfirmationEmail()} disabled={emailResending} className="mt-2 text-[11px] font-bold text-amber-200 underline underline-offset-2 disabled:opacity-50">
+                  {emailResending ? "Reenviando..." : "Não recebeu? Reenviar e-mail"}
+                </button>
+              </div>
             ) : null}
 
             <div className="mt-5 grid gap-2">
