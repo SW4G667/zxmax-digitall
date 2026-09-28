@@ -59,6 +59,7 @@ export default function AdminView() {
   const [kycLoading, setKycLoading] = useState(false);
   const [kycNotes, setKycNotes] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
+  const [noticeBusy, setNoticeBusy] = useState(false);
   const [chatMsg, setChatMsg] = useState("");
   const [rules, setRules] = useState(state.config.rules);
   const [commission, setCommission] = useState(state.config.commission);
@@ -108,6 +109,21 @@ export default function AdminView() {
     webhooks: "view_sanitized_webhooks",
   };
   const canOpenTab = (candidate: AdminTab) => isAdmin || candidate === "dashboard" || (!!requiredCapabilityByTab[candidate] && hasCapability(requiredCapabilityByTab[candidate]!));
+
+  const handlePublishNotice = async () => {
+    if (!notice.trim() || noticeBusy) return;
+    setNoticeBusy(true);
+    const ok = await publishNotice(notice);
+    setNoticeBusy(false);
+    if (!ok) return toast.error("Não foi possível publicar o aviso.");
+    setNotice("");
+    toast.success("Aviso publicado e enviado à central de notificações.");
+  };
+
+  const handleDeleteNotice = async (id: string) => {
+    const ok = await deleteNotice(id);
+    ok ? toast.success("Aviso removido.") : toast.error("Não foi possível remover o aviso.");
+  };
 
   const handleSaveConfig = async () => {
     updateConfig({
@@ -588,10 +604,10 @@ export default function AdminView() {
               rows={3}
             />
             <button 
-              onClick={() => { publishNotice(notice); setNotice(""); toast.success("Aviso publicado!"); }} 
+              onClick={() => void handlePublishNotice()} disabled={noticeBusy || !notice.trim()} 
               className="btn-gradient px-6 py-3 rounded-xl font-bold text-sm w-full sm:w-auto"
             >
-              Publicar Aviso
+              {noticeBusy ? "Publicando..." : "Publicar Aviso"}
             </button>
           </div>
 
@@ -608,7 +624,7 @@ export default function AdminView() {
                     <p className="text-sm text-foreground">{n.text}</p>
                     <p className="text-[10px] text-muted-foreground mt-1">{new Date(n.date).toLocaleString()}</p>
                   </div>
-                  <button onClick={() => { deleteNotice(n.id); toast.error("Aviso removido."); }} className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition">
+                  <button onClick={() => void handleDeleteNotice(n.id)} className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
