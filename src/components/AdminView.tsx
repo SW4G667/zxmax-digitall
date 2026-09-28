@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import MyPurchasesView from "@/components/MyPurchasesView";
 import IntegrationsPanel from "@/components/IntegrationsPanel";
 import TwoFactorPanel from "@/components/TwoFactorPanel";
-import { AdminTagsPanel } from "@/components/AdminMorePanels";
+import { AdminTagsPanel, AdminTicketsPanel } from "@/components/AdminMorePanels";
 import AdminRolePermissionsPanel from "@/components/AdminRolePermissionsPanel";
 import OperatorConsole from "@/components/OperatorConsole";
 import {
@@ -33,7 +33,7 @@ interface WebhookLog {
 
 export const ADMIN_TABS = [
   "dashboard", "stats", "orders", "moderation", "tools", "products", "withdrawals",
-  "notices", "users", "tags", "adminchat", "documents", "verifications", "disputes",
+  "notices", "users", "tags", "tickets", "adminchat", "documents", "verifications", "disputes",
   "config", "webhooks", "apis", "security", "roles",
 ] as const;
 export type AdminTab = (typeof ADMIN_TABS)[number];
@@ -108,7 +108,7 @@ export default function AdminView() {
     verifications: "review_identity",
     webhooks: "view_sanitized_webhooks",
   };
-  const canOpenTab = (candidate: AdminTab) => isAdmin || candidate === "dashboard" || (!!requiredCapabilityByTab[candidate] && hasCapability(requiredCapabilityByTab[candidate]!));
+  const canOpenTab = (candidate: AdminTab) => isAdmin || candidate === "dashboard" || (candidate === "tickets" && isSupport) || (!!requiredCapabilityByTab[candidate] && hasCapability(requiredCapabilityByTab[candidate]!));
 
   const handlePublishNotice = async () => {
     if (!notice.trim() || noticeBusy) return;
@@ -361,6 +361,7 @@ export default function AdminView() {
           { id: "verifications", label: "Verificações", icon: ShieldEmoji },
           { id: "users", label: "Usuários", icon: Users },
           { id: "notices", label: "Avisos", icon: StarEmoji },
+          { id: "tickets", label: "Suporte", icon: ChatEmoji, count: state.tickets.filter((ticket) => ticket.status === "open").length },
           { id: "adminchat", label: "Chat Equipe", icon: ChatEmoji },
           { id: "webhooks", label: "Webhooks", icon: Webhook },
           { id: "apis", label: "APIs & Credenciais", icon: KeyRound },
@@ -736,6 +737,8 @@ export default function AdminView() {
       {tab === "apis" && <IntegrationsPanel />}
 
       {tab === "tags" && <AdminTagsPanel />}
+
+      {tab === "tickets" && <AdminTicketsPanel />}
 
       {tab === "roles" && <AdminRolePermissionsPanel />}
 
