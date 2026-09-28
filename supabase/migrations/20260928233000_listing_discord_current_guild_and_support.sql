@@ -86,7 +86,7 @@ RETURNS public.support_tickets
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, auth
-AS $
+AS $$
 DECLARE
   ticket public.support_tickets;
   actor_id uuid := auth.uid();
@@ -127,7 +127,7 @@ BEGIN
 
   RETURN ticket;
 END;
-$;
+$$;
 
 CREATE OR REPLACE FUNCTION public.reply_support_ticket(_ticket_id bigint, _text text)
 RETURNS public.support_tickets
@@ -217,7 +217,7 @@ BEGIN
 
   RETURN ticket;
 END;
-$;
+$$;
 
 CREATE OR REPLACE FUNCTION public.close_support_ticket(_ticket_id bigint)
 RETURNS public.support_tickets
@@ -265,7 +265,7 @@ RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $
+AS $$
 BEGIN
   PERFORM public.push_notification(
     staff.user_id,
@@ -284,7 +284,7 @@ BEGIN
   ) staff;
   RETURN NEW;
 END;
-$;
+$$;
 
 DROP TRIGGER IF EXISTS notify_new_support_ticket_trg ON public.support_tickets;
 CREATE TRIGGER notify_new_support_ticket_trg
