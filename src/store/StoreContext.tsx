@@ -1142,19 +1142,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [refreshTickets]);
 
   const addTicket = async (subject: string, message: string) => {
-    const current = state.currentUser;
     const cleanSubject = subject.trim().slice(0, 140);
     const cleanMessage = message.trim().slice(0, 2000);
-    if (!current || !cleanSubject || !cleanMessage) return false;
+    if (!state.currentUser || !cleanSubject || !cleanMessage) return false;
 
-    const now = new Date().toISOString();
-    const { error } = await (supabase as any).from("support_tickets").insert({
-      user_id: current.id,
-      user_email: current.email,
-      subject: cleanSubject,
-      status: "open",
-      messages: [{ from: current.email, text: cleanMessage, date: now }],
-      updated_at: now,
+    const { error } = await (supabase as any).rpc("open_support_ticket", {
+      _subject: cleanSubject,
+      _text: cleanMessage,
     });
     if (error) {
       console.warn("[zxmax:support:create]", error);
