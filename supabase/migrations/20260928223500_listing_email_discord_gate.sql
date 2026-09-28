@@ -50,7 +50,11 @@ DECLARE
   email_ok boolean := false;
   discord_ok timestamptz;
 BEGIN
-  IF current_user IN ('postgres','service_role','supabase_admin') THEN
+  -- SECURITY DEFINER changes current_user to the function owner, so never use
+  -- current_user as the service-role bypass. session_user / JWT role preserve
+  -- who actually initiated the operation.
+  IF COALESCE(auth.role(), '') = 'service_role'
+     OR session_user IN ('postgres','supabase_admin') THEN
     RETURN NEW;
   END IF;
 
