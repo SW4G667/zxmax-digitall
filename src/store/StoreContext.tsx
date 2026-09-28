@@ -241,10 +241,10 @@ interface StoreContextType {
   updateProfile: (name: string) => void;
   banUser: (identifier: string, reason?: string) => Promise<boolean>;
   unbanUser: (identifier: string) => Promise<boolean>;
-  addTicket: (subject: string, message: string) => void;
-  replyTicket: (id: number, text: string) => void;
-  closeTicket: (id: number) => void;
-  resolveTicket: (id: number) => void;
+  addTicket: (subject: string, message: string) => Promise<boolean>;
+  replyTicket: (id: number, text: string) => Promise<boolean>;
+  closeTicket: (id: number) => Promise<boolean>;
+  resolveTicket: (id: number) => Promise<boolean>;
   setGlobalNotice: (notice: string) => void;
   publishNotice: (text: string) => Promise<boolean>;
   updatePixKey: (key: string) => void;
@@ -1103,42 +1103,93 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const addTicket = (subject: string, message: string) => {
-    if (!state.currentUser) return;
-    const ticket: SupportTicket = {
-      id: Date.now(),
-      userEmail: state.currentUser.email,
-      userId: state.currentUser.id,
-      subject,
-      messages: [{ from: state.currentUser.email, text: message, date: new Date().toISOString() }],
+  const refreshTickets = React.useCallback(async () => {
+    if (!authUserRef.current) {
+      setState((s) => ({ ...s, tickets: [] }));
+      return;
+    }
+
+    const { data, error } = await (supabase as any)
+      .from("support_tickets")
+      .select("id,user_id,user_email,subject,status,messages,created_at,updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.warn("[zxmax:support:load]", error);
+      return;
+    }
+
+    const tickets: SupportTicket[] = (data || []).map((row: any) => ({
+      id: Number(row.id),
+      userEmail: String(row.user_email || ""),
+      userId: String(row.user_id || ""),
+      subject: String(row.subject || "Atendimento"),
+      status: row.status === "closed" ? "closed" : "open",
+      messages: Array.isArray(row.messages)
+        ? row.messages.map((message: any) => ({
+            from: String(message?.from || "Equipe ZXMAX"),
+            text: String(message?.text || ""),
+            date: String(message?.date || row.updated_at || row.created_at || new Date().toISOString()),
+          }))
+        : [],
+    }));
+    setState((s) => ({ ...s, tickets }));
+  }, [authUserId, isAdmin, isSupport]);
+
+  useEffect(() => {
+    void refreshTickets();
+  }, [refreshTickets]);
+
+  const addTicket = async (subject: string, message: string) => {
+    const current = state.currentUser;
+    const cleanSubject = subject.trim().slice(0, 140);
+    const cleanMessage = message.trim().slice(0, 2000);
+    if (!current || !cleanSubject || !cleanMessage) return false;
+
+    const now = new Date().toISOString();
+    const { error } = await (supabase as any).from("support_tickets").insert({
+      user_id: current.id,
+      user_email: current.email,
+      subject: cleanSubject,
       status: "open",
-    };
-    setState((s) => ({ ...s, tickets: [...s.tickets, ticket] }));
+      messages: [{ from: current.email, text: cleanMessage, date: now }],
+      updated_at: now,
+    });
+    if (error) {
+      console.warn("[zxmax:support:create]", error);
+      return false;
+    }
+    await refreshTickets();
+    return true;
   };
 
-  const replyTicket = (id: number, text: string) => {
-    if (!state.currentUser) return;
-    setState((s) => ({
-      ...s,
-      tickets: s.tickets.map((t) =>
-        t.id === id
-          ? { ...t, messages: [...t.messages, { from: state.currentUser!.email, text, date: new Date().toISOString() }] }
-          : t
-      ),
-    }));
+  const replyTicket = async (id: number, text: string) => {
+    const clean = text.trim();
+    if (!state.currentUser || !clean) return false;
+    const { error } = await (supabase as any).rpc("reply_support_ticket", {
+      _ticket_id: id,
+      _text: clean.slice(0, 2000),
+    });
+    if (error) {
+      console.warn("[zxmax:support:reply]", error);
+      return false;
+    }
+    await refreshTickets();
+    return true;
   };
 
-  const closeTicket = (id: number) =>
-    setState((s) => ({
-      ...s,
-      tickets: s.tickets.map((t) => (t.id === id ? { ...t, status: "closed" as const } : t)),
-    }));
+  const closeTicket = async (id: number) => {
+    const { error } = await (supabase as any).rpc("close_support_ticket", { _ticket_id: id });
+    if (error) {
+      console.warn("[zxmax:support:close]", error);
+      return false;
+    }
+    await refreshTickets();
+    return true;
+  };
 
-  const resolveTicket = (id: number) =>
-    setState((s) => ({
-      ...s,
-      tickets: s.tickets.map((t) => (t.id === id ? { ...t, status: "closed" as const } : t)),
-    }));
+  const resolveTicket = closeTicket;
 
   const sendPurchaseMessage = async (purchaseId: number, _from: string, text: string) => {
     const { data, error } = await supabase.functions.invoke("order-action", {
