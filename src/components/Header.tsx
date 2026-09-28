@@ -8,6 +8,7 @@ import DiscordIcon from "@/components/DiscordIcon";
 import useFavorites from "@/hooks/useFavorites";
 import BrandMark from "@/components/BrandMark";
 import { useSiteBranding } from "@/context/SiteBrandingContext";
+import { toast } from "sonner";
 
 interface Props {
   onProfileClick?: () => void;
@@ -60,7 +61,13 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
       onAuthClick?.();
       return;
     }
-    navigate("/meus-produtos");
+    const phoneVerified = Boolean((profile as any)?.phone_verified_at || state.currentUser?.phoneVerified);
+    if (!phoneVerified && !isAdmin) {
+      toast.info("Verifique seu número por SMS antes de criar um anúncio.");
+      navigate("/perfil?verify=phone");
+      return;
+    }
+    navigate("/meus-produtos?new=1");
   };
 
   return (
@@ -94,7 +101,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
             <button
               onClick={openListing}
               aria-label={user ? "Abrir meus anúncios" : "Anunciar"}
-              className="hidden h-9 items-center rounded-lg bg-[var(--zx-accent)] px-4 text-xs font-bold text-white transition hover:brightness-110 sm:flex"
+              className="flex h-9 items-center rounded-lg bg-[var(--zx-accent)] px-3 text-[11px] font-bold text-white transition hover:brightness-110 sm:px-4 sm:text-xs"
             >
               Anunciar
             </button>
