@@ -141,9 +141,38 @@ BEGIN
   WHERE id = _ticket_id
   RETURNING * INTO ticket;
 
+  IF is_staff THEN
+    PERFORM public.push_notification(
+      ticket.user_id,
+      'support',
+      'Nova resposta do suporte',
+      left(clean_text,180),
+      '/suporte?ticket=' || ticket.id,
+      'support',
+      NULL,
+      jsonb_build_object('ticketId',ticket.id)
+    );
+  ELSE
+    PERFORM public.push_notification(
+      staff.user_id,
+      'support',
+      'Usuário respondeu ao suporte',
+      left(ticket.subject || ': ' || clean_text,180),
+      '/admin?tab=tickets',
+      'support',
+      NULL,
+      jsonb_build_object('ticketId',ticket.id)
+    )
+    FROM (
+      SELECT DISTINCT ur.user_id
+      FROM public.user_roles ur
+      WHERE ur.role IN ('admin'::public.app_role,'support'::public.app_role)
+    ) staff;
+  END IF;
+
   RETURN ticket;
 END;
-$$;
+$;
 
 CREATE OR REPLACE FUNCTION public.close_support_ticket(_ticket_id bigint)
 RETURNS public.support_tickets
@@ -185,6 +214,39 @@ BEGIN
   RETURN ticket;
 END;
 $$;
+
+CREATE OR REPLACE FUNCTION public.notify_new_support_ticket()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $
+BEGIN
+  PERFORM public.push_notification(
+    staff.user_id,
+    'support',
+    'Novo atendimento de suporte',
+    left(NEW.subject,180),
+    '/admin?tab=tickets',
+    'support',
+    NULL,
+    jsonb_build_object('ticketId',NEW.id)
+  )
+  FROM (
+    SELECT DISTINCT ur.user_id
+    FROM public.user_roles ur
+    WHERE ur.role IN ('admin'::public.app_role,'support'::public.app_role)
+  ) staff;
+  RETURN NEW;
+END;
+$;
+
+DROP TRIGGER IF EXISTS notify_new_support_ticket_trg ON public.support_tickets;
+CREATE TRIGGER notify_new_support_ticket_trg
+AFTER INSERT ON public.support_tickets
+FOR EACH ROW EXECUTE FUNCTION public.notify_new_support_ticket();
+
+REVOKE ALL ON FUNCTION public.notify_new_support_ticket() FROM PUBLIC, anon, authenticated;
 
 REVOKE ALL ON FUNCTION public.reply_support_ticket(bigint,text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.close_support_ticket(bigint) FROM PUBLIC, anon;
