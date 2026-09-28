@@ -241,11 +241,14 @@ describe("Perguntas — Tarefa B", () => {
     db.questionsResult.current = { data: [REMOTE_QUESTION], error: null };
     renderProduto();
     await waitFor(() => expect(screen.getByText("Entrega em quanto tempo?")).toBeTruthy());
+    const replyButton = screen.getByRole("button", { name: "Responder" });
+    expect(replyButton).toBeTruthy();
+    await act(async () => { replyButton.click(); });
     const answerBox = screen.getByLabelText(/responder pergunta/i);
     await act(async () => {
       fireEvent.change(answerBox, { target: { value: "Entrego em até 2 horas." } });
     });
-    await act(async () => { screen.getByText("Responder").click(); });
+    await act(async () => { screen.getByText("Publicar resposta").click(); });
     await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("Resposta publicada."));
     expect(supabaseMock.rpc).toHaveBeenCalledWith("answer_product_question", { _question_id: 7, _answer: "Entrego em até 2 horas." });
   });
@@ -255,6 +258,7 @@ describe("Perguntas — Tarefa B", () => {
     db.questionsResult.current = { data: [REMOTE_QUESTION], error: null };
     renderProduto();
     await waitFor(() => expect(screen.getByText("Entrega em quanto tempo?")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Responder" })).toBeNull();
     expect(screen.queryByLabelText(/responder pergunta/i)).toBeNull();
   });
 
