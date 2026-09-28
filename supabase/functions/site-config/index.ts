@@ -68,7 +68,25 @@ serve(async (req) => {
   const { data: row } = await admin.from("app_settings").select("value").eq("key", "site_branding").maybeSingle();
   const current = { ...DEFAULTS, ...(row?.value || {}) };
 
-  if (req.method === "GET") return json({ branding: current });
+  if (req.method === "GET") {
+    const requestUrl = new URL(req.url);
+    const asset = requestUrl.searchParams.get("asset");
+    if (asset === "favicon" || asset === "socialPreview") {
+      const configured = asset === "favicon"
+        ? safeUrl(current.faviconUrl)
+        : safeUrl(current.socialPreviewUrl) || safeUrl(current.logoUrl);
+      const fallback = "https://zxmax.vercel.app/favicon.ico";
+      return new Response(null, {
+        status: 302,
+        headers: {
+          ...corsHeaders,
+          "Location": configured || fallback,
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+        },
+      });
+    }
+    return json({ branding: current });
+  }
 
   try {
     const body = await req.json().catch(() => ({}));
