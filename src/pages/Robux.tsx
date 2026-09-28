@@ -24,6 +24,9 @@ interface RobuxOffer {
   sellerName: string;
   sellerPublicId: string;
   verified: boolean;
+  phoneVerified: boolean;
+  documentVerified: boolean;
+  sellerAvatar?: string;
   packagePrice: number;
   packageUnits: number;
   pricePerUnit: number;
@@ -68,6 +71,9 @@ export default function RobuxPage() {
           sellerName: identity?.name || product.seller || "",
           sellerPublicId,
           verified: Boolean(identity?.isVerified),
+          phoneVerified: Boolean(identity?.phoneVerified),
+          documentVerified: Boolean(identity?.documentVerified),
+          sellerAvatar: identity?.avatar,
           packagePrice: Number(product.price) || 0,
           packageUnits: robuxPackageUnits(product),
           pricePerUnit: unitPriceFromPackage(product),
@@ -215,11 +221,25 @@ export default function RobuxPage() {
                     </div>
                     <div className="min-w-0">
                       <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-white">{offer.productName}</h3>
-                      <p className="mt-1 flex items-center gap-1 truncate text-[11px] text-white/42">
-                        {offer.sellerName}
-                        {offer.verified ? <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[var(--zx-accent)]" aria-label="Vendedor verificado" /> : null}
-                      </p>
-                      <p className="mt-0.5 text-[10px] text-white/25">ID público: {offer.sellerPublicId}</p>
+                      <div className="mt-1.5 flex min-w-0 items-center gap-2">
+                        <img
+                          src={offer.sellerAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(offer.sellerName)}`}
+                          alt=""
+                          className="h-7 w-7 shrink-0 rounded-full border border-white/[0.08] bg-[#0d0d11] object-cover"
+                          loading="lazy"
+                        />
+                        <div className="min-w-0">
+                          <p className="flex items-center gap-1 truncate text-[11px] font-semibold text-white/65">
+                            {offer.sellerName}
+                            {offer.documentVerified ? <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[var(--zx-accent)]" aria-label="Documento verificado" /> : null}
+                          </p>
+                          <div className="mt-0.5 flex flex-wrap gap-1">
+                            {offer.phoneVerified && <span className="rounded bg-emerald-400/10 px-1.5 py-0.5 text-[8px] font-bold text-emerald-300">SMS</span>}
+                            {offer.documentVerified && <span className="rounded bg-[#168cff]/10 px-1.5 py-0.5 text-[8px] font-bold text-[#70bdff]">Documento</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <p className="mt-1 text-[10px] text-white/25">ID público: {offer.sellerPublicId}</p>
                       <p className="mt-1 text-[10px] text-white/30">
                         {offer.reviewCount > 0 ? (
                           <span className="inline-flex items-center gap-1">
