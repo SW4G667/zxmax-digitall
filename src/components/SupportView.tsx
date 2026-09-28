@@ -218,7 +218,7 @@ export default function SupportView() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl animate-fade-in-up pb-24">
+    <div className="mx-auto max-w-5xl animate-fade-in-up pb-24" aria-label="Central de Ajuda ZXMAX">
       <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#101013]">
         <div className="relative p-5 sm:p-7">
           <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-[var(--zx-accent)]/10 blur-3xl" />
