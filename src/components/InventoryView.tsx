@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { formatBRL, formatRobuxPackage, formatStockLabel, isValidProductPrice, listingStatus, MIN_PRODUCT_PRICE, parsePriceInput, productStock, ROBUX_CATEGORY } from "@/lib/catalog";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { getDiscordListingRedirectTo } from "@/lib/discordAuth";
+import { useSiteBranding } from "@/context/SiteBrandingContext";
 
 interface Variation {
   name: string;
@@ -13,9 +15,12 @@ interface Variation {
 
 export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId: number) => void }) {
   const { state, addProduct, updateProduct, deleteProduct } = useStore();
+  const { branding } = useSiteBranding();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
+  const [discordGateOpen, setDiscordGateOpen] = useState(false);
+  const [discordStarting, setDiscordStarting] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showSales, setShowSales] = useState<number | null>(null);
   const [uploading, setUploading] = useState<"image" | "banner" | null>(null);
@@ -32,30 +37,75 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
 
   const isRobuxCategory = form.category === ROBUX_CATEGORY;
 
-  const openCreateForm = () => {
-    if (!state.currentUser?.phoneVerified && !state.currentUser?.isAdmin) {
-      toast.info("Verifique seu número por SMS antes de anunciar.");
-      navigate("/perfil?verify=phone");
-      return;
+  const canOpenListingForm = () => {
+    if (state.currentUser?.isAdmin) return true;
+    if (!state.currentUser?.emailConfirmed) {
+      toast.info("Confirme o e-mail da sua conta antes de anunciar.");
+      return false;
     }
+    if (!state.currentUser?.discordMemberVerified) {
+      setDiscordGateOpen(true);
+      return false;
+    }
+    return true;
+  };
+
+  const startDiscordVerification = async () => {
+    if (!state.currentUser || discordStarting) return;
+    setDiscordStarting(true);
+    try {
+      window.sessionStorage.setItem("zxmax_discord_verify_user", state.currentUser.id);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "discord",
+        options: {
+          redirectTo: getDiscordListingRedirectTo("/meus-produtos?new=1"),
+          scopes: "identify email guilds",
+        },
+      });
+      if (error) {
+        window.sessionStorage.removeItem("zxmax_discord_verify_user");
+        throw error;
+      }
+    } catch (error: any) {
+      setDiscordStarting(false);
+      toast.error(error?.message || "Não foi possível iniciar a verificação pelo Discord.");
+    }
+  };
+
+  const openCreateForm = () => {
+    if (!canOpenListingForm()) return;
     resetForm();
     setShowForm(true);
   };
 
   useEffect(() => {
-    if (searchParams.get("new") !== "1") return;
-    if (!state.currentUser?.phoneVerified && !state.currentUser?.isAdmin) {
-      toast.info("Para criar um anúncio, confirme seu celular por SMS.");
-      navigate("/perfil?verify=phone", { replace: true });
-      return;
+    const discordState = searchParams.get("discord");
+    if (discordState === "join") {
+      setDiscordGateOpen(true);
+      toast.info("Entre no servidor da ZXMAX e clique em Verificar com Discord novamente.");
+    } else if (discordState === "retry") {
+      setDiscordGateOpen(true);
+      toast.error("Não foi possível confirmar sua entrada no Discord. Tente novamente.");
+    } else if (discordState === "verified") {
+      toast.success("Discord verificado. Você já pode anunciar.");
     }
+
+    if (discordState) {
+      const cleaned = new URLSearchParams(searchParams);
+      cleaned.delete("discord");
+      setSearchParams(cleaned, { replace: true });
+    }
+
+    if (searchParams.get("new") !== "1") return;
+    if (!canOpenListingForm()) return;
     resetForm();
     setShowForm(true);
     const next = new URLSearchParams(searchParams);
     next.delete("new");
+    next.delete("discord");
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.currentUser?.phoneVerified, state.currentUser?.isAdmin]);
+  }, [state.currentUser?.emailConfirmed, state.currentUser?.discordMemberVerified, state.currentUser?.isAdmin]);
 
   const resetForm = () => {
     setForm({ name: "", category: state.config.categories[0] || "", description: "", price: "", image: "", banner: "", deliveryType: "manual", deliveryContent: "", stock: "", minQuantity: "", deliveryTime: "", robuxAmount: "" });
@@ -125,7 +175,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!state.currentUser?.phoneVerified && !state.currentUser?.isAdmin) { toast.error("Verifique seu número por SMS antes de anunciar."); navigate("/perfil?verify=phone"); return; }
+    if (!canOpenListingForm()) return;
     if ((!isRobuxCategory && !form.name.trim()) || !form.price.trim()) return toast.error("Preencha nome e preço.");
     const finalPrice = parsePriceInput(form.price);
     if (!isValidProductPrice(finalPrice)) return toast.error(`Informe um preço válido a partir de ${formatBRL(MIN_PRODUCT_PRICE)}. Use 2,00 ou 2.00.`);
@@ -191,6 +241,43 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
 
   return (
     <div className="space-y-6">
+      {discordGateOpen && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => setDiscordGateOpen(false)}>
+          <section className="w-full max-w-md rounded-2xl border border-[#2b2b33] bg-[#111116] p-6 shadow-2xl" onClick={(event) => event.stopPropagation()} aria-labelledby="discord-listing-gate-title">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#70bdff]">Requisito para anunciar</p>
+                <h2 id="discord-listing-gate-title" className="mt-1 text-xl font-black text-white">Confirme o e-mail e entre no Discord</h2>
+                <p className="mt-2 text-xs leading-5 text-white/45">Não precisa cadastrar número de telefone. Para publicar, basta ter o e-mail da ZXMAX confirmado e estar no servidor oficial do Discord.</p>
+              </div>
+              <button type="button" onClick={() => setDiscordGateOpen(false)} className="rounded-lg p-2 text-white/35 hover:bg-white/5 hover:text-white" aria-label="Fechar"><X className="h-4 w-4" /></button>
+            </div>
+
+            <div className="mt-5 space-y-2">
+              <div className="flex items-center justify-between rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-3">
+                <span className="text-xs font-semibold text-white/65">E-mail confirmado</span>
+                <span className={`text-xs font-black ${state.currentUser?.emailConfirmed ? "text-emerald-300" : "text-amber-300"}`}>{state.currentUser?.emailConfirmed ? "OK" : "Pendente"}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-3">
+                <span className="text-xs font-semibold text-white/65">Servidor do Discord</span>
+                <span className={`text-xs font-black ${state.currentUser?.discordMemberVerified ? "text-emerald-300" : "text-amber-300"}`}>{state.currentUser?.discordMemberVerified ? "Verificado" : "Necessário"}</span>
+              </div>
+            </div>
+
+            {!state.currentUser?.emailConfirmed ? (
+              <p className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.06] p-3 text-xs leading-5 text-amber-100/75">Abra o e-mail de confirmação enviado pela ZXMAX e confirme a conta. Depois volte aqui.</p>
+            ) : null}
+
+            <div className="mt-5 grid gap-2">
+              <a href={branding.supportUrl || state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noreferrer" className="rounded-xl border border-[#5865f2]/35 bg-[#5865f2]/10 px-4 py-3 text-center text-sm font-bold text-[#aeb4ff] hover:bg-[#5865f2]/15">1. Entrar no servidor do Discord</a>
+              <button type="button" onClick={() => void startDiscordVerification()} disabled={discordStarting || !state.currentUser?.emailConfirmed} className="rounded-xl bg-[#168cff] px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-45">
+                {discordStarting ? "Abrindo Discord..." : "2. Verificar com Discord"}
+              </button>
+            </div>
+            <p className="mt-3 text-[10px] leading-4 text-white/28">A verificação consulta apenas se a conta do Discord vinculada está no servidor configurado. CPF e documentos continuam sendo usados somente para carteira e saque.</p>
+          </section>
+        </div>
+      )}
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-2xl font-black text-white flex items-center gap-2"><Package className="w-6 h-6 text-[#0084ff]" /> Meus Anúncios</h1>
