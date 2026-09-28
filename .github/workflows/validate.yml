@@ -27,6 +27,6 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
       - name: Tests
-        run: npm test -- --runInBand
+        run: npm test
       - name: Build
         run: npm run build
