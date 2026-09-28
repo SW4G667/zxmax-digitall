@@ -59,6 +59,7 @@ export default function AdminView() {
   const [kycLoading, setKycLoading] = useState(false);
   const [kycNotes, setKycNotes] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
+  const [noticeBusy, setNoticeBusy] = useState(false);
   const [chatMsg, setChatMsg] = useState("");
   const [rules, setRules] = useState(state.config.rules);
   const [commission, setCommission] = useState(state.config.commission);
@@ -74,6 +75,9 @@ export default function AdminView() {
   const [minWithdraw, setMinWithdraw] = useState("5,00");
   const [buyerFee, setBuyerFee] = useState("0,90");
   const [withdrawFee, setWithdrawFee] = useState("3,50");
+  const [smallWithdrawMin, setSmallWithdrawMin] = useState("5,00");
+  const [smallWithdrawExtraFee, setSmallWithdrawExtraFee] = useState("1,00");
+  const [sellerReleaseDays, setSellerReleaseDays] = useState("7");
   const [operatorCapabilities, setOperatorCapabilities] = useState<string[]>([]);
   const [operatorAccessLoading, setOperatorAccessLoading] = useState(!isAdmin);
 
@@ -105,6 +109,21 @@ export default function AdminView() {
     webhooks: "view_sanitized_webhooks",
   };
   const canOpenTab = (candidate: AdminTab) => isAdmin || candidate === "dashboard" || (!!requiredCapabilityByTab[candidate] && hasCapability(requiredCapabilityByTab[candidate]!));
+
+  const handlePublishNotice = async () => {
+    if (!notice.trim() || noticeBusy) return;
+    setNoticeBusy(true);
+    const ok = await publishNotice(notice);
+    setNoticeBusy(false);
+    if (!ok) return toast.error("Não foi possível publicar o aviso.");
+    setNotice("");
+    toast.success("Aviso publicado e enviado à central de notificações.");
+  };
+
+  const handleDeleteNotice = async (id: string) => {
+    const ok = await deleteNotice(id);
+    ok ? toast.success("Aviso removido.") : toast.error("Não foi possível remover o aviso.");
+  };
 
   const handleSaveConfig = async () => {
     updateConfig({
@@ -240,6 +259,9 @@ export default function AdminView() {
     setMinWithdraw(formatBRL(data?.minWithdraw ?? 5).replace("R$ ", ""));
     setBuyerFee(formatBRL(data?.buyerFee ?? 0.90).replace("R$ ", ""));
     setWithdrawFee(formatBRL(data?.withdrawFee ?? 3.50).replace("R$ ", ""));
+    setSmallWithdrawMin(formatBRL(data?.smallWithdrawMin ?? 5).replace("R$ ", ""));
+    setSmallWithdrawExtraFee(formatBRL(data?.smallWithdrawExtraFee ?? 1).replace("R$ ", ""));
+    setSellerReleaseDays(String(data?.sellerReleaseDays ?? 7));
   }, []);
 
   useEffect(() => { if (tab === "config") void loadPlatformSettings(); }, [tab, loadPlatformSettings]);
@@ -249,10 +271,16 @@ export default function AdminView() {
     const parsedWithdraw = parsePriceInput(minWithdraw);
     const parsedBuyerFee = parsePriceInput(buyerFee);
     const parsedWithdrawFee = parsePriceInput(withdrawFee);
+    const parsedSmallWithdrawMin = parsePriceInput(smallWithdrawMin);
+    const parsedSmallWithdrawExtraFee = parsePriceInput(smallWithdrawExtraFee);
+    const parsedSellerReleaseDays = Number.parseInt(sellerReleaseDays, 10);
     if (!isValidProductPrice(parsedPrice)) { toast.error("Use um preço mínimo entre R$ 2,00 e R$ 1.000.000,00."); return; }
     if (parsedWithdraw < 1 || parsedWithdraw > 1_000_000) { toast.error("Use um saque mínimo entre R$ 1,00 e R$ 1.000.000,00."); return; }
     if (parsedBuyerFee < 0 || parsedBuyerFee > 1_000) { toast.error("A taxa do comprador deve ficar entre R$ 0,00 e R$ 1.000,00."); return; }
     if (parsedWithdrawFee < 0 || parsedWithdrawFee >= parsedWithdraw) { toast.error("A taxa de saque deve ser menor que o saque mínimo."); return; }
+    if (parsedSmallWithdrawMin < 1 || parsedSmallWithdrawMin > parsedWithdraw) { toast.error("O mínimo reduzido deve ficar entre R$ 1,00 e o saque mínimo normal."); return; }
+    if (parsedSmallWithdrawExtraFee < 0 || parsedSmallWithdrawExtraFee >= parsedSmallWithdrawMin) { toast.error("A taxa adicional do saque reduzido é inválida."); return; }
+    if (!Number.isInteger(parsedSellerReleaseDays) || parsedSellerReleaseDays < 5 || parsedSellerReleaseDays > 7) { toast.error("O prazo de liberação do saldo deve ficar entre 5 e 7 dias."); return; }
 
     setPlatformSaving(true);
     const { error } = await (supabase as any).rpc("update_platform_settings", {
@@ -262,10 +290,13 @@ export default function AdminView() {
       _min_withdraw: parsedWithdraw,
       _buyer_fee: parsedBuyerFee,
       _withdraw_fee: parsedWithdrawFee,
+      _small_withdraw_min: parsedSmallWithdrawMin,
+      _small_withdraw_extra_fee: parsedSmallWithdrawExtraFee,
+      _seller_release_days: parsedSellerReleaseDays,
     });
     setPlatformSaving(false);
     if (error) { toast.error(error.message || "Não foi possível salvar a plataforma."); return; }
-    updateConfig({ buyerFee: parsedBuyerFee, withdrawMin: parsedWithdraw, withdrawFee: parsedWithdrawFee });
+    updateConfig({ buyerFee: parsedBuyerFee, withdrawMin: parsedWithdraw, withdrawFee: parsedWithdrawFee, smallWithdrawMin: parsedSmallWithdrawMin, smallWithdrawExtraFee: parsedSmallWithdrawExtraFee, sellerReleaseDays: parsedSellerReleaseDays });
     toast.success("Operação e taxas atualizadas no servidor.");
   };
 
@@ -364,7 +395,7 @@ export default function AdminView() {
             pendingWithdrawals.map((w) => (
               <div key={w.id} className="glass-card p-5 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-bold text-muted-foreground uppercase">{w.method === "instant" ? "Saque Instantâneo" : "Saque Normal"}</p>
+                  <p className="text-xs font-bold text-muted-foreground uppercase">{w.method === "flex" ? "Saque reduzido" : w.method === "admin_fee" ? "Saque de taxas" : "Saque normal"}</p>
                   <p className="text-xl font-black text-foreground">{formatBRL(w.netAmount ?? Math.max(0, w.amount - (w.fee ?? state.config.withdrawFee)))}</p>
                   <p className="text-[10px] text-muted-foreground">Solicitado {formatBRL(w.amount)} · taxa {formatBRL(w.fee ?? state.config.withdrawFee)}</p>
                   <p className="text-xs text-muted-foreground mt-1">Usuário: {w.userEmail}</p>
@@ -480,7 +511,7 @@ export default function AdminView() {
               <RefreshCw className="w-3 h-3" /> Atualizar
             </button>
           </div>
-          <p className="text-sm text-muted-foreground mb-6">Confira se a foto mostra o rosto, o documento e o papel escrito ZXMAX, e se os dados batem.</p>
+          <p className="text-sm text-muted-foreground mb-6">Revise CPF, dados do perfil, RG frente/verso e selfie. O telefone confirmado por SMS é um sinal separado e não substitui a análise documental.</p>
           {kycLoading ? (
             <p className="text-center text-xs text-muted-foreground py-10">Carregando...</p>
           ) : kyc.length === 0 ? (
@@ -501,7 +532,7 @@ export default function AdminView() {
                   <div className="grid sm:grid-cols-2 gap-1 text-[11px] text-muted-foreground mb-3">
                     <p>CPF: <span className="text-foreground">{k.cpf || "—"}</span></p>
                     <p>Nascimento: <span className="text-foreground">{k.birth_date || "—"}</span></p>
-                    <p>Telefone: <span className="text-foreground">{k.phone || "—"}</span></p>
+                    <p>Telefone: <span className="text-foreground">{k.phone || "—"}</span> {k.phone_verified_at ? <span className="ml-1 text-success font-bold">SMS confirmado</span> : <span className="ml-1 text-amber-400">não confirmado</span>}</p>
                     <p>Cidade/UF: <span className="text-foreground">{[k.city, k.state].filter(Boolean).join("/") || "—"}</span></p>
                   </div>
                   {k.verification_status === "pending" && (
@@ -513,12 +544,22 @@ export default function AdminView() {
                     />
                   )}
                   <div className="flex gap-2 flex-wrap">
-                    {k.verification_selfie_path && (
-                      <button onClick={() => openDocument(k.verification_selfie_path)} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1">
-                        <ExternalLink className="w-3 h-3" /> Ver foto
+                    {k.verification_rg_front_path && (
+                      <button onClick={() => openDocument(k.verification_rg_front_path)} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1">
+                        <ExternalLink className="w-3 h-3" /> RG frente
                       </button>
                     )}
-                    <button onClick={() => reviewKyc(k.user_id, true)} className="px-3 py-2 bg-success text-white text-xs font-bold rounded-lg">Aprovar</button>
+                    {k.verification_rg_back_path && (
+                      <button onClick={() => openDocument(k.verification_rg_back_path)} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1">
+                        <ExternalLink className="w-3 h-3" /> RG verso
+                      </button>
+                    )}
+                    {k.verification_selfie_path && (
+                      <button onClick={() => openDocument(k.verification_selfie_path)} className="px-3 py-2 bg-card text-foreground text-xs font-bold rounded-lg flex items-center gap-1">
+                        <ExternalLink className="w-3 h-3" /> Selfie
+                      </button>
+                    )}
+                    <button onClick={() => reviewKyc(k.user_id, true)} disabled={!k.verification_rg_front_path || !k.verification_rg_back_path || !k.verification_selfie_path} className="px-3 py-2 bg-success text-white text-xs font-bold rounded-lg disabled:opacity-40">Aprovar documentos</button>
                     <button onClick={() => reviewKyc(k.user_id, false)} className="px-3 py-2 bg-destructive/10 text-destructive text-xs font-bold rounded-lg">Recusar</button>
                   </div>
                 </div>
@@ -573,10 +614,10 @@ export default function AdminView() {
               rows={3}
             />
             <button 
-              onClick={() => { publishNotice(notice); setNotice(""); toast.success("Aviso publicado!"); }} 
+              onClick={() => void handlePublishNotice()} disabled={noticeBusy || !notice.trim()} 
               className="btn-gradient px-6 py-3 rounded-xl font-bold text-sm w-full sm:w-auto"
             >
-              Publicar Aviso
+              {noticeBusy ? "Publicando..." : "Publicar Aviso"}
             </button>
           </div>
 
@@ -593,7 +634,7 @@ export default function AdminView() {
                     <p className="text-sm text-foreground">{n.text}</p>
                     <p className="text-[10px] text-muted-foreground mt-1">{new Date(n.date).toLocaleString()}</p>
                   </div>
-                  <button onClick={() => { deleteNotice(n.id); toast.error("Aviso removido."); }} className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition">
+                  <button onClick={() => void handleDeleteNotice(n.id)} className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -795,11 +836,21 @@ export default function AdminView() {
               <label className="text-xs font-bold text-muted-foreground">Taxa base do comprador
                 <input value={buyerFee} inputMode="decimal" onChange={(event) => setBuyerFee(event.target.value)} placeholder="0,90" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
               </label>
-              <label className="text-xs font-bold text-muted-foreground">Saque mínimo
-                <input value={minWithdraw} inputMode="decimal" onChange={(event) => setMinWithdraw(event.target.value)} placeholder="5,00" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
+              <label className="text-xs font-bold text-muted-foreground">Saque mínimo normal
+                <input value={minWithdraw} inputMode="decimal" onChange={(event) => setMinWithdraw(event.target.value)} placeholder="20,00" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
               </label>
-              <label className="text-xs font-bold text-muted-foreground">Taxa de saque
+              <label className="text-xs font-bold text-muted-foreground">Taxa normal de saque
                 <input value={withdrawFee} inputMode="decimal" onChange={(event) => setWithdrawFee(event.target.value)} placeholder="3,50" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
+              </label>
+              <label className="text-xs font-bold text-muted-foreground">Mínimo do saque reduzido
+                <input value={smallWithdrawMin} inputMode="decimal" onChange={(event) => setSmallWithdrawMin(event.target.value)} placeholder="5,00" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
+              </label>
+              <label className="text-xs font-bold text-muted-foreground">Adicional do saque reduzido
+                <input value={smallWithdrawExtraFee} inputMode="decimal" onChange={(event) => setSmallWithdrawExtraFee(event.target.value)} placeholder="1,00" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
+              </label>
+              <label className="text-xs font-bold text-muted-foreground">Liberação do saldo (dias)
+                <input value={sellerReleaseDays} inputMode="numeric" onChange={(event) => setSellerReleaseDays(event.target.value.replace(/\D/g, "").slice(0, 1))} placeholder="7" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
+                <span className="mt-1 block text-[10px] font-normal">Permitido: 5 a 7 dias.</span>
               </label>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -809,11 +860,12 @@ export default function AdminView() {
           </div>
           <div className="glass-card p-6 space-y-3">
             <h3 className="font-bold text-foreground">Como as taxas são aplicadas</h3>
-            <p className="text-xs leading-5 text-muted-foreground">A taxa base do comprador é definida aqui. Na aba <strong className="text-foreground">APIs & Credenciais</strong>, cada gateway pode ter um adicional próprio de processamento. No saque, a taxa é congelada no momento da solicitação: mudar a configuração depois não altera saques já registrados.</p>
-            <div className="grid gap-2 sm:grid-cols-3">
+            <p className="text-xs leading-5 text-muted-foreground">A taxa base do comprador é definida aqui. Na aba <strong className="text-foreground">APIs & Credenciais</strong>, cada gateway pode ter um adicional próprio. O saque normal e o saque reduzido têm mínimos próprios; o reduzido soma o adicional configurado. O saldo de vendas só fica disponível depois do prazo de segurança de 5 a 7 dias.</p>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-xl bg-muted p-3"><p className="text-[10px] font-bold uppercase text-muted-foreground">Comprador</p><p className="mt-1 text-base font-black text-foreground">{formatBRL(parsePriceInput(buyerFee))}</p></div>
-              <div className="rounded-xl bg-muted p-3"><p className="text-[10px] font-bold uppercase text-muted-foreground">Mínimo de saque</p><p className="mt-1 text-base font-black text-foreground">{formatBRL(parsePriceInput(minWithdraw))}</p></div>
-              <div className="rounded-xl bg-muted p-3"><p className="text-[10px] font-bold uppercase text-muted-foreground">Taxa de saque</p><p className="mt-1 text-base font-black text-foreground">{formatBRL(parsePriceInput(withdrawFee))}</p></div>
+              <div className="rounded-xl bg-muted p-3"><p className="text-[10px] font-bold uppercase text-muted-foreground">Saque normal</p><p className="mt-1 text-base font-black text-foreground">{formatBRL(parsePriceInput(minWithdraw))}</p></div>
+              <div className="rounded-xl bg-muted p-3"><p className="text-[10px] font-bold uppercase text-muted-foreground">Saque reduzido</p><p className="mt-1 text-base font-black text-foreground">{formatBRL(parsePriceInput(smallWithdrawMin))}</p><p className="text-[10px] text-muted-foreground">+ {formatBRL(parsePriceInput(smallWithdrawExtraFee))}</p></div>
+              <div className="rounded-xl bg-muted p-3"><p className="text-[10px] font-bold uppercase text-muted-foreground">Retenção</p><p className="mt-1 text-base font-black text-foreground">{sellerReleaseDays} dias</p></div>
             </div>
           </div>
 

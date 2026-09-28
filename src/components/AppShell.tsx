@@ -51,6 +51,10 @@ export default function AppShell({ children }: Props) {
 
   const accountArea = ["/meus-produtos", "/minhas-compras", "/suporte", "/admin", "/sacar", "/perfil", "/configuracoes"]
     .some((prefix) => location.pathname.startsWith(prefix));
+  // A navegação inferior é útil nas áreas operacionais principais, mas ficava
+  // reaparecendo em Perfil/Configurações/Admin/Saque e duplicava os controles.
+  const showBottomNav = ["/meus-produtos", "/minhas-compras", "/suporte"]
+    .some((prefix) => location.pathname.startsWith(prefix));
 
   return (
     <div className={`min-h-screen bg-[#0b0b0e] text-white ${accountArea && user ? "pb-20" : ""}`}>
@@ -66,7 +70,7 @@ export default function AppShell({ children }: Props) {
       </div>
 
       {!accountArea ? <SiteFooter /> : null}
-      {accountArea && user ? <BottomNav /> : null}
+      {showBottomNav && user ? <BottomNav /> : null}
 
       <SideMenu
         open={menuOpen}

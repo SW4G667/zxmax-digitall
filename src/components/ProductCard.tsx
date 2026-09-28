@@ -1,7 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { Heart, BadgeCheck } from "lucide-react";
-import { Product } from "@/store/StoreContext";
+import { Product, useStore } from "@/store/StoreContext";
 import useFavorites from "@/hooks/useFavorites";
 import { formatBRL, formatRobuxPackage, formatStockLabel, productStock, ROBUX_CATEGORY } from "@/lib/catalog";
 
@@ -13,8 +13,13 @@ interface Props {
 
 export default function ProductCard({ product, onClick, verified }: Props) {
   const navigate = useNavigate();
+  const { state } = useStore();
   const { isFavorite, toggle } = useFavorites();
   const fav = isFavorite(product.id);
+  const seller = state.userDirectory?.[product.sellerId];
+  const sellerName = seller?.name || product.seller || "Vendedor";
+  const sellerAvatar = seller?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(sellerName)}`;
+  const sellerVerified = verified ?? seller?.documentVerified ?? seller?.isVerified ?? false;
 
   const handleClick = () => {
     if (onClick) onClick();
@@ -59,10 +64,13 @@ export default function ProductCard({ product, onClick, verified }: Props) {
         <h3 className="font-bold text-white text-[13px] leading-tight line-clamp-2 min-h-[36px]">
           {product.name}
         </h3>
-        <p className="text-[11px] text-white/40 mt-1 flex items-center gap-1">
-          por <span className="text-[#0084ff] font-semibold">{product.seller}</span>
-          {verified && <BadgeCheck className="w-3 h-3 text-[#0084ff]" />}
-        </p>
+        <div className="mt-2 flex min-w-0 items-center gap-2">
+          <img src={sellerAvatar} alt="" className="h-6 w-6 shrink-0 rounded-full border border-white/[0.08] bg-[#0d0d11] object-cover" loading="lazy" />
+          <p className="min-w-0 truncate text-[11px] text-white/40">
+            por <span className="font-semibold text-[#66b7ff]">{sellerName}</span>
+          </p>
+          {sellerVerified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[#52afff]" aria-label="Vendedor com documento verificado" />}
+        </div>
         <div className="mt-auto pt-3 flex items-end justify-between gap-2">
           <div>
             <p className="text-[10px] text-white/30 uppercase font-bold tracking-wider">A partir de</p>

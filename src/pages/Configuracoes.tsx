@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, KeyRound, Loader2, LogOut, MonitorOff, ShieldCheck, UserRound, WalletCards } from "lucide-react";
+import { ArrowLeft, Bell, KeyRound, Loader2, LogOut, MonitorOff, ShieldCheck, UserRound, WalletCards } from "lucide-react";
 import { toast } from "sonner";
 import AppShell from "@/components/AppShell";
 import LoadingScreen from "@/components/LoadingScreen";
@@ -10,6 +10,24 @@ import DiscordWebhookSettings from "@/components/DiscordWebhookSettings";
 
 const inputClass = "w-full rounded-lg border border-white/[0.09] bg-[#0d0d11] px-3.5 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#168cff]/60 focus:ring-2 focus:ring-[#168cff]/10";
 
+type NotificationPrefs = {
+  enabled: boolean;
+  sales: boolean;
+  questions: boolean;
+  orders: boolean;
+  notices: boolean;
+  support: boolean;
+};
+
+const defaultNotificationPrefs: NotificationPrefs = {
+  enabled: true,
+  sales: true,
+  questions: true,
+  orders: true,
+  notices: true,
+  support: true,
+};
+
 export default function Configuracoes() {
   const { user, loading, signOut } = useAuth();
   const navigate = useNavigate();
@@ -17,6 +35,45 @@ export default function Configuracoes() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
   const [endingOtherSessions, setEndingOtherSessions] = useState(false);
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefs>(defaultNotificationPrefs);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [notificationSaving, setNotificationSaving] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      setNotificationsLoading(false);
+      return;
+    }
+    let active = true;
+    void (async () => {
+      const { data, error } = await (supabase as any)
+        .from("notification_preferences")
+        .select("enabled,sales,questions,orders,notices,support")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!active) return;
+      if (!error && data) setNotificationPrefs({ ...defaultNotificationPrefs, ...data });
+      setNotificationsLoading(false);
+    })();
+    return () => { active = false; };
+  }, [user?.id]);
+
+  const setNotificationPreference = async (key: keyof NotificationPrefs, value: boolean) => {
+    if (!user) return;
+    const next = { ...notificationPrefs, [key]: value };
+    setNotificationPrefs(next);
+    setNotificationSaving(key);
+    const { error } = await (supabase as any).from("notification_preferences").upsert({
+      user_id: user.id,
+      ...next,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id" });
+    setNotificationSaving(null);
+    if (error) {
+      setNotificationPrefs(notificationPrefs);
+      toast.error("Não foi possível salvar essa preferência.");
+    }
+  };
 
   const handlePasswordUpdate = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -123,6 +180,47 @@ export default function Configuracoes() {
             </p>
           </section>
         </div>
+
+        <section className="mt-5 rounded-xl border border-white/[0.08] bg-[#101013] p-4 sm:p-5" aria-labelledby="notifications-title">
+          <div className="flex items-start gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[#168cff]/15 bg-[#168cff]/[0.07] text-[#70bbff]">
+              <Bell className="h-4 w-4" />
+            </span>
+            <div>
+              <h2 id="notifications-title" className="text-sm font-bold text-white">Notificações do site</h2>
+              <p className="mt-1 text-[11px] leading-5 text-white/38">Escolha quais avisos ficam salvos na sua central. Vendedores podem receber novas vendas e perguntas mesmo depois de trocar de página.</p>
+            </div>
+          </div>
+
+          {notificationsLoading ? (
+            <p className="mt-5 text-xs text-white/35">Carregando preferências…</p>
+          ) : (
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              {([
+                ["enabled", "Central de notificações", "Liga ou pausa todos os novos avisos."],
+                ["sales", "Vendas e saldo", "Nova venda, conclusão e liberação de saldo."],
+                ["questions", "Perguntas", "Perguntas no anúncio e respostas."],
+                ["orders", "Pedidos e disputas", "Pagamento, entrega, reembolso e disputa."],
+                ["notices", "Avisos da plataforma", "Comunicados publicados pela administração."],
+                ["support", "Suporte", "Atualizações relacionadas ao atendimento."],
+              ] as Array<[keyof NotificationPrefs, string, string]>).map(([key, label, description]) => (
+                <label key={key} className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-white/[0.07] bg-white/[0.018] p-3.5">
+                  <span>
+                    <span className="block text-xs font-bold text-white">{label}</span>
+                    <span className="mt-1 block text-[10px] leading-4 text-white/34">{description}</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={notificationPrefs[key]}
+                    disabled={Boolean(notificationSaving) || (key !== "enabled" && !notificationPrefs.enabled)}
+                    onChange={(event) => void setNotificationPreference(key, event.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-[#168cff]"
+                  />
+                </label>
+              ))}
+            </div>
+          )}
+        </section>
 
         <section className="mt-5 rounded-xl border border-white/[0.08] bg-[#101013] p-4 sm:p-5" aria-labelledby="shortcuts-title">
           <div className="flex items-end justify-between gap-3">

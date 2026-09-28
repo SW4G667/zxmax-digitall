@@ -15,12 +15,16 @@ describe("fronteira de autorização comercial", () => {
     expect(migration).toContain("Saldo disponível insuficiente para este saque");
   });
 
-  it("não marca reembolso ou libera pedidos globalmente sem autorização e confirmação de provedor", async () => {
+  it("reembolsa para a carteira apenas pelo servidor, com autorização e saldo ainda retido", async () => {
     const action = await source("supabase/functions/order-action/index.ts");
-    expect(action).toContain("payment_provider");
-    expect(action).toContain("exige endpoint oficial, confirmação verificável do provedor e conciliação");
+    const migration = await source("supabase/migrations/20260928183000_marketplace_hardening_wallet_notifications_verification.sql");
+    expect(action).toContain("refund_purchase_to_wallet_server");
+    expect(action).toContain("Apenas o vendedor do pedido ou um administrador pode realizar o reembolso.");
     expect(action).toContain("Apenas administradores podem executar a liberação automática manualmente.");
-    expect(action).not.toContain('status: "refunded"');
+    expect(migration).toContain("IF _actor_id<>p.seller_id AND NOT is_admin");
+    expect(migration).toContain("IF p.seller_released AND NOT is_admin");
+    expect(migration).toContain("wallet:refund:");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.refund_purchase_to_wallet_server");
   });
 
   it("persiste mensagens de pedido somente pelo contrato de servidor autorizado", async () => {

@@ -18,6 +18,7 @@ const DEFAULTS = {
   heroTitle: "Compre e venda produtos digitais",
   heroSubtitle: "Encontre ofertas, acompanhe seus pedidos e anuncie com um fluxo simples e seguro.",
   heroBannerUrl: "",
+  socialPreviewUrl: "",
   robuxBannerUrl: "",
   promoBanner1Url: "",
   promoBanner2Url: "",
@@ -30,6 +31,7 @@ const UPLOAD_SLOTS: Record<string, { field: keyof typeof DEFAULTS; maxBytes: num
   logo: { field: "logoUrl", maxBytes: 2 * 1024 * 1024 },
   favicon: { field: "faviconUrl", maxBytes: 2 * 1024 * 1024 },
   heroBanner: { field: "heroBannerUrl", maxBytes: 5 * 1024 * 1024 },
+  socialPreview: { field: "socialPreviewUrl", maxBytes: 5 * 1024 * 1024 },
   robuxBanner: { field: "robuxBannerUrl", maxBytes: 5 * 1024 * 1024 },
   promoBanner1: { field: "promoBanner1Url", maxBytes: 5 * 1024 * 1024 },
   promoBanner2: { field: "promoBanner2Url", maxBytes: 5 * 1024 * 1024 },
@@ -66,7 +68,25 @@ serve(async (req) => {
   const { data: row } = await admin.from("app_settings").select("value").eq("key", "site_branding").maybeSingle();
   const current = { ...DEFAULTS, ...(row?.value || {}) };
 
-  if (req.method === "GET") return json({ branding: current });
+  if (req.method === "GET") {
+    const requestUrl = new URL(req.url);
+    const asset = requestUrl.searchParams.get("asset");
+    if (asset === "favicon" || asset === "socialPreview") {
+      const configured = asset === "favicon"
+        ? safeUrl(current.faviconUrl)
+        : safeUrl(current.socialPreviewUrl) || safeUrl(current.logoUrl);
+      const fallback = "https://zxmax.vercel.app/favicon.ico";
+      return new Response(null, {
+        status: 302,
+        headers: {
+          ...corsHeaders,
+          "Location": configured || fallback,
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+        },
+      });
+    }
+    return json({ branding: current });
+  }
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -124,6 +144,7 @@ serve(async (req) => {
         heroTitle: safeText(values.heroTitle ?? current.heroTitle, 100) || DEFAULTS.heroTitle,
         heroSubtitle: safeText(values.heroSubtitle ?? current.heroSubtitle, 220) || DEFAULTS.heroSubtitle,
         heroBannerUrl: values.heroBannerUrl === undefined ? current.heroBannerUrl : safeUrl(values.heroBannerUrl),
+        socialPreviewUrl: values.socialPreviewUrl === undefined ? current.socialPreviewUrl : safeUrl(values.socialPreviewUrl),
         robuxBannerUrl: values.robuxBannerUrl === undefined ? current.robuxBannerUrl : safeUrl(values.robuxBannerUrl),
         promoBanner1Url: values.promoBanner1Url === undefined ? current.promoBanner1Url : safeUrl(values.promoBanner1Url),
         promoBanner2Url: values.promoBanner2Url === undefined ? current.promoBanner2Url : safeUrl(values.promoBanner2Url),

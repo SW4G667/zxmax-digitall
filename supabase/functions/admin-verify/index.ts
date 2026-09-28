@@ -76,13 +76,11 @@ serve(async (req) => {
       } as any).eq("user_id", userId);
       if (error) throw error;
 
-      if (documentId) {
-        await serviceClient.from("seller_documents").update({
-          status: "approved",
-          reviewed_by: userData.user.id,
-          reviewed_at: new Date().toISOString(),
-        }).eq("id", documentId);
-      }
+      await serviceClient.from("seller_documents").update({
+        status: "approved",
+        reviewed_by: userData.user.id,
+        reviewed_at: new Date().toISOString(),
+      }).eq("user_id", userId).eq("status", "pending");
 
       await serviceClient.from("webhook_logs").insert({
         source: "admin",
@@ -105,19 +103,17 @@ serve(async (req) => {
       } as any).eq("user_id", userId);
       if (error) throw error;
 
-      if (documentId) {
-        await serviceClient.from("seller_documents").update({
-          status: "rejected",
-          reviewed_by: userData.user.id,
-          reviewed_at: new Date().toISOString(),
-        }).eq("id", documentId);
-      }
+      await serviceClient.from("seller_documents").update({
+        status: "rejected",
+        reviewed_by: userData.user.id,
+        reviewed_at: new Date().toISOString(),
+      }).eq("user_id", userId).eq("status", "pending");
 
       return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     if (action === "get_documents") {
-      const { data, error } = await serviceClient.from("seller_documents").select("id, user_id, file_path, file_name, status, created_at").order("created_at", { ascending: false }).limit(100);
+      const { data, error } = await serviceClient.from("seller_documents").select("id, user_id, file_path, file_name, document_type, status, created_at").order("created_at", { ascending: false }).limit(100);
       if (error) throw error;
       
       // Enrich with profile data
@@ -158,7 +154,7 @@ serve(async (req) => {
     if (action === "get_verifications") {
       const { data, error } = await serviceClient
         .from("profiles")
-        .select("user_id, public_id, email, display_name, full_name, cpf, birth_date, phone, city, state, verification_selfie_path, verification_status, verification_notes, verification_submitted_at, is_verified_seller")
+        .select("user_id, public_id, email, display_name, full_name, cpf, birth_date, phone, city, state, phone_verified_at, verification_rg_front_path, verification_rg_back_path, verification_selfie_path, verification_status, verification_notes, verification_submitted_at, is_verified_seller")
         .not("verification_status", "is", null)
         .neq("verification_status", "none")
         .order("verification_submitted_at", { ascending: false })

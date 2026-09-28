@@ -21,11 +21,12 @@ describe("fronteira de privacidade de participantes", () => {
     const support = await source("src/components/SupportView.tsx");
     const chat = await source("src/components/OrderChat.tsx");
 
-    expect(notifications).toContain("p.sellerId === userId");
-    expect(notifications).toContain("p.buyerId === userId");
-    expect(notifications).toContain("t.userId === userId");
-    expect(notifications).not.toContain("p.sellerEmail === email");
-    expect(notifications).not.toContain("p.buyerEmail === email");
+    const notificationMigration = await source("supabase/migrations/20260928183000_marketplace_hardening_wallet_notifications_verification.sql");
+    expect(notifications).toContain('.eq("user_id", user.id)');
+    expect(notificationMigration).toContain('CREATE POLICY "Own notifications read"');
+    expect(notificationMigration).toContain("USING (user_id = auth.uid())");
+    expect(notifications).not.toContain("sellerEmail");
+    expect(notifications).not.toContain("buyerEmail");
     expect(support).toContain("t.userId === state.currentUser?.id");
     expect(chat).toContain("purchase?.sellerId === me");
     expect(chat).toContain("purchase?.buyerId === me");

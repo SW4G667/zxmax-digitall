@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, Shield, Upload, Loader2, CheckCircle2, Clock, XCircle, LogOut, Camera } from "lucide-react";
+import { ArrowLeft, Shield, Upload, Loader2, CheckCircle2, Clock, XCircle, LogOut, Camera, Phone, FileImage, KeyRound } from "lucide-react";
 import TwoFactorPanel from "@/components/TwoFactorPanel";
 import LoadingScreen from "@/components/LoadingScreen";
 import AppShell from "@/components/AppShell";
@@ -39,6 +39,7 @@ function PerfilInner() {
   const { user, profile, loading, refreshProfile, isAdmin, signOut } = useAuth();
   const { state } = useStore();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [form, setForm] = useState({
     display_name: "",
@@ -54,7 +55,12 @@ function PerfilInner() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [selfie, setSelfie] = useState<File | null>(null);
+  const [rgFront, setRgFront] = useState<File | null>(null);
+  const [rgBack, setRgBack] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
+  const [phoneCode, setPhoneCode] = useState("");
+  const [phoneSent, setPhoneSent] = useState(false);
+  const [phoneBusy, setPhoneBusy] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
@@ -81,6 +87,8 @@ function PerfilInner() {
   }, [avatarFile]);
 
   const status = ((profile as any)?.verification_status as string) || "none";
+  const phoneVerified = Boolean((profile as any)?.phone_verified_at);
+  const requestedPhoneVerification = searchParams.get("verify") === "phone";
   const meta = STATUS_META[status] || STATUS_META.none;
   const StatusIcon = meta.icon;
 
@@ -147,6 +155,7 @@ function PerfilInner() {
       if (error) throw error;
       await refreshProfile();
       setAvatarFile(null);
+      window.dispatchEvent(new Event("zxmax:profile-updated"));
       toast.success(avatarFile ? "Perfil e foto atualizados!" : "Dados salvos!");
     } catch {
       toast.error("Não foi possível salvar o perfil. Tente novamente.");
@@ -154,20 +163,76 @@ function PerfilInner() {
     setSaving(false);
   };
 
+  const startPhoneVerification = async () => {
+    if (!user) return;
+    const digits = form.phone.replace(/\D/g, "");
+    if (digits.length < 10 || digits.length > 13) return toast.error("Informe um celular válido com DDD.");
+    setPhoneBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("phone-verification", {
+        body: { action: "start", phone: form.phone },
+      });
+      if (error || data?.error) throw new Error(data?.error || "Não foi possível enviar o SMS.");
+      setPhoneSent(true);
+      toast.success("Código enviado por SMS.");
+    } catch (error: any) {
+      toast.error(error?.message || "Não foi possível enviar o SMS.");
+    } finally {
+      setPhoneBusy(false);
+    }
+  };
+
+  const confirmPhoneVerification = async () => {
+    if (!user) return;
+    if (!/^\d{4,10}$/.test(phoneCode.replace(/\D/g, ""))) return toast.error("Digite o código recebido por SMS.");
+    setPhoneBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("phone-verification", {
+        body: { action: "check", phone: form.phone, code: phoneCode },
+      });
+      if (error || data?.error || !data?.verified) throw new Error(data?.error || "Código inválido.");
+      await refreshProfile();
+      window.dispatchEvent(new Event("zxmax:profile-updated"));
+      setPhoneSent(false);
+      setPhoneCode("");
+      toast.success("Número verificado. Você já pode criar anúncios.");
+    } catch (error: any) {
+      toast.error(error?.message || "Não foi possível validar o código.");
+    } finally {
+      setPhoneBusy(false);
+    }
+  };
+
   const handleSubmitVerification = async () => {
     const err = validate(true);
     if (err) return toast.error(err);
-    if (!selfie) return toast.error("Envie a foto segurando documento + papel ZXMAX.");
-    if (!selfie.type.startsWith("image/")) return toast.error("Só imagens.");
-    if (selfie.size > 5 * 1024 * 1024) return toast.error("Máximo 5MB.");
+    if (!phoneVerified) return toast.error("Verifique seu número por SMS antes de enviar os documentos.");
+    if (!rgFront || !rgBack || !selfie) return toast.error("Envie RG frente, RG verso e sua selfie.");
+    const files = [rgFront, rgBack, selfie];
+    if (files.some((file) => !file.type.startsWith("image/"))) return toast.error("Envie apenas imagens dos documentos.");
+    if (files.some((file) => file.size > 5 * 1024 * 1024)) return toast.error("Cada imagem pode ter no máximo 5 MB.");
     if (!user) return;
 
     setSending(true);
     try {
-      const path = `${user.id}/verificacao_${Date.now()}_${selfie.name.replace(/[^\w.-]/g, "_")}`;
-      const { error: upErr } = await supabase.storage.from("documents").upload(path, selfie, { upsert: true });
-      if (upErr) throw upErr;
+      const stamp = Date.now();
+      const safeName = (name: string) => name.replace(/[^\w.-]/g, "_");
+      const paths = {
+        front: `${user.id}/rg_frente_${stamp}_${safeName(rgFront.name)}`,
+        back: `${user.id}/rg_verso_${stamp}_${safeName(rgBack.name)}`,
+        selfie: `${user.id}/selfie_${stamp}_${safeName(selfie.name)}`,
+      };
 
+      for (const [key, file] of [["front", rgFront], ["back", rgBack], ["selfie", selfie]] as const) {
+        const target = paths[key];
+        const { error: uploadError } = await supabase.storage.from("documents").upload(target, file, {
+          upsert: false,
+          contentType: file.type,
+        });
+        if (uploadError) throw uploadError;
+      }
+
+      const now = new Date().toISOString();
       const { error: profErr } = await supabase
         .from("profiles")
         .update({
@@ -179,33 +244,34 @@ function PerfilInner() {
           city: form.city.trim(),
           state: form.state.trim().toUpperCase(),
           pix_key: form.pix_key.trim(),
-          verification_selfie_path: path,
+          verification_rg_front_path: paths.front,
+          verification_rg_back_path: paths.back,
+          verification_selfie_path: paths.selfie,
           verification_status: "pending",
-          verification_submitted_at: new Date().toISOString(),
+          verification_submitted_at: now,
         } as any)
         .eq("user_id", user.id);
       if (profErr) throw profErr;
 
-      const { error: docErr } = await supabase.from("seller_documents").insert({
-        user_id: user.id,
-        file_path: path,
-        file_name: selfie.name,
-        document_type: "verificacao_identidade",
-        status: "pending",
-      } as any);
-      if (docErr) console.error("doc insert error", docErr);
+      const { error: docErr } = await supabase.from("seller_documents").insert([
+        { user_id: user.id, file_path: paths.front, file_name: rgFront.name, document_type: "rg_frente", status: "pending" },
+        { user_id: user.id, file_path: paths.back, file_name: rgBack.name, document_type: "rg_verso", status: "pending" },
+        { user_id: user.id, file_path: paths.selfie, file_name: selfie.name, document_type: "selfie", status: "pending" },
+      ] as any);
+      if (docErr) throw docErr;
 
       setSelfie(null);
-      // Don't cause page refresh - just refresh profile state
-      setTimeout(async () => {
-        await refreshProfile();
-      }, 500);
-      toast.success("Verificação enviada! Aguarde análise.");
-    } catch (e: any) {
-      console.error("verification error", e);
-      toast.error("Erro ao enviar: " + (e?.message || "tente novamente"));
+      setRgFront(null);
+      setRgBack(null);
+      await refreshProfile();
+      window.dispatchEvent(new Event("zxmax:profile-updated"));
+      toast.success("Documentos enviados para análise.");
+    } catch (error: any) {
+      console.error("verification error", error);
+      toast.error(error?.message || "Não foi possível enviar a verificação.");
+    } finally {
+      setSending(false);
     }
-    setSending(false);
   };
 
   if (loading) return <LoadingScreen message="Carregando perfil..." />;
@@ -262,6 +328,41 @@ function PerfilInner() {
           ))}
         </section>
 
+        {!phoneVerified && (
+          <section className={`mb-5 rounded-2xl border p-5 sm:p-6 ${requestedPhoneVerification ? "border-[#168cff]/45 bg-[#168cff]/[0.08]" : "border-[#25252e] bg-[#15151a]"}`} aria-labelledby="phone-verification-title">
+            <div className="flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[#168cff]/20 bg-[#168cff]/10 text-[#66b7ff]"><Phone className="h-5 w-5" /></span>
+              <div>
+                <h2 id="phone-verification-title" className="font-bold text-white">Verifique seu número para anunciar</h2>
+                <p className="mt-1 text-xs leading-5 text-white/45">A criação de anúncios exige apenas confirmação do celular por SMS. Saques e compras com saldo continuam exigindo a verificação completa dos documentos.</p>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
+              <input className={inputClass} value={form.phone} onChange={set("phone")} placeholder="(00) 00000-0000" inputMode="tel" />
+              <button type="button" onClick={() => void startPhoneVerification()} disabled={phoneBusy} className="rounded-xl bg-[#168cff] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">
+                {phoneBusy && !phoneSent ? "Enviando..." : phoneSent ? "Reenviar SMS" : "Enviar código"}
+              </button>
+            </div>
+            {phoneSent && (
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                <div className="relative">
+                  <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+                  <input value={phoneCode} onChange={(event) => setPhoneCode(event.target.value.replace(/\D/g, "").slice(0, 10))} inputMode="numeric" autoComplete="one-time-code" placeholder="Código SMS" className={inputClass + " pl-10"} />
+                </div>
+                <button type="button" onClick={() => void confirmPhoneVerification()} disabled={phoneBusy} className="rounded-xl border border-[#168cff]/35 bg-[#168cff]/10 px-4 py-3 text-sm font-bold text-[#7cc4ff] disabled:opacity-50">
+                  {phoneBusy ? "Validando..." : "Confirmar código"}
+                </button>
+              </div>
+            )}
+          </section>
+        )}
+
+        {phoneVerified && (
+          <div className="mb-5 flex items-center gap-3 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.06] p-4 text-sm text-emerald-200">
+            <CheckCircle2 className="h-5 w-5 shrink-0" /> Número confirmado por SMS. Sua conta pode criar anúncios.
+          </div>
+        )}
+
         <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6 mb-5">
           <h2 className="font-bold text-white mb-1">Dados pessoais</h2>
           <p className="text-xs text-white/40 mb-5">Nome e foto aparecem publicamente; os demais dados são visíveis só para você e moderação.</p>
@@ -298,19 +399,38 @@ function PerfilInner() {
         )}
 
         <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6">
-          <h2 className="font-bold text-white mb-1">Verificação de identidade</h2>
-          <p className="text-xs text-white/40 mb-4">Foto segurando documento + papel escrito <strong className="text-white">ZXMAX</strong> com data de hoje.</p>
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/[0.08] bg-white/[0.035] text-white/65"><FileImage className="h-5 w-5" /></span>
+            <div>
+              <h2 className="font-bold text-white">Verificação de documentos</h2>
+              <p className="mt-1 text-xs leading-5 text-white/40">Necessária para sacar dinheiro ou pagar com o saldo da carteira. CPF digitado, RG frente e verso e uma selfie são revisados pela moderação.</p>
+            </div>
+          </div>
 
           {status === "pending" ? (
-            <p className="text-sm text-[#0084ff] font-bold">Em análise. Você será avisado.</p>
+            <p className="mt-5 text-sm text-[#66b7ff] font-bold">Documentos em análise. Você receberá uma notificação quando houver decisão.</p>
           ) : status === "approved" ? (
-            <p className="text-sm text-[#00c950] font-bold flex items-center gap-2"><Shield className="w-4 h-4" /> Conta verificada.</p>
+            <p className="mt-5 text-sm text-[#00c950] font-bold flex items-center gap-2"><Shield className="w-4 h-4" /> Documentos verificados.</p>
           ) : (
             <>
-              <input type="file" accept="image/*" onChange={(e) => setSelfie(e.target.files?.[0] || null)} className="block w-full text-xs text-white/40 file:mr-3 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#1a1a20] file:text-white file:border file:border-[#25252e]" />
-              <button onClick={handleSubmitVerification} disabled={sending} className="bg-[#0084ff] hover:bg-[#0066cc] text-white mt-5 px-5 py-3 rounded-xl font-bold text-sm inline-flex items-center gap-2 disabled:opacity-50 transition">
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                {[
+                  ["RG — frente", rgFront, setRgFront],
+                  ["RG — verso", rgBack, setRgBack],
+                  ["Selfie", selfie, setSelfie],
+                ].map(([label, file, setter]: any) => (
+                  <label key={label} className="cursor-pointer rounded-xl border border-dashed border-white/[0.12] bg-[#0b0b0e] p-4 text-center transition hover:border-[#168cff]/50">
+                    <Upload className="mx-auto h-5 w-5 text-[#66b7ff]" />
+                    <span className="mt-2 block text-xs font-bold text-white">{label}</span>
+                    <span className="mt-1 block truncate text-[10px] text-white/35">{file?.name || "JPG, PNG ou WebP"}</span>
+                    <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => setter(event.target.files?.[0] || null)} />
+                  </label>
+                ))}
+              </div>
+              {!phoneVerified && <p className="mt-4 text-xs text-amber-300/75">Confirme seu número por SMS antes de enviar os documentos.</p>}
+              <button onClick={handleSubmitVerification} disabled={sending || !phoneVerified} className="bg-[#0084ff] hover:bg-[#0066cc] text-white mt-5 px-5 py-3 rounded-xl font-bold text-sm inline-flex items-center gap-2 disabled:opacity-50 transition">
                 {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                {sending ? "Enviando..." : "Enviar verificação"}
+                {sending ? "Enviando..." : "Enviar documentos"}
               </button>
             </>
           )}

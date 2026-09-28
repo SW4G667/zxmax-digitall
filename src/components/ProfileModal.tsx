@@ -45,12 +45,12 @@ export default function ProfileModal({ open, onClose }: Props) {
     setEditingPix(false);
   };
 
-  const handleWithdraw = (method: "normal" | "instant") => {
-    if (!storeUser.isVerified) return toast.error("Você precisa ter seus documentos aprovados pelo admin para sacar.");
-    if (storeUser.balance < 3.50) return toast.error("Saldo mínimo para saque é R$ 3,50.");
+  const handleWithdraw = (method: "normal" | "flex") => {
+    if (!storeUser.documentVerified) return toast.error("Você precisa ter RG, CPF e selfie aprovados antes de sacar.");
+    if (storeUser.balance < state.config.withdrawMin) return toast.error(`Saldo mínimo para saque normal é R$ ${state.config.withdrawMin.toFixed(2).replace(".", ",")}.`);
     if (!profile?.pix_key && !storeUser.pixKey) return toast.error("Cadastre sua chave Pix antes de solicitar saque.");
     requestWithdraw(method);
-    toast.success("Saque solicitado! Após aprovação do admin, o valor cai em 5 a 7 dias úteis.");
+    toast.success("Saque solicitado para análise.");
   };
 
   const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -115,6 +115,7 @@ export default function ProfileModal({ open, onClose }: Props) {
       const dataUrl = await compressImage(file, 256);
       await updateAuthProfile({ avatar_url: dataUrl });
       await refreshProfile();
+      window.dispatchEvent(new Event("zxmax:profile-updated"));
       toast.success("Foto de perfil atualizada!");
     } catch (err: any) {
       toast.error("Erro ao atualizar foto: " + (err?.message || "Tente novamente."));

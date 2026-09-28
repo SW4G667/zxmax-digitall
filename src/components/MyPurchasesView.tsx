@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useStore, Purchase } from "@/store/StoreContext";
 import { ShoppingBagEmoji, StarEmoji } from "@/components/CustomEmojis";
-import { Search, ShieldAlert, Copy, ArrowLeft, QrCode, MessageSquare, Eye, PackageCheck, CircleDot, CheckCircle2, Loader2, RefreshCw } from "lucide-react";
+import { Search, ShieldAlert, Copy, ArrowLeft, QrCode, MessageSquare, Eye, PackageCheck, CircleDot, CheckCircle2, Loader2, RefreshCw, CreditCard, WalletCards, Bitcoin, RotateCcw, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import OrderChat from "@/components/OrderChat";
 import PixPaymentModal, { PixCharge } from "@/components/PixPaymentModal";
+import CryptoPaymentModal, { CryptoCharge } from "@/components/CryptoPaymentModal";
 import { supabase } from "@/integrations/supabase/client";
 import { unwrapEdgeCall } from "@/lib/edgeErrors";
 import { useAuth } from "@/hooks/useAuth";
@@ -56,7 +57,7 @@ function StageStepper({ status }: { status: Purchase["status"] }) {
 }
 
 export default function MyPurchasesView({ initialSelectedId, initialScope = "all" }: { initialSelectedId?: number | null; initialScope?: "all" | "purchases" | "sales" }) {
-  const { state, confirmDelivery, openDispute, reviewPurchase, savePixCharge, refreshPurchases } = useStore();
+  const { state, confirmDelivery, openDispute, reviewPurchase, savePixCharge, refreshPurchases, sellerRefundOrder } = useStore();
   const { sessionReady } = useAuth();
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(initialSelectedId || null);
@@ -75,8 +76,13 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
   const [comment, setComment] = useState("");
   const [showReview, setShowReview] = useState(false);
   const [pixCharge, setPixCharge] = useState<PixCharge | null>(null);
+  const [cryptoCharge, setCryptoCharge] = useState<CryptoCharge | null>(null);
   const [resumeId, setResumeId] = useState<number | null>(null);
   const [loadingPix, setLoadingPix] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "approved" | "pending" | "cancelled" | "dispute">("all");
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [refundReason, setRefundReason] = useState("");
+  const [refundBusy, setRefundBusy] = useState(false);
   const [syncState, setSyncState] = useState<"loading" | "ready" | "error">("loading");
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [orderScope, setOrderScope] = useState<"all" | "purchases" | "sales">(initialScope);
@@ -124,8 +130,15 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
     ...(myPurchases.length ? [{ id: "purchases" as const, label: "Compras", count: myPurchases.length }] : []),
     ...(mySales.length ? [{ id: "sales" as const, label: "Vendas", count: mySales.length }] : []),
   ];
+  const statusFiltered = scopedPurchases.filter((purchase) => {
+    if (statusFilter === "all") return true;
+    if (statusFilter === "approved") return ["paid", "delivered_pending_confirmation", "delivered"].includes(purchase.status);
+    if (statusFilter === "pending") return purchase.status === "pending";
+    if (statusFilter === "cancelled") return ["cancelled", "refunded"].includes(purchase.status);
+    return purchase.status === "dispute";
+  });
   const q = search.trim().toLowerCase();
-  const filtered = scopedPurchases.filter((p) => {
+  const filtered = statusFiltered.filter((p) => {
     if (!q) return true;
     // Procura no nome do produto, ID e variação. O e-mail só integra a busca
     // administrativa; participantes não precisam dele para localizar pedidos.
@@ -218,9 +231,93 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
     }
   };
 
+  const paymentLabel = (purchase: Purchase) => {
+    const provider = purchase.paymentProvider || "";
+    if (provider === "card") return "Pagar com cartão";
+    if (provider === "boleto") return "Gerar boleto";
+    if (provider === "crypto") return "Pagar com cripto";
+    if (provider === "wallet") return "Pagar com saldo";
+    return purchase.pixQrCode && purchase.pixExpiresAt && new Date(purchase.pixExpiresAt).getTime() > Date.now()
+      ? "Abrir PIX"
+      : "Gerar PIX";
+  };
+
+  const handleResumePayment = async (purchase: Purchase, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    const provider = purchase.paymentProvider || "";
+    if (["magnuspay_pix", "zennith_pix", "vexopay_pix"].includes(provider)) {
+      await handlePayPix(purchase, event);
+      return;
+    }
+
+    const product = state.products.find((item) => item.id === purchase.productId);
+    setLoadingPix(purchase.id);
+    try {
+      if (provider === "card" || provider === "boleto") {
+        const result = await unwrapEdgeCall<{ url?: string }>(
+          await supabase.functions.invoke("create-stripe-checkout", {
+            body: { purchaseId: purchase.id, productName: product?.name || "Pedido ZXMAX", paymentMethod: provider },
+          }),
+          "Não foi possível retomar o pagamento.",
+        );
+        if (result.errorMessage || !result.data?.url) throw new Error(result.errorMessage || "O checkout não retornou um link.");
+        window.location.href = result.data.url;
+        return;
+      }
+
+      if (provider === "wallet") {
+        const { data, error } = await (supabase as any).rpc("pay_purchase_with_wallet", { _purchase_id: purchase.id });
+        if (error || !data?.success) throw new Error(error?.message || "Não foi possível pagar com o saldo.");
+        await refreshPurchases();
+        toast.success("Pagamento com saldo confirmado.");
+        return;
+      }
+
+      if (provider === "crypto") {
+        const result = await unwrapEdgeCall<{ id?: string; address?: string; qrCode?: string; amount?: number; network?: string; expiresAt?: string }>(
+          await supabase.functions.invoke("create-vexopay-crypto", {
+            body: { purchaseId: purchase.id, network: "TRC20", description: product?.name || "Pedido ZXMAX" },
+          }),
+          "Não foi possível retomar a cobrança em cripto.",
+        );
+        if (result.errorMessage || !result.data?.address) throw new Error(result.errorMessage || "O provedor não retornou a carteira.");
+        setCryptoCharge({
+          id: String(result.data.id || ""),
+          address: String(result.data.address),
+          amount: purchase.amount,
+          cryptoAmount: result.data.amount,
+          qrCode: result.data.qrCode,
+          network: String(result.data.network || "TRC20"),
+          expiresAt: result.data.expiresAt,
+          purchaseId: purchase.id,
+        });
+        return;
+      }
+
+      throw new Error("A forma de pagamento original deste pedido não pode ser retomada automaticamente.");
+    } catch (error: any) {
+      toast.error(error?.message || "Não foi possível retomar o pagamento.");
+    } finally {
+      setLoadingPix(null);
+    }
+  };
+
   const handlePixPaid = async () => {
     void refreshPurchases();
     toast.success("Pagamento confirmado. Atualizando o pedido...");
+  };
+
+  const handleSellerRefund = async () => {
+    if (!selected || !selectedAsSeller) return;
+    const reason = refundReason.trim();
+    if (reason.length < 10) return toast.error("Explique o motivo do reembolso com pelo menos 10 caracteres.");
+    setRefundBusy(true);
+    const result = await sellerRefundOrder(selected.id, reason);
+    setRefundBusy(false);
+    if (!result.success) return toast.error(result.error || "Não foi possível concluir o reembolso.");
+    setRefundOpen(false);
+    setRefundReason("");
+    toast.success("Reembolso enviado para a carteira ZXMAX do comprador.");
   };
 
   const handleDispute = async () => {
@@ -280,13 +377,14 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
           <Badge className={statusMap[selected.status].cls}>{statusMap[selected.status].label}</Badge>
         </div>
 
-        {/* Pending: pay with Pix */}
-        {selected.status === "pending" && (
+        {/* Pending: always resume the ORIGINAL payment method. */}
+        {selected.status === "pending" && !selectedAsSeller && (
           <div className="glass-card p-4 mb-4 border-2 border-yellow-500/30 bg-yellow-500/5">
-            <p className="text-sm text-foreground mb-3">Seu pedido está aguardando pagamento.</p>
-            <Button onClick={(e) => handlePayPix(selected, e)} disabled={loadingPix === selected.id} className="w-full btn-gradient font-bold">
-              <QrCode className="w-4 h-4 mr-2" />
-              {loadingPix === selected.id ? "Gerando..." : (selected.pixQrCode && selected.pixExpiresAt && new Date(selected.pixExpiresAt).getTime() > Date.now() ? "Pagar com Pix" : "Gerar novo Pix")}
+            <p className="text-sm text-foreground mb-1">Seu pedido está aguardando pagamento.</p>
+            <p className="text-xs text-muted-foreground mb-3">Método original: {selected.paymentProvider === "card" ? "Cartão" : selected.paymentProvider === "boleto" ? "Boleto" : selected.paymentProvider === "crypto" ? "Cripto" : selected.paymentProvider === "wallet" ? "Saldo ZXMAX" : "PIX"}.</p>
+            <Button onClick={(event) => void handleResumePayment(selected, event)} disabled={loadingPix === selected.id} className="w-full btn-gradient font-bold">
+              {selected.paymentProvider === "card" ? <CreditCard className="w-4 h-4 mr-2" /> : selected.paymentProvider === "wallet" ? <WalletCards className="w-4 h-4 mr-2" /> : selected.paymentProvider === "crypto" ? <Bitcoin className="w-4 h-4 mr-2" /> : <QrCode className="w-4 h-4 mr-2" />}
+              {loadingPix === selected.id ? "Preparando..." : paymentLabel(selected)}
             </Button>
           </div>
         )}
@@ -339,18 +437,46 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
         )}
 
         {/* Chat */}
-        <div className="flex items-center justify-between mb-2 px-1">
-          <h4 className="text-xs font-bold text-muted-foreground uppercase">Chat</h4>
-          {!state.currentUser?.isAdmin && !isChatLocked && (
-            <button onClick={() => setShowDisputeForm(true)} className="text-[10px] font-bold text-destructive uppercase hover:underline">
-              Abrir Disputa
-            </button>
-          )}
+        <div className="flex items-center justify-between gap-3 mb-2 px-1">
+          <h4 className="text-xs font-bold text-muted-foreground uppercase">Chat do pedido</h4>
+          <div className="flex items-center gap-3">
+            {selectedAsSeller && !isChatLocked && !["refunded", "cancelled"].includes(selected.status) && (
+              <button onClick={() => setRefundOpen(true)} className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-500 uppercase hover:underline">
+                <RotateCcw className="h-3 w-3" /> Reembolsar
+              </button>
+            )}
+            {!state.currentUser?.isAdmin && !selectedAsSeller && !isChatLocked && (
+              <button onClick={() => setShowDisputeForm(true)} className="text-[10px] font-bold text-destructive uppercase hover:underline">
+                Abrir Disputa
+              </button>
+            )}
+          </div>
         </div>
         <OrderChat orderId={selected.id} locked={isChatLocked} />
 
         <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
+        <CryptoPaymentModal charge={cryptoCharge} onClose={() => setCryptoCharge(null)} onPaid={handlePixPaid} />
 
+        {refundOpen && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onClick={() => setRefundOpen(false)}>
+            <div className="w-full max-w-md rounded-2xl border border-white/[0.1] bg-[#111116] p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-400">Reembolso do vendedor</p>
+                  <h3 className="mt-1 text-lg font-black text-white">Reembolsar pedido #{selected.id}</h3>
+                </div>
+                <button type="button" onClick={() => setRefundOpen(false)} className="grid h-9 w-9 place-items-center rounded-xl border border-white/[0.08] text-white/45 hover:text-white" aria-label="Cancelar reembolso"><X className="h-4 w-4" /></button>
+              </div>
+              <p className="mt-3 text-xs leading-5 text-white/45">O valor volta para a carteira ZXMAX do comprador. Essa ação só é permitida enquanto o saldo da venda ainda estiver no período de segurança.</p>
+              <label className="mt-4 block text-xs font-bold text-white/65">Motivo do reembolso
+                <textarea value={refundReason} onChange={(event) => setRefundReason(event.target.value)} maxLength={600} rows={4} placeholder="Explique claramente o motivo..." className="mt-2 w-full resize-none rounded-xl border border-white/[0.09] bg-black/20 p-3 text-sm text-white outline-none focus:border-amber-400/45" />
+              </label>
+              <button type="button" onClick={() => void handleSellerRefund()} disabled={refundBusy || refundReason.trim().length < 10} className="mt-4 w-full rounded-xl bg-amber-400 py-3 text-sm font-black text-black disabled:opacity-40">
+                {refundBusy ? "Processando reembolso..." : "Confirmar reembolso"}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Dispute Modal */}
         {showDisputeForm && (
@@ -444,6 +570,21 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
         </div>
       )}
 
+      <div className="mb-5 flex items-center gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Status do pedido">
+        {([
+          ["all", "Todos", scopedPurchases.length],
+          ["approved", "Aprovados", scopedPurchases.filter((p) => ["paid", "delivered_pending_confirmation", "delivered"].includes(p.status)).length],
+          ["pending", "Pendentes", scopedPurchases.filter((p) => p.status === "pending").length],
+          ["cancelled", "Cancelados", scopedPurchases.filter((p) => ["cancelled", "refunded"].includes(p.status)).length],
+          ["dispute", "Disputas", scopedPurchases.filter((p) => p.status === "dispute").length],
+        ] as const).map(([id, label, count]) => (
+          <button key={id} type="button" role="tab" aria-selected={statusFilter === id} onClick={() => setStatusFilter(id)}
+            className={`shrink-0 rounded-xl border px-3.5 py-2 text-xs font-bold transition ${statusFilter === id ? "border-[#168cff]/45 bg-[#168cff]/12 text-[#6dbdff]" : "border-border bg-card text-muted-foreground hover:text-foreground"}`}>
+            {label} <span className="ml-1 text-[10px] opacity-70">{count}</span>
+          </button>
+        ))}
+      </div>
+
       <div className="bg-card rounded-2xl px-4 py-3 mb-8 border border-border/40 flex items-center gap-3">
         <Search className="w-4 h-4 text-muted-foreground" />
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome do produto..." className="bg-transparent border-none focus:ring-0 outline-none text-sm w-full text-foreground" />
@@ -476,13 +617,14 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
                   <div className="flex items-center justify-between mt-2 gap-3 flex-wrap">
                     <p className="text-sm font-black text-foreground">R$ {p.amount.toFixed(2)}</p>
                     <div className="flex items-center gap-2">
-                      {p.status === "pending" ? (
+                      {p.status === "pending" && p.buyerId === state.currentUser?.id ? (
                         <button
-                          onClick={(e) => { e.stopPropagation(); handlePayPix(p, e); }}
+                          onClick={(event) => void handleResumePayment(p, event)}
                           disabled={loadingPix === p.id}
                           className="btn-gradient px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5"
                         >
-                          <QrCode className="w-3.5 h-3.5" /> {loadingPix === p.id ? "Gerando..." : "Pagar Pix"}
+                          {p.paymentProvider === "card" ? <CreditCard className="w-3.5 h-3.5" /> : p.paymentProvider === "wallet" ? <WalletCards className="w-3.5 h-3.5" /> : p.paymentProvider === "crypto" ? <Bitcoin className="w-3.5 h-3.5" /> : <QrCode className="w-3.5 h-3.5" />}
+                          {loadingPix === p.id ? "Preparando..." : paymentLabel(p)}
                         </button>
                       ) : (
                         <button
@@ -528,6 +670,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
           selecting an order first. Keep this modal mounted in that branch too;
           otherwise a successful PIX response only updated invisible state. */}
       <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
+      <CryptoPaymentModal charge={cryptoCharge} onClose={() => setCryptoCharge(null)} onPaid={handlePixPaid} />
     </div>
   );
 }

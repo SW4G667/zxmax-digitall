@@ -1,199 +1,167 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useStore } from "@/store/StoreContext";
-import { Bell } from "lucide-react";
-import { BagCheckEmoji, StarEmoji, ChatEmoji, ShieldEmoji } from "@/components/CustomEmojis";
+import { Bell, CheckCheck, CircleDollarSign, MessageCircleQuestion, Shield, ShoppingBag, X } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+
+type NotificationRow = {
+  id: number;
+  type: string;
+  title: string;
+  body: string;
+  href: string | null;
+  read_at: string | null;
+  created_at: string;
+};
+
+function Icon({ type }: { type: string }) {
+  if (type === "sale") return <CircleDollarSign className="h-4 w-4" />;
+  if (type === "question") return <MessageCircleQuestion className="h-4 w-4" />;
+  if (type === "notice") return <Shield className="h-4 w-4" />;
+  return <ShoppingBag className="h-4 w-4" />;
+}
 
 export default function NotificationBell() {
-  const { state } = useStore();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"purchases" | "global">("purchases");
-  const [lastSeenCount, setLastSeenCount] = useState(() => {
-    try {
-      return parseInt(localStorage.getItem("zxmax_notif_seen") || "0", 10);
-    } catch { return 0; }
-  });
+  const [rows, setRows] = useState<NotificationRow[]>([]);
+  const [loading, setLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
+  const load = useCallback(async () => {
+    if (!user) {
+      setRows([]);
+      return;
+    }
+    setLoading(true);
+    const { data, error } = await (supabase as any)
+      .from("notifications")
+      .select("id,type,title,body,href,read_at,created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(40);
+    setLoading(false);
+    if (!error) setRows((data || []) as NotificationRow[]);
+  }, [user?.id]);
+
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    void load();
+    if (!user) return;
+    const interval = window.setInterval(() => void load(), 30000);
+    const onVisible = () => { if (document.visibilityState === "visible") void load(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [user?.id, load]);
+
+  useEffect(() => {
+    const handler = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  if (!state.currentUser) return null;
-  const userId = state.currentUser.id;
-  const email = state.currentUser.email;
+  if (!user) return null;
 
-  // Purchase notifications
-  const purchaseNotifs = state.purchases
-    .filter((p) => {
-      const isSeller = p.sellerId === userId;
-      const isBuyer = p.buyerId === userId;
-      if (!isSeller && !isBuyer) return false;
-      if (isSeller && (p.status === "paid" || p.reviewed)) return true;
-      if (isBuyer && p.status === "delivered" && !p.reviewed) return true;
-      return false;
-    })
-    .slice(0, 10);
+  const unread = rows.filter((row) => !row.read_at).length;
 
-  // Global: support ticket replies + global notices
-  const ticketNotifs = state.tickets
-    .filter((t) => {
-      if (t.userId === userId) {
-        return t.messages.some((m) => m.from !== email);
-      }
-      return false;
-    })
-    .slice(0, 5);
+  const markAllRead = async () => {
+    const unreadIds = rows.filter((row) => !row.read_at).map((row) => row.id);
+    if (!unreadIds.length) return;
+    const now = new Date().toISOString();
+    setRows((current) => current.map((row) => unreadIds.includes(row.id) ? { ...row, read_at: now } : row));
+    const { error } = await (supabase as any)
+      .from("notifications")
+      .update({ read_at: now })
+      .eq("user_id", user.id)
+      .is("read_at", null);
+    if (error) void load();
+  };
 
-  const globalNotices = (state.globalNotices || []).slice(0, 10);
-
-  const globalCount = ticketNotifs.length + globalNotices.length;
-  const totalCount = purchaseNotifs.length + globalCount;
-  const hasNew = totalCount > lastSeenCount;
-
-  const handleOpen = () => {
-    setOpen(!open);
-    if (!open) {
-      setLastSeenCount(totalCount);
-      localStorage.setItem("zxmax_notif_seen", String(totalCount));
+  const openNotification = async (row: NotificationRow) => {
+    setOpen(false);
+    if (!row.read_at) {
+      const now = new Date().toISOString();
+      setRows((current) => current.map((item) => item.id === row.id ? { ...item, read_at: now } : item));
+      await (supabase as any).from("notifications").update({ read_at: now }).eq("id", row.id).eq("user_id", user.id);
     }
+    if (row.href?.startsWith("/")) navigate(row.href);
   };
 
   return (
     <div className="relative" ref={ref}>
       <button
-        onClick={handleOpen}
+        type="button"
+        onClick={() => setOpen((value) => !value)}
         className="zx-icon-action relative"
         title="Notificações"
+        aria-label={unread ? `Notificações, ${unread} não lidas` : "Notificações"}
+        aria-expanded={open}
       >
-        <Bell className="h-4 w-4 text-white/55" />
-        {hasNew && (
-          <span className="absolute -top-0.5 -right-0.5 w-4.5 h-4.5 min-w-[18px] min-h-[18px] flex items-center justify-center bg-[var(--zx-accent)] text-white text-[9px] font-black rounded-full border-2 border-card animate-emoji-pulse">
-            {totalCount - lastSeenCount > 9 ? "9+" : totalCount - lastSeenCount}
+        <Bell className="h-4 w-4 text-white/60" />
+        {unread > 0 && (
+          <span className="absolute -right-1 -top-1 grid min-h-[17px] min-w-[17px] place-items-center rounded-full border-2 border-[#0b0b0e] bg-[var(--zx-accent)] px-1 text-[8px] font-black text-white">
+            {unread > 99 ? "99+" : unread}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="fixed left-3 right-3 top-[4.15rem] z-[100] mx-auto max-h-[72dvh] max-w-[390px] overflow-hidden rounded-xl border border-white/[0.09] bg-[#0f0f13] shadow-2xl shadow-black/50 sm:absolute sm:left-auto sm:right-0 sm:top-11 sm:w-[370px]">
-          {/* Tabs */}
-          <div className="flex border-b border-white/[0.07] bg-[#111116]">
-            <button
-              onClick={() => setTab("purchases")}
-              className={`flex-1 py-3 px-3 text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                tab === "purchases"
-                  ? "text-[var(--zx-accent)] border-b-2 border-[var(--zx-accent)] bg-white/[0.025]"
-                  : "text-white/38 hover:text-white"
-              }`}
-            >
-              <BagCheckEmoji className="w-4 h-4" /> Compras e Opiniões
-            </button>
-            <button
-              onClick={() => setTab("global")}
-              className={`flex-1 py-3 px-3 text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                tab === "global"
-                  ? "text-[var(--zx-accent)] border-b-2 border-[var(--zx-accent)] bg-white/[0.025]"
-                  : "text-white/38 hover:text-white"
-              }`}
-            >
-              <ChatEmoji className="w-4 h-4" /> Mensagens Globais
-              {globalCount > 0 && (
-                <span className="ml-1 bg-[var(--zx-accent)] text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{globalCount}</span>
+        <section className="fixed left-3 right-3 top-[4.15rem] z-[100] mx-auto max-h-[72dvh] max-w-[400px] overflow-hidden rounded-2xl border border-white/[0.1] bg-[#0f0f13] shadow-2xl shadow-black/60 sm:absolute sm:left-auto sm:right-0 sm:top-11 sm:w-[390px]" aria-label="Central de notificações">
+          <header className="flex items-center justify-between gap-3 border-b border-white/[0.07] px-4 py-3.5">
+            <div>
+              <p className="text-sm font-black text-white">Notificações</p>
+              <p className="mt-0.5 text-[10px] text-white/35">{unread ? `${unread} não lida(s)` : "Tudo em dia"}</p>
+            </div>
+            <div className="flex items-center gap-1">
+              {unread > 0 && (
+                <button type="button" onClick={() => void markAllRead()} className="grid h-8 w-8 place-items-center rounded-lg text-white/45 hover:bg-white/[0.05] hover:text-white" title="Marcar todas como lidas">
+                  <CheckCheck className="h-4 w-4" />
+                </button>
               )}
-            </button>
-          </div>
+              <button type="button" onClick={() => setOpen(false)} className="grid h-8 w-8 place-items-center rounded-lg text-white/45 hover:bg-white/[0.05] hover:text-white" aria-label="Fechar notificações">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </header>
 
-          <div className="max-h-[58dvh] overflow-y-auto">
-            {tab === "purchases" && (
-              <>
-                {purchaseNotifs.length === 0 ? (
-                  <p className="text-center text-white/35 text-xs py-8">Nenhuma nova notificação.</p>
-                ) : (
-                  purchaseNotifs.map((p) => {
-                    const product = state.products.find((pr) => pr.id === p.productId);
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => { setOpen(false); navigate(`/minhas-compras?order=${p.id}`); }}
-                        className="flex w-full items-center gap-3 border-b border-white/[0.055] px-4 py-3 text-left transition hover:bg-white/[0.035]"
-                      >
-                        {product?.image ? <img src={product.image} className="h-9 w-9 shrink-0 rounded-lg object-cover" alt="" /> : <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/[0.04]"><BagCheckEmoji className="h-4 w-4" /></div>}
-                        <div className="flex-1 min-w-0">
-                          {p.reviewed ? (
-                            <p className="text-xs text-white truncate">
-                              <StarEmoji className="w-3 h-3 inline mr-1" />
-                              Novo feedback em <span className="font-bold">{product?.name}</span>
-                            </p>
-                          ) : p.status === "paid" ? (
-                            <p className="text-xs text-white truncate">
-                              Alguém comprou <span className="font-bold">{product?.name}</span>
-                            </p>
-                          ) : (
-                            <p className="text-xs text-white truncate">
-                              Entrega disponível: <span className="font-bold">{product?.name}</span>
-                            </p>
-                          )}
-                          <p className="text-[10px] text-white/35 mt-0.5">
-                            {new Date(p.createdAt).toLocaleDateString("pt-BR")}
-                          </p>
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </>
-            )}
-
-            {tab === "global" && (
-              <>
-                {/* Global notices */}
-                {globalNotices.map((n) => (
-                  <div key={n.id} className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.035] transition border-b border-white/[0.055]">
-                    <div className="w-9 h-9 rounded-lg bg-white/[0.04] flex items-center justify-center shrink-0">
-                      <ShieldEmoji className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-white truncate">Aviso Global</p>
-                      <p className="text-[10px] text-white/35 truncate">{n.text}</p>
-                      <p className="text-[9px] text-white/20 mt-0.5">{new Date(n.date).toLocaleDateString("pt-BR")}</p>
-                    </div>
-                  </div>
-                ))}
-
-                {/* Ticket replies */}
-                {ticketNotifs.map((t) => {
-                  const lastMsg = t.messages.filter((m) => m.from !== email).pop();
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => { setOpen(false); navigate("/suporte"); }}
-                      className="flex w-full items-center gap-3 border-b border-white/[0.055] px-4 py-3 text-left transition hover:bg-white/[0.035]"
-                    >
-                      <div className="w-9 h-9 rounded-lg bg-white/[0.04] flex items-center justify-center shrink-0">
-                        <ChatEmoji className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-white truncate">{t.subject}</p>
-                        <p className="text-[10px] text-white/35 truncate">{lastMsg?.text}</p>
-                      </div>
-                    </button>
-                  );
-                })}
-
-                {globalNotices.length === 0 && ticketNotifs.length === 0 && (
-                  <p className="text-center text-white/35 text-xs py-8">Nenhuma mensagem nova.</p>
-                )}
-              </>
+          <div className="max-h-[60dvh] overflow-y-auto">
+            {loading && rows.length === 0 ? (
+              <p className="px-4 py-10 text-center text-xs text-white/35">Carregando notificações…</p>
+            ) : rows.length === 0 ? (
+              <div className="px-6 py-10 text-center">
+                <Bell className="mx-auto h-6 w-6 text-white/18" />
+                <p className="mt-3 text-xs font-semibold text-white/55">Nenhuma notificação ainda</p>
+                <p className="mt-1 text-[10px] leading-4 text-white/28">Vendas, perguntas, pedidos, disputas e avisos aparecerão aqui.</p>
+              </div>
+            ) : (
+              rows.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  onClick={() => void openNotification(row)}
+                  className={`flex w-full gap-3 border-b border-white/[0.055] px-4 py-3.5 text-left transition hover:bg-white/[0.035] ${!row.read_at ? "bg-[#168cff]/[0.045]" : ""}`}
+                >
+                  <span className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl border ${!row.read_at ? "border-[#168cff]/25 bg-[#168cff]/10 text-[#70bdff]" : "border-white/[0.07] bg-white/[0.025] text-white/38"}`}>
+                    <Icon type={row.type} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className="truncate text-xs font-bold text-white">{row.title}</span>
+                      {!row.read_at && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#168cff]" />}
+                    </span>
+                    {row.body ? <span className="mt-1 block line-clamp-2 text-[10px] leading-4 text-white/38">{row.body}</span> : null}
+                    <span className="mt-1.5 block text-[9px] text-white/22">{new Date(row.created_at).toLocaleString("pt-BR")}</span>
+                  </span>
+                </button>
+              ))
             )}
           </div>
-        </div>
+        </section>
       )}
     </div>
   );
