@@ -18,7 +18,7 @@ interface Props {
 
 export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuOpen = false }: Props) {
   const { state } = useStore();
-  const { user } = useAuth();
+  const { profile, user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { branding } = useSiteBranding();
