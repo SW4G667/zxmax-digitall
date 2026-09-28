@@ -58,7 +58,7 @@ const emptyConfig: Record<Provider["id"], GatewayConfig> = {
   vexopay: { pixEnabled: false, cryptoEnabled: false, pixFee: 1.2 },
 };
 
-const MAGNUSPAY_BASE_URL = "https://magnuspay.onrender.com/api";
+const MAGNUSPAY_BASE_URL = "https://api.magnuspay.com.br";
 const SUPABASE_PUBLIC_URL = String(import.meta.env.VITE_SUPABASE_URL || "").replace(/\/$/, "");
 const MAGNUSPAY_WEBHOOK_URL = SUPABASE_PUBLIC_URL
   ? `${SUPABASE_PUBLIC_URL}/functions/v1/magnuspay-webhook`
@@ -196,9 +196,10 @@ export default function IntegrationsPanel() {
               <div className="mt-4 rounded-lg border border-[#168cff]/20 bg-[#168cff]/[0.055] p-3.5">
                 <p className="text-[11px] font-bold text-white">Configuração da MagnusPay</p>
                 <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-[10px] leading-4 text-white/45">
-                  <li>Gere sua API Key no painel da MagnusPay.</li>
+                  <li>Gere sua API Key no painel de credenciais da MagnusPay.</li>
                   <li>Cadastre a chave no Supabase como <code className="text-white/70">MAGNUSPAY_API_KEY</code>.</li>
-                  <li>No webhook da MagnusPay, use a URL abaixo. O site confirma a transação novamente no servidor antes de liberar o pedido.</li>
+                  <li>Configure o webhook abaixo no painel da MagnusPay. A assinatura <code className="text-white/70">X-Magnus-Signature</code> é validada no servidor.</li>
+                  <li>Use “Validar configuração” para testar a chave de verdade no endpoint oficial de taxas.</li>
                 </ol>
                 <div className="mt-3 grid gap-2">
                   <div className="rounded-md border border-white/[0.07] bg-black/15 px-3 py-2">
@@ -224,7 +225,7 @@ export default function IntegrationsPanel() {
               <label className="flex items-center gap-2"><input type="checkbox" checked={config.pixEnabled === true} onChange={(event) => update(provider.id, "pixEnabled", event.target.checked)} />Usar como PIX único</label>
               {provider.supportsCrypto && <label className="flex items-center gap-2"><input type="checkbox" checked={config.cryptoEnabled === true} onChange={(event) => update(provider.id, "cryptoEnabled", event.target.checked)} />Oferecer Crypto via VexoPay</label>}
             </div>
-            <div className="mt-5 flex flex-wrap gap-3"><button type="button" onClick={() => void save(provider)} disabled={busy !== null} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">{busy === `${provider.id}:save` ? "Salvando…" : "Salvar configuração"}</button><button type="button" onClick={() => void test(provider)} disabled={!ready || busy !== null} className="inline-flex items-center gap-2 rounded-lg border border-white/[0.09] px-4 py-2 text-sm font-bold text-white/72 transition hover:bg-white/[0.04] disabled:opacity-50"><KeyRound className="h-4 w-4" />{busy === `${provider.id}:test` ? "Validando…" : "Validar configuração"}</button></div>
+            <div className="mt-5 flex flex-wrap gap-3"><button type="button" onClick={() => void save(provider)} disabled={busy !== null} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">{busy === `${provider.id}:save` ? "Salvando…" : "Salvar configuração"}</button><button type="button" onClick={() => void test(provider)} disabled={!ready || busy !== null} className="inline-flex items-center gap-2 rounded-lg border border-white/[0.09] px-4 py-2 text-sm font-bold text-white/72 transition hover:bg-white/[0.04] disabled:opacity-50"><KeyRound className="h-4 w-4" />{busy === `${provider.id}:test` ? "Validando…" : "Validar conexão real"}</button></div>
           </article>
         );
       })}
