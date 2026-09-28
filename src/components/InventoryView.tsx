@@ -52,19 +52,42 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
 
   const startDiscordVerification = async () => {
     if (!state.currentUser || discordStarting) return;
+    if (!state.currentUser.emailConfirmed) {
+      toast.info("Confirme seu e-mail antes de vincular o Discord.");
+      return;
+    }
+
     setDiscordStarting(true);
     try {
       window.sessionStorage.setItem("zxmax_discord_verify_user", state.currentUser.id);
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "discord",
-        options: {
-          redirectTo: getDiscordListingRedirectTo("/meus-produtos?new=1"),
-          scopes: "identify email guilds",
-        },
-      });
-      if (error) {
+      const redirectTo = getDiscordListingRedirectTo("/meus-produtos?new=1");
+      const options = { redirectTo, scopes: "identify email guilds" };
+
+      // Preserve the current ZXMAX account. New Discord identities are linked
+      // to the authenticated user instead of replacing the session.
+      const identitiesResult = await supabase.auth.getUserIdentities();
+      const hasDiscordIdentity = Boolean(identitiesResult.data?.identities?.some((identity: any) => identity.provider === "discord"));
+
+      let authError: any = null;
+      if (!hasDiscordIdentity) {
+        const linked = await (supabase.auth as any).linkIdentity({ provider: "discord", options });
+        authError = linked?.error || null;
+
+        // Some projects may still have manual identity linking disabled. In
+        // that case automatic linking by the already-confirmed e-mail remains
+        // a safe fallback, and the callback rejects a different ZXMAX user ID.
+        if (authError && /manual|linking|identity/i.test(String(authError.message || ""))) {
+          const oauth = await supabase.auth.signInWithOAuth({ provider: "discord", options });
+          authError = oauth.error;
+        }
+      } else {
+        const oauth = await supabase.auth.signInWithOAuth({ provider: "discord", options });
+        authError = oauth.error;
+      }
+
+      if (authError) {
         window.sessionStorage.removeItem("zxmax_discord_verify_user");
-        throw error;
+        throw authError;
       }
     } catch (error: any) {
       setDiscordStarting(false);
@@ -269,7 +292,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
             ) : null}
 
             <div className="mt-5 grid gap-2">
-              <a href={branding.supportUrl || state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noreferrer" className="rounded-xl border border-[#5865f2]/35 bg-[#5865f2]/10 px-4 py-3 text-center text-sm font-bold text-[#aeb4ff] hover:bg-[#5865f2]/15">1. Entrar no servidor do Discord</a>
+              <a href={branding.discordInviteUrl || state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noreferrer" className="rounded-xl border border-[#5865f2]/35 bg-[#5865f2]/10 px-4 py-3 text-center text-sm font-bold text-[#aeb4ff] hover:bg-[#5865f2]/15">1. Entrar no servidor do Discord</a>
               <button type="button" onClick={() => void startDiscordVerification()} disabled={discordStarting || !state.currentUser?.emailConfirmed} className="rounded-xl bg-[#168cff] px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-45">
                 {discordStarting ? "Abrindo Discord..." : "2. Verificar com Discord"}
               </button>
