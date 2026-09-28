@@ -79,10 +79,55 @@ USING (
 );
 
 DROP POLICY IF EXISTS "Users can open own tickets" ON public.support_tickets;
-CREATE POLICY "Users open own support tickets"
-ON public.support_tickets
-FOR INSERT TO authenticated
-WITH CHECK (user_id = (SELECT auth.uid()));
+DROP POLICY IF EXISTS "Users open own support tickets" ON public.support_tickets;
+
+CREATE OR REPLACE FUNCTION public.open_support_ticket(_subject text, _text text)
+RETURNS public.support_tickets
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $
+DECLARE
+  ticket public.support_tickets;
+  actor_id uuid := auth.uid();
+  actor_email text := '';
+  clean_subject text := btrim(COALESCE(_subject,''));
+  clean_text text := btrim(COALESCE(_text,''));
+BEGIN
+  IF actor_id IS NULL THEN
+    RAISE EXCEPTION 'Faça login para abrir um atendimento.' USING ERRCODE='42501';
+  END IF;
+
+  IF length(clean_subject) < 2 OR length(clean_subject) > 140 THEN
+    RAISE EXCEPTION 'O assunto deve ter entre 2 e 140 caracteres.' USING ERRCODE='22023';
+  END IF;
+
+  IF length(clean_text) < 10 OR length(clean_text) > 2000 THEN
+    RAISE EXCEPTION 'A descrição deve ter entre 10 e 2000 caracteres.' USING ERRCODE='22023';
+  END IF;
+
+  SELECT COALESCE(email,'') INTO actor_email
+  FROM auth.users
+  WHERE id = actor_id;
+
+  INSERT INTO public.support_tickets(user_id,user_email,subject,status,messages,updated_at)
+  VALUES (
+    actor_id,
+    actor_email,
+    clean_subject,
+    'open',
+    jsonb_build_array(jsonb_build_object(
+      'from', actor_email,
+      'text', clean_text,
+      'date', now()
+    )),
+    now()
+  )
+  RETURNING * INTO ticket;
+
+  RETURN ticket;
+END;
+$;
 
 CREATE OR REPLACE FUNCTION public.reply_support_ticket(_ticket_id bigint, _text text)
 RETURNS public.support_tickets
@@ -248,8 +293,14 @@ FOR EACH ROW EXECUTE FUNCTION public.notify_new_support_ticket();
 
 REVOKE ALL ON FUNCTION public.notify_new_support_ticket() FROM PUBLIC, anon, authenticated;
 
+REVOKE ALL ON public.support_tickets FROM anon;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER, REFERENCES ON public.support_tickets FROM authenticated;
+GRANT SELECT ON public.support_tickets TO authenticated;
+
+REVOKE ALL ON FUNCTION public.open_support_ticket(text,text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.reply_support_ticket(bigint,text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.close_support_ticket(bigint) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.open_support_ticket(text,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.reply_support_ticket(bigint,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.close_support_ticket(bigint) TO authenticated;
 
