@@ -25,6 +25,8 @@ import AdminBranding from "./pages/AdminBranding.tsx";
 import MarketplaceHome from "./pages/MarketplaceHome.tsx";
 import MarketplaceInfo from "./pages/MarketplaceInfo.tsx";
 import { SiteBrandingProvider } from "@/context/SiteBrandingContext";
+import SupportView from "@/components/SupportView";
+import AppShell from "@/components/AppShell";
 
 const queryClient = new QueryClient();
 
@@ -56,11 +58,11 @@ const App = () => (
                     <Route path="/reembolsos" element={<MarketplaceInfo kind="reembolsos" />} />
                     <Route path="/entrega-automatica" element={<MarketplaceInfo kind="entrega-automatica" />} />
                     <Route path="/vendedores-verificados" element={<MarketplaceInfo kind="vendedores-verificados" />} />
-                    <Route path="/central-de-ajuda" element={<MarketplaceInfo kind="central-ajuda" />} />
+                    <Route path="/central-de-ajuda" element={<AppShell><SupportView /></AppShell>} />
 
                     <Route path="/meus-produtos" element={<Index view="inventory" />} />
                     <Route path="/minhas-compras" element={<Index view="purchases" />} />
-                    <Route path="/suporte" element={<Index view="support" />} />
+                    <Route path="/suporte" element={<AppShell><SupportView /></AppShell>} />
                     <Route path="/admin" element={<Index view="admin" />} />
                     <Route path="/admin/branding" element={<AdminBranding />} />
                     <Route path="/sacar" element={<Index view="withdraw" />} />
