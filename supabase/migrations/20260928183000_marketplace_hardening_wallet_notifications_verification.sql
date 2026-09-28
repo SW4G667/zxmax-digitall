@@ -6,19 +6,42 @@ ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS verification_rg_front_path text NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS verification_rg_back_path text NOT NULL DEFAULT '';
 
--- Public profile exposes only boolean trust signals, never private document data.
-CREATE OR REPLACE VIEW public.profiles_public
-WITH (security_invoker = on) AS
-SELECT
-  user_id,
-  public_id,
-  display_name,
-  avatar_url,
-  is_verified_seller,
-  created_at,
-  (phone_verified_at IS NOT NULL) AS phone_verified,
-  (verification_status = 'approved') AS document_verified
-FROM public.profiles;
+-- Public profile is an existing projection TABLE in this project (not a view).
+-- Add only boolean trust signals; CPF, phone number and document paths stay private.
+ALTER TABLE public.profiles_public
+  ADD COLUMN IF NOT EXISTS phone_verified boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS document_verified boolean NOT NULL DEFAULT false;
+
+UPDATE public.profiles_public pp
+SET
+  phone_verified = (p.phone_verified_at IS NOT NULL),
+  document_verified = (p.verification_status = 'approved')
+FROM public.profiles p
+WHERE p.user_id = pp.user_id;
+
+CREATE OR REPLACE FUNCTION public.sync_public_profile_verification()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $
+BEGIN
+  UPDATE public.profiles_public
+  SET
+    phone_verified = (NEW.phone_verified_at IS NOT NULL),
+    document_verified = (NEW.verification_status = 'approved'),
+    updated_at = now()
+  WHERE user_id = NEW.user_id;
+  RETURN NEW;
+END;
+$;
+
+-- Trigger name starts with zz so the existing profile-projection INSERT triggers
+-- run first when a profile is initially created.
+DROP TRIGGER IF EXISTS zz_sync_public_profile_verification ON public.profiles;
+CREATE TRIGGER zz_sync_public_profile_verification
+AFTER INSERT OR UPDATE OF phone_verified_at, verification_status ON public.profiles
+FOR EACH ROW EXECUTE FUNCTION public.sync_public_profile_verification();
 
 GRANT SELECT ON public.profiles_public TO anon, authenticated;
 GRANT ALL ON public.profiles_public TO service_role;
@@ -763,9 +786,7 @@ ALTER TABLE public.phone_verification_events ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.phone_verification_events FROM anon, authenticated;
 GRANT ALL ON public.phone_verification_events TO service_role;
 
--- The public view is backed by these non-contact trust columns only.
-GRANT SELECT (user_id,public_id,display_name,avatar_url,is_verified_seller,created_at,phone_verified_at,verification_status)
-ON public.profiles TO anon, authenticated;
+-- `profiles_public` remains the only public projection of trust signals.
 
 
 -- Server wrapper used by the authenticated order-action Edge Function.
