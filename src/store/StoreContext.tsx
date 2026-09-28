@@ -28,6 +28,8 @@ export interface User {
   isAdmin: boolean;
   pixKey?: string;
   isVerified?: boolean;
+  phoneVerified?: boolean;
+  documentVerified?: boolean;
 }
 
 export interface GlobalNotice {
@@ -154,6 +156,7 @@ export interface UserTag {
   id: string;
   name: string;
   color: string; // hex or hsl
+  iconUrl?: string;
 }
 
 export interface SellerDocument {
@@ -174,6 +177,8 @@ export interface UserDirectoryEntry {
   name: string;
   avatar?: string;
   isVerified?: boolean;
+  phoneVerified?: boolean;
+  documentVerified?: boolean;
 }
 
 export interface AppConfig {
@@ -182,6 +187,9 @@ export interface AppConfig {
   buyerFee: number;
   withdrawMin: number;
   withdrawFee: number;
+  smallWithdrawMin: number;
+  smallWithdrawExtraFee: number;
+  sellerReleaseDays: number;
   discordLink: string;
   categories: string[];
   globalNotice: string;
@@ -226,7 +234,7 @@ interface StoreContextType {
   markPurchasePaid: (purchaseId: number) => void;
   approvePurchase: (id: number) => void;
   revertPurchase: (id: number) => void;
-  requestWithdraw: (method: "normal" | "instant", options?: { retryOf?: number; amount?: number }) => Promise<void>;
+  requestWithdraw: (method: "normal" | "flex", options?: { retryOf?: number; amount?: number }) => Promise<void>;
   approveWithdraw: (id: number) => Promise<void>;
   rejectWithdraw: (id: number, reason?: string) => Promise<void>;
   updateConfig: (c: Partial<AppConfig>) => void;
@@ -266,8 +274,11 @@ const defaultConfig: AppConfig = {
   commission: 10,
   instantFee: 7,
   buyerFee: BUYER_FEE,
-  withdrawMin: WITHDRAW_MIN,
+  withdrawMin: 20,
   withdrawFee: WITHDRAW_FEE,
+  smallWithdrawMin: 5,
+  smallWithdrawExtraFee: 1,
+  sellerReleaseDays: 7,
   discordLink: "https://discord.gg/zxmax",
   categories: ["Robux e Gift Cards", "Bots Discord", "Contas", "Scripts", "Assinaturas", "Designs Digitais", "Serviços Online", "Consultoria Virtual", "Keys de Software", "Arquivos", "Jogos e Itens"],
   globalNotice: "",
@@ -400,6 +411,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         isAdmin,
         pixKey: profile?.pix_key || "",
         isVerified: profile?.is_verified_seller || false,
+        phoneVerified: Boolean((profile as any)?.phone_verified_at),
+        documentVerified: (profile as any)?.verification_status === "approved" || profile?.is_verified_seller || false,
       };
       setState((s) => {
         // Avoid switching to admin account randomly - only update if user id matches or currentUser is null
@@ -414,7 +427,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           currentUser: user,
           userDirectory: {
             ...(s.userDirectory || {}),
-            [authUser.id]: { userId: authUser.id, publicId: userPublicId, email: user.email || "", name: user.name, avatar: user.avatar, isVerified: user.isVerified },
+            [authUser.id]: { userId: authUser.id, publicId: userPublicId, email: user.email || "", name: user.name, avatar: user.avatar, isVerified: user.isVerified, phoneVerified: user.phoneVerified, documentVerified: user.documentVerified },
           },
         };
       });
@@ -424,19 +437,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [authUserId, profile, isAdmin, state.userBalances, state.userEarnings]);
 
-  useEffect(() => {
-    void (async () => {
-      const { data: profiles } = await (supabase as any)
-        .from("profiles_public")
-        .select("user_id, public_id, display_name, avatar_url, is_verified_seller");
-      const directory = ((profiles || []) as any[]).reduce((acc, p) => {
-        acc[p.user_id] = { userId: p.user_id, publicId: String(p.public_id || ""), email: "", name: p.display_name || "Usuário", avatar: p.avatar_url || undefined, isVerified: !!p.is_verified_seller };
-        return acc;
-      }, {} as Record<string, UserDirectoryEntry>);
+  const refreshPublicProfiles = React.useCallback(async () => {
+    const { data: profiles } = await (supabase as any)
+      .from("profiles_public")
+      .select("user_id, public_id, display_name, avatar_url, is_verified_seller, phone_verified, document_verified");
+    const directory = ((profiles || []) as any[]).reduce((acc, p) => {
+      acc[p.user_id] = {
+        userId: p.user_id,
+        publicId: String(p.public_id || ""),
+        email: "",
+        name: p.display_name || "Usuário",
+        avatar: p.avatar_url || undefined,
+        isVerified: !!p.is_verified_seller,
+        phoneVerified: !!p.phone_verified,
+        documentVerified: !!p.document_verified,
+      };
+      return acc;
+    }, {} as Record<string, UserDirectoryEntry>);
+    setState((s) => ({ ...s, userDirectory: { ...(s.userDirectory || {}), ...directory } }));
+  }, []);
 
-      setState((s) => ({ ...s, userDirectory: { ...(s.userDirectory || {}), ...directory } }));
-    })();
-  }, [authUserId]);
+  useEffect(() => { void refreshPublicProfiles(); }, [authUserId, refreshPublicProfiles]);
+  useEffect(() => {
+    const handler = () => { void refreshPublicProfiles(); };
+    window.addEventListener("zxmax:profile-updated", handler);
+    return () => window.removeEventListener("zxmax:profile-updated", handler);
+  }, [refreshPublicProfiles]);
 
   const refreshUserTags = React.useCallback(async () => {
     if (!isAdmin && !isSupport) {
@@ -466,6 +492,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const buyerFee = Number(data.buyerFee);
       const withdrawMin = Number(data.minWithdraw);
       const withdrawFee = Number(data.withdrawFee);
+      const smallWithdrawMin = Number(data.smallWithdrawMin);
+      const smallWithdrawExtraFee = Number(data.smallWithdrawExtraFee);
+      const sellerReleaseDays = Number(data.sellerReleaseDays);
       setState((s) => ({
         ...s,
         config: {
@@ -473,6 +502,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           buyerFee: Number.isFinite(buyerFee) && buyerFee >= 0 ? buyerFee : s.config.buyerFee,
           withdrawMin: Number.isFinite(withdrawMin) && withdrawMin >= 0 ? withdrawMin : s.config.withdrawMin,
           withdrawFee: Number.isFinite(withdrawFee) && withdrawFee >= 0 ? withdrawFee : s.config.withdrawFee,
+          smallWithdrawMin: Number.isFinite(smallWithdrawMin) && smallWithdrawMin >= 1 ? smallWithdrawMin : s.config.smallWithdrawMin,
+          smallWithdrawExtraFee: Number.isFinite(smallWithdrawExtraFee) && smallWithdrawExtraFee >= 0 ? smallWithdrawExtraFee : s.config.smallWithdrawExtraFee,
+          sellerReleaseDays: Number.isFinite(sellerReleaseDays) && sellerReleaseDays >= 5 && sellerReleaseDays <= 7 ? sellerReleaseDays : s.config.sellerReleaseDays,
         },
       }));
     })();
@@ -961,9 +993,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void refreshBalance();
   }, [authUserId, refreshWithdrawals, refreshBalance]);
 
-  const requestWithdraw = async (method: "normal" | "instant", options?: { retryOf?: number; amount?: number }) => {
+  const requestWithdraw = async (method: "normal" | "flex", options?: { retryOf?: number; amount?: number }) => {
     if (!state.currentUser || state.currentUser.balance <= 0) return;
-    const configured = { min: state.config.withdrawMin, fee: state.config.withdrawFee };
+    const configured = method === "flex"
+      ? { min: state.config.smallWithdrawMin, fee: state.config.withdrawFee + state.config.smallWithdrawExtraFee }
+      : { min: state.config.withdrawMin, fee: state.config.withdrawFee };
     const availableTotals = withdrawTotals(state.currentUser.balance, configured);
     const amount = options?.amount == null ? availableTotals.balance : Math.round(Number(options.amount) * 100) / 100;
     const requestedTotals = withdrawTotals(amount, configured);
