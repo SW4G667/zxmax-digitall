@@ -34,7 +34,7 @@ function inviteCode(raw: unknown): string | null {
 async function getConfiguredDiscord(admin: any) {
   const { data } = await admin.from("app_settings").select("value").eq("key", "site_branding").maybeSingle();
   const current = data?.value && typeof data.value === "object" ? data.value : {};
-  const inviteUrl = String(current?.discordInviteUrl || current?.supportUrl || "https://discord.gg/zxmax").trim();
+  const inviteUrl = String(current?.discordInviteUrl || "").trim();
   const storedGuildId = String(current?.discordGuildId || "").trim();
   if (storedGuildId) return { inviteUrl, guildId: storedGuildId };
 
