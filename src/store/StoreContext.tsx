@@ -260,7 +260,7 @@ interface StoreContextType {
   answerProductQuestion: (productId: number, questionId: number, answer: string) => void;
   deleteNotice: (id: number) => void;
   refreshUserTags: () => Promise<void>;
-  createUserTag: (name: string, color: string) => Promise<boolean>;
+  createUserTag: (name: string, color: string, iconUrl?: string) => Promise<boolean>;
   deleteUserTag: (id: string) => Promise<boolean>;
   assignUserTag: (publicId: string, tagId: string) => Promise<boolean>;
   unassignUserTag: (publicId: string, tagId: string) => Promise<boolean>;
@@ -475,7 +475,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return;
     }
     const tags = Array.isArray(data?.tags)
-      ? data.tags.map((tag: any) => ({ id: String(tag.id), name: String(tag.name || ""), color: String(tag.color || "#8b5cf6") }))
+      ? data.tags.map((tag: any) => ({ id: String(tag.id), name: String(tag.name || ""), color: String(tag.color || "#8b5cf6"), iconUrl: tag.iconUrl ? String(tag.iconUrl) : undefined }))
       : [];
     const assignments = data?.assignments && typeof data.assignments === "object"
       ? Object.fromEntries(Object.entries(data.assignments).map(([publicId, tagIds]) => [publicId, Array.isArray(tagIds) ? tagIds.map(String) : []]))
@@ -1295,8 +1295,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const deleteNotice = (id: number) =>
     setState((s) => ({ ...s, globalNotices: (s.globalNotices || []).filter((n) => n.id !== id) }));
 
-  const createUserTag = async (name: string, color: string) => {
-    const { error } = await (supabase as any).rpc("create_admin_user_tag", { _name: name.trim(), _color: color });
+  const createUserTag = async (name: string, color: string, iconUrl = "") => {
+    const { error } = await (supabase as any).rpc("create_admin_user_tag", { _name: name.trim(), _color: color, _icon_url: iconUrl.trim() });
     if (error) { console.warn("[zxmax:tags:create]", error); return false; }
     await refreshUserTags();
     return true;
