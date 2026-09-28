@@ -1,9 +1,10 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useStore, Product } from "@/store/StoreContext";
 import { Plus, X, Trash2, Upload, Users, Clock, MessageSquare, Pencil, Package, Coins } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { formatBRL, formatRobuxPackage, formatStockLabel, isValidProductPrice, listingStatus, MIN_PRODUCT_PRICE, parsePriceInput, productStock, ROBUX_CATEGORY } from "@/lib/catalog";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 interface Variation {
   name: string;
@@ -12,6 +13,8 @@ interface Variation {
 
 export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId: number) => void }) {
   const { state, addProduct, updateProduct, deleteProduct } = useStore();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showSales, setShowSales] = useState<number | null>(null);
@@ -28,6 +31,31 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
   const isRobuxCategory = form.category === ROBUX_CATEGORY;
+
+  const openCreateForm = () => {
+    if (!state.currentUser?.phoneVerified && !state.currentUser?.isAdmin) {
+      toast.info("Verifique seu número por SMS antes de anunciar.");
+      navigate("/perfil?verify=phone");
+      return;
+    }
+    resetForm();
+    setShowForm(true);
+  };
+
+  useEffect(() => {
+    if (searchParams.get("new") !== "1") return;
+    if (!state.currentUser?.phoneVerified && !state.currentUser?.isAdmin) {
+      toast.info("Para criar um anúncio, confirme seu celular por SMS.");
+      navigate("/perfil?verify=phone", { replace: true });
+      return;
+    }
+    resetForm();
+    setShowForm(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.currentUser?.phoneVerified, state.currentUser?.isAdmin]);
 
   const resetForm = () => {
     setForm({ name: "", category: state.config.categories[0] || "", description: "", price: "", image: "", banner: "", deliveryType: "manual", deliveryContent: "", stock: "", minQuantity: "", deliveryTime: "", robuxAmount: "" });
@@ -97,7 +125,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!state.currentUser?.isVerified && !state.currentUser?.isAdmin) return toast.error("Verifique sua conta para anunciar.");
+    if (!state.currentUser?.phoneVerified && !state.currentUser?.isAdmin) { toast.error("Verifique seu número por SMS antes de anunciar."); navigate("/perfil?verify=phone"); return; }
     if ((!isRobuxCategory && !form.name.trim()) || !form.price.trim()) return toast.error("Preencha nome e preço.");
     const finalPrice = parsePriceInput(form.price);
     if (!isValidProductPrice(finalPrice)) return toast.error(`Informe um preço válido a partir de ${formatBRL(MIN_PRODUCT_PRICE)}. Use 2,00 ou 2.00.`);
@@ -168,7 +196,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
           <h1 className="text-2xl font-black text-white flex items-center gap-2"><Package className="w-6 h-6 text-[#0084ff]" /> Meus Anúncios</h1>
           <p className="text-white/40 text-sm mt-1">Gerencie seus produtos e vendas.</p>
         </div>
-        <button onClick={() => { resetForm(); setShowForm(true); }} className="bg-[#0084ff] hover:bg-[#0066cc] text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition">
+        <button onClick={openCreateForm} className="bg-[#0084ff] hover:bg-[#0066cc] text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition">
           <Plus className="w-4 h-4" /> Novo Produto
         </button>
       </div>
