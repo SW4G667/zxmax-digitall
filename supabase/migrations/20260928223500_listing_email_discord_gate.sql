@@ -14,7 +14,7 @@ RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $
+AS $$
 BEGIN
   UPDATE public.profiles_public
   SET
@@ -23,7 +23,7 @@ BEGIN
   WHERE user_id = NEW.user_id;
   RETURN NEW;
 END;
-$;
+$$;
 
 DROP TRIGGER IF EXISTS zz_sync_public_profile_verification ON public.profiles;
 CREATE TRIGGER zz_sync_public_profile_verification
