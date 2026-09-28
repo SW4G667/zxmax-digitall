@@ -379,7 +379,7 @@ export default function AdminView() {
             pendingWithdrawals.map((w) => (
               <div key={w.id} className="glass-card p-5 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-bold text-muted-foreground uppercase">{w.method === "instant" ? "Saque Instantâneo" : "Saque Normal"}</p>
+                  <p className="text-xs font-bold text-muted-foreground uppercase">{w.method === "flex" ? "Saque reduzido" : w.method === "admin_fee" ? "Saque de taxas" : "Saque normal"}</p>
                   <p className="text-xl font-black text-foreground">{formatBRL(w.netAmount ?? Math.max(0, w.amount - (w.fee ?? state.config.withdrawFee)))}</p>
                   <p className="text-[10px] text-muted-foreground">Solicitado {formatBRL(w.amount)} · taxa {formatBRL(w.fee ?? state.config.withdrawFee)}</p>
                   <p className="text-xs text-muted-foreground mt-1">Usuário: {w.userEmail}</p>
