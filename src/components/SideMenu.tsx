@@ -127,7 +127,7 @@ export default function SideMenu({ open, onClose, onNavigate: _onNavigate, onOpe
             { key: "seller-verified", label: "Verificação de vendedor", to: "/perfil", icon: BadgeCheck },
           ]
         : [
-            { key: "seller-start", label: "Verificar minha conta", to: "/perfil", icon: BadgeCheck },
+            { key: "seller-start", label: "Começar a anunciar", to: "/meus-produtos?new=1", icon: Package },
           ],
     };
 
