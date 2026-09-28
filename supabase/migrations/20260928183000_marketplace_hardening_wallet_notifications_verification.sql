@@ -766,3 +766,46 @@ GRANT ALL ON public.phone_verification_events TO service_role;
 -- The public view is backed by these non-contact trust columns only.
 GRANT SELECT (user_id,public_id,display_name,avatar_url,is_verified_seller,created_at,phone_verified_at,verification_status)
 ON public.profiles TO anon, authenticated;
+
+
+-- Server wrapper used by the authenticated order-action Edge Function.
+CREATE OR REPLACE FUNCTION public.refund_purchase_to_wallet_server(_purchase_id bigint, _reason text, _actor_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  p public.purchases%rowtype;
+  is_admin boolean := false;
+  clean_reason text := btrim(coalesce(_reason,''));
+  qty numeric := 1;
+BEGIN
+  IF current_user NOT IN ('postgres','service_role','supabase_admin') THEN RAISE EXCEPTION 'server_only'; END IF;
+  SELECT * INTO p FROM public.purchases WHERE id=_purchase_id FOR UPDATE;
+  IF p IS NULL THEN RAISE EXCEPTION 'Pedido não encontrado'; END IF;
+  SELECT public.has_role(_actor_id,'admin'::public.app_role) INTO is_admin;
+  IF _actor_id<>p.seller_id AND NOT is_admin THEN RAISE EXCEPTION 'Apenas o vendedor ou um administrador pode reembolsar'; END IF;
+  IF p.status IN ('pending','refunded','cancelled') THEN RAISE EXCEPTION 'Este pedido não pode ser reembolsado neste estado'; END IF;
+  IF char_length(clean_reason)<10 THEN RAISE EXCEPTION 'Informe um motivo com pelo menos 10 caracteres'; END IF;
+  IF p.seller_released AND NOT is_admin THEN RAISE EXCEPTION 'O saldo desta venda já foi liberado. Abra uma disputa administrativa.'; END IF;
+
+  INSERT INTO public.wallet_ledger(user_id,amount,kind,purchase_id,description,dedupe_key)
+  VALUES(p.buyer_id,p.amount,'refund',p.id,'Reembolso do pedido #'||p.id,'wallet:refund:'||p.id);
+
+  qty:=coalesce(p.quantity,1);
+  UPDATE public.products SET stock=case when stock is null then null else stock+greatest(qty,1) end WHERE id=p.product_id;
+
+  UPDATE public.purchases
+  SET status='refunded',payment_status='refunded',refund_reason=clean_reason,refunded_at=now(),
+      seller_released=false,released_at=null,funds_available_at=null,updated_at=now(),
+      messages=coalesce(messages,'[]'::jsonb)||jsonb_build_array(jsonb_build_object(
+        'from','System','text','↩️ Reembolso enviado para a carteira ZXMAX do comprador. Motivo: '||clean_reason,'date',now()
+      ))
+  WHERE id=p.id;
+
+  RETURN jsonb_build_object('success',true,'status','refunded');
+END;
+$$;
+REVOKE ALL ON FUNCTION public.refund_purchase_to_wallet_server(bigint,text,uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.refund_purchase_to_wallet_server(bigint,text,uuid) TO service_role;
