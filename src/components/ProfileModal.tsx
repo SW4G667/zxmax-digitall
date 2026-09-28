@@ -115,6 +115,7 @@ export default function ProfileModal({ open, onClose }: Props) {
       const dataUrl = await compressImage(file, 256);
       await updateAuthProfile({ avatar_url: dataUrl });
       await refreshProfile();
+      window.dispatchEvent(new Event("zxmax:profile-updated"));
       toast.success("Foto de perfil atualizada!");
     } catch (err: any) {
       toast.error("Erro ao atualizar foto: " + (err?.message || "Tente novamente."));
