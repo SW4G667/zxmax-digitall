@@ -7,3 +7,8 @@ import { getAppUrl } from "@/lib/appUrl";
 export function getDiscordRedirectTo(origin?: string): string {
   return getAppUrl("/auth/callback", origin);
 }
+
+export function getDiscordListingRedirectTo(next = "/meus-produtos?new=1", origin?: string): string {
+  const query = new URLSearchParams({ intent: "listing", next }).toString();
+  return getAppUrl(`/auth/callback?${query}`, origin);
+}
