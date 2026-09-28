@@ -33,7 +33,7 @@ export interface User {
 }
 
 export interface GlobalNotice {
-  id: number;
+  id: string;
   text: string;
   date: string;
 }
@@ -246,7 +246,7 @@ interface StoreContextType {
   closeTicket: (id: number) => void;
   resolveTicket: (id: number) => void;
   setGlobalNotice: (notice: string) => void;
-  publishNotice: (text: string) => void;
+  publishNotice: (text: string) => Promise<boolean>;
   updatePixKey: (key: string) => void;
   sendAdminChat: (from: string, text: string) => void;
   sendPurchaseMessage: (purchaseId: number, from: string, text: string) => Promise<boolean>;
@@ -258,7 +258,7 @@ interface StoreContextType {
   loadProductReviews: (productId: number) => Promise<Array<{ id: number; stars: number; comment: string; createdAt: string; buyerName: string }>>;
   addProductQuestion: (productId: number, text: string) => void;
   answerProductQuestion: (productId: number, questionId: number, answer: string) => void;
-  deleteNotice: (id: number) => void;
+  deleteNotice: (id: string) => Promise<boolean>;
   refreshUserTags: () => Promise<void>;
   createUserTag: (name: string, color: string, iconUrl?: string) => Promise<boolean>;
   deleteUserTag: (id: string) => Promise<boolean>;
@@ -1239,12 +1239,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  const refreshGlobalNotices = React.useCallback(async () => {
+    const { data, error } = await (supabase as any)
+      .from("global_notices")
+      .select("id,text,created_at")
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error) {
+      console.warn("[zxmax:notices:load]", error);
+      return false;
+    }
+    const notices: GlobalNotice[] = (data || []).map((row: any) => ({
+      id: String(row.id),
+      text: String(row.text || ""),
+      date: String(row.created_at || new Date().toISOString()),
+    }));
+    setState((s) => ({ ...s, globalNotices: notices }));
+    return true;
+  }, []);
+
+  useEffect(() => {
+    void refreshGlobalNotices();
+  }, [refreshGlobalNotices]);
+
   const setGlobalNotice = (notice: string) => updateConfig({ globalNotice: notice });
 
-  const publishNotice = (text: string) => {
-    if (!text.trim()) return;
-    const n: GlobalNotice = { id: Date.now(), text: text.trim(), date: new Date().toISOString() };
-    setState((s) => ({ ...s, globalNotices: [n, ...(s.globalNotices || [])] }));
+  const publishNotice = async (text: string) => {
+    const clean = text.trim();
+    if (!clean || !authUserRef.current) return false;
+    const { error } = await (supabase as any).from("global_notices").insert({
+      text: clean.slice(0, 1000),
+      created_by: authUserRef.current.id,
+    });
+    if (error) {
+      console.warn("[zxmax:notices:publish]", error);
+      return false;
+    }
+    await refreshGlobalNotices();
+    return true;
   };
 
   const updatePixKey = (key: string) =>
@@ -1292,8 +1324,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const deleteNotice = (id: number) =>
+  const deleteNotice = async (id: string) => {
+    const { error } = await (supabase as any).from("global_notices").delete().eq("id", id);
+    if (error) {
+      console.warn("[zxmax:notices:delete]", error);
+      return false;
+    }
     setState((s) => ({ ...s, globalNotices: (s.globalNotices || []).filter((n) => n.id !== id) }));
+    return true;
+  };
 
   const createUserTag = async (name: string, color: string, iconUrl = "") => {
     const { error } = await (supabase as any).rpc("create_admin_user_tag", { _name: name.trim(), _color: color, _icon_url: iconUrl.trim() });
