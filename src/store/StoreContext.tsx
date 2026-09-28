@@ -28,7 +28,8 @@ export interface User {
   isAdmin: boolean;
   pixKey?: string;
   isVerified?: boolean;
-  phoneVerified?: boolean;
+  emailConfirmed?: boolean;
+  discordMemberVerified?: boolean;
   documentVerified?: boolean;
 }
 
@@ -177,7 +178,6 @@ export interface UserDirectoryEntry {
   name: string;
   avatar?: string;
   isVerified?: boolean;
-  phoneVerified?: boolean;
   documentVerified?: boolean;
 }
 
@@ -411,7 +411,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         isAdmin,
         pixKey: profile?.pix_key || "",
         isVerified: profile?.is_verified_seller || false,
-        phoneVerified: Boolean((profile as any)?.phone_verified_at),
+        emailConfirmed: Boolean((authUser as any)?.email_confirmed_at || (authUser as any)?.confirmed_at),
+        discordMemberVerified: Boolean((profile as any)?.discord_member_verified_at),
         documentVerified: (profile as any)?.verification_status === "approved" || profile?.is_verified_seller || false,
       };
       setState((s) => {
@@ -427,7 +428,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           currentUser: user,
           userDirectory: {
             ...(s.userDirectory || {}),
-            [authUser.id]: { userId: authUser.id, publicId: userPublicId, email: user.email || "", name: user.name, avatar: user.avatar, isVerified: user.isVerified, phoneVerified: user.phoneVerified, documentVerified: user.documentVerified },
+            [authUser.id]: { userId: authUser.id, publicId: userPublicId, email: user.email || "", name: user.name, avatar: user.avatar, isVerified: user.isVerified, documentVerified: user.documentVerified },
           },
         };
       });
@@ -440,7 +441,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const refreshPublicProfiles = React.useCallback(async () => {
     const { data: profiles } = await (supabase as any)
       .from("profiles_public")
-      .select("user_id, public_id, display_name, avatar_url, is_verified_seller, phone_verified, document_verified");
+      .select("user_id, public_id, display_name, avatar_url, is_verified_seller, document_verified");
     const directory = ((profiles || []) as any[]).reduce((acc, p) => {
       acc[p.user_id] = {
         userId: p.user_id,
@@ -449,7 +450,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         name: p.display_name || "Usuário",
         avatar: p.avatar_url || undefined,
         isVerified: !!p.is_verified_seller,
-        phoneVerified: !!p.phone_verified,
         documentVerified: !!p.document_verified,
       };
       return acc;
@@ -647,8 +647,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toast.error(`O preço mínimo é R$ ${MIN_PRODUCT_PRICE.toFixed(2).replace(".", ",")}.`);
       return false;
     }
-    if (!state.currentUser.isVerified && !isAdmin) {
-      toast.error("Sua conta ainda não está verificada como vendedor. Conclua a verificação para anunciar.");
+    if (!isAdmin && !state.currentUser.emailConfirmed) {
+      toast.error("Confirme seu e-mail antes de anunciar.");
+      return false;
+    }
+    if (!isAdmin && !state.currentUser.discordMemberVerified) {
+      toast.error("Entre no servidor do Discord e verifique sua conta antes de anunciar.");
       return false;
     }
 

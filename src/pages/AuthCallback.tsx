@@ -31,9 +31,55 @@ export default function AuthCallback() {
       return () => { active = false; };
     }
 
-    const cleanAndContinue = () => {
+    const intent = params.get("intent");
+    const requestedNext = params.get("next");
+    const nextPath = requestedNext?.startsWith("/") ? requestedNext : "/meus-produtos?new=1";
+
+    const cleanAndContinue = async (session: any) => {
       if (!active || finishedRef.current) return;
       finishedRef.current = true;
+      setMessage(intent === "listing" ? "Verificando e-mail e servidor do Discord..." : "Concluindo autenticação segura...");
+
+      const expectedUserId = window.sessionStorage.getItem("zxmax_discord_verify_user");
+      if (intent === "listing" && expectedUserId && session?.user?.id !== expectedUserId) {
+        window.sessionStorage.removeItem("zxmax_discord_verify_user");
+        await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+        if (!active) return;
+        setFailed(true);
+        setMessage("O Discord autorizado pertence a outra conta. Entre novamente na ZXMAX e use o Discord vinculado ao mesmo e-mail.");
+        return;
+      }
+
+      let membership: any = null;
+      if (session?.provider_token) {
+        try {
+          const result = await supabase.functions.invoke("discord-membership", {
+            body: { action: "verify", providerToken: session.provider_token },
+          });
+          membership = result.data;
+        } catch {
+          membership = null;
+        }
+      }
+
+      if (intent === "listing") {
+        window.sessionStorage.removeItem("zxmax_discord_verify_user");
+        if (membership?.verified === true) {
+          void recordSecurityEvent(supabase, "auth.discord", "success");
+          const separator = nextPath.includes("?") ? "&" : "?";
+          window.location.replace(`${nextPath}${separator}discord=verified`);
+          return;
+        }
+        if (membership?.code === "not_member") {
+          const separator = nextPath.includes("?") ? "&" : "?";
+          window.location.replace(`${nextPath}${separator}discord=join`);
+          return;
+        }
+        const separator = nextPath.includes("?") ? "&" : "?";
+        window.location.replace(`${nextPath}${separator}discord=retry`);
+        return;
+      }
+
       void recordSecurityEvent(supabase, "auth.discord", "success");
       window.history.replaceState({}, document.title, "/auth/callback");
       navigate("/loja", { replace: true });
@@ -50,11 +96,11 @@ export default function AuthCallback() {
     }, 10_000);
 
     void supabase.auth.getSession().then(({ data }) => {
-      if (data.session) cleanAndContinue();
+      if (data.session) void cleanAndContinue(data.session);
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session) cleanAndContinue();
+      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session) void cleanAndContinue(session);
     });
 
     return () => {

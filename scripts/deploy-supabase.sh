@@ -70,6 +70,7 @@ FUNCTIONS=(
   order-action
   integrations-config
   discord-callback
+  discord-membership
   create-stripe-checkout
   create-vexopay-crypto
   send-email

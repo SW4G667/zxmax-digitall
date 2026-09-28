@@ -2,7 +2,7 @@ import React from "react";
 import { useEffect, useState } from "react";
 import { useStore } from "@/store/StoreContext";
 import { StarEmoji } from "@/components/CustomEmojis";
-import { X, Shield, CheckCircle, Phone } from "lucide-react";
+import { X, Shield, CheckCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
@@ -22,7 +22,6 @@ export default function UserProfileModal({ open, onClose, userId }: Props) {
     name: string;
     avatar?: string;
     isVerified: boolean;
-    phoneVerified: boolean;
     documentVerified: boolean;
   } | null>(null);
   const [profileLookupStatus, setProfileLookupStatus] = useState<"idle" | "loading" | "ready" | "missing">("idle");
@@ -41,7 +40,7 @@ export default function UserProfileModal({ open, onClose, userId }: Props) {
     void (async () => {
       const { data, error } = await (supabase as any)
         .from("profiles_public")
-        .select("public_id, display_name, avatar_url, is_verified_seller, phone_verified, document_verified")
+        .select("public_id, display_name, avatar_url, is_verified_seller, document_verified")
         .eq("user_id", sellerUuid)
         .maybeSingle();
       if (!active) return;
@@ -55,7 +54,6 @@ export default function UserProfileModal({ open, onClose, userId }: Props) {
         name: String(data.display_name || sellerProduct?.seller || "Vendedor"),
         avatar: data.avatar_url || undefined,
         isVerified: !!data.is_verified_seller,
-        phoneVerified: !!data.phone_verified,
         documentVerified: !!data.document_verified,
       });
       setProfileLookupStatus("ready");
@@ -68,7 +66,6 @@ export default function UserProfileModal({ open, onClose, userId }: Props) {
   const sellerName = dirEntry?.name || resolvedProfile?.name || sellerProduct?.seller || (sellerIdentityReady ? "Vendedor" : "Conta em validação");
   const sellerAvatar = dirEntry?.avatar || resolvedProfile?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(sellerName)}`;
   const isVerified = !!dirEntry?.isVerified || !!resolvedProfile?.isVerified;
-  const phoneVerified = !!dirEntry?.phoneVerified || !!resolvedProfile?.phoneVerified;
   const documentVerified = !!dirEntry?.documentVerified || !!resolvedProfile?.documentVerified;
 
   const sellerProducts = state.products.filter((p) => p.sellerId === sellerUuid && p.approved);
@@ -129,15 +126,9 @@ export default function UserProfileModal({ open, onClose, userId }: Props) {
           )}
         </div>
 
-        <div className="mb-6 grid grid-cols-2 gap-2">
-          <div className={`rounded-xl border p-3 ${phoneVerified ? "border-emerald-400/15 bg-emerald-400/[0.06]" : "border-white/[0.07] bg-white/[0.02]"}`}>
-            <div className="flex items-center gap-1.5"><Phone className={`h-3.5 w-3.5 ${phoneVerified ? "text-emerald-300" : "text-white/30"}`} /><p className="text-[10px] font-bold uppercase text-white/45">Telefone</p></div>
-            <p className={`mt-1 text-xs font-bold ${phoneVerified ? "text-emerald-300" : "text-white/45"}`}>{phoneVerified ? "Confirmado por SMS" : "Não verificado"}</p>
-          </div>
-          <div className={`rounded-xl border p-3 ${documentVerified ? "border-[#168cff]/20 bg-[#168cff]/[0.06]" : "border-white/[0.07] bg-white/[0.02]"}`}>
-            <div className="flex items-center gap-1.5"><Shield className={`h-3.5 w-3.5 ${documentVerified ? "text-[#70bdff]" : "text-white/30"}`} /><p className="text-[10px] font-bold uppercase text-white/45">Documento</p></div>
-            <p className={`mt-1 text-xs font-bold ${documentVerified ? "text-[#70bdff]" : "text-white/45"}`}>{documentVerified ? "Verificado" : "Não verificado"}</p>
-          </div>
+        <div className={`mb-6 rounded-xl border p-3 ${documentVerified ? "border-[#168cff]/20 bg-[#168cff]/[0.06]" : "border-white/[0.07] bg-white/[0.02]"}`}>
+          <div className="flex items-center gap-1.5"><Shield className={`h-3.5 w-3.5 ${documentVerified ? "text-[#70bdff]" : "text-white/30"}`} /><p className="text-[10px] font-bold uppercase text-white/45">Documento</p></div>
+          <p className={`mt-1 text-xs font-bold ${documentVerified ? "text-[#70bdff]" : "text-white/45"}`}>{documentVerified ? "Verificado" : "Não verificado"}</p>
         </div>
 
         <div className="grid grid-cols-3 gap-3 mb-8">

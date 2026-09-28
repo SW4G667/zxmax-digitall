@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, Shield, Upload, Loader2, CheckCircle2, Clock, XCircle, LogOut, Camera, Phone, FileImage, KeyRound } from "lucide-react";
+import { ArrowLeft, Shield, Upload, Loader2, CheckCircle2, Clock, XCircle, LogOut, Camera, FileImage } from "lucide-react";
 import TwoFactorPanel from "@/components/TwoFactorPanel";
 import LoadingScreen from "@/components/LoadingScreen";
 import AppShell from "@/components/AppShell";
@@ -39,14 +39,12 @@ function PerfilInner() {
   const { user, profile, loading, refreshProfile, isAdmin, signOut } = useAuth();
   const { state } = useStore();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
 
   const [form, setForm] = useState({
     display_name: "",
     full_name: "",
     cpf: "",
     birth_date: "",
-    phone: "",
     city: "",
     state: "",
     pix_key: "",
@@ -58,9 +56,6 @@ function PerfilInner() {
   const [rgFront, setRgFront] = useState<File | null>(null);
   const [rgBack, setRgBack] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
-  const [phoneCode, setPhoneCode] = useState("");
-  const [phoneSent, setPhoneSent] = useState(false);
-  const [phoneBusy, setPhoneBusy] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
@@ -69,7 +64,6 @@ function PerfilInner() {
       full_name: (profile as any).full_name || "",
       cpf: (profile as any).cpf || "",
       birth_date: (profile as any).birth_date || "",
-      phone: (profile as any).phone || "",
       city: (profile as any).city || "",
       state: (profile as any).state || "",
       pix_key: profile.pix_key || "",
@@ -87,8 +81,6 @@ function PerfilInner() {
   }, [avatarFile]);
 
   const status = ((profile as any)?.verification_status as string) || "none";
-  const phoneVerified = Boolean((profile as any)?.phone_verified_at);
-  const requestedPhoneVerification = searchParams.get("verify") === "phone";
   const meta = STATUS_META[status] || STATUS_META.none;
   const StatusIcon = meta.icon;
 
@@ -102,7 +94,6 @@ function PerfilInner() {
     const digits = form.cpf.replace(/\D/g, "");
     if (digits.length !== 11) return "CPF deve conter 11 dígitos.";
     if (!form.birth_date) return "Informe sua data de nascimento.";
-    if (form.phone.replace(/\D/g, "").length < 10) return "Informe um telefone válido com DDD.";
     if (!form.city.trim()) return "Informe sua cidade.";
     if (form.state.trim().length < 2) return "Informe seu estado (UF).";
     return null;
@@ -146,7 +137,6 @@ function PerfilInner() {
           full_name: form.full_name.trim(),
           cpf: form.cpf.replace(/\D/g, ""),
           birth_date: form.birth_date || null,
-          phone: form.phone.trim(),
           city: form.city.trim(),
           state: form.state.trim().toUpperCase(),
           pix_key: form.pix_key.trim(),
@@ -163,50 +153,9 @@ function PerfilInner() {
     setSaving(false);
   };
 
-  const startPhoneVerification = async () => {
-    if (!user) return;
-    const digits = form.phone.replace(/\D/g, "");
-    if (digits.length < 10 || digits.length > 13) return toast.error("Informe um celular válido com DDD.");
-    setPhoneBusy(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("phone-verification", {
-        body: { action: "start", phone: form.phone },
-      });
-      if (error || data?.error) throw new Error(data?.error || "Não foi possível enviar o SMS.");
-      setPhoneSent(true);
-      toast.success("Código enviado por SMS.");
-    } catch (error: any) {
-      toast.error(error?.message || "Não foi possível enviar o SMS.");
-    } finally {
-      setPhoneBusy(false);
-    }
-  };
-
-  const confirmPhoneVerification = async () => {
-    if (!user) return;
-    if (!/^\d{4,10}$/.test(phoneCode.replace(/\D/g, ""))) return toast.error("Digite o código recebido por SMS.");
-    setPhoneBusy(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("phone-verification", {
-        body: { action: "check", phone: form.phone, code: phoneCode },
-      });
-      if (error || data?.error || !data?.verified) throw new Error(data?.error || "Código inválido.");
-      await refreshProfile();
-      window.dispatchEvent(new Event("zxmax:profile-updated"));
-      setPhoneSent(false);
-      setPhoneCode("");
-      toast.success("Número verificado. Você já pode criar anúncios.");
-    } catch (error: any) {
-      toast.error(error?.message || "Não foi possível validar o código.");
-    } finally {
-      setPhoneBusy(false);
-    }
-  };
-
   const handleSubmitVerification = async () => {
     const err = validate(true);
     if (err) return toast.error(err);
-    if (!phoneVerified) return toast.error("Verifique seu número por SMS antes de enviar os documentos.");
     if (!rgFront || !rgBack || !selfie) return toast.error("Envie RG frente, RG verso e sua selfie.");
     const files = [rgFront, rgBack, selfie];
     if (files.some((file) => !file.type.startsWith("image/"))) return toast.error("Envie apenas imagens dos documentos.");
@@ -240,7 +189,6 @@ function PerfilInner() {
           full_name: form.full_name.trim(),
           cpf: form.cpf.replace(/\D/g, ""),
           birth_date: form.birth_date || null,
-          phone: form.phone.trim(),
           city: form.city.trim(),
           state: form.state.trim().toUpperCase(),
           pix_key: form.pix_key.trim(),
@@ -328,40 +276,25 @@ function PerfilInner() {
           ))}
         </section>
 
-        {!phoneVerified && (
-          <section className={`mb-5 rounded-2xl border p-5 sm:p-6 ${requestedPhoneVerification ? "border-[#168cff]/45 bg-[#168cff]/[0.08]" : "border-[#25252e] bg-[#15151a]"}`} aria-labelledby="phone-verification-title">
-            <div className="flex items-start gap-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[#168cff]/20 bg-[#168cff]/10 text-[#66b7ff]"><Phone className="h-5 w-5" /></span>
-              <div>
-                <h2 id="phone-verification-title" className="font-bold text-white">Verifique seu número para anunciar</h2>
-                <p className="mt-1 text-xs leading-5 text-white/45">A criação de anúncios exige apenas confirmação do celular por SMS. Saques e compras com saldo continuam exigindo a verificação completa dos documentos.</p>
-              </div>
+        <section className="mb-5 rounded-2xl border border-[#25252e] bg-[#15151a] p-5 sm:p-6" aria-labelledby="listing-access-title">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 id="listing-access-title" className="font-bold text-white">Requisitos para anunciar</h2>
+              <p className="mt-1 text-xs leading-5 text-white/45">Não usamos número de telefone para liberar anúncios. Basta confirmar o e-mail da conta e entrar no servidor oficial do Discord.</p>
             </div>
-            <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
-              <input className={inputClass} value={form.phone} onChange={set("phone")} placeholder="(00) 00000-0000" inputMode="tel" />
-              <button type="button" onClick={() => void startPhoneVerification()} disabled={phoneBusy} className="rounded-xl bg-[#168cff] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">
-                {phoneBusy && !phoneSent ? "Enviando..." : phoneSent ? "Reenviar SMS" : "Enviar código"}
-              </button>
-            </div>
-            {phoneSent && (
-              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-                <div className="relative">
-                  <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
-                  <input value={phoneCode} onChange={(event) => setPhoneCode(event.target.value.replace(/\D/g, "").slice(0, 10))} inputMode="numeric" autoComplete="one-time-code" placeholder="Código SMS" className={inputClass + " pl-10"} />
-                </div>
-                <button type="button" onClick={() => void confirmPhoneVerification()} disabled={phoneBusy} className="rounded-xl border border-[#168cff]/35 bg-[#168cff]/10 px-4 py-3 text-sm font-bold text-[#7cc4ff] disabled:opacity-50">
-                  {phoneBusy ? "Validando..." : "Confirmar código"}
-                </button>
-              </div>
-            )}
-          </section>
-        )}
-
-        {phoneVerified && (
-          <div className="mb-5 flex items-center gap-3 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.06] p-4 text-sm text-emerald-200">
-            <CheckCircle2 className="h-5 w-5 shrink-0" /> Número confirmado por SMS. Sua conta pode criar anúncios.
+            <a href="/meus-produtos?new=1" className="shrink-0 rounded-xl bg-[#168cff] px-4 py-2.5 text-xs font-bold text-white">Verificar</a>
           </div>
-        )}
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <div className="flex items-center justify-between rounded-xl border border-white/[0.07] bg-[#0b0b0e] px-4 py-3">
+              <span className="text-xs text-white/55">E-mail confirmado</span>
+              <span className={`text-xs font-black ${state.currentUser?.emailConfirmed ? "text-emerald-300" : "text-amber-300"}`}>{state.currentUser?.emailConfirmed ? "OK" : "Pendente"}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-xl border border-white/[0.07] bg-[#0b0b0e] px-4 py-3">
+              <span className="text-xs text-white/55">Servidor do Discord</span>
+              <span className={`text-xs font-black ${state.currentUser?.discordMemberVerified ? "text-emerald-300" : "text-amber-300"}`}>{state.currentUser?.discordMemberVerified ? "Verificado" : "Necessário"}</span>
+            </div>
+          </div>
+        </section>
 
         <div className="bg-[#15151a] border border-[#25252e] rounded-2xl p-6 mb-5">
           <h2 className="font-bold text-white mb-1">Dados pessoais</h2>
@@ -382,10 +315,9 @@ function PerfilInner() {
             <Field label="Nome completo"><input className={inputClass} value={form.full_name} onChange={set("full_name")} placeholder="Como no documento" /></Field>
             <Field label="CPF"><input className={inputClass} value={form.cpf} onChange={set("cpf")} inputMode="numeric" placeholder="000.000.000-00" /></Field>
             <Field label="Data nascimento"><input type="date" className={inputClass} value={form.birth_date} onChange={set("birth_date")} /></Field>
-            <Field label="Telefone"><input className={inputClass} value={form.phone} onChange={set("phone")} placeholder="(00) 00000-0000" /></Field>
             <Field label="Cidade"><input className={inputClass} value={form.city} onChange={set("city")} /></Field>
             <Field label="Estado (UF)"><input className={inputClass} maxLength={2} value={form.state} onChange={set("state")} placeholder="SP" /></Field>
-            <Field label="Chave Pix (saques)"><input className={inputClass} value={form.pix_key} onChange={set("pix_key")} placeholder="CPF, email, telefone" /></Field>
+            <Field label="Chave Pix (saques)"><input className={inputClass} value={form.pix_key} onChange={set("pix_key")} placeholder="CPF, e-mail ou chave aleatória" /></Field>
           </div>
           <button onClick={handleSave} disabled={saving} className="bg-[#0084ff] hover:bg-[#0066cc] text-white mt-6 px-5 py-3 rounded-xl font-bold text-sm disabled:opacity-50 transition">
             {saving ? "Salvando..." : "Salvar dados"}
@@ -427,8 +359,7 @@ function PerfilInner() {
                   </label>
                 ))}
               </div>
-              {!phoneVerified && <p className="mt-4 text-xs text-amber-300/75">Confirme seu número por SMS antes de enviar os documentos.</p>}
-              <button onClick={handleSubmitVerification} disabled={sending || !phoneVerified} className="bg-[#0084ff] hover:bg-[#0066cc] text-white mt-5 px-5 py-3 rounded-xl font-bold text-sm inline-flex items-center gap-2 disabled:opacity-50 transition">
+              <button onClick={handleSubmitVerification} disabled={sending} className="bg-[#0084ff] hover:bg-[#0066cc] text-white mt-5 px-5 py-3 rounded-xl font-bold text-sm inline-flex items-center gap-2 disabled:opacity-50 transition">
                 {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                 {sending ? "Enviando..." : "Enviar documentos"}
               </button>

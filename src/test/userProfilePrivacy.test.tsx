@@ -91,7 +91,9 @@ describe("UserProfileModal — privacidade", () => {
   it("resolve novamente o perfil público no modal e não apresenta um ID indisponível como identificador válido", async () => {
     const profileModal = await readFile(join(process.cwd(), "src/components/UserProfileModal.tsx"), "utf8");
     expect(profileModal).toContain('.from("profiles_public")');
-    expect(profileModal).toContain('select("public_id, display_name, avatar_url, is_verified_seller, phone_verified, document_verified")');
+    expect(profileModal).toContain('select("public_id, display_name, avatar_url, is_verified_seller, document_verified")');
+    expect(profileModal).not.toContain("phone_verified");
+    expect(profileModal).not.toContain("Confirmado por SMS");
     expect(profileModal).toContain("Conta em validação");
     expect(profileModal).not.toContain('|| "ID indisponível"');
   });

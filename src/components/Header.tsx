@@ -8,7 +8,6 @@ import DiscordIcon from "@/components/DiscordIcon";
 import useFavorites from "@/hooks/useFavorites";
 import BrandMark from "@/components/BrandMark";
 import { useSiteBranding } from "@/context/SiteBrandingContext";
-import { toast } from "sonner";
 
 interface Props {
   onProfileClick?: () => void;
@@ -61,12 +60,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
       onAuthClick?.();
       return;
     }
-    const phoneVerified = Boolean((profile as any)?.phone_verified_at || state.currentUser?.phoneVerified);
-    if (!phoneVerified && !isAdmin) {
-      toast.info("Verifique seu número por SMS antes de criar um anúncio.");
-      navigate("/perfil?verify=phone");
-      return;
-    }
+    // A tela de anúncios valida e-mail confirmado + presença no Discord.
     navigate("/meus-produtos?new=1");
   };
 
