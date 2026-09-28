@@ -183,10 +183,10 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
               </div>
             )}
 
-            <div className="flex justify-between text-xs"><span className="text-white/40">Taxa do método</span><span className="text-[#ffbd2e]">+ {formatBRL(fee)}</span></div>
+            <div className="flex justify-between text-xs"><span className="text-white/40">Taxa do checkout</span><span className="text-[#ffbd2e]">+ {formatBRL(fee)}</span></div>
             <div className="h-px bg-[#1e1e28] my-2" />
             <div className="flex justify-between font-black"><span className="text-white">Total</span><span className="text-white text-lg">{formatBRL(total)}</span></div>
-            <p className="text-[10px] text-white/30">A taxa é definida para o método selecionado. O vendedor recebe {formatBRL(subtotal)}.</p>
+            <p className="text-[10px] text-white/30">A taxa exibida é a mesma aplicada pelo servidor ao método selecionado. O vendedor recebe {formatBRL(subtotal)}.</p>
           </div>
 
           <button onClick={handleConfirm} disabled={loading || loadingMethods || !method || !isAvailable(method)} className="w-full bg-[#ffbd2e] hover:bg-[#e6a829] text-black py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
