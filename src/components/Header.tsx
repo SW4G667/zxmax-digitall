@@ -108,7 +108,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
             <NotificationBell />
 
             <a
-              href={branding.supportUrl || state.config.discordLink || "https://discord.gg/zxmax"}
+              href={branding.discordInviteUrl || state.config.discordLink || "https://discord.gg/zxmax"}
               target="_blank"
               rel="noopener noreferrer"
               className="zx-icon-action hidden sm:flex border-[#5865F2]/25"

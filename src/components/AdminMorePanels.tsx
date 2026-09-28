@@ -150,7 +150,10 @@ export function AdminTicketsPanel() {
           <>
             <div className="flex justify-between mb-3">
               <h4 className="font-bold text-sm">{active.subject}</h4>
-              <button onClick={() => closeTicket(active.id)} className="text-[11px] font-bold text-destructive">Fechar</button>
+              <button onClick={async () => {
+                const ok = await closeTicket(active.id);
+                ok ? toast.success("Atendimento finalizado.") : toast.error("Não foi possível finalizar o atendimento.");
+              }} className="text-[11px] font-bold text-destructive">Fechar</button>
             </div>
             <div className="space-y-2 max-h-64 overflow-y-auto mb-3">
               {active.messages.map((m, i) => (
@@ -162,7 +165,13 @@ export function AdminTicketsPanel() {
             </div>
             <div className="flex gap-2">
               <input value={reply} onChange={(e) => setReply(e.target.value)} className="flex-1 p-2 rounded-xl bg-muted text-sm" placeholder="Responder..." />
-              <button onClick={() => { if (reply.trim()) { replyTicket(active.id, reply.trim()); setReply(""); } }} className="btn-gradient px-3 rounded-xl text-xs font-bold">Enviar</button>
+              <button onClick={async () => {
+                if (!reply.trim()) return;
+                const text = reply.trim();
+                const ok = await replyTicket(active.id, text);
+                if (ok) setReply("");
+                else toast.error("Não foi possível enviar a resposta.");
+              }} className="btn-gradient px-3 rounded-xl text-xs font-bold">Enviar</button>
             </div>
           </>
         )}

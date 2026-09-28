@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, CheckCheck, CircleDollarSign, MessageCircleQuestion, Shield, ShoppingBag, X } from "lucide-react";
+import { Bell, CheckCheck, CircleDollarSign, Headphones, MessageCircleQuestion, Shield, ShoppingBag, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -18,6 +18,7 @@ function Icon({ type }: { type: string }) {
   if (type === "sale") return <CircleDollarSign className="h-4 w-4" />;
   if (type === "question") return <MessageCircleQuestion className="h-4 w-4" />;
   if (type === "notice") return <Shield className="h-4 w-4" />;
+  if (type === "support") return <Headphones className="h-4 w-4" />;
   return <ShoppingBag className="h-4 w-4" />;
 }
 

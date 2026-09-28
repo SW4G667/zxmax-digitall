@@ -4,8 +4,9 @@ import { Plus, X, Trash2, Upload, Users, Clock, MessageSquare, Pencil, Package, 
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { formatBRL, formatRobuxPackage, formatStockLabel, isValidProductPrice, listingStatus, MIN_PRODUCT_PRICE, parsePriceInput, productStock, ROBUX_CATEGORY } from "@/lib/catalog";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { getDiscordListingRedirectTo } from "@/lib/discordAuth";
+import { getAppUrl } from "@/lib/appUrl";
 import { useSiteBranding } from "@/context/SiteBrandingContext";
 
 interface Variation {
@@ -16,11 +17,11 @@ interface Variation {
 export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId: number) => void }) {
   const { state, addProduct, updateProduct, deleteProduct } = useStore();
   const { branding } = useSiteBranding();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   const [discordGateOpen, setDiscordGateOpen] = useState(false);
   const [discordStarting, setDiscordStarting] = useState(false);
+  const [emailResending, setEmailResending] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showSales, setShowSales] = useState<number | null>(null);
   const [uploading, setUploading] = useState<"image" | "banner" | null>(null);
@@ -50,21 +51,63 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     return true;
   };
 
+  const resendConfirmationEmail = async () => {
+    const email = state.currentUser?.email?.trim();
+    if (!email || emailResending || state.currentUser?.emailConfirmed) return;
+    setEmailResending(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email,
+        options: { emailRedirectTo: getAppUrl("/meus-produtos?new=1") },
+      });
+      if (error) throw error;
+      toast.success("E-mail de confirmação reenviado. Confira também a caixa de spam.");
+    } catch (error: any) {
+      toast.error(error?.message || "Não foi possível reenviar o e-mail agora.");
+    } finally {
+      setEmailResending(false);
+    }
+  };
+
   const startDiscordVerification = async () => {
     if (!state.currentUser || discordStarting) return;
+    if (!state.currentUser.emailConfirmed) {
+      toast.info("Confirme seu e-mail antes de vincular o Discord.");
+      return;
+    }
+
     setDiscordStarting(true);
     try {
       window.sessionStorage.setItem("zxmax_discord_verify_user", state.currentUser.id);
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "discord",
-        options: {
-          redirectTo: getDiscordListingRedirectTo("/meus-produtos?new=1"),
-          scopes: "identify email guilds",
-        },
-      });
-      if (error) {
+      const redirectTo = getDiscordListingRedirectTo("/meus-produtos?new=1");
+      const options = { redirectTo, scopes: "identify email guilds" };
+
+      // Preserve the current ZXMAX account. New Discord identities are linked
+      // to the authenticated user instead of replacing the session.
+      const identitiesResult = await supabase.auth.getUserIdentities();
+      const hasDiscordIdentity = Boolean(identitiesResult.data?.identities?.some((identity: any) => identity.provider === "discord"));
+
+      let authError: any = null;
+      if (!hasDiscordIdentity) {
+        const linked = await (supabase.auth as any).linkIdentity({ provider: "discord", options });
+        authError = linked?.error || null;
+
+        // Some projects may still have manual identity linking disabled. In
+        // that case automatic linking by the already-confirmed e-mail remains
+        // a safe fallback, and the callback rejects a different ZXMAX user ID.
+        if (authError && /manual|linking|identity/i.test(String(authError.message || ""))) {
+          const oauth = await supabase.auth.signInWithOAuth({ provider: "discord", options });
+          authError = oauth.error;
+        }
+      } else {
+        const oauth = await supabase.auth.signInWithOAuth({ provider: "discord", options });
+        authError = oauth.error;
+      }
+
+      if (authError) {
         window.sessionStorage.removeItem("zxmax_discord_verify_user");
-        throw error;
+        throw authError;
       }
     } catch (error: any) {
       setDiscordStarting(false);
@@ -265,11 +308,16 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
             </div>
 
             {!state.currentUser?.emailConfirmed ? (
-              <p className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.06] p-3 text-xs leading-5 text-amber-100/75">Abra o e-mail de confirmação enviado pela ZXMAX e confirme a conta. Depois volte aqui.</p>
+              <div className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.06] p-3">
+                <p className="text-xs leading-5 text-amber-100/75">Abra o e-mail de confirmação enviado pela ZXMAX e confirme a conta. Depois volte aqui.</p>
+                <button type="button" onClick={() => void resendConfirmationEmail()} disabled={emailResending} className="mt-2 text-[11px] font-bold text-amber-200 underline underline-offset-2 disabled:opacity-50">
+                  {emailResending ? "Reenviando..." : "Não recebeu? Reenviar e-mail"}
+                </button>
+              </div>
             ) : null}
 
             <div className="mt-5 grid gap-2">
-              <a href={branding.supportUrl || state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noreferrer" className="rounded-xl border border-[#5865f2]/35 bg-[#5865f2]/10 px-4 py-3 text-center text-sm font-bold text-[#aeb4ff] hover:bg-[#5865f2]/15">1. Entrar no servidor do Discord</a>
+              <a href={branding.discordInviteUrl || state.config.discordLink || "https://discord.gg/zxmax"} target="_blank" rel="noreferrer" className="rounded-xl border border-[#5865f2]/35 bg-[#5865f2]/10 px-4 py-3 text-center text-sm font-bold text-[#aeb4ff] hover:bg-[#5865f2]/15">1. Entrar no servidor do Discord</a>
               <button type="button" onClick={() => void startDiscordVerification()} disabled={discordStarting || !state.currentUser?.emailConfirmed} className="rounded-xl bg-[#168cff] px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-45">
                 {discordStarting ? "Abrindo Discord..." : "2. Verificar com Discord"}
               </button>

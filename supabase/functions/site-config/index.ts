@@ -24,7 +24,9 @@ const DEFAULTS = {
   promoBanner2Url: "",
   promoBanner3Url: "",
   accentColor: "#168cff",
-  supportUrl: "https://discord.gg/zxmax",
+  supportUrl: "",
+  discordInviteUrl: "https://discord.gg/zxmax",
+  discordGuildId: "",
 };
 
 const UPLOAD_SLOTS: Record<string, { field: keyof typeof DEFAULTS; maxBytes: number }> = {
@@ -52,6 +54,43 @@ const safeColor = (value: unknown) => {
   return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw.toLowerCase() : DEFAULTS.accentColor;
 };
 
+const safeDiscordInvite = (value: unknown) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.toLowerCase();
+    if (host === "discord.gg") {
+      const code = url.pathname.split("/").filter(Boolean)[0];
+      return code ? `https://discord.gg/${code}` : "";
+    }
+    if (host === "discord.com" || host === "www.discord.com") {
+      const parts = url.pathname.split("/").filter(Boolean);
+      const index = parts.findIndex((part) => part === "invite");
+      const code = index >= 0 ? parts[index + 1] : "";
+      return code ? `https://discord.gg/${code}` : "";
+    }
+  } catch {
+    return "";
+  }
+  return "";
+};
+
+async function resolveDiscordGuildId(inviteUrl: string) {
+  const code = inviteUrl.split("/").filter(Boolean).at(-1);
+  if (!code) return "";
+  try {
+    const response = await fetch(`https://discord.com/api/v10/invites/${encodeURIComponent(code)}?with_counts=false&with_expiration=false`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) return "";
+    const payload = await response.json().catch(() => ({}));
+    return payload?.guild?.id ? String(payload.guild.id) : "";
+  } catch {
+    return "";
+  }
+}
+
 async function requireAdmin(req: Request, admin: any) {
   const auth = req.headers.get("Authorization");
   if (!auth?.startsWith("Bearer ")) return null;
@@ -67,6 +106,9 @@ serve(async (req) => {
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const { data: row } = await admin.from("app_settings").select("value").eq("key", "site_branding").maybeSingle();
   const current = { ...DEFAULTS, ...(row?.value || {}) };
+  if (!current.discordInviteUrl) {
+    current.discordInviteUrl = safeDiscordInvite(current.supportUrl) || DEFAULTS.discordInviteUrl;
+  }
 
   if (req.method === "GET") {
     const requestUrl = new URL(req.url);
@@ -137,6 +179,21 @@ serve(async (req) => {
 
     if (body.action === "save") {
       const values = body.values || {};
+      const discordInviteUrl = values.discordInviteUrl === undefined
+        ? safeDiscordInvite(current.discordInviteUrl)
+        : safeDiscordInvite(values.discordInviteUrl);
+      if (!discordInviteUrl) {
+        return json({ error: "Configure um convite válido do Discord (discord.gg/...). Ele é obrigatório para liberar anúncios." }, 400);
+      }
+
+      let discordGuildId = String(current.discordGuildId || "");
+      if (!discordGuildId || discordInviteUrl !== safeDiscordInvite(current.discordInviteUrl)) {
+        discordGuildId = await resolveDiscordGuildId(discordInviteUrl);
+        if (!discordGuildId) {
+          return json({ error: "Não consegui validar esse convite no Discord. Gere um convite ativo e tente novamente." }, 400);
+        }
+      }
+
       const next = {
         siteName: safeText(values.siteName ?? current.siteName, 40) || DEFAULTS.siteName,
         logoUrl: values.logoUrl === undefined ? current.logoUrl : safeUrl(values.logoUrl),
@@ -151,6 +208,8 @@ serve(async (req) => {
         promoBanner3Url: values.promoBanner3Url === undefined ? current.promoBanner3Url : safeUrl(values.promoBanner3Url),
         accentColor: safeColor(values.accentColor ?? current.accentColor),
         supportUrl: values.supportUrl === undefined ? current.supportUrl : safeUrl(values.supportUrl),
+        discordInviteUrl,
+        discordGuildId,
       };
 
       const { error } = await admin.from("app_settings").upsert({ key: "site_branding", value: next }, { onConflict: "key" });
