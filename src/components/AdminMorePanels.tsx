@@ -126,7 +126,7 @@ export function AdminPurchasesPanel() {
   );
 }
 
-export function AdminTicketsPanel() {
+export export function AdminTicketsPanel() {
   const { state, replyTicket, closeTicket } = useStore();
   const [selected, setSelected] = useState<number | null>(null);
   const [reply, setReply] = useState("");
