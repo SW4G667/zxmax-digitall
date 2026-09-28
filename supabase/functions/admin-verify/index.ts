@@ -154,7 +154,7 @@ serve(async (req) => {
     if (action === "get_verifications") {
       const { data, error } = await serviceClient
         .from("profiles")
-        .select("user_id, public_id, email, display_name, full_name, cpf, birth_date, phone, city, state, phone_verified_at, verification_rg_front_path, verification_rg_back_path, verification_selfie_path, verification_status, verification_notes, verification_submitted_at, is_verified_seller")
+        .select("user_id, public_id, email, display_name, full_name, cpf, birth_date, city, state, verification_rg_front_path, verification_rg_back_path, verification_selfie_path, verification_status, verification_notes, verification_submitted_at, is_verified_seller")
         .not("verification_status", "is", null)
         .neq("verification_status", "none")
         .order("verification_submitted_at", { ascending: false })
