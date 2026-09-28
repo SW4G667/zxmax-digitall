@@ -112,9 +112,6 @@ serve(async (req) => {
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const { data: row } = await admin.from("app_settings").select("value").eq("key", "site_branding").maybeSingle();
   const current = { ...DEFAULTS, ...(row?.value || {}) };
-  if (!current.discordInviteUrl) {
-    current.discordInviteUrl = safeDiscordInvite(current.supportUrl);
-  }
 
   if (req.method === "GET") {
     const requestUrl = new URL(req.url);
