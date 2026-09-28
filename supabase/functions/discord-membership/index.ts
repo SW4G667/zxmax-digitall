@@ -33,7 +33,11 @@ function inviteCode(raw: unknown): string | null {
 
 async function getConfiguredDiscord(admin: any) {
   const { data } = await admin.from("app_settings").select("value").eq("key", "site_branding").maybeSingle();
-  const inviteUrl = String(data?.value?.supportUrl || "https://discord.gg/zxmax").trim();
+  const current = data?.value && typeof data.value === "object" ? data.value : {};
+  const inviteUrl = String(current?.discordInviteUrl || current?.supportUrl || "https://discord.gg/zxmax").trim();
+  const storedGuildId = String(current?.discordGuildId || "").trim();
+  if (storedGuildId) return { inviteUrl, guildId: storedGuildId };
+
   const code = inviteCode(inviteUrl);
   if (!code) return { inviteUrl, guildId: null as string | null };
 
@@ -42,7 +46,18 @@ async function getConfiguredDiscord(admin: any) {
   });
   if (!response.ok) return { inviteUrl, guildId: null as string | null };
   const payload = await response.json().catch(() => ({}));
-  return { inviteUrl, guildId: payload?.guild?.id ? String(payload.guild.id) : null };
+  const guildId = payload?.guild?.id ? String(payload.guild.id) : null;
+
+  // Backfill the resolved guild ID once. Future membership checks no longer
+  // depend on the invite endpoint and changing to another server invalidates
+  // old membership proofs after the admin saves the new invite.
+  if (guildId) {
+    await admin.from("app_settings").upsert({
+      key: "site_branding",
+      value: { ...current, discordInviteUrl: inviteUrl, discordGuildId: guildId },
+    }, { onConflict: "key" }).catch(() => {});
+  }
+  return { inviteUrl, guildId };
 }
 
 async function discordUser(providerToken: string) {
