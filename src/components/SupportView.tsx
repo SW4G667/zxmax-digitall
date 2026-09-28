@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -52,6 +52,7 @@ const FAQ = [
 export default function SupportView() {
   const { state, addTicket, replyTicket, closeTicket } = useStore();
   const { branding } = useSiteBranding();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
@@ -76,6 +77,17 @@ export default function SupportView() {
   );
   const active = myTickets.find((ticket) => ticket.id === selectedTicket);
   const openCount = myTickets.filter((ticket) => ticket.status === "open").length;
+
+  useEffect(() => {
+    const raw = searchParams.get("ticket");
+    if (!raw) return;
+    const ticketId = Number(raw);
+    if (!Number.isInteger(ticketId) || !myTickets.some((ticket) => ticket.id === ticketId)) return;
+    setSelectedTicket(ticketId);
+    const next = new URLSearchParams(searchParams);
+    next.delete("ticket");
+    setSearchParams(next, { replace: true });
+  }, [myTickets, searchParams, setSearchParams]);
 
   const handleCreate = async () => {
     if (!state.currentUser) {
