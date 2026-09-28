@@ -197,7 +197,6 @@ describe("addProduct — validações antes de chegar ao banco", () => {
 
   it("não exige selo de vendedor nem documentos apenas para criar anúncio", async () => {
     authState.profile.is_verified_seller = false;
-    authState.profile.verification_status = "none" as any;
     renderHarness();
     await click();
     expect(insertPayloads.current.length).toBeGreaterThan(0);
