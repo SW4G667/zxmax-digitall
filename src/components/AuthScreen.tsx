@@ -35,7 +35,10 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
     try {
       const { error: discordError } = await supabase.auth.signInWithOAuth({
         provider: "discord",
-        options: { redirectTo: getDiscordRedirectTo() },
+        options: {
+          redirectTo: getDiscordRedirectTo(),
+          scopes: "identify email guilds",
+        },
       });
       if (discordError) {
         void recordSecurityEvent(supabase, "auth.discord", "failure");
