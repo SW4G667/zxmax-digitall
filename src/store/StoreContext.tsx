@@ -132,7 +132,7 @@ export interface Withdrawal {
   userEmail: string;
   userId: string;
   amount: number;
-  method: "normal" | "instant";
+  method: "normal" | "flex" | "admin_fee";
   status: "pending" | "approved" | "rejected";
   createdAt: string;
   pixKey?: string;
@@ -361,7 +361,7 @@ const mapWithdrawalRow = (w: any): Withdrawal => ({
   userEmail: w.user_email || "",
   userId: w.user_id,
   amount: Number(w.amount),
-  method: w.method === "instant" ? "instant" : "normal",
+  method: w.method === "flex" ? "flex" : w.method === "admin_fee" ? "admin_fee" : "normal",
   status: w.status,
   createdAt: w.created_at,
   pixKey: w.pix_key || undefined,
