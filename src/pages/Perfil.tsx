@@ -359,8 +359,7 @@ function PerfilInner() {
                   </label>
                 ))}
               </div>
-              {!phoneVerified && <p className="mt-4 text-xs text-amber-300/75">Confirme seu número por SMS antes de enviar os documentos.</p>}
-              <button onClick={handleSubmitVerification} disabled={sending || !phoneVerified} className="bg-[#0084ff] hover:bg-[#0066cc] text-white mt-5 px-5 py-3 rounded-xl font-bold text-sm inline-flex items-center gap-2 disabled:opacity-50 transition">
+              <button onClick={handleSubmitVerification} disabled={sending} className="bg-[#0084ff] hover:bg-[#0066cc] text-white mt-5 px-5 py-3 rounded-xl font-bold text-sm inline-flex items-center gap-2 disabled:opacity-50 transition">
                 {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                 {sending ? "Enviando..." : "Enviar documentos"}
               </button>
