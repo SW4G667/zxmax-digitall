@@ -233,6 +233,7 @@ export default function MarketplaceHome() {
           </div>
         </section>
 
+        {/* Robux shortcut intentionally lives with marketplace categories, not the global header. */}
         <section>
           <div className="mb-3 flex items-end justify-between gap-3">
             <div className="min-w-0">
