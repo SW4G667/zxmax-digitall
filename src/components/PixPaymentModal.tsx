@@ -106,6 +106,20 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
   }, [charge, onPaid]);
 
   useEffect(() => {
+    if (!charge) return;
+    const recheckWhenVisible = () => {
+      if (document.visibilityState === "visible") void verifyPayment(false);
+    };
+    const recheckOnFocus = () => void verifyPayment(false);
+    document.addEventListener("visibilitychange", recheckWhenVisible);
+    window.addEventListener("focus", recheckOnFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", recheckWhenVisible);
+      window.removeEventListener("focus", recheckOnFocus);
+    };
+  }, [charge, verifyPayment]);
+
+  useEffect(() => {
     paidRef.current = false;
     checkingRef.current = false;
     attemptsRef.current = 0;
@@ -203,7 +217,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
               <div className="flex items-start gap-2">
                 {status === "expired"
                   ? <AlertCircle className="w-4 h-4 mt-0.5 text-destructive shrink-0" />
-                  : <Loader2 className={`w-4 h-4 mt-0.5 text-primary shrink-0 ${checking ? "animate-spin" : ""}`} />}
+                  : <Loader2 className="w-4 h-4 mt-0.5 text-primary shrink-0 animate-spin" />}
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold text-foreground">{status === "expired" ? "Cobrança encerrada" : "Confirmação automática"}</p>
                   <p className="text-[11px] leading-4 text-muted-foreground mt-0.5">{checkMessage}</p>
