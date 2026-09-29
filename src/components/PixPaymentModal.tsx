@@ -22,7 +22,7 @@ interface Props {
 }
 
 const PAID_STATUSES = new Set(["COMPLETED", "PAID", "CONFIRMED", "APPROVED", "SUCCESS", "SUCCEEDED", "SETTLED"]);
-// PIX flow revision: confirmed charges are terminal and cannot reopen in this tab.
+// PIX flow revision 2: confirmed charges are terminal and cannot reopen in this tab.
 
 export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
   const [copied, setCopied] = useState(false);
