@@ -15,7 +15,8 @@ describe("atalho de pedidos do vendedor", () => {
     expect(index).toContain('initialScope={initialPurchaseScope}');
     expect(index).toContain('view === "purchases" && user && <MyPurchasesView');
     expect(purchases).toContain('initialScope?: "all" | "purchases" | "sales"');
-    expect(purchases).toContain('summary.amount += Number.isFinite(purchase.amount) ? purchase.amount : 0');
+    expect(purchases).toContain('const visibleAmount = purchaseDisplayAmount(purchase)');
+    expect(purchases).toContain('summary.amount += Number.isFinite(visibleAmount) ? visibleAmount : 0');
     expect(purchases).toContain('["Valor no recorte", formatBRL(purchaseSummary.amount)');
   });
 });
