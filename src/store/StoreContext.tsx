@@ -117,6 +117,12 @@ export interface Purchase {
   updatedAt?: string;
   amount: number;
   paymentProvider?: "magnuspay_pix" | "zennith_pix" | "vexopay_pix" | "crypto" | "card" | "boleto" | "wallet";
+  providerPaymentId?: string;
+  paymentStatus?: string;
+  providerAmount?: number;
+  providerFee?: number;
+  providerNetAmount?: number;
+  providerCheckedAt?: string;
   messages: PurchaseMessage[];
   reviewed?: boolean;
   reviewStars?: number;
@@ -336,6 +342,12 @@ const mapPurchaseRow = (p: any): Purchase => ({
   updatedAt: p.updated_at || undefined,
   amount: Number(p.amount),
   paymentProvider: p.payment_provider || undefined,
+  providerPaymentId: p.provider_payment_id || undefined,
+  paymentStatus: p.payment_status || undefined,
+  providerAmount: p.provider_amount == null ? undefined : Number(p.provider_amount),
+  providerFee: p.provider_fee == null ? undefined : Number(p.provider_fee),
+  providerNetAmount: p.provider_net_amount == null ? undefined : Number(p.provider_net_amount),
+  providerCheckedAt: p.provider_checked_at || undefined,
   messages: p.messages || [],
   reviewed: p.reviewed,
   reviewStars: p.review_stars || undefined,
