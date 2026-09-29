@@ -56,8 +56,8 @@ describe("ProfileModal — identidade autenticada", () => {
   it("prefere o ID público e a verificação vindos do perfil ao estado ainda em sincronização", () => {
     render(<ProfileModal open onClose={vi.fn()} />);
 
-    expect(screen.getByText("ID público: 100004")).toBeInTheDocument();
-    expect(screen.getByText("Vendedor Verificado")).toBeInTheDocument();
+    expect(screen.getByText("ID público · 100004")).toBeInTheDocument();
+    expect(screen.getByText("Vendedor verificado")).toBeInTheDocument();
     expect(screen.getByText("2FA")).toBeInTheDocument();
   });
 });
