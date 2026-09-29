@@ -1,6 +1,6 @@
 /** Columns the client is allowed to read from `public.products`.
  * Deliberately excludes `seller_email` and `delivery_content`. */
-export const SAFE_PRODUCT_COLUMNS = "id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,listing_status,delivery_type,variations,questions,sales,rating,created_at,updated_at,stock,min_quantity,delivery_time,review_count,review_avg,review_positive";
+export const SAFE_PRODUCT_COLUMNS = "id,seller_id,seller_public_id,seller_name,name,price,category,image,banner,description,approved,listing_status,delivery_type,variations,questions,sales,rating,created_at,updated_at,stock,min_quantity,delivery_time,review_count,review_avg,review_positive,inventory_mode";
 
 /** Same list without the columns added by the 2026-08 migrations. Used as a
  * degraded retry so an out-of-date database still returns a catalog instead of
@@ -19,10 +19,13 @@ export const MAX_PRODUCT_PRICE = 1_000_000;
 export const ROBUX_CATEGORY = "Robux e Gift Cards";
 
 export interface CatalogVariation {
+  id?: string;
   name?: string;
   price?: number;
   stock?: number;
   minQuantity?: number;
+  deliveryType?: "auto" | "manual";
+  deliveryTime?: string;
 }
 
 /** Persist stock even when the dedicated column is missing: the variation JSON
@@ -50,6 +53,60 @@ export function productMinQuantity(product: {
   const fromVar = Number(product.variations?.[0]?.minQuantity);
   if (Number.isFinite(fromVar) && fromVar > 0) return Math.trunc(fromVar);
   return null;
+}
+
+export function variationStock(variation: CatalogVariation | null | undefined): number | null {
+  if (variation?.stock == null) return null;
+  const stock = Number(variation.stock);
+  return Number.isFinite(stock) && stock >= 0 ? Math.trunc(stock) : null;
+}
+
+export function variationMinQuantity(
+  variation: CatalogVariation | null | undefined,
+  fallback = 1,
+): number {
+  const min = Number(variation?.minQuantity);
+  return Number.isFinite(min) && min > 0 ? Math.trunc(min) : Math.max(1, Math.trunc(fallback || 1));
+}
+
+export function variationDeliveryType(
+  variation: CatalogVariation | null | undefined,
+  fallback: "auto" | "manual" = "manual",
+): "auto" | "manual" {
+  return variation?.deliveryType === "auto" || variation?.deliveryType === "manual"
+    ? variation.deliveryType
+    : fallback;
+}
+
+export function productHasAutoDelivery(product: {
+  deliveryType?: "auto" | "manual" | string | null;
+  variations?: CatalogVariation[] | null;
+}): boolean {
+  if (product.deliveryType === "auto") return true;
+  return (product.variations || []).some((variation) => variation.deliveryType === "auto");
+}
+
+export function productHasMixedDelivery(product: {
+  deliveryType?: "auto" | "manual" | string | null;
+  variations?: CatalogVariation[] | null;
+}): boolean {
+  const variations = product.variations || [];
+  if (!variations.length) return false;
+  const modes = new Set(variations.map((variation) => variationDeliveryType(variation, product.deliveryType === "auto" ? "auto" : "manual")));
+  return modes.size > 1;
+}
+
+export function lowestProductPrice(product: {
+  price: number;
+  category?: string | null;
+  variations?: CatalogVariation[] | null;
+}): number {
+  if (product.category === ROBUX_CATEGORY) return normalizeProductPrice(product);
+  const prices = (product.variations || [])
+    .map((variation) => sanitizePrice(variation.price))
+    .filter((price) => price >= MIN_PRODUCT_PRICE);
+  if (!prices.length) return normalizeProductPrice(product);
+  return Math.min(...prices);
 }
 
 /** Never render a lonely "/". Stock missing → "Não informado". */
