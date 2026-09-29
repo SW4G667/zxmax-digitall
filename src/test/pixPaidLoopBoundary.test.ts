@@ -9,9 +9,13 @@ describe("PIX paid-state loop regression", () => {
 
     expect(modal).toContain("const onPaidRef = useRef(onPaid)");
     expect(modal).toContain("onPaidRef.current = onPaid");
+    expect(modal).toContain("zxmax:settled-pix:");
+    expect(modal).toContain('window.sessionStorage.setItem(settledStorageKey, "1")');
     expect(modal).toContain("}, [chargeKey]);");
     expect(purchases).toContain('if (purchase.status !== "pending")');
-    expect(purchases).toContain("setPixCharge(null);");
+    expect(purchases).toContain("window.location.replace");
+    expect(purchases).toContain('params.set("payment", "confirmed")');
+    expect(product).toContain("window.location.replace");
     expect(product).toContain("setCheckoutOpen(false);");
   });
 });

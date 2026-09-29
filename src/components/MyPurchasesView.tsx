@@ -75,6 +75,15 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
   useEffect(() => {
     setOrderScope(initialScope);
   }, [initialScope]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("payment") !== "confirmed") return;
+    toast.success("Pagamento confirmado. Pedido atualizado.");
+    params.delete("payment");
+    const next = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${next ? `?${next}` : ""}`);
+  }, []);
   const [disputeReason, setDisputeReason] = useState("");
   const [showDisputeForm, setShowDisputeForm] = useState(false);
   const [rating, setRating] = useState(5);
@@ -371,8 +380,18 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
   };
 
   const handlePixPaid = async () => {
+    const purchaseId = pixCharge?.purchaseId ?? selectedId ?? resumeId;
     setPixCharge(null);
     setCryptoCharge(null);
+
+    if (purchaseId) {
+      const params = new URLSearchParams();
+      params.set("order", String(purchaseId));
+      params.set("payment", "confirmed");
+      window.location.replace(`/minhas-compras?${params.toString()}`);
+      return;
+    }
+
     await refreshPurchases();
     toast.success("Pagamento confirmado. Pedido atualizado.");
   };

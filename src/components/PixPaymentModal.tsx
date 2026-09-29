@@ -35,6 +35,12 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
   const onPaidRef = useRef(onPaid);
   onPaidRef.current = onPaid;
   const chargeKey = charge ? `${charge.provider || "pix"}:${charge.purchaseId || 0}:${charge.evopayId}` : "";
+  const settledStorageKey = chargeKey ? `zxmax:settled-pix:${chargeKey}` : "";
+  const wasSettledInThisTab = Boolean(
+    settledStorageKey &&
+    typeof window !== "undefined" &&
+    window.sessionStorage.getItem(settledStorageKey) === "1"
+  );
 
   const stopPolling = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -77,6 +83,9 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
       if (gatewayPaid || localPaid) {
         paidRef.current = true;
         stopPolling();
+        if (settledStorageKey && typeof window !== "undefined") {
+          window.sessionStorage.setItem(settledStorageKey, "1");
+        }
         setStatus("paid");
         setCheckMessage("Pagamento confirmado.");
         await onPaidRef.current();
@@ -106,7 +115,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
       checkingRef.current = false;
       setChecking(false);
     }
-  }, [charge]);
+  }, [charge, settledStorageKey]);
 
   useEffect(() => {
     if (!charge) return;
@@ -126,10 +135,25 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
     paidRef.current = false;
     checkingRef.current = false;
     attemptsRef.current = 0;
+    stopPolling();
+    if (!charge) {
+      setStatus("waiting");
+      setCheckMessage("Verificando automaticamente…");
+      return;
+    }
+    if (
+      settledStorageKey &&
+      typeof window !== "undefined" &&
+      window.sessionStorage.getItem(settledStorageKey) === "1"
+    ) {
+      paidRef.current = true;
+      setStatus("paid");
+      setCheckMessage("Pagamento confirmado.");
+      void onPaidRef.current();
+      return;
+    }
     setStatus("waiting");
     setCheckMessage("Verificando automaticamente…");
-    stopPolling();
-    if (!charge) return;
 
     const tick = async () => {
       attemptsRef.current += 1;
@@ -148,7 +172,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chargeKey]);
 
-  if (!charge) return null;
+  if (!charge || wasSettledInThisTab) return null;
 
   const copyCode = async () => {
     try {

@@ -621,9 +621,16 @@ export default function ProdutoPage() {
   };
 
   const handlePixPaid = async () => {
+    const purchaseId = pixCharge?.purchaseId;
     setPixCharge(null);
     setCryptoCharge(null);
     setCheckoutOpen(false);
+
+    if (purchaseId) {
+      window.location.replace(`/minhas-compras?order=${encodeURIComponent(String(purchaseId))}&payment=confirmed`);
+      return;
+    }
+
     await refreshPurchases();
     toast.success("Pagamento confirmado! Pedido atualizado.");
   };
