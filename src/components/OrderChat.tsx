@@ -16,6 +16,7 @@ interface OrderMessage {
   sender_badge_name?: string | null;
   sender_badge_icon_url?: string | null;
   created_at: string;
+  sender_locale?: string | null;
   imageUrl?: string;
 }
 
@@ -36,6 +37,8 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
   const [refundReason, setRefundReason] = useState("");
   const [refunding, setRefunding] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [translations, setTranslations] = useState<Record<string, string>>({});
+  const [translating, setTranslating] = useState<string | null>(null);
   const [participantLocales, setParticipantLocales] = useState<Record<string, { locale?: string | null; country?: string | null }>>({});
   const [translations, setTranslations] = useState<Record<string, string>>({});
   const [translationLoading, setTranslationLoading] = useState<string | null>(null);
@@ -48,6 +51,10 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
   const isSeller = !!me && purchase?.sellerId === me;
   const isBuyer = !!me && purchase?.buyerId === me;
   const isAdmin = state.currentUser?.isAdmin || false;
+  const product = purchase ? state.products.find((item) => item.id === purchase.productId) : null;
+  const myLocale = typeof navigator !== "undefined" ? (navigator.language || "pt-BR") : "pt-BR";
+  const myLanguage = myLocale.toLowerCase().split("-")[0];
+  const orderQuantity = Math.max(1, Number(purchase?.quantity || 1));
   const product = purchase ? state.products.find((item) => item.id === purchase.productId) : undefined;
   const orderQuantity = Number(purchase?.quantity || 1);
   const productSubtotal = Number(purchase?.productAmount ?? Math.max(0, Number(purchase?.amount || 0) - Number(purchase?.buyerFee || 0)));
@@ -180,6 +187,23 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
     setSending(false);
   };
 
+  const translateMessage = async (message: OrderMessage) => {
+    if (!message.body || message.sender_id === me || translating) return;
+    setTranslating(message.id);
+    try {
+      const result = await supabase.functions.invoke("translate-order-message", {
+        body: { orderId, messageId: message.id, targetLanguage: myLanguage },
+      });
+      const translated = String(result.data?.translatedText || "").trim();
+      if (result.error || !translated) throw result.error || new Error("empty translation");
+      setTranslations((current) => ({ ...current, [message.id]: translated }));
+    } catch {
+      toast.error("Não foi possível traduzir esta mensagem agora.");
+    } finally {
+      setTranslating(null);
+    }
+  };
+
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !me) return;
@@ -308,6 +332,24 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
             <div className="bg-[#111218] p-3"><dt className="text-[9px] uppercase text-white/30">Prazo</dt><dd className="mt-1 truncate text-xs font-bold text-white">{product?.deliveryTime || "Não informado"}</dd></div>
           </dl>
         </section>
+      )}
+
+      {purchase && (
+        <div className="mb-3 rounded-2xl border border-white/[0.09] bg-[#111116] p-4">
+          <div className="flex items-start gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#f4b42c]/10 text-[#ffc84a]"><Package className="h-5 w-5" /></div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/35">Detalhes desta compra</p>
+              <h3 className="mt-1 truncate text-sm font-bold text-white">{product?.name || `Produto #${purchase.productId}`}</h3>
+              <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] sm:grid-cols-4">
+                <span><b className="text-white/35">Quantidade</b><br/><strong className="text-white/80">{orderQuantity.toLocaleString("pt-BR")}{product?.category === "Robux" ? " Robux" : " un."}</strong></span>
+                <span><b className="text-white/35">Valor</b><br/><strong className="text-white/80">R$ {Number(purchase.amount).toFixed(2).replace(".", ",")}</strong></span>
+                <span><b className="text-white/35">Variação</b><br/><strong className="text-white/80">{purchase.variationName || "Padrão"}</strong></span>
+                <span><b className="text-white/35">Pedido</b><br/><strong className="text-white/80">#{purchase.id}</strong></span>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Escrow Banner & Action Bar */}
