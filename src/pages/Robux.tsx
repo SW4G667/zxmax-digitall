@@ -128,9 +128,14 @@ export default function RobuxPage() {
             <div>
               <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[var(--zx-accent)]">Mercado de Robux</p>
               <h1 className="mt-1.5 text-3xl font-extrabold tracking-[-0.04em] text-white sm:text-4xl">Robux Roblox</h1>
-              <p className="mt-2 max-w-2xl text-xs leading-5 text-white/45 sm:text-sm sm:leading-6">
-                Compare ofertas reais pelo valor por unidade, quantidade mínima, estoque, prazo e histórico do vendedor.
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-white/55 sm:text-sm sm:leading-6">
+                Escolha quantos Robux quer comprar, compare o preço final e o prazo, depois pague pelo checkout protegido.
               </p>
+              <div className="mt-4 flex flex-wrap gap-2 text-[10px] font-semibold text-white/65">
+                <span className="rounded-full border border-white/10 bg-black/25 px-3 py-1.5">1. Escolha uma oferta</span>
+                <span className="rounded-full border border-white/10 bg-black/25 px-3 py-1.5">2. Defina a quantidade</span>
+                <span className="rounded-full border border-white/10 bg-black/25 px-3 py-1.5">3. Pague e acompanhe</span>
+              </div>
             </div>
             <button
               type="button"
@@ -212,8 +217,8 @@ export default function RobuxPage() {
 
         <div className="mt-6 flex items-end justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold text-white">Ofertas disponíveis</h2>
-            <p className="mt-0.5 text-[11px] text-white/30">Somente anúncios aprovados com perfil público válido aparecem neste mercado.</p>
+            <h2 className="text-base font-bold text-white">Escolha onde comprar</h2>
+            <p className="mt-1 text-[11px] leading-5 text-white/42">Compare principalmente <strong className="text-white/70">preço por Robux</strong>, compra mínima e prazo. Toque em “Comprar” para escolher a quantidade.</p>
           </div>
           <span className="shrink-0 text-[11px] text-white/25">{offers.length} {offers.length === 1 ? "oferta" : "ofertas"}</span>
         </div>
