@@ -54,7 +54,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const [showSales, setShowSales] = useState<number | null>(null);
   const [uploading, setUploading] = useState<"image" | "banner" | null>(null);
   const [form, setForm] = useState({
-    name: "", category: state.config.categories[0] || "", description: "", price: "",
+    name: "", category: "", description: "", price: "",
     image: "", banner: "",
     deliveryType: "manual" as "auto" | "manual", deliveryContent: "", autoItems: "",
     stock: "", minQuantity: "", deliveryTime: "",
@@ -180,7 +180,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   }, [state.currentUser?.emailConfirmed, state.currentUser?.discordMemberVerified, state.currentUser?.isAdmin]);
 
   const resetForm = () => {
-    setForm({ name: "", category: state.config.categories[0] || "", description: "", price: "", image: "", banner: "", deliveryType: "manual", deliveryContent: "", autoItems: "", stock: "", minQuantity: "", deliveryTime: "", robuxAmount: "" });
+    setForm({ name: "", category: "", description: "", price: "", image: "", banner: "", deliveryType: "manual", deliveryContent: "", autoItems: "", stock: "", minQuantity: "", deliveryTime: "", robuxAmount: "" });
     setVariations([]);
     setEditingId(null);
   };
@@ -337,6 +337,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canOpenListingForm()) return;
+    if (!form.category.trim()) return toast.error("Escolha uma categoria para o anúncio.");
     if ((!isRobuxListing && !form.name.trim()) || !form.price.trim()) {
       return toast.error("Preencha nome e preço.");
     }
@@ -647,7 +648,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                     <p className="text-[10px] font-black uppercase tracking-[0.12em] text-white/35">Categoria</p>
                     <p className="mt-0.5 text-xs font-bold text-white">{isRobuxCategory(form.category) ? "Robux" : form.category || "Escolha uma categoria"}</p>
                   </div>
-                  <span className="rounded-lg border border-white/[0.07] bg-white/[0.03] px-2 py-1 text-[9px] font-bold text-white/30">1 opção</span>
+                  <span className="rounded-lg border border-white/[0.07] bg-white/[0.03] px-2 py-1 text-[9px] font-bold text-white/30">{state.config.categories.length} opções</span>
                 </div>
                 <div className="grid max-h-48 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3" role="radiogroup" aria-label="Categoria do produto">
                   {state.config.categories.map((rawCategory) => {
@@ -660,12 +661,18 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                         role="radio"
                         aria-checked={selected}
                         onClick={() => {
-                          setForm({
-                            ...form,
+                          const wasRobux = isRobuxCategory(form.category);
+                          const nextIsRobux = isRobuxCategory(category);
+                          setForm((current) => ({
+                            ...current,
                             category,
-                            ...(isRobuxCategory(category) ? { name: "Robux", description: "", deliveryType: "manual" as const } : {}),
-                          });
-                          if (isRobuxCategory(category)) setVariations([]);
+                            ...(nextIsRobux
+                              ? { name: "Robux", description: "", deliveryType: "manual" as const }
+                              : wasRobux
+                                ? { name: "", robuxAmount: "" }
+                                : {}),
+                          }));
+                          if (wasRobux || nextIsRobux) setVariations([]);
                         }}
                         className={`flex min-h-12 items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-[11px] font-bold transition ${selected ? "border-[#168cff]/60 bg-[#168cff]/12 text-white shadow-[0_0_0_1px_rgba(22,140,255,.08)]" : "border-white/[0.07] bg-white/[0.025] text-white/55 hover:border-white/[0.14] hover:text-white"}`}
                       >
