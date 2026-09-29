@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Heart, BadgeCheck } from "lucide-react";
 import { Product, useStore } from "@/store/StoreContext";
 import useFavorites from "@/hooks/useFavorites";
-import { formatBRL, formatRobuxPackage, formatStockLabel, productStock, ROBUX_CATEGORY } from "@/lib/catalog";
+import { formatBRL, formatRobuxPackage, formatStockLabel, lowestProductPrice, productHasAutoDelivery, productHasMixedDelivery, productStock, ROBUX_CATEGORY } from "@/lib/catalog";
 
 interface Props {
   product: Product;
@@ -28,7 +28,10 @@ export default function ProductCard({ product, onClick, verified }: Props) {
 
   const price = product.category === ROBUX_CATEGORY
     ? formatRobuxPackage(product)
-    : formatBRL(product.price);
+    : formatBRL(lowestProductPrice(product));
+  const hasAutoDelivery = productHasAutoDelivery(product);
+  const mixedDelivery = productHasMixedDelivery(product);
+  const variationCount = product.category === ROBUX_CATEGORY ? 0 : (product.variations?.length || 0);
 
   return (
     <div
@@ -43,7 +46,7 @@ export default function ProductCard({ product, onClick, verified }: Props) {
           loading="lazy"
         />
         <div className="absolute top-2 left-2 flex gap-1.5">
-          {product.deliveryType === "auto" && <span className="badge-auto">Auto</span>}
+          {hasAutoDelivery && <span className="badge-auto">{mixedDelivery ? "Auto + manual" : "Auto"}</span>}
           {product.sales > 50 && <span className="badge-hot">HOT</span>}
         </div>
         <button
@@ -75,7 +78,7 @@ export default function ProductCard({ product, onClick, verified }: Props) {
           <div>
             <p className="text-[10px] text-white/30 uppercase font-bold tracking-wider">A partir de</p>
             <p className="text-[15px] font-black text-[#ffbd2e]">{price}</p>
-            <p className="text-[10px] text-white/35 mt-0.5">Estoque: {formatStockLabel(productStock(product))}</p>
+            <p className="text-[10px] text-white/35 mt-0.5">Estoque: {formatStockLabel(productStock(product))}{variationCount > 0 ? ` · ${variationCount} opções` : ""}</p>
           </div>
           <span className="bg-[#ffbd2e] text-black px-3 py-1.5 text-[11px] rounded-lg font-black">Ver</span>
         </div>
