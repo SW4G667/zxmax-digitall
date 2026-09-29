@@ -13,7 +13,7 @@ describe("e-mails transacionais seguros", () => {
     expect(email).toContain('eq("key", "site_branding")');
     expect(email).toContain("branding.logoUrl");
     expect(email).toContain("branding.supportUrl");
-    expect(email).toContain("{ from: EMAIL_FROM, to: [recipient], subject, html, text }");
+    expect(email).toContain("{ from: EMAIL_FROM, to: [recipient], reply_to: EMAIL_REPLY_TO || undefined, subject, html, text }");
   });
 
   it("cobre o ciclo completo de compra, entrega e disputa", async () => {
@@ -25,6 +25,8 @@ describe("e-mails transacionais seguros", () => {
       "delivery_marked",
       "receipt_confirmed_buyer",
       "receipt_confirmed_seller",
+      "refund_buyer",
+      "refund_seller",
       "dispute_opened_buyer",
       "dispute_opened_seller",
       "dispute_resolved_buyer",
@@ -41,8 +43,10 @@ describe("e-mails transacionais seguros", () => {
     expect(email).toContain('.eq("status", "sent")');
     expect(email).toContain("if (previous) return json({ already_sent: true });");
     expect(email).toContain('"Idempotency-Key": `zxmax-${type}-${logId}-${idempotencyKey || "v1"}`');
-    expect(email).toContain('if (!RESEND_API_KEY) return json({ skipped: true, reason: "email_provider_not_configured" }, 202);');
-    expect(email).toContain('if (!EMAIL_FROM) return json({ skipped: true, reason: "email_sender_not_configured" }, 202);');
+    expect(email).toContain('status: "skipped_config"');
+    expect(email).toContain('email_provider_not_configured');
+    expect(email).toContain('email_sender_not_configured');
+    expect(email).toContain('EMAIL_REPLY_TO');
     expect(email).not.toContain('"ZXMAX <noreply@zxmax.com.br>"');
   });
 });
