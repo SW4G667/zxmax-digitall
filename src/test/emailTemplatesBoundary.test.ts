@@ -44,7 +44,8 @@ describe("e-mails transacionais seguros", () => {
     expect(email).toContain('.eq("status", "sent")');
     expect(email).toContain("if (previous) return json({ already_sent: true });");
     expect(email).toContain('"Idempotency-Key": `zxmax-${type}-${logId}-${idempotencyKey || "v1"}`');
-    expect(email).toContain('status: "skipped_config"');
+    expect(email).toContain('status: "queued_config"');
+    expect(email).toContain('from("email_outbox").upsert');
     expect(email).toContain('email_provider_not_configured');
     expect(email).toContain('email_sender_not_configured');
     expect(email).toContain('EMAIL_REPLY_TO');
