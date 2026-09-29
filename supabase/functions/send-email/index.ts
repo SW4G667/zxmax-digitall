@@ -11,7 +11,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   headers: { ...corsHeaders, "Content-Type": "application/json" },
 });
 
-type EmailType = "purchase_created" | "purchase_confirmed" | "new_sale" | "delivery_marked" | "receipt_confirmed_buyer" | "receipt_confirmed_seller" | "dispute_opened_buyer" | "dispute_opened_seller" | "dispute_resolved_buyer" | "dispute_resolved_seller" | "new_question" | "new_review" | "product_approved" | "product_rejected" | "product_removed";
+type EmailType = "purchase_created" | "purchase_confirmed" | "new_sale" | "delivery_marked" | "receipt_confirmed_buyer" | "receipt_confirmed_seller" | "refund_buyer" | "refund_seller" | "dispute_opened_buyer" | "dispute_opened_seller" | "dispute_resolved_buyer" | "dispute_resolved_seller" | "new_question" | "new_review" | "product_approved" | "product_rejected" | "product_removed";
 type EmailPayload = {
   type: EmailType;
   purchaseId?: number;
@@ -68,7 +68,7 @@ const shell = (branding: Branding, eyebrow: string, title: string, copy: string,
 `;
 
 const paidStatus = new Set(["paid", "delivered", "delivered_pending_confirmation"]);
-const sellerRecipientTypes = new Set<EmailType>(["new_sale", "receipt_confirmed_seller", "dispute_opened_seller", "dispute_resolved_seller"]);
+const sellerRecipientTypes = new Set<EmailType>(["new_sale", "receipt_confirmed_seller", "refund_seller", "dispute_opened_seller", "dispute_resolved_seller"]);
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -78,6 +78,7 @@ serve(async (req) => {
   const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
   const EMAIL_FROM = String(Deno.env.get("EMAIL_FROM") || "").trim();
+  const EMAIL_REPLY_TO = String(Deno.env.get("EMAIL_REPLY_TO") || "ZXMAX-DIGITAL@proton.me").trim();
   const SITE_URL = (Deno.env.get("SITE_URL") || "https://zxmax.vercel.app").replace(/\/+$/, "");
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return json({ error: "Serviço indisponível." }, 503);
 
@@ -101,7 +102,7 @@ serve(async (req) => {
   try {
     const body = (await req.json().catch(() => ({}))) as EmailPayload;
     const type = body.type;
-    if (!(["purchase_created", "purchase_confirmed", "new_sale", "delivery_marked", "receipt_confirmed_buyer", "receipt_confirmed_seller", "dispute_opened_buyer", "dispute_opened_seller", "dispute_resolved_buyer", "dispute_resolved_seller", "new_question", "new_review", "product_approved", "product_rejected", "product_removed"] as const).includes(type)) {
+    if (!(["purchase_created", "purchase_confirmed", "new_sale", "delivery_marked", "receipt_confirmed_buyer", "receipt_confirmed_seller", "refund_buyer", "refund_seller", "dispute_opened_buyer", "dispute_opened_seller", "dispute_resolved_buyer", "dispute_resolved_seller", "new_question", "new_review", "product_approved", "product_rejected", "product_removed"] as const).includes(type)) {
       return json({ error: "Tipo de notificação inválido." }, 400);
     }
     // Payment confirmation and sale notices originate only after a verified
@@ -226,6 +227,8 @@ serve(async (req) => {
         delivery_marked: new Set(["delivered_pending_confirmation", "delivered", "dispute"]),
         receipt_confirmed_buyer: new Set(["delivered"]),
         receipt_confirmed_seller: new Set(["delivered"]),
+        refund_buyer: new Set(["refunded"]),
+        refund_seller: new Set(["refunded"]),
         dispute_opened_buyer: new Set(["dispute"]),
         dispute_opened_seller: new Set(["dispute"]),
         dispute_resolved_buyer: new Set(["paid", "delivered"]),
@@ -324,6 +327,25 @@ serve(async (req) => {
           orderUrl,
         );
         text = `Venda concluída\n\nPedido: #${purchaseId}\nProduto: ${productName}\nO recebimento foi confirmado e a liberação foi registrada.\n\nVer venda: ${orderUrl}`;
+      } else if (type === "refund_buyer" || type === "refund_seller") {
+        const sellerCopy = type === "refund_seller";
+        subject = sellerCopy
+          ? `Reembolso concluído — pedido #${purchaseId}`
+          : `Seu reembolso foi concluído — pedido #${purchaseId}`;
+        html = shell(
+          branding,
+          "Reembolso concluído",
+          sellerCopy ? "O reembolso desta venda foi registrado" : "O valor do pedido foi devolvido",
+          sellerCopy
+            ? "O pedido foi reembolsado e o registro financeiro foi atualizado. Consulte os detalhes dentro da plataforma."
+            : `O reembolso foi processado pela ${escapeHtml(branding.siteName)}. Consulte o pedido para ver o status e os detalhes do crédito.`,
+          details,
+          "Ver pedido",
+          orderUrl,
+        );
+        text = sellerCopy
+          ? `Reembolso concluído\n\nPedido: #${purchaseId}\nProduto: ${productName}\n\nVer pedido: ${orderUrl}`
+          : `Seu reembolso foi concluído\n\nPedido: #${purchaseId}\nProduto: ${productName}\n\nVer pedido: ${orderUrl}`;
       } else if (type === "dispute_resolved_buyer" || type === "dispute_resolved_seller") {
         const sellerCopy = type === "dispute_resolved_seller";
         const released = String(purchase.status) === "delivered";
@@ -368,12 +390,23 @@ serve(async (req) => {
     const { data: previous } = await previousQuery.limit(1).maybeSingle();
     if (previous) return json({ already_sent: true });
 
-    if (!RESEND_API_KEY) return json({ skipped: true, reason: "email_provider_not_configured" }, 202);
-    if (!EMAIL_FROM) return json({ skipped: true, reason: "email_sender_not_configured" }, 202);
+    if (!RESEND_API_KEY || !EMAIL_FROM) {
+      const reason = !RESEND_API_KEY ? "email_provider_not_configured" : "email_sender_not_configured";
+      await admin.from("webhook_logs").insert({
+        source: "email",
+        event_type: type,
+        status: "skipped_config",
+        order_id: logId,
+        charge_id: idempotencyKey,
+        payload: { recipient: sellerRecipientTypes.has(type) || type === "new_question" || type === "new_review" || type === "product_approved" || type === "product_rejected" || type === "product_removed" ? "seller" : "buyer", subject },
+        error: reason,
+      });
+      return json({ skipped: true, reason }, 202);
+    }
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json", "Idempotency-Key": `zxmax-${type}-${logId}-${idempotencyKey || "v1"}` },
-      body: JSON.stringify({ from: EMAIL_FROM, to: [recipient], subject, html, text }),
+      body: JSON.stringify({ from: EMAIL_FROM, to: [recipient], reply_to: EMAIL_REPLY_TO || undefined, subject, html, text }),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
