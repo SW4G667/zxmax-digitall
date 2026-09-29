@@ -370,3 +370,5 @@ export default function MarketplaceHome() {
     </AppShell>
   );
 }
+
+// deploy-trigger: publish latest marketplace frontend
