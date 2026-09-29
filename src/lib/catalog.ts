@@ -16,7 +16,9 @@ export const MIN_PRODUCT_PRICE = 2;
 /** Largest price we accept, to stop overflow/precision abuse from the client. */
 export const MAX_PRODUCT_PRICE = 1_000_000;
 
-export const ROBUX_CATEGORY = "Robux e Gift Cards";
+export const ROBUX_CATEGORY = "Robux";
+export const LEGACY_ROBUX_CATEGORY = "Robux e Gift Cards";
+export const isRobuxCategory = (category: string | null | undefined) => category === ROBUX_CATEGORY || category === LEGACY_ROBUX_CATEGORY;
 
 export interface CatalogVariation {
   id?: string;
@@ -101,7 +103,7 @@ export function lowestProductPrice(product: {
   category?: string | null;
   variations?: CatalogVariation[] | null;
 }): number {
-  if (product.category === ROBUX_CATEGORY) return normalizeProductPrice(product);
+  if (isRobuxCategory(product.category)) return normalizeProductPrice(product);
   const prices = (product.variations || [])
     .map((variation) => sanitizePrice(variation.price))
     .filter((price) => price >= MIN_PRODUCT_PRICE);
@@ -221,7 +223,7 @@ export function normalizeProductPrice(product: {
   const raw = Number(product.price);
   const price = Number.isFinite(raw) && raw > 0 ? raw : 0;
   if (price >= MIN_PRODUCT_PRICE) return price;
-  if (product.category === ROBUX_CATEGORY && product.variations?.length) {
+  if (isRobuxCategory(product.category) && product.variations?.length) {
     const packagePrice = product.variations
       .map((variation) => Number(variation.price))
       .find((variationPrice) => Number.isFinite(variationPrice) && variationPrice >= MIN_PRODUCT_PRICE);

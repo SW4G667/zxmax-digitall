@@ -13,7 +13,7 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-const ROBUX_CATEGORY = "Robux e Gift Cards";
+const ROBUX_CATEGORY = "Robux";
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;

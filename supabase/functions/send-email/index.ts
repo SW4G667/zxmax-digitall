@@ -11,11 +11,12 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   headers: { ...corsHeaders, "Content-Type": "application/json" },
 });
 
-type EmailType = "purchase_created" | "purchase_confirmed" | "new_sale" | "delivery_marked" | "receipt_confirmed_buyer" | "receipt_confirmed_seller" | "refund_buyer" | "refund_seller" | "dispute_opened_buyer" | "dispute_opened_seller" | "dispute_resolved_buyer" | "dispute_resolved_seller" | "new_question" | "new_review" | "product_approved" | "product_rejected" | "product_removed";
+type EmailType = "purchase_created" | "purchase_confirmed" | "new_sale" | "delivery_marked" | "receipt_confirmed_buyer" | "receipt_confirmed_seller" | "refund_buyer" | "refund_seller" | "dispute_opened_buyer" | "dispute_opened_seller" | "dispute_resolved_buyer" | "dispute_resolved_seller" | "new_question" | "chat_message" | "new_review" | "product_approved" | "product_rejected" | "product_removed";
 type EmailPayload = {
   type: EmailType;
   purchaseId?: number;
   questionId?: number;
+  messageId?: string;
   reviewId?: number;
   productId?: number;
   moderationKey?: string;
@@ -102,12 +103,12 @@ serve(async (req) => {
   try {
     const body = (await req.json().catch(() => ({}))) as EmailPayload;
     const type = body.type;
-    if (!(["purchase_created", "purchase_confirmed", "new_sale", "delivery_marked", "receipt_confirmed_buyer", "receipt_confirmed_seller", "refund_buyer", "refund_seller", "dispute_opened_buyer", "dispute_opened_seller", "dispute_resolved_buyer", "dispute_resolved_seller", "new_question", "new_review", "product_approved", "product_rejected", "product_removed"] as const).includes(type)) {
+    if (!(["purchase_created", "purchase_confirmed", "new_sale", "delivery_marked", "receipt_confirmed_buyer", "receipt_confirmed_seller", "refund_buyer", "refund_seller", "dispute_opened_buyer", "dispute_opened_seller", "dispute_resolved_buyer", "dispute_resolved_seller", "new_question", "chat_message", "new_review", "product_approved", "product_rejected", "product_removed"] as const).includes(type)) {
       return json({ error: "Tipo de notificação inválido." }, 400);
     }
     // Payment confirmation and sale notices originate only after a verified
     // provider webhook. A buyer or seller must not be able to resend them.
-    if (type !== "new_question" && !internalCall) {
+    if (type !== "new_question" && type !== "chat_message" && !internalCall) {
       return json({ error: "Este tipo de notificação é processado pelo servidor." }, 403);
     }
 
@@ -118,7 +119,54 @@ serve(async (req) => {
     let text = "";
     let idempotencyKey: string | null = null;
 
-    if (type === "new_question") {
+    if (type === "chat_message") {
+      const messageId = String(body.messageId || "").trim();
+      if (!/^[0-9a-f-]{36}$/i.test(messageId)) return json({ error: "Mensagem inválida." }, 400);
+      const { data: message, error: messageError } = await admin
+        .from("order_messages")
+        .select("id,order_id,sender_id,body,image_path")
+        .eq("id", messageId)
+        .maybeSingle();
+      if (messageError || !message) return json({ error: "Mensagem não encontrada." }, 404);
+      if (!internalCall && actorId !== message.sender_id) return json({ error: "Sem permissão para esta notificação." }, 403);
+
+      const { data: purchase, error: purchaseError } = await admin
+        .from("purchases")
+        .select("id,buyer_id,seller_id,product_id,status")
+        .eq("id", message.order_id)
+        .maybeSingle();
+      if (purchaseError || !purchase || ["pending","cancelled"].includes(String(purchase.status))) return json({ error: "Pedido indisponível." }, 409);
+
+      const recipientId = message.sender_id === purchase.buyer_id
+        ? purchase.seller_id
+        : message.sender_id === purchase.seller_id
+          ? purchase.buyer_id
+          : null;
+      if (!recipientId) return json({ error: "Participante inválido." }, 403);
+
+      const [{ data: recipientProfile }, { data: product }] = await Promise.all([
+        admin.from("profiles").select("email").eq("user_id", recipientId).maybeSingle(),
+        admin.from("products").select("name").eq("id", purchase.product_id).maybeSingle(),
+      ]);
+      recipient = recipientProfile?.email || "";
+      if (!recipient) return json({ error: "Destinatário indisponível." }, 409);
+
+      const productName = String(product?.name || `Produto #${purchase.product_id}`);
+      const messagePreview = String(message.body || (message.image_path ? "Imagem enviada no chat." : "Nova mensagem no pedido.")).trim().slice(0, 500);
+      logId = Number(purchase.id);
+      idempotencyKey = `chat:${message.id}`;
+      subject = `Nova mensagem no pedido #${purchase.id} — ${productName}`;
+      html = shell(
+        branding,
+        "Chat do pedido",
+        "Você recebeu uma nova mensagem",
+        `Há uma nova mensagem sobre <strong style="color:#fff">${escapeHtml(productName)}</strong>. Responda dentro da plataforma para manter o histórico protegido.`,
+        `<strong style="color:#fff">Pedido</strong><br>#${purchase.id}<br><br><strong style="color:#fff">Mensagem</strong><br>${escapeHtml(messagePreview)}`,
+        "Abrir conversa",
+        `${SITE_URL}/minhas-compras?order=${purchase.id}`,
+      );
+      text = `Nova mensagem no pedido #${purchase.id}\n\nProduto: ${productName}\nMensagem: ${messagePreview}\n\nResponder: ${SITE_URL}/minhas-compras?order=${purchase.id}`;
+    } else if (type === "new_question") {
       const questionId = Number(body.questionId);
       if (!Number.isInteger(questionId) || questionId <= 0) return json({ error: "Pergunta inválida." }, 400);
       const { data: question, error } = await admin

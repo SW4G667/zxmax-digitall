@@ -94,15 +94,20 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
 
   const sendMessage = async (body: string | null, imagePath: string | null) => {
     if (!me) return false;
-    const { error } = await supabase.from("order_messages").insert({
+    const { data, error } = await supabase.from("order_messages").insert({
       order_id: orderId,
       sender_id: me,
       body,
       image_path: imagePath,
-    });
+    }).select("id").single();
     if (error) {
       toast.error("Não foi possível enviar a mensagem.");
       return false;
+    }
+    if (data?.id) {
+      void supabase.functions.invoke("send-email", {
+        body: { type: "chat_message", messageId: data.id },
+      }).catch(() => undefined);
     }
     return true;
   };

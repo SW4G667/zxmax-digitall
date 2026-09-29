@@ -3,7 +3,7 @@ import { useStore, Product } from "@/store/StoreContext";
 import { Plus, X, Trash2, Upload, Users, Clock, MessageSquare, Pencil, Package, Coins, Zap, Boxes, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { formatBRL, formatRobuxPackage, formatStockLabel, isValidProductPrice, listingStatus, MIN_PRODUCT_PRICE, parsePriceInput, productStock, ROBUX_CATEGORY } from "@/lib/catalog";
+import { formatBRL, formatRobuxPackage, formatStockLabel, isValidProductPrice, listingStatus, MIN_PRODUCT_PRICE, parsePriceInput, productStock, ROBUX_CATEGORY, isRobuxCategory } from "@/lib/catalog";
 import { useSearchParams } from "react-router-dom";
 import { getDiscordListingRedirectTo } from "@/lib/discordAuth";
 import { getAppUrl } from "@/lib/appUrl";
@@ -64,7 +64,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const imageInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
-  const isRobuxCategory = form.category === ROBUX_CATEGORY;
+  const isRobuxListing = isRobuxCategory(form.category);
   const discordInvite = branding.discordInviteUrl || state.config.discordLink || "";
 
   const canOpenListingForm = () => {
@@ -337,7 +337,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canOpenListingForm()) return;
-    if ((!isRobuxCategory && !form.name.trim()) || !form.price.trim()) {
+    if ((!isRobuxListing && !form.name.trim()) || !form.price.trim()) {
       return toast.error("Preencha nome e preço.");
     }
 
@@ -362,7 +362,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
       autoItems?: string;
     }> = [];
 
-    if (isRobuxCategory) {
+    if (isRobuxListing) {
       const robuxQty = Number.parseInt(form.robuxAmount, 10);
       if (!Number.isFinite(robuxQty) || robuxQty <= 0) return toast.error("Informe quantos Robux o pacote entrega.");
       if (stockNum === undefined || stockNum <= 0) return toast.error("Informe o estoque disponível de Robux.");
@@ -420,8 +420,8 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
       }
     }
 
-    const hasVariations = !isRobuxCategory && finalVariations.length > 0;
-    const anyAutomatic = !isRobuxCategory && (
+    const hasVariations = !isRobuxListing && finalVariations.length > 0;
+    const anyAutomatic = !isRobuxListing && (
       hasVariations
         ? finalVariations.some((variation) => variation.deliveryType === "auto")
         : form.deliveryType === "auto"
@@ -491,7 +491,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
       productId = Number(created);
     }
 
-    if (!isRobuxCategory) {
+    if (!isRobuxListing) {
       const { data: inventoryResult, error: inventoryError } = await (supabase as any).rpc(
         "replace_product_auto_inventory",
         { _product_id: productId, _inventories: inventoryPayload },
@@ -635,13 +635,13 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
             </div>
             
             <form onSubmit={handleCreate} className="space-y-4">
-              {!isRobuxCategory && <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nome do Produto" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />}
+              {!isRobuxListing && <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nome do Produto" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />}
               
               <select value={form.category} onChange={(e) => { const category = e.target.value; setForm({ ...form, category, ...(category === ROBUX_CATEGORY ? { name: "Robux", description: "", deliveryType: "manual" as const } : {}) }); if (category === ROBUX_CATEGORY) setVariations([]); }} className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none">
                 {state.config.categories.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
 
-              {isRobuxCategory && (
+              {isRobuxListing && (
                 <div className="bg-[#ffbd2e]/10 border border-[#ffbd2e]/20 rounded-xl p-4 space-y-3">
                   <p className="text-xs font-black uppercase text-[#ffbd2e] flex items-center gap-2"><Coins className="w-4 h-4" /> Oferta de Robux</p>
                   <p className="text-xs text-white/55">O título é sempre <b className="text-white">Robux</b>. Esta oferta usa um único pacote, sem descrição ou variações extras.</p>
@@ -668,7 +668,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                 </div>
               )}
 
-              {!isRobuxCategory && (
+              {!isRobuxListing && (
                 <section className="rounded-2xl border border-white/[0.07] bg-[#101014] p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -711,7 +711,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                 </section>
               )}
 
-              {!isRobuxCategory && <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Descrição detalhada" rows={3} className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm resize-none focus:border-[#0084ff] outline-none" />}
+              {!isRobuxListing && <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Descrição detalhada" rows={3} className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm resize-none focus:border-[#0084ff] outline-none" />}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -730,7 +730,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                 </div>
               </div>
 
-              {!isRobuxCategory && (
+              {!isRobuxListing && (
                 <section className="rounded-2xl border border-[#25252e] bg-[#0c0c10] p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -833,7 +833,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                 </section>
               )}
 
-              {!isRobuxCategory && variations.length === 0 && (
+              {!isRobuxListing && variations.length === 0 && (
                 <section className="rounded-2xl border border-white/[0.07] bg-[#101014] p-4">
                   <p className="text-xs font-black uppercase tracking-[0.12em] text-white/55">Forma de entrega</p>
                   <div className="mt-3 grid grid-cols-2 gap-2">
@@ -859,7 +859,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                 </section>
               )}
 
-              {!isRobuxCategory && variations.length > 0 && (
+              {!isRobuxListing && variations.length > 0 && (
                 <div className="rounded-xl border border-[#168cff]/15 bg-[#168cff]/[0.045] px-4 py-3 text-[11px] leading-5 text-[#8acbff]/75">
                   Cada variação tem estoque e entrega próprios. Em Manual, digite a quantidade em estoque. Em Automática, cadastre um item por linha: a quantidade de linhas válidas vira o estoque daquela variação e um item é entregue somente após o pagamento confirmado.
                 </div>

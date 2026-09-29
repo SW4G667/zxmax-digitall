@@ -60,6 +60,7 @@ export default function AdminView() {
   const [kycNotes, setKycNotes] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
   const [noticeBusy, setNoticeBusy] = useState(false);
+  const [notificationStats, setNotificationStats] = useState<{ total: number; unread: number; last24h: number; enabledUsers: number; browserUsers: number } | null>(null);
   const [chatMsg, setChatMsg] = useState("");
   const [rules, setRules] = useState(state.config.rules);
   const [commission, setCommission] = useState(state.config.commission);
@@ -265,6 +266,19 @@ export default function AdminView() {
   }, []);
 
   useEffect(() => { if (tab === "config") void loadPlatformSettings(); }, [tab, loadPlatformSettings]);
+  useEffect(() => {
+    if (tab !== "notices" || !isAdmin) return;
+    void (async () => {
+      const { data, error } = await (supabase as any).rpc("get_admin_notification_stats");
+      if (!error && data) setNotificationStats({
+        total: Number(data.total || 0),
+        unread: Number(data.unread || 0),
+        last24h: Number(data.last24h || 0),
+        enabledUsers: Number(data.enabledUsers || 0),
+        browserUsers: Number(data.browserUsers || 0),
+      });
+    })();
+  }, [tab, isAdmin]);
 
   const savePlatformSettings = async () => {
     const parsedPrice = parsePriceInput(minProductPrice);
@@ -360,7 +374,7 @@ export default function AdminView() {
           { id: "documents", label: "Documentos", icon: FileText, count: pendingDocuments.length },
           { id: "verifications", label: "Verificações", icon: ShieldEmoji },
           { id: "users", label: "Usuários", icon: Users },
-          { id: "notices", label: "Avisos", icon: StarEmoji },
+          { id: "notices", label: "Notificações", icon: StarEmoji },
           { id: "tickets", label: "Suporte", icon: ChatEmoji, count: state.tickets.filter((ticket) => ticket.status === "open").length },
           { id: "adminchat", label: "Chat Equipe", icon: ChatEmoji },
           { id: "webhooks", label: "Webhooks", icon: Webhook },
@@ -604,6 +618,22 @@ export default function AdminView() {
       {/* Notices Tab */}
       {tab === "notices" && (
         <div className="space-y-6">
+          {notificationStats && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              {[
+                ["Total", notificationStats.total],
+                ["Não lidas", notificationStats.unread],
+                ["Últimas 24h", notificationStats.last24h],
+                ["Usuários ativos", notificationStats.enabledUsers],
+                ["Dispositivo", notificationStats.browserUsers],
+              ].map(([label, value]) => (
+                <div key={String(label)} className="rounded-2xl border border-border/40 bg-card p-4">
+                  <p className="text-[10px] font-bold uppercase text-muted-foreground">{label}</p>
+                  <p className="mt-1 text-xl font-black text-foreground">{value}</p>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="glass-card p-6">
             <h3 className="font-bold text-foreground mb-4">Publicar Novo Aviso</h3>
             <textarea

@@ -10,7 +10,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
 });
 const MAGNUSPAY_API = "https://api.magnuspay.com.br";
-const MAGNUSPAY_PAID_STATUSES = new Set(["COMPLETED", "PAID", "CONFIRMED", "APPROVED"]);
+const MAGNUSPAY_PAID_STATUSES = new Set(["COMPLETED", "PAID", "CONFIRMED", "APPROVED", "SUCCESS", "SUCCEEDED", "SETTLED"]);
 const normalizeMoney = (value: unknown) => Math.round(Number(value) * 100);
 
 async function writeMagnusLog(client: any, row: Record<string, unknown>) {
@@ -20,6 +20,16 @@ async function writeMagnusLog(client: any, row: Record<string, unknown>) {
   } catch (error) {
     console.warn("magnuspay log insert failed", error instanceof Error ? error.message : "unknown");
   }
+}
+
+async function resolvePixApiKey(admin: any) {
+  const { data: setting } = await admin.from("app_settings").select("value").eq("key", "magnuspay").maybeSingle();
+  const mode = String(setting?.value?.mode || "production").toLowerCase();
+  if (mode === "sandbox") {
+    const { data: sandboxKey, error } = await admin.rpc("get_gateway_secret_server", { _name: "zxmax_pix_sandbox_api_key" });
+    if (!error && sandboxKey) return String(sandboxKey).trim();
+  }
+  return String(Deno.env.get("MAGNUSPAY_API_KEY") || "").trim();
 }
 
 async function notify(purchaseId: number) {
@@ -60,11 +70,11 @@ serve(async (req) => {
       return json({ status: "COMPLETED", purchaseStatus: purchase.status, paid: true });
     }
     if (purchase.payment_provider !== "magnuspay_pix" || !purchase.provider_payment_id) {
-      return json({ error: "Este pedido não possui cobrança MagnusPay ativa." }, 409);
+      return json({ error: "Este pedido não possui uma cobrança PIX ativa." }, 409);
     }
 
-    const apiKey = String(Deno.env.get("MAGNUSPAY_API_KEY") || "").trim();
-    if (!apiKey) return json({ error: "PIX MagnusPay não está configurado no servidor." }, 503);
+    const apiKey = await resolvePixApiKey(admin);
+    if (!apiKey) return json({ error: "O PIX não está configurado no servidor." }, 503);
 
     const response = await fetch(`${MAGNUSPAY_API}/transactions/check`, {
       method: "POST",
@@ -77,7 +87,7 @@ serve(async (req) => {
 
     if (response.status === 429) {
       return json({
-        error: "Limite temporário da MagnusPay atingido. Aguarde alguns instantes.",
+        error: "Limite temporário de consulta do PIX atingido. Aguarde alguns instantes.",
         retryAfter: response.headers.get("Retry-After") || response.headers.get("RateLimit-Reset"),
       }, 429);
     }
@@ -98,8 +108,8 @@ serve(async (req) => {
 
     const data = parsed.data;
     const id = String(data.id || data.transactionId || "").trim();
-    const status = String(data.status || "").toUpperCase();
-    const providerAmount = Number(data.amount);
+    const status = String(data.status || data.transactionStatus || data.paymentStatus || "").toUpperCase();
+    const providerAmount = Number(data.amount ?? data.totalAmount);
     const amountCents = normalizeMoney(providerAmount);
     const expectedAmount = purchase.provider_amount == null ? Number(purchase.amount) : Number(purchase.provider_amount);
     const expectedCents = normalizeMoney(expectedAmount);

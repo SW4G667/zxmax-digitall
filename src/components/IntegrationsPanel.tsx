@@ -33,7 +33,7 @@ type Provider = {
 const PROVIDERS: Provider[] = [
   {
     id: "magnuspay",
-    name: "MagnusPay PIX",
+    name: "PIX principal",
     description: "Gateway PIX principal. A chave fica somente nos Secrets do Supabase e nunca é exposta ao navegador.",
     secretNames: ["MAGNUSPAY_API_KEY"],
   },
@@ -194,11 +194,11 @@ export default function IntegrationsPanel() {
 
             {provider.id === "magnuspay" ? (
               <div className="mt-4 rounded-lg border border-[#168cff]/20 bg-[#168cff]/[0.055] p-3.5">
-                <p className="text-[11px] font-bold text-white">Configuração da MagnusPay</p>
+                <p className="text-[11px] font-bold text-white">Configuração da provedor PIX</p>
                 <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-[10px] leading-4 text-white/45">
-                  <li>Gere sua API Key no painel de credenciais da MagnusPay.</li>
+                  <li>Gere sua API Key no painel de credenciais da provedor PIX.</li>
                   <li>Cadastre a chave no Supabase como <code className="text-white/70">MAGNUSPAY_API_KEY</code>.</li>
-                  <li>Configure o webhook abaixo no painel da MagnusPay. A assinatura <code className="text-white/70">X-Magnus-Signature</code> é validada no servidor.</li>
+                  <li>Configure o webhook abaixo no painel da provedor PIX. A assinatura <code className="text-white/70">X-Magnus-Signature</code> é validada no servidor.</li>
                   <li>Use “Validar configuração” para testar a chave de verdade no endpoint oficial de taxas.</li>
                 </ol>
                 <div className="mt-3 grid gap-2">

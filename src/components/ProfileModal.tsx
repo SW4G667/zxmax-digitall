@@ -132,7 +132,7 @@ export default function ProfileModal({ open, onClose }: Props) {
   const emailReady = Boolean(storeUser.emailConfirmed);
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-3 sm:p-4 backdrop-blur-md" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 p-3 sm:p-4 backdrop-blur-md" onClick={onClose}>
       <div className="w-full max-w-xl max-h-[92vh] overflow-y-auto rounded-[28px] border border-white/[0.09] bg-[#0d0d11] shadow-[0_30px_100px_rgba(0,0,0,0.65)] animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/[0.06] bg-[#0d0d11]/95 px-5 py-4 backdrop-blur-xl sm:px-6">
           <div>

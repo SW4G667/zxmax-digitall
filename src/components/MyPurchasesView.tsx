@@ -111,13 +111,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
     window.history.replaceState({}, "", `${window.location.pathname}${search ? `?${search}` : ""}`);
   }, []);
 
-  const openOrderDetails = useCallback((purchaseId: number) => {
-    setSelectedId(Number(purchaseId));
-    setShowReview(false);
-    requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    });
-  }, []);
+  const openOrderDetails = openOrder;
 
   const refreshOrderList = useCallback(async (notify = false) => {
     if (!sessionReady) {
@@ -368,9 +362,9 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
     toast.success("Pagamento confirmado. Pedido atualizado.");
   };
 
-  const handleVerifyPendingPayment = async (purchase: Purchase) => {
+  const handleVerifyPendingPayment = async (purchase: Purchase, silent = false) => {
     if (purchase.paymentProvider !== "magnuspay_pix") return;
-    setLoadingPix(purchase.id);
+    if (!silent) setLoadingPix(purchase.id);
     try {
       const result = await unwrapEdgeCall<{ paid?: boolean; status?: string }>(
         await supabase.functions.invoke("check-magnuspay-status", { body: { purchaseId: purchase.id } }),
@@ -378,14 +372,36 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
       );
       if (result.errorMessage) throw new Error(result.errorMessage);
       await refreshPurchases();
-      if (result.data?.paid) toast.success("Pagamento confirmado e pedido aprovado.");
-      else toast.info("A MagnusPay ainda não marcou este PIX como concluído.");
+      const providerStatus = String(result.data?.status || "").toUpperCase();
+      if (result.data?.paid) {
+        if (!silent) toast.success("Pagamento confirmado e pedido aprovado.");
+      } else if (["EXPIRED", "FAILED", "CANCELED", "CANCELLED"].includes(providerStatus)) {
+        if (!silent) toast.info("Este PIX expirou. Gere um novo código para continuar.");
+      } else if (!silent) {
+        toast.info("O PIX ainda não foi confirmado. A consulta automática continuará.");
+      }
     } catch (error: any) {
-      toast.error(error?.message || "Não foi possível verificar o pagamento.");
+      if (!silent) toast.error(error?.message || "Não foi possível verificar o pagamento.");
     } finally {
-      setLoadingPix(null);
+      if (!silent) setLoadingPix(null);
     }
   };
+
+  useEffect(() => {
+    if (!selected || selected.status !== "pending" || selected.paymentProvider !== "magnuspay_pix") return;
+    let stopped = false;
+    const reconcile = async () => {
+      if (!stopped) await handleVerifyPendingPayment(selected, true);
+    };
+    void reconcile();
+    const timer = window.setInterval(() => void reconcile(), 6000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+    // Reconcile the selected pending PIX without toast spam.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, selected?.status, selected?.paymentProvider]);
 
   const handleSellerRefund = async () => {
     if (!selected || !selectedAsSeller) return;
@@ -458,7 +474,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
             </p>
             <p className="text-sm font-black text-foreground mt-0.5">{formatBRL(purchaseDisplayAmount(selected))}</p>
             {selected.providerAmount != null && Math.abs(selected.providerAmount - selected.amount) >= 0.01 && (
-              <p className="mt-1 text-[10px] leading-4 text-muted-foreground">Pedido ZXMAX {formatBRL(selected.amount)} · acréscimo do provedor {formatBRL(Math.max(0, selected.providerAmount - selected.amount))}</p>
+              <p className="mt-1 text-[10px] leading-4 text-muted-foreground">Pedido ZXMAX {formatBRL(selected.amount)} · taxa de processamento {formatBRL(Math.max(0, selected.providerAmount - selected.amount))}</p>
             )}
           </div>
           <Badge className={statusMap[selected.status].cls}>{statusMap[selected.status].label}</Badge>
@@ -718,7 +734,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
                   <div className="flex items-center justify-between mt-2 gap-3 flex-wrap">
                     <div>
                       <p className="text-sm font-black text-foreground">{formatBRL(purchaseDisplayAmount(p))}</p>
-                      {p.providerAmount != null && Math.abs(p.providerAmount - p.amount) >= 0.01 && <p className="text-[9px] text-muted-foreground">Total do provedor</p>}
+                      {p.providerAmount != null && Math.abs(p.providerAmount - p.amount) >= 0.01 && <p className="text-[9px] text-muted-foreground">Total do PIX</p>}
                     </div>
                     <div className="flex items-center gap-2">
                       {p.status === "pending" && p.buyerId === state.currentUser?.id ? (

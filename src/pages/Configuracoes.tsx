@@ -17,6 +17,7 @@ type NotificationPrefs = {
   orders: boolean;
   notices: boolean;
   support: boolean;
+  browser_enabled: boolean;
 };
 
 const defaultNotificationPrefs: NotificationPrefs = {
@@ -26,6 +27,7 @@ const defaultNotificationPrefs: NotificationPrefs = {
   orders: true,
   notices: true,
   support: true,
+  browser_enabled: false,
 };
 
 export default function Configuracoes() {
@@ -48,7 +50,7 @@ export default function Configuracoes() {
     void (async () => {
       const { data, error } = await (supabase as any)
         .from("notification_preferences")
-        .select("enabled,sales,questions,orders,notices,support")
+        .select("enabled,sales,questions,orders,notices,support,browser_enabled")
         .eq("user_id", user.id)
         .maybeSingle();
       if (!active) return;
@@ -60,6 +62,20 @@ export default function Configuracoes() {
 
   const setNotificationPreference = async (key: keyof NotificationPrefs, value: boolean) => {
     if (!user) return;
+    if (key === "browser_enabled" && value) {
+      if (typeof Notification === "undefined") {
+        toast.error("Este navegador não oferece notificações do sistema.");
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        toast.info("Permissão de notificação não concedida pelo navegador.");
+        return;
+      }
+      window.localStorage.setItem("zxmax_browser_notifications", "1");
+    } else if (key === "browser_enabled" && !value) {
+      window.localStorage.removeItem("zxmax_browser_notifications");
+    }
     const next = { ...notificationPrefs, [key]: value };
     setNotificationPrefs(next);
     setNotificationSaving(key);
@@ -203,6 +219,7 @@ export default function Configuracoes() {
                 ["orders", "Pedidos e disputas", "Pagamento, entrega, reembolso e disputa."],
                 ["notices", "Avisos da plataforma", "Comunicados publicados pela administração."],
                 ["support", "Suporte", "Atualizações relacionadas ao atendimento."],
+                ["browser_enabled", "Notificações neste dispositivo", "Pede permissão ao navegador e mostra vendas, pedidos, mensagens e avisos mesmo fora da página."],
               ] as Array<[keyof NotificationPrefs, string, string]>).map(([key, label, description]) => (
                 <label key={key} className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-white/[0.07] bg-white/[0.018] p-3.5">
                   <span>

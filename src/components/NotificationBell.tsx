@@ -16,7 +16,7 @@ type NotificationRow = {
 
 function Icon({ type }: { type: string }) {
   if (type === "sale") return <CircleDollarSign className="h-4 w-4" />;
-  if (type === "question") return <MessageCircleQuestion className="h-4 w-4" />;
+  if (type === "question" || type === "chat") return <MessageCircleQuestion className="h-4 w-4" />;
   if (type === "notice") return <Shield className="h-4 w-4" />;
   if (type === "support") return <Headphones className="h-4 w-4" />;
   return <ShoppingBag className="h-4 w-4" />;
@@ -29,6 +29,21 @@ export default function NotificationBell() {
   const [rows, setRows] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  const showNativeNotification = useCallback((row: NotificationRow) => {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    if (window.localStorage.getItem("zxmax_browser_notifications") !== "1") return;
+    try {
+      const notice = new Notification(row.title, { body: row.body || "Você recebeu uma nova atualização.", tag: `zxmax-${row.id}` });
+      notice.onclick = () => {
+        window.focus();
+        if (row.href?.startsWith("/")) window.location.assign(row.href);
+        notice.close();
+      };
+    } catch {
+      // The in-app notification center remains the reliable fallback.
+    }
+  }, []);
 
   const load = useCallback(async () => {
     if (!user) {
@@ -52,11 +67,26 @@ export default function NotificationBell() {
     const interval = window.setInterval(() => void load(), 30000);
     const onVisible = () => { if (document.visibilityState === "visible") void load(); };
     document.addEventListener("visibilitychange", onVisible);
+
+    const channel = supabase
+      .channel(`zxmax_notifications_${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const row = payload.new as NotificationRow;
+          setRows((current) => current.some((item) => item.id === row.id) ? current : [row, ...current].slice(0, 40));
+          showNativeNotification(row);
+        },
+      )
+      .subscribe();
+
     return () => {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
+      void supabase.removeChannel(channel);
     };
-  }, [user?.id, load]);
+  }, [user?.id, load, showNativeNotification]);
 
   useEffect(() => {
     const handler = (event: MouseEvent) => {

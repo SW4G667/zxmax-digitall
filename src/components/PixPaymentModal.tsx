@@ -21,7 +21,7 @@ interface Props {
   onPaid: () => void | Promise<void>;
 }
 
-const PAID_STATUSES = new Set(["COMPLETED", "PAID", "CONFIRMED", "APPROVED"]);
+const PAID_STATUSES = new Set(["COMPLETED", "PAID", "CONFIRMED", "APPROVED", "SUCCESS", "SUCCEEDED", "SETTLED"]);
 
 export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
   const [copied, setCopied] = useState(false);
@@ -91,7 +91,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
         const message = String((error as any)?.message || "");
         setCheckMessage(
           /429|rate/i.test(message)
-            ? "A MagnusPay limitou a consulta por alguns segundos. Vou tentar novamente."
+            ? "O provedor do PIX limitou a consulta por alguns segundos. Vou tentar novamente."
             : "Ainda não consegui confirmar. Vou continuar verificando automaticamente.",
         );
       } else {
@@ -160,7 +160,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
     : Number(charge.providerFee || 0);
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-foreground/50 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md" onClick={onClose}>
       <div className="glass-card w-full max-w-md p-6 sm:p-7 bg-card animate-fade-in-up max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-5">
           <div>
@@ -191,7 +191,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
                     <p className="text-xs font-bold text-foreground">R$ {Number(charge.baseAmount).toFixed(2)}</p>
                   </div>
                   <div className="rounded-xl bg-background/40 px-3 py-2">
-                    <p className="text-[9px] uppercase text-muted-foreground">Taxa do provedor</p>
+                    <p className="text-[9px] uppercase text-muted-foreground">Taxa de processamento</p>
                     <p className="text-xs font-bold text-foreground">R$ {gatewayExtra.toFixed(2)}</p>
                   </div>
                 </div>
@@ -217,7 +217,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
               <div className="flex items-start gap-2">
                 {status === "expired"
                   ? <AlertCircle className="w-4 h-4 mt-0.5 text-destructive shrink-0" />
-                  : <Loader2 className="w-4 h-4 mt-0.5 text-primary shrink-0 animate-spin" />}
+                  : <Loader2 className="w-4 h-4 mt-0.5 text-primary shrink-0 animate-spin" style={{ animation: "spin .7s linear infinite" }} />}
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold text-foreground">{status === "expired" ? "Cobrança encerrada" : "Confirmação automática"}</p>
                   <p className="text-[11px] leading-4 text-muted-foreground mt-0.5">{checkMessage}</p>
@@ -230,7 +230,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
                   disabled={checking}
                   className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-bold text-foreground hover:bg-background/50 disabled:opacity-50"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${checking ? "animate-spin" : ""}`} />
+                  <RefreshCw className={`w-3.5 h-3.5 ${checking ? "animate-spin" : ""}`} style={checking ? { animation: "spin .7s linear infinite" } : undefined} />
                   Verificar agora
                 </button>
               )}

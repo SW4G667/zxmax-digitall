@@ -29,6 +29,16 @@ async function writeMagnusLog(client: any, row: Record<string, unknown>) {
   }
 }
 
+async function resolvePixApiKey(admin: any) {
+  const { data: setting } = await admin.from("app_settings").select("value").eq("key", "magnuspay").maybeSingle();
+  const mode = String(setting?.value?.mode || "production").toLowerCase();
+  if (mode === "sandbox") {
+    const { data: sandboxKey, error } = await admin.rpc("get_gateway_secret_server", { _name: "zxmax_pix_sandbox_api_key" });
+    if (!error && sandboxKey) return String(sandboxKey).trim();
+  }
+  return String(Deno.env.get("MAGNUSPAY_API_KEY") || "").trim();
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Método não permitido." }, 405);
@@ -48,7 +58,7 @@ serve(async (req) => {
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: purchase, error: purchaseError } = await admin
       .from("purchases")
-      .select("id,buyer_id,status,amount,payment_provider,provider_payment_id,payment_status,pix_qr_code,pix_expires_at")
+      .select("id,buyer_id,status,amount,provider_amount,provider_fee,provider_net_amount,payment_provider,provider_payment_id,payment_status,pix_qr_code,pix_expires_at")
       .eq("id", purchaseId)
       .maybeSingle();
 
@@ -59,7 +69,7 @@ serve(async (req) => {
       return json({ error: "Este pedido não está aguardando pagamento." }, 409);
     }
     if (purchase.payment_provider && purchase.payment_provider !== "magnuspay_pix") {
-      return json({ error: "Forma de pagamento incompatível com PIX MagnusPay." }, 409);
+      return json({ error: "Forma de pagamento incompatível com este PIX." }, 409);
     }
 
     const stillValid = purchase.payment_status === "pending"
@@ -72,7 +82,10 @@ serve(async (req) => {
         id: String(purchase.provider_payment_id),
         transactionId: String(purchase.provider_payment_id),
         status: "PENDING",
-        amount: Number(purchase.amount),
+        amount: Number(purchase.provider_amount ?? purchase.amount),
+        baseAmount: Number(purchase.amount),
+        providerFee: purchase.provider_fee == null ? null : Number(purchase.provider_fee),
+        providerNetAmount: purchase.provider_net_amount == null ? null : Number(purchase.provider_net_amount),
         qrCodeText: String(purchase.pix_qr_code),
         qrCodeUrl: null,
         expiresAt: purchase.pix_expires_at,
@@ -80,12 +93,12 @@ serve(async (req) => {
       });
     }
 
-    const apiKey = String(Deno.env.get("MAGNUSPAY_API_KEY") || "").trim();
-    if (!apiKey) return json({ error: "MAGNUSPAY_API_KEY não está configurada no servidor." }, 503);
+    const apiKey = await resolvePixApiKey(admin);
+    if (!apiKey) return json({ error: "O PIX não está configurado no servidor." }, 503);
 
     const amount = Math.round(Number(purchase.amount) * 100) / 100;
     if (!Number.isFinite(amount) || amount < 1) {
-      return json({ error: "A MagnusPay exige pagamento mínimo de R$ 1,00." }, 400);
+      return json({ error: "O PIX exige valor mínimo de R$ 1,00." }, 400);
     }
 
     const payerName = typeof body.buyerName === "string" ? body.buyerName.trim().slice(0, 120) : "";
@@ -128,7 +141,7 @@ serve(async (req) => {
         error: "Rate limit da MagnusPay atingido",
       });
       return json({
-        error: "A MagnusPay atingiu o limite temporário de requisições. Aguarde e tente novamente.",
+        error: "O PIX atingiu um limite temporário. Aguarde alguns instantes e tente novamente.",
         code: "magnus_rate_limited",
         retryAfter: limits.retryAfter || limits.reset,
       }, 429);
@@ -180,13 +193,15 @@ serve(async (req) => {
         error: "Resposta da MagnusPay sem transactionId ou copyPaste",
       });
       return json({
-        error: "A MagnusPay criou uma resposta incompleta para o PIX. Tente novamente.",
+        error: "O provedor retornou uma resposta incompleta para o PIX. Tente novamente.",
         code: "magnus_invalid_response",
       }, 502);
     }
 
     // A documentação atual informa expiração automática em 15 minutos.
-    const expiresAt = new Date(Date.now() + PIX_TTL_MS).toISOString();
+    const providerExpiry = data.expiresAt || data.expires_at || null;
+    const parsedExpiry = providerExpiry ? new Date(String(providerExpiry)) : null;
+    const expiresAt = parsedExpiry && Number.isFinite(parsedExpiry.getTime()) ? parsedExpiry.toISOString() : new Date(Date.now() + PIX_TTL_MS).toISOString();
 
     const { error: saveError } = await admin.from("purchases").update({
       payment_provider: "magnuspay_pix",

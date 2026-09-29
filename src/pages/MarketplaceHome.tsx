@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { Product, useStore } from "@/store/StoreContext";
-import { formatBRL, lowestProductPrice, productHasAutoDelivery, productHasMixedDelivery, ROBUX_CATEGORY, storefrontProducts } from "@/lib/catalog";
+import { formatBRL, lowestProductPrice, productHasAutoDelivery, productHasMixedDelivery, ROBUX_CATEGORY, isRobuxCategory, storefrontProducts } from "@/lib/catalog";
 import { useSiteBranding } from "@/context/SiteBrandingContext";
 
 const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -35,7 +35,7 @@ function MarketplaceCard({
 }) {
   const hasAutoDelivery = productHasAutoDelivery(product);
   const mixedDelivery = productHasMixedDelivery(product);
-  const variationCount = product.category === ROBUX_CATEGORY ? 0 : (product.variations?.length || 0);
+  const variationCount = isRobuxCategory(product.category) ? 0 : (product.variations?.length || 0);
   return (
     <button
       type="button"
@@ -129,44 +129,46 @@ export default function MarketplaceHome() {
     [state.products, state.currentUser?.id],
   );
 
+  const homeProducts = useMemo(
+    () => publicProducts.filter((product) => !isRobuxCategory(product.category)),
+    [publicProducts],
+  );
+
   const verifiedSeller = (sellerId: string) => Boolean(state.userDirectory?.[sellerId]?.isVerified);
 
   const newest = useMemo(
-    () => [...publicProducts].sort((a, b) => Number(b.id) - Number(a.id)).slice(0, 4),
-    [publicProducts],
+    () => [...homeProducts].sort((a, b) => Number(b.id) - Number(a.id)).slice(0, 4),
+    [homeProducts],
   );
 
   const featured = useMemo(
-    () => [...publicProducts]
+    () => [...homeProducts]
       .sort((a, b) => (Number(b.sales || 0) + Number(b.rating || 0) * 2) - (Number(a.sales || 0) + Number(a.rating || 0) * 2) || b.id - a.id)
       .slice(0, 4),
-    [publicProducts],
+    [homeProducts],
   );
 
-  const robux = useMemo(
-    () => publicProducts.filter((product) => product.category === ROBUX_CATEGORY).slice(0, 4),
-    [publicProducts],
-  );
+  const robux = useMemo(() => [] as Product[], []);
 
   const namedSections = useMemo(
     () => ["Bots Discord", "Contas", "Scripts"]
       .map((category) => ({
         category,
-        products: publicProducts.filter((product) => product.category === category).slice(0, 4),
+        products: homeProducts.filter((product) => product.category === category).slice(0, 4),
       }))
       .filter((section) => section.products.length > 0),
-    [publicProducts],
+    [homeProducts],
   );
 
   const categoryTiles = useMemo(() => {
-    const configured = state.config.categories.filter((category) => category !== ROBUX_CATEGORY);
-    const categories = [ROBUX_CATEGORY, ...configured].slice(0, 8);
+    const configured = state.config.categories.filter((category) => !isRobuxCategory(category));
+    const categories = configured.slice(0, 8);
     return categories.map((category) => {
-      const products = publicProducts.filter((product) => product.category === category);
+      const products = homeProducts.filter((product) => product.category === category);
       const image = products.find((product) => Boolean(product.image))?.image || "";
       return { category, count: products.length, image };
     });
-  }, [publicProducts, state.config.categories]);
+  }, [homeProducts, state.config.categories]);
 
   const promoBanners = [branding.promoBanner1Url, branding.promoBanner2Url, branding.promoBanner3Url].filter(Boolean);
 
