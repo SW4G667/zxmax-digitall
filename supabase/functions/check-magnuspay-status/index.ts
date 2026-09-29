@@ -50,7 +50,7 @@ serve(async (req) => {
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: purchase, error: purchaseError } = await admin
       .from("purchases")
-      .select("id,buyer_id,status,amount,payment_provider,provider_payment_id,payment_status")
+      .select("id,buyer_id,status,amount,provider_amount,payment_provider,provider_payment_id,payment_status")
       .eq("id", purchaseId)
       .maybeSingle();
 
@@ -98,15 +98,30 @@ serve(async (req) => {
     const data = parsed.data;
     const id = String(data.id || data.transactionId || "").trim();
     const status = String(data.status || "").toUpperCase();
-    const amountCents = normalizeMoney(data.amount);
-    const expectedCents = normalizeMoney(purchase.amount);
+    const providerAmount = Number(data.amount);
+    const amountCents = normalizeMoney(providerAmount);
+    const expectedAmount = purchase.provider_amount == null ? Number(purchase.amount) : Number(purchase.provider_amount);
+    const expectedCents = normalizeMoney(expectedAmount);
 
     if (id !== String(purchase.provider_payment_id)) {
+      await admin.from("purchases").update({ provider_checked_at: new Date().toISOString() }).eq("id", purchase.id);
       return json({ error: "Identificador de pagamento divergente." }, 409);
     }
     if (!Number.isFinite(amountCents) || amountCents !== expectedCents) {
-      return json({ error: "Valor confirmado divergente." }, 409);
+      await writeMagnusLog(admin, {
+        source: "magnuspay",
+        event_type: "CHECK_STATUS",
+        status: "amount_mismatch",
+        order_id: purchase.id,
+        charge_id: purchase.provider_payment_id,
+        payload: { providerAmount, expectedAmount, providerStatus: status },
+        error: "Valor confirmado divergente.",
+      });
+      await admin.from("purchases").update({ provider_checked_at: new Date().toISOString() }).eq("id", purchase.id);
+      return json({ error: "Valor confirmado divergente.", code: "amount_mismatch" }, 409);
     }
+
+    await admin.from("purchases").update({ provider_checked_at: new Date().toISOString() }).eq("id", purchase.id);
 
     if (status === "COMPLETED") {
       const { data: applied, error: applyError } = await admin.rpc("apply_verified_payment_v2", {
@@ -115,7 +130,7 @@ serve(async (req) => {
         _event_type: "transaction.completed",
         _purchase_id: purchase.id,
         _charge_id: id,
-        _confirmed_amount: Number(data.amount),
+        _confirmed_amount: providerAmount,
         _payload: parsed,
       });
       if (applyError) throw applyError;
@@ -125,6 +140,7 @@ serve(async (req) => {
         status,
         purchaseStatus: result?.resulting_status || "paid",
         paid: true,
+        amount: providerAmount,
         completedAt: data.completedAt || null,
       });
     }
@@ -136,7 +152,7 @@ serve(async (req) => {
       }).eq("id", purchase.id).eq("provider_payment_id", id);
     }
 
-    return json({ status, purchaseStatus: purchase.status, paid: false });
+    return json({ status, purchaseStatus: purchase.status, paid: false, amount: providerAmount });
   } catch (error) {
     console.error("check-magnuspay-status", error instanceof Error ? error.message : error);
     return json({ error: "Erro inesperado ao consultar o PIX." }, 500);
