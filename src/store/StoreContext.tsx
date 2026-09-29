@@ -677,8 +677,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return false;
     }
 
-    // Client-side guards first, so obvious problems never reach the database
-    // and the seller gets a precise message instead of a generic failure.
     const price = parsePriceInput(p.price);
     if (!p.name?.trim()) { toast.error("Informe o nome do anúncio."); return false; }
     if (price < MIN_PRODUCT_PRICE) {
@@ -694,82 +692,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return false;
     }
 
-    // `approved` is decided by the database (trigger + RLS). We only send the
-    // intent; a seller sending `true` is rejected server-side, never trusted.
-    const base: Record<string, unknown> = {
-      seller_id: authUser.id,
-      seller_public_id: state.currentUser.publicId,
-      seller_name: state.currentUser.name,
-      name: p.name.trim(),
-      price,
-      category: p.category,
-      image: p.image,
-      banner: p.banner || null,
-      description: p.description || "",
-      delivery_type: p.deliveryType,
-      variations: (p.variations || []).map(mapVariation),
-      questions: [],
-      approved: isAdmin,
-    };
-    const optionalColumns = {
-      ...(p.stock !== undefined ? { stock: p.stock } : {}),
-      ...(p.minQuantity !== undefined ? { min_quantity: p.minQuantity } : {}),
-      ...(p.deliveryTime ? { delivery_time: p.deliveryTime } : {}),
-      ...(p.inventoryMode ? { inventory_mode: p.inventoryMode } : {}),
-    };
+    // Product + automatic inventory are created in ONE database transaction.
+    // Never retry with stock columns removed: partial listings are worse than a
+    // visible failure because they can be sold with the wrong inventory.
+    const { data, error } = await (supabase as any).rpc("create_product_listing", {
+      _name: p.name.trim(),
+      _price: price,
+      _category: p.category,
+      _image: p.image || "",
+      _banner: p.banner || null,
+      _description: p.description || "",
+      _delivery_type: p.deliveryType || "manual",
+      _variations: (p.variations || []).map(mapVariation),
+      _stock: p.stock ?? null,
+      _min_quantity: p.minQuantity ?? null,
+      _delivery_time: p.deliveryTime || null,
+      _inventory_mode: p.inventoryMode || "legacy",
+      _inventories: (p as any).inventoryPayload || [],
+    });
 
-    // Attempt order narrows the payload only for *schema/grant* problems on
-    // older databases. Every other error is reported as-is.
-    const attempts: Record<string, unknown>[] = [
-      { ...base, ...optionalColumns },
-      base,
-      (() => { const { approved, ...rest } = base; return rest; })(),
-    ];
-
-    let created: { id: number; approved: boolean } | null = null;
-    let lastError: any = null;
-    for (const payload of attempts) {
-      const { data, error } = await (supabase as any)
-        .from("products")
-        .insert(payload)
-        .select("id,approved")
-        .maybeSingle();
-      if (!error && data?.id) {
-        created = { id: Number(data.id), approved: !!data.approved };
-        break;
-      }
-      lastError = error;
-      logProductError("addProduct:insert", error);
-      // Only a missing column / column-grant problem justifies a narrower retry.
-      const code = String(error?.code ?? "");
-      // Falha de autorização não é incompatibilidade de schema. Reenviar sem
-      // estoque/mínimo nesse caso fazia uma oferta parecer salva com valores
-      // antigos. Só deployments sem coluna podem usar o payload reduzido.
-      const retriable = code === "42703" || code === "PGRST204";
-      if (!retriable) break;
-    }
-
-    if (!created) {
-      toast.error(productErrorMessage(lastError));
+    if (error || !data?.success || !data?.id) {
+      logProductError("addProduct:create_product_listing", error || data);
+      toast.error(productErrorMessage(error || data));
       return false;
     }
 
-    // Delivery content lives in `product_delivery`, never in the public table.
-    if (p.deliveryContent || p.deliveryType === "auto") {
-      const { error: deliveryError } = await (supabase as any)
-        .from("product_delivery")
-        .upsert({ product_id: created.id, delivery_type: p.deliveryType, delivery_content: p.deliveryContent || null });
-      if (deliveryError) {
-        logProductError("addProduct:delivery", deliveryError);
-        toast.warning("Anúncio criado, mas o conteúdo de entrega automática não foi salvo. Edite o anúncio para tentar de novo.");
-      }
-    }
-
-    // Reload from the database so the seller sees the row that really exists
-    // (with the approval state the server decided), not an optimistic guess.
     await loadCatalog();
-    toast.success(created.approved ? "Anúncio publicado!" : "Anúncio criado! Aguardando aprovação da moderação.");
-    return created.id;
+    toast.success(data.approved ? "Anúncio publicado!" : "Anúncio criado! Aguardando aprovação da moderação.");
+    return Number(data.id);
   };
 
   const updateProduct = async (id: number, p: Partial<Omit<Product, "id" | "sellerId">>) => {
