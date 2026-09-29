@@ -9,7 +9,7 @@ import UserProfileModal from "@/components/UserProfileModal";
 import AppShell from "@/components/AppShell";
 import useFavorites from "@/hooks/useFavorites";
 import { supabase } from "@/integrations/supabase/client";
-import { formatBRL, formatRobuxPackage, formatRobuxUnitPrice, formatStockLabel, productMinQuantity, productStock, ROBUX_CATEGORY, robuxPackageUnits, unitPriceFromPackage } from "@/lib/catalog";
+import { formatBRL, formatRobuxPackage, formatRobuxUnitPrice, formatStockLabel, lowestProductPrice, productHasMixedDelivery, productMinQuantity, productStock, ROBUX_CATEGORY, robuxPackageUnits, unitPriceFromPackage, variationDeliveryType, variationMinQuantity, variationStock } from "@/lib/catalog";
 import CryptoPaymentModal, { CryptoCharge } from "@/components/CryptoPaymentModal";
 import { unwrapEdgeCall } from "@/lib/edgeErrors";
 import { checkoutMethods, classifyPaymentMethods, paymentMethodsNotice, PaymentMethodsState } from "@/lib/paymentMethods";
@@ -362,6 +362,39 @@ export default function ProdutoPage() {
     }
   }, [product?.id, isRobux]);
 
+  useEffect(() => {
+    if (!product || isRobux) return;
+    const hasVariations = (product.variations?.length || 0) > 0;
+    if (hasVariations && !selectedVariation) {
+      setQuantity(1);
+      setQuantityDraft("1");
+      return;
+    }
+
+    const minQty = selectedVariation
+      ? variationMinQuantity(selectedVariation, productMinQuantity(product) ?? 1)
+      : (productMinQuantity(product) ?? 1);
+    const stock = selectedVariation ? variationStock(selectedVariation) : productStock(product);
+
+    setQuantity((current) => {
+      const candidate = Number.isFinite(current) && current > 0 ? current : minQty;
+      const normalized = stock != null
+        ? Math.max(0, Math.min(Math.max(minQty, candidate), stock))
+        : Math.max(minQty, candidate);
+      setQuantityDraft(String(normalized));
+      return normalized;
+    });
+  }, [
+    product?.id,
+    product?.stock,
+    product?.minQuantity,
+    isRobux,
+    selectedVariation?.id,
+    selectedVariation?.name,
+    selectedVariation?.stock,
+    selectedVariation?.minQuantity,
+  ]);
+
   const loadQuestions = React.useCallback(async () => {
     if (!productId) return;
     setQuestionsStatus("loading");
@@ -420,16 +453,31 @@ export default function ProdutoPage() {
     );
   }
 
-  // For Robux the advertised price is the PACKAGE price. The per-unit value is
-  // derived for display and for quantity maths, and is never written back.
+  // For Robux the advertised price is the PACKAGE price. Regular listings can
+  // now price, stock and deliver each variation independently.
   const packageUnits = robuxPackageUnits(product);
-  // Robux sempre usa o preço proporcional do único pacote canônico. Variações
-  // continuam sendo uma opção exclusiva de anúncios comuns.
+  const regularHasVariations = !isRobux && (product.variations?.length || 0) > 0;
+  const regularMinQty = selectedVariation
+    ? variationMinQuantity(selectedVariation, productMinQuantity(product) ?? 1)
+    : (productMinQuantity(product) ?? 1);
+  const regularStock = selectedVariation
+    ? variationStock(selectedVariation)
+    : productStock(product);
   const unitPrice = isRobux
     ? unitPriceFromPackage(product)
-    : (selectedVariation?.price ?? product.price);
-  const displayQuantity = isRobux ? quantity : 1;
+    : (selectedVariation?.price ?? lowestProductPrice(product));
+  const displayQuantity = quantity;
   const subtotal = Math.round(unitPrice * displayQuantity * 100) / 100;
+
+  const applyRegularQuantity = (candidate: number) => {
+    if (isRobux) return;
+    const lowerBound = regularMinQty;
+    const upperBound = regularStock ?? Number.MAX_SAFE_INTEGER;
+    const parsed = Number.isFinite(candidate) ? Math.floor(candidate) : lowerBound;
+    const next = Math.max(0, Math.min(upperBound, Math.max(lowerBound, parsed)));
+    setQuantity(next);
+    setQuantityDraft(String(next));
+  };
 
   const handleBuyClick = () => {
     if (!state.currentUser) {
@@ -440,15 +488,36 @@ export default function ProdutoPage() {
       toast.error("Este anúncio está em validação e não está disponível para compra.");
       return;
     }
-    const minQty = currentOffer?.minQty ?? packageUnits;
-    if (isRobux && quantity < minQty) {
-      toast.error(`Quantidade mínima: ${minQty.toLocaleString("pt-BR")}`);
-      return;
+
+    if (isRobux) {
+      const minQty = currentOffer?.minQty ?? packageUnits;
+      if (quantity < minQty) {
+        toast.error(`Quantidade mínima: ${minQty.toLocaleString("pt-BR")}`);
+        return;
+      }
+      if (currentOffer?.stock != null && quantity > currentOffer.stock) {
+        toast.error(`Estoque disponível: ${currentOffer.stock.toLocaleString("pt-BR")}`);
+        return;
+      }
+    } else {
+      if (regularHasVariations && !selectedVariation) {
+        toast.info("Escolha uma variação antes de comprar.");
+        return;
+      }
+      if (regularStock !== null && regularStock <= 0) {
+        toast.error("Esta opção está sem estoque.");
+        return;
+      }
+      if (quantity < regularMinQty) {
+        toast.error(`Quantidade mínima: ${regularMinQty.toLocaleString("pt-BR")}`);
+        return;
+      }
+      if (regularStock != null && quantity > regularStock) {
+        toast.error(`Estoque disponível: ${regularStock.toLocaleString("pt-BR")}`);
+        return;
+      }
     }
-    if (isRobux && currentOffer?.stock != null && quantity > currentOffer.stock) {
-      toast.error(`Estoque disponível: ${currentOffer.stock.toLocaleString("pt-BR")}`);
-      return;
-    }
+
     setCheckoutOpen(true);
   };
 
@@ -653,6 +722,18 @@ export default function ProdutoPage() {
   const relatedProducts = state.products.filter((item) => item.id !== product.id && item.category === product.category && item.approved).slice(0, 8);
   const variationRequired = (product.variations?.length || 0) > 0;
   const filteredVariations = (product.variations || []).filter((variation) => variation.name.toLowerCase().includes(variationSearch.toLowerCase()));
+  const selectedDelivery = selectedVariation
+    ? variationDeliveryType(selectedVariation, product.deliveryType)
+    : product.deliveryType;
+  const mixedDelivery = productHasMixedDelivery(product);
+  const deliveryLabel = selectedVariation
+    ? (selectedDelivery === "auto" ? "Entrega automática" : "Entrega manual")
+    : mixedDelivery
+      ? "Entrega por variação"
+      : (product.deliveryType === "auto" ? "Entrega automática" : "Entrega manual");
+  const selectedDeliveryTime = selectedVariation?.deliveryTime || product.deliveryTime || "Não informado";
+  const visibleStock = selectedVariation ? variationStock(selectedVariation) : productStock(product);
+  const soldOut = selectedVariation ? variationStock(selectedVariation) === 0 : (!variationRequired && productStock(product) === 0);
   const createdAt = product.createdAt;
 
   return (
@@ -675,12 +756,12 @@ export default function ProdutoPage() {
               <div className="p-5 sm:p-6">
                 <div className="flex flex-wrap gap-2 mb-3">
                   <span className="rounded-full px-3 py-1 text-[11px] font-bold bg-[#1a1a20] border border-[#25252e] text-white/70">{product.category}</span>
-                  <span className="rounded-full px-3 py-1 text-[11px] font-bold bg-[#0084ff]/15 border border-[#0084ff]/30 text-[#5aaeff]"><Zap className="inline w-3.5 h-3.5 mr-1" />{product.deliveryType === "auto" ? "Entrega automática" : "Entrega manual"}</span>
+                  <span className="rounded-full px-3 py-1 text-[11px] font-bold bg-[#0084ff]/15 border border-[#0084ff]/30 text-[#5aaeff]"><Zap className="inline w-3.5 h-3.5 mr-1" />{deliveryLabel}</span>
                   <span className="rounded-full px-3 py-1 text-[11px] font-bold bg-[#1a1a20] border border-[#25252e] text-white/70">Anúncio digital</span>
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight">{product.name}</h1>
                 <div className="grid grid-cols-3 mt-6 border-y border-[#1e1e28] divide-x divide-[#1e1e28]">
-                  <div className="py-3"><p className="text-[10px] text-white/35 uppercase font-bold">Disponíveis</p><p className="font-black text-white mt-1">{formatStockLabel(productStock(product))}</p></div>
+                  <div className="py-3"><p className="text-[10px] text-white/35 uppercase font-bold">Disponíveis</p><p className="font-black text-white mt-1">{formatStockLabel(visibleStock)}</p></div>
                   <div className="py-3 px-3"><p className="text-[10px] text-white/35 uppercase font-bold">Vendidos</p><p className="font-black text-white mt-1">{product.sales || "—"}</p></div>
                   <div className="py-3 px-3"><p className="text-[10px] text-white/35 uppercase font-bold">Vendas</p><p className="font-black text-white mt-1">{product.sales || "—"}</p></div>
                 </div>
@@ -690,9 +771,9 @@ export default function ProdutoPage() {
             <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5 sm:p-6">
               <h2 className="text-sm font-black tracking-wide text-white">CARACTERÍSTICAS</h2>
               <dl className="mt-4 divide-y divide-[#1e1e28] text-sm">
-                <div className="flex justify-between py-3 gap-6"><dt className="text-white/45">Tipo do anúncio</dt><dd className="font-bold text-white text-right">{product.deliveryType === "auto" ? "Entrega automática" : "Entrega manual"}</dd></div>
+                <div className="flex justify-between py-3 gap-6"><dt className="text-white/45">Entrega</dt><dd className="font-bold text-white text-right">{deliveryLabel}</dd></div>
                 <div className="flex justify-between py-3 gap-6"><dt className="text-white/45">Procedência</dt><dd className="font-bold text-white text-right">Não informada</dd></div>
-                <div className="flex justify-between py-3 gap-6"><dt className="text-white/45">Prazo de entrega</dt><dd className="font-bold text-white text-right">{product.deliveryTime || "Não informado"}</dd></div>
+                <div className="flex justify-between py-3 gap-6"><dt className="text-white/45">Prazo de entrega</dt><dd className="font-bold text-white text-right">{selectedDeliveryTime}</dd></div>
               </dl>
             </section>
 
@@ -806,13 +887,89 @@ export default function ProdutoPage() {
           </main>
 
           <aside className="lg:sticky lg:top-20 space-y-4">
-            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5"><p className="text-[11px] uppercase font-bold text-white/35">Preço</p><p className="text-3xl font-black text-white mt-1">{formatBRL(selectedVariation?.price ?? product.price)}</p>{variationRequired && <div className="relative mt-4"><button onClick={() => setVariationOpen((open) => !open)} className="w-full flex justify-between items-center rounded-xl bg-[#0a0a0f] border border-[#25252e] px-3 py-3 text-sm text-left text-white"><span>{selectedVariation?.name || "Escolha uma variação"}</span><span className="text-white/40">⌄</span></button>{variationOpen && <div className="absolute z-20 mt-2 w-full rounded-xl overflow-hidden bg-[#111114] border border-[#25252e] shadow-2xl"><div className="p-2 border-b border-[#25252e]"><label className="sr-only" htmlFor="variation-search">Buscar variação</label><div className="flex items-center gap-2 px-2"><Search className="w-4 h-4 text-white/40"/><input id="variation-search" autoFocus value={variationSearch} onChange={(event) => setVariationSearch(event.target.value)} placeholder="Buscar variação" className="w-full bg-transparent py-2 text-sm text-white outline-none"/></div></div><div className="max-h-56 overflow-auto">{filteredVariations.map((variation) => <button key={variation.name} onClick={() => { setSelectedVariation(variation); setVariationOpen(false); setVariationSearch(""); }} className="w-full p-3 text-left hover:bg-white/5 border-b border-[#1e1e28]"><span className="block font-bold text-white">{variation.name}</span><span className="text-xs text-[#5aaeff]">{formatBRL(variation.price)} · estoque: não informado</span></button>)}{!filteredVariations.length && <p className="p-3 text-sm text-white/40">Nenhuma variação encontrada.</p>}</div></div>}</div>}<p className="text-xs text-white/40 mt-2">{!sellerIdentityReady ? "Este anúncio ficará disponível quando a conta do vendedor for validada." : variationRequired && !selectedVariation ? "Escolha uma variação para comprar." : "Taxas e total serão detalhados no checkout."}</p><button onClick={handleBuyClick} disabled={buyLoading || !sellerIdentityReady || (variationRequired && !selectedVariation)} className="w-full mt-4 bg-[#ffbd2e] hover:bg-[#e6a829] disabled:opacity-40 disabled:cursor-not-allowed text-black py-3.5 rounded-xl font-black text-sm">{sellerIdentityReady ? "COMPRAR" : "ANÚNCIO EM VALIDAÇÃO"}</button></section>
+            <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5">
+              <p className="text-[11px] uppercase font-bold text-white/35">{variationRequired && !selectedVariation ? "A partir de" : "Preço"}</p>
+              <p className="text-3xl font-black text-white mt-1">{formatBRL(selectedVariation?.price ?? lowestProductPrice(product))}</p>
+
+              {variationRequired && (
+                <div className="relative mt-4">
+                  <button onClick={() => setVariationOpen((open) => !open)} className="w-full flex justify-between items-center rounded-xl bg-[#0a0a0f] border border-[#25252e] px-3 py-3 text-sm text-left text-white">
+                    <span className="truncate">{selectedVariation?.name || "Escolha uma variação"}</span><span className="text-white/40">⌄</span>
+                  </button>
+                  {variationOpen && (
+                    <div className="absolute z-20 mt-2 w-full rounded-xl overflow-hidden bg-[#111114] border border-[#25252e] shadow-2xl">
+                      <div className="p-2 border-b border-[#25252e]">
+                        <label className="sr-only" htmlFor="variation-search">Buscar variação</label>
+                        <div className="flex items-center gap-2 px-2"><Search className="w-4 h-4 text-white/40"/><input id="variation-search" autoFocus value={variationSearch} onChange={(event) => setVariationSearch(event.target.value)} placeholder="Buscar variação" className="w-full bg-transparent py-2 text-sm text-white outline-none"/></div>
+                      </div>
+                      <div className="max-h-64 overflow-auto">
+                        {filteredVariations.map((variation) => {
+                          const stock = variationStock(variation);
+                          const delivery = variationDeliveryType(variation, product.deliveryType);
+                          const unavailable = stock === 0;
+                          return (
+                            <button
+                              key={variation.id || variation.name}
+                              disabled={unavailable}
+                              onClick={() => { setSelectedVariation(variation); setVariationOpen(false); setVariationSearch(""); }}
+                              className="w-full p-3 text-left hover:bg-white/5 border-b border-[#1e1e28] disabled:cursor-not-allowed disabled:opacity-45"
+                            >
+                              <span className="flex items-center justify-between gap-3"><span className="font-bold text-white">{variation.name}</span><span className="shrink-0 text-xs font-black text-[#77c4ff]">{formatBRL(variation.price)}</span></span>
+                              <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-white/40">
+                                <span>Estoque: {formatStockLabel(stock)}</span>
+                                <span>•</span>
+                                <span>{delivery === "auto" ? "Entrega automática" : "Entrega manual"}</span>
+                                {variation.deliveryTime && <><span>•</span><span>{variation.deliveryTime}</span></>}
+                              </span>
+                            </button>
+                          );
+                        })}
+                        {!filteredVariations.length && <p className="p-3 text-sm text-white/40">Nenhuma variação encontrada.</p>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(!variationRequired || selectedVariation) && (
+                <div className="mt-4 rounded-xl border border-white/[0.07] bg-[#0d0d11] p-3">
+                  <div className="flex items-center justify-between gap-3 text-[11px]"><span className="text-white/40">Estoque</span><b className="text-white">{formatStockLabel(regularStock)}</b></div>
+                  <div className="mt-2 flex items-center justify-between gap-3 text-[11px]"><span className="text-white/40">Entrega</span><b className={selectedDelivery === "auto" ? "text-emerald-300" : "text-white"}>{selectedDelivery === "auto" ? "Automática" : "Manual"}</b></div>
+                  <div className="mt-2 flex items-center justify-between gap-3 text-[11px]"><span className="text-white/40">Quantidade mínima</span><b className="text-white">{regularMinQty.toLocaleString("pt-BR")}</b></div>
+                </div>
+              )}
+
+              {(!variationRequired || selectedVariation) && !soldOut && (
+                <div className="mt-4">
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-white/35">Quantidade</p>
+                  <div className="grid grid-cols-[42px_1fr_42px] gap-2">
+                    <button type="button" aria-label="Diminuir quantidade" onClick={() => applyRegularQuantity(quantity - 1)} disabled={quantity <= regularMinQty} className="grid h-11 place-items-center rounded-xl border border-white/[0.08] bg-white/[0.035] text-white disabled:opacity-30"><Minus className="h-4 w-4" /></button>
+                    <input aria-label="Quantidade" inputMode="numeric" value={quantityDraft} onChange={(event) => setQuantityDraft(event.target.value.replace(/\D/g, ""))} onBlur={() => applyRegularQuantity(Number(quantityDraft))} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); applyRegularQuantity(Number(quantityDraft)); } }} className="h-11 w-full rounded-xl border border-[#168cff]/25 bg-[#168cff]/[0.055] text-center text-sm font-black text-white outline-none focus:border-[#5eb5ff]" />
+                    <button type="button" aria-label="Aumentar quantidade" onClick={() => applyRegularQuantity(quantity + 1)} disabled={regularStock != null && quantity >= regularStock} className="grid h-11 place-items-center rounded-xl border border-[#168cff]/25 bg-[#168cff]/10 text-[#8acbff] disabled:opacity-30"><Plus className="h-4 w-4" /></button>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-[11px]"><span className="text-white/40">Subtotal</span><b className="text-white">{formatBRL(subtotal)}</b></div>
+                </div>
+              )}
+
+              <p className="text-xs text-white/40 mt-3">
+                {!sellerIdentityReady
+                  ? "Este anúncio ficará disponível quando a conta do vendedor for validada."
+                  : variationRequired && !selectedVariation
+                    ? "Escolha uma variação para ver estoque, entrega e comprar."
+                    : soldOut
+                      ? "Esta opção está sem estoque no momento."
+                      : "Taxas e total serão detalhados no checkout."}
+              </p>
+              <button onClick={handleBuyClick} disabled={buyLoading || !sellerIdentityReady || (variationRequired && !selectedVariation) || soldOut} className="w-full mt-4 bg-[#ffbd2e] hover:bg-[#e6a829] disabled:opacity-40 disabled:cursor-not-allowed text-black py-3.5 rounded-xl font-black text-sm">
+                {!sellerIdentityReady ? "ANÚNCIO EM VALIDAÇÃO" : soldOut ? "SEM ESTOQUE" : buyLoading ? "PREPARANDO…" : "COMPRAR"}
+              </button>
+            </section>
             <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5"><h2 className="font-black text-white">Vendedor</h2><button onClick={() => setSelectedSellerId(product.sellerId)} className="w-full text-left flex gap-3 mt-4"><img src={seller?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(product.seller || "vendedor")}`} alt="" className="w-12 h-12 rounded-full bg-[#1a1a20]"/><div><p className="font-bold text-white">{product.seller || "Vendedor"}</p><p className="text-xs text-white/40 mt-1">{sellerIdentityReady ? `ID público: ${publicSellerId}` : "Conta do vendedor em validação"}</p><p className="text-xs text-white/40 mt-1">{sellerReviews.length ? `${sellerReviews.length} avaliações` : "Novo"}</p></div></button><dl className="mt-4 text-xs divide-y divide-[#1e1e28]"><div className="flex justify-between py-2"><dt className="text-white/40">Membro desde</dt><dd className="text-white">—</dd></div><div className="flex justify-between py-2"><dt className="text-white/40">Avaliações positivas</dt><dd className="text-white">{sellerPositive === null ? "—" : `${sellerPositive}%`}</dd></div><div className="flex justify-between py-2"><dt className="text-white/40">Último acesso</dt><dd className="text-white">—</dd></div></dl></section>
             <section className="bg-[#15151a] border border-[#25252e] rounded-2xl p-5"><h2 className="font-black text-white">Verificações do vendedor</h2><div className="mt-3 space-y-2 text-sm"><div className="flex justify-between gap-3"><span className="flex items-center gap-1.5 text-white/55"><Shield className="h-3.5 w-3.5" /> Documento</span><span className={seller?.documentVerified ? "text-[#00c950]" : "text-white/40"}>{seller?.documentVerified ? "Verificado" : "Não verificado"}</span></div></div><p className="mt-3 text-[11px] leading-4 text-white/40">A ZXMAX mostra apenas sinais de verificação. CPF e documentos nunca ficam públicos.</p></section>
             <section className="bg-[#0084ff]/10 border border-[#0084ff]/30 rounded-2xl p-5 flex gap-3"><Shield className="w-6 h-6 text-[#5aaeff] shrink-0"/><div><h2 className="font-black text-white text-sm">Entrega garantida</h2><p className="text-xs text-white/55 mt-1">Pagamento e entrega acompanham o pedido dentro da ZXMAX.</p></div></section>
           </aside>
         </div>
-        <section className="mt-8"><h2 className="text-lg font-black text-white">Anúncios parecidos</h2>{relatedProducts.length ? <div className="mt-4 flex gap-4 overflow-x-auto pb-2">{relatedProducts.map((item) => <Link key={item.id} to={`/produto/${item.id}`} className="shrink-0 w-52 rounded-2xl overflow-hidden bg-[#15151a] border border-[#25252e] hover:border-[#0084ff]"><img src={item.image} alt={item.name} className="w-full aspect-video object-cover"/><div className="p-3"><p className="text-sm font-bold text-white line-clamp-2">{item.name}</p><p className="text-sm font-black text-[#5aaeff] mt-2">{formatBRL(item.price)}</p></div></Link>)}</div> : <p className="mt-3 text-sm text-white/40">Não há outros anúncios desta categoria no momento.</p>}</section>
+        <section className="mt-8"><h2 className="text-lg font-black text-white">Anúncios parecidos</h2>{relatedProducts.length ? <div className="mt-4 flex gap-4 overflow-x-auto pb-2">{relatedProducts.map((item) => <Link key={item.id} to={`/produto/${item.id}`} className="shrink-0 w-52 rounded-2xl overflow-hidden bg-[#15151a] border border-[#25252e] hover:border-[#0084ff]"><img src={item.image} alt={item.name} className="w-full aspect-video object-cover"/><div className="p-3"><p className="text-sm font-bold text-white line-clamp-2">{item.name}</p><p className="text-sm font-black text-[#5aaeff] mt-2">{formatBRL(lowestProductPrice(item))}</p></div></Link>)}</div> : <p className="mt-3 text-sm text-white/40">Não há outros anúncios desta categoria no momento.</p>}</section>
       </div>
       {imageOpen && <div role="dialog" aria-modal="true" aria-label="Imagem ampliada" className="fixed inset-0 z-[100] bg-black/90 p-4 flex items-center justify-center" onClick={() => setImageOpen(false)}><button onClick={() => setImageOpen(false)} className="absolute top-5 right-5 text-white p-3"><X /></button><img onClick={(event) => event.stopPropagation()} src={product.banner || product.image} alt={product.name} className="max-w-full max-h-full object-contain" /></div>}
       {checkoutOpen && <CheckoutModal product={product} quantity={displayQuantity} unitPrice={unitPrice} subtotal={subtotal} onClose={() => setCheckoutOpen(false)} onConfirm={handleCheckoutConfirm} loading={buyLoading} prefetchedMethods={prefetchedMethods} walletEligible={Boolean(state.currentUser?.documentVerified)} walletBalance={Number(state.currentUser?.balance || 0)} />}
