@@ -165,8 +165,17 @@ export default function MarketplaceHome() {
     const categories = configured.slice(0, 8);
     return categories.map((category) => {
       const products = homeProducts.filter((product) => product.category === category);
-      const image = products.find((product) => Boolean(product.image))?.image || "";
-      return { category, count: products.length, image };
+      // Category artwork is live marketplace data: the strongest approved
+      // listing with an uploaded image becomes the cover. As sales/reviews
+      // change, the category cover follows automatically on the next refresh.
+      const coverProduct = [...products]
+        .filter((product) => Boolean(product.image))
+        .sort((a, b) =>
+          (Number(b.sales || 0) * 4 + Number(b.rating || 0) * 2 + Number(b.reviewCount || 0)) -
+          (Number(a.sales || 0) * 4 + Number(a.rating || 0) * 2 + Number(a.reviewCount || 0)) ||
+          Number(b.id) - Number(a.id)
+        )[0];
+      return { category, count: products.length, image: coverProduct?.image || "" };
     });
   }, [homeProducts, state.config.categories]);
 
