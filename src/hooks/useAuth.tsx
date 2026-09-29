@@ -439,9 +439,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const factors = await listFactors();
         const verified = factors.find((f) => f.status === "verified");
         if (!verified) return { error: "Nenhum autenticador configurado nesta conta." };
-        const { data: chal, error: chalErr } = await supabase.auth.mfa.challenge({ factorId: verified.id });
-        if (chalErr || !chal?.id) return { error: "Falha ao criar o desafio de verificação." };
-        const { error } = await supabase.auth.mfa.verify({ factorId: verified.id, challengeId: chal.id, code });
+        // challengeAndVerify is the SDK's atomic TOTP path. Besides avoiding a
+        // stale challenge id between the two requests, it normalizes the code
+        // before sending it to GoTrue (important for mobile paste/autofill).
+        const normalizedCode = String(code).replace(/\\D/g, "").slice(0, 6);
+        if (normalizedCode.length !== 6) return { error: "Digite o código de 6 dígitos." };
+        const { error } = await supabase.auth.mfa.challengeAndVerify({
+          factorId: verified.id,
+          code: normalizedCode,
+        });
         if (error) return { error: friendlyMfaError(error.message) };
         const { data: sessionData } = await supabase.auth.getSession();
         if (sessionData.session) applySession(sessionData.session);
