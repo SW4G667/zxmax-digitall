@@ -46,10 +46,13 @@ export interface AdminChatMessage {
 }
 
 export interface ProductVariation {
+  id?: string;
   name: string;
   price: number;
   stock?: number;
   minQuantity?: number;
+  deliveryType?: "auto" | "manual";
+  deliveryTime?: string;
 }
 
 export interface ProductQuestion {
@@ -80,6 +83,7 @@ export interface Product {
   listingStatus?: "pending" | "approved" | "rejected" | "paused";
   deliveryType: "auto" | "manual";
   deliveryContent?: string;
+  inventoryMode?: "legacy" | "items";
   variations?: ProductVariation[];
   questions?: ProductQuestion[];
   stock?: number;
@@ -118,6 +122,7 @@ export interface Purchase {
   reviewStars?: number;
   reviewComment?: string;
   variationName?: string;
+  variationId?: string;
   evopayChargeId?: string;
   pixQrCode?: string;
   pixExpiresAt?: string;
@@ -218,7 +223,7 @@ interface StoreContextType {
   state: AppState;
   login: (email: string, name: string) => void;
   logout: () => void;
-  addProduct: (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => Promise<boolean>;
+  addProduct: (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">) => Promise<number | false>;
   updateProduct: (id: number, p: Partial<Omit<Product, "id" | "sellerId">>) => Promise<boolean>;
   approveProduct: (id: number) => Promise<boolean>;
   rejectProduct: (id: number, reason?: string) => Promise<boolean>;
@@ -336,6 +341,7 @@ const mapPurchaseRow = (p: any): Purchase => ({
   reviewStars: p.review_stars || undefined,
   reviewComment: p.review_comment || undefined,
   variationName: p.variation_name || undefined,
+  variationId: p.variation_id || undefined,
   evopayChargeId: p.evopay_charge_id || undefined,
   pixQrCode: p.pix_qr_code || undefined,
   pixExpiresAt: p.pix_expires_at || undefined,
@@ -346,15 +352,29 @@ const mapPurchaseRow = (p: any): Purchase => ({
   releasedAt: p.released_at || undefined,
 });
 
-/** Persist stock/minQuantity inside variation JSON so a missing column never hides them. */
+/** Persist only public variation metadata. Automatic-delivery secrets live in
+ * product_inventory_items and are never serialized into products.variations. */
 const mapVariation = (v: ProductVariation) => {
-  const out: Record<string, unknown> = { name: v.name, price: sanitizePrice(v.price) };
+  const out: Record<string, unknown> = { name: v.name.trim(), price: sanitizePrice(v.price) };
+  if (v.id?.trim()) out.id = v.id.trim();
   const stock = Number(v.stock);
   if (Number.isFinite(stock) && stock >= 0) out.stock = Math.trunc(stock);
   const minQ = Number(v.minQuantity);
   if (Number.isFinite(minQ) && minQ > 0) out.minQuantity = Math.trunc(minQ);
+  if (v.deliveryType === "auto" || v.deliveryType === "manual") out.deliveryType = v.deliveryType;
+  if (v.deliveryTime?.trim()) out.deliveryTime = v.deliveryTime.trim();
   return out;
 };
+
+const variationListingFingerprint = (variations: ProductVariation[] | undefined) =>
+  JSON.stringify((variations || []).map((variation) => ({
+    id: variation.id || "",
+    name: variation.name.trim(),
+    price: sanitizePrice(variation.price),
+    minQuantity: Number(variation.minQuantity) > 0 ? Math.trunc(Number(variation.minQuantity)) : null,
+    deliveryType: variation.deliveryType || "manual",
+    deliveryTime: variation.deliveryTime?.trim() || "",
+  })));
 
 const mapWithdrawalRow = (w: any): Withdrawal => ({
   id: Number(w.id),
@@ -632,7 +652,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, currentUser: null }));
   };
 
-  const addProduct = async (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">): Promise<boolean> => {
+  const addProduct = async (p: Omit<Product, "id" | "sales" | "rating" | "approved" | "sellerId">): Promise<number | false> => {
     const authUser = authUserRef.current;
     if (!state.currentUser || !authUser) {
       toast.error("Sua sessão expirou. Entre novamente para publicar o anúncio.");
@@ -677,6 +697,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ...(p.stock !== undefined ? { stock: p.stock } : {}),
       ...(p.minQuantity !== undefined ? { min_quantity: p.minQuantity } : {}),
       ...(p.deliveryTime ? { delivery_time: p.deliveryTime } : {}),
+      ...(p.inventoryMode ? { inventory_mode: p.inventoryMode } : {}),
     };
 
     // Attempt order narrows the payload only for *schema/grant* problems on
@@ -730,7 +751,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // (with the approval state the server decided), not an optimistic guess.
     await loadCatalog();
     toast.success(created.approved ? "Anúncio publicado!" : "Anúncio criado! Aguardando aprovação da moderação.");
-    return true;
+    return created.id;
   };
 
   const updateProduct = async (id: number, p: Partial<Omit<Product, "id" | "sellerId">>) => {
@@ -749,7 +770,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const essentialChanged =
       (p.price !== undefined && p.price !== existing.price) ||
       (p.deliveryContent !== undefined && p.deliveryContent !== existing.deliveryContent) ||
-      (p.deliveryType !== undefined && p.deliveryType !== existing.deliveryType);
+      (p.deliveryType !== undefined && p.deliveryType !== existing.deliveryType) ||
+      (p.inventoryMode !== undefined && p.inventoryMode !== existing.inventoryMode) ||
+      (p.variations !== undefined && variationListingFingerprint(p.variations) !== variationListingFingerprint(existing.variations));
     const dbPayload: any = {};
     if (p.name !== undefined) dbPayload.name = p.name;
     if (p.category !== undefined) dbPayload.category = p.category;
@@ -765,6 +788,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (p.image !== undefined && p.image) dbPayload.image = p.image;
     if (p.banner !== undefined) dbPayload.banner = p.banner || null;
     if (p.deliveryType !== undefined) dbPayload.delivery_type = p.deliveryType;
+    if (p.inventoryMode !== undefined) dbPayload.inventory_mode = p.inventoryMode;
     if (p.variations !== undefined) dbPayload.variations = (p.variations || []).map(mapVariation);
     if (p.stock !== undefined) dbPayload.stock = p.stock;
     if (p.minQuantity !== undefined) dbPayload.min_quantity = p.minQuantity;
@@ -778,8 +802,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // fields. Retry the core product update instead of rejecting the edit.
       let { error } = await (supabase as any).from("products").update(dbPayload).eq("id", id);
       const code = String(error?.code ?? "");
-      if ((code === "42703" || code === "PGRST204") && ("stock" in dbPayload || "min_quantity" in dbPayload || "delivery_time" in dbPayload)) {
-        const { stock, min_quantity, delivery_time, ...safePayload } = dbPayload;
+      if ((code === "42703" || code === "PGRST204") && ("stock" in dbPayload || "min_quantity" in dbPayload || "delivery_time" in dbPayload || "inventory_mode" in dbPayload)) {
+        const { stock, min_quantity, delivery_time, inventory_mode, ...safePayload } = dbPayload;
         ({ error } = await (supabase as any).from("products").update(safePayload).eq("id", id));
       }
       if (error) {
@@ -860,7 +884,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // "Edge Function returned a non-2xx status code" na tela do comprador.
     const res = await unwrapEdgeCall<{ purchase: any }>(
       await supabase.functions.invoke("create-purchase", {
-        body: { productId: id, variationName: variation?.name || null, quantity: quantity ?? 1, paymentMethod },
+        body: { productId: id, variationId: variation?.id || null, variationName: variation?.name || null, quantity: quantity ?? 1, paymentMethod },
       }),
       "Não foi possível registrar a compra. Tente novamente.",
     );
