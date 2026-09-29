@@ -4,11 +4,14 @@ import {
   formatRobuxPackage,
   formatStockLabel,
   isValidProductPrice,
+  lowestProductPrice,
   MIN_PRODUCT_PRICE,
   listingStatus,
   mergeCatalog,
   normalizeProductPrice,
   parsePriceInput,
+  productHasAutoDelivery,
+  productHasMixedDelivery,
   productMinQuantity,
   productStock,
   robuxPackageUnits,
@@ -16,6 +19,9 @@ import {
   sanitizePrice,
   storefrontProducts,
   unitPriceFromPackage,
+  variationDeliveryType,
+  variationMinQuantity,
+  variationStock,
 } from "@/lib/catalog";
 
 // ---------------------------------------------------------------------------
@@ -188,5 +194,32 @@ describe("estoque Robux", () => {
   it("quantidade mínima também cai da variação", () => {
     expect(productMinQuantity({ minQuantity: 100 })).toBe(100);
     expect(productMinQuantity({ variations: [{ minQuantity: 50 }] })).toBe(50);
+  });
+});
+
+
+describe("variações de marketplace", () => {
+  const variations = [
+    { id: "manual", name: "Manual", price: 20, stock: 5, minQuantity: 2, deliveryType: "manual" as const },
+    { id: "auto", name: "Automática", price: 12, stock: 3, minQuantity: 1, deliveryType: "auto" as const, deliveryTime: "imediato" },
+  ];
+
+  it("usa preço mínimo real da variação sem alterar Robux", () => {
+    expect(lowestProductPrice({ price: 30, category: "Bots Discord", variations })).toBe(12);
+    expect(lowestProductPrice({ price: 5, category: ROBUX_CATEGORY, variations: [{ name: "1000 Robux", price: 5 }] })).toBe(5);
+  });
+
+  it("lê estoque, mínimo e entrega da variação selecionada", () => {
+    expect(variationStock(variations[1])).toBe(3);
+    expect(variationStock({ name: "X", price: 2 })).toBeNull();
+    expect(variationMinQuantity(variations[0], 1)).toBe(2);
+    expect(variationDeliveryType(variations[1], "manual")).toBe("auto");
+  });
+
+  it("detecta anúncio com entrega automática e anúncio misto", () => {
+    const product = { deliveryType: "manual" as const, variations };
+    expect(productHasAutoDelivery(product)).toBe(true);
+    expect(productHasMixedDelivery(product)).toBe(true);
+    expect(productHasMixedDelivery({ deliveryType: "auto", variations: [{ name: "A", price: 3, deliveryType: "auto" }] })).toBe(false);
   });
 });
