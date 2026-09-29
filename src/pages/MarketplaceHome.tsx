@@ -9,11 +9,10 @@ import {
   Package,
   Search,
   ShieldCheck,
-  Zap,
 } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { Product, useStore } from "@/store/StoreContext";
-import { formatBRL, lowestProductPrice, productHasAutoDelivery, productHasMixedDelivery, ROBUX_CATEGORY, isRobuxCategory, storefrontProducts } from "@/lib/catalog";
+import { formatBRL, lowestProductPrice, productHasAutoDelivery, productHasMixedDelivery, isRobuxCategory, storefrontProducts } from "@/lib/catalog";
 import { useSiteBranding } from "@/context/SiteBrandingContext";
 
 const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -147,7 +146,6 @@ export default function MarketplaceHome() {
     [homeProducts],
   );
 
-  const robux = useMemo(() => [] as Product[], []);
 
   const namedSections = useMemo(
     () => ["Bots Discord", "Contas", "Scripts"]
@@ -187,7 +185,7 @@ export default function MarketplaceHome() {
   };
 
   const openCategory = (category: string) => {
-    navigate(category === ROBUX_CATEGORY ? "/robux" : `/loja?cat=${encodeURIComponent(category)}`);
+    navigate(`/loja?cat=${encodeURIComponent(category)}`);
   };
 
   return (
@@ -219,20 +217,12 @@ export default function MarketplaceHome() {
               <p className="mt-1 text-[10px] text-white/30">Acesse rapidamente o tipo de produto que procura.</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <Link
-                to="/robux"
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#f4b42c]/40 bg-[#f4b42c]/12 px-3 text-[10px] font-black text-[#ffc84a] shadow-[0_6px_18px_rgba(244,180,44,.08)] transition hover:border-[#f4b42c]/65 hover:bg-[#f4b42c]/18 active:scale-[0.98]"
-                aria-label="Abrir mercado de Robux"
-              >
-                <span className="inline-flex h-4 w-4 items-center justify-center rounded-[4px] bg-[#ffc84a] text-[7px] font-black leading-none text-[#211500]">R$</span>
-                Robux
-              </Link>
               <Link to="/categorias" className="text-[10px] font-bold text-[var(--zx-accent)] hover:text-white">Ver todas</Link>
             </div>
           </div>
           <div className="-mx-3 flex snap-x gap-2.5 overflow-x-auto px-3 pb-1 sm:mx-0 sm:grid sm:grid-cols-4 sm:px-0 lg:grid-cols-8">
             {categoryTiles.map(({ category, count, image }) => {
-              const Icon = category === ROBUX_CATEGORY ? Zap : CATEGORY_ICONS[category] || Package;
+              const Icon = CATEGORY_ICONS[category] || Package;
               return (
                 <button
                   key={category}
@@ -251,7 +241,7 @@ export default function MarketplaceHome() {
                     <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" />
                   </div>
                   <div className="p-2.5">
-                    <p className="truncate text-[10px] font-bold text-white">{category === ROBUX_CATEGORY ? "Robux" : category}</p>
+                    <p className="truncate text-[10px] font-bold text-white">{category}</p>
                     <p className="mt-0.5 text-[8px] text-white/28">{count} anúncio{count === 1 ? "" : "s"}</p>
                   </div>
                 </button>
@@ -267,30 +257,6 @@ export default function MarketplaceHome() {
                 <img src={url} alt={`Banner promocional ${index + 1}`} className="aspect-[16/6] h-full w-full object-cover" />
               </div>
             ))}
-          </section>
-        ) : null}
-
-        {robux.length ? (
-          <section className="overflow-hidden rounded-2xl border border-white/[0.075] bg-[#0f0f13]">
-            <div className="grid lg:grid-cols-[280px_1fr]">
-              <button onClick={() => navigate("/robux")} className="relative min-h-[170px] overflow-hidden border-b border-white/[0.07] text-left lg:border-b-0 lg:border-r">
-                {branding.robuxBannerUrl || robux[0]?.image ? (
-                  <img src={branding.robuxBannerUrl || robux[0]?.image} alt="" className="absolute inset-0 h-full w-full object-cover opacity-60" />
-                ) : null}
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/55 to-black/10" />
-                <div className="relative flex h-full min-h-[170px] flex-col justify-end p-5">
-                  <span className="text-[8px] font-black uppercase tracking-[0.16em] text-[var(--zx-accent)]">Mercado dedicado</span>
-                  <h2 className="mt-1 text-2xl font-extrabold tracking-[-0.04em] text-white">Robux</h2>
-                  <p className="mt-1 text-[10px] leading-4 text-white/42">Compare pacotes e vendedores em uma página própria.</p>
-                  <span className="mt-3 inline-flex items-center gap-1 text-[10px] font-bold text-white">Abrir mercado <ArrowRight className="h-3.5 w-3.5" /></span>
-                </div>
-              </button>
-              <div className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-4">
-                {robux.map((product) => (
-                  <MarketplaceCard key={product.id} product={product} verified={verifiedSeller(product.sellerId)} onOpen={() => navigate(`/produto/${product.id}`)} />
-                ))}
-              </div>
-            </div>
           </section>
         ) : null}
 
