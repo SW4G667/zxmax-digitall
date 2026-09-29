@@ -213,6 +213,12 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
   const handlePayPix = async (purchase: Purchase, e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (!state.currentUser) return;
+    if (purchase.status !== "pending") {
+      setPixCharge(null);
+      await refreshPurchases();
+      toast.success("Este pagamento já foi confirmado.");
+      return;
+    }
     const provider = purchase.paymentProvider || "zennith_pix";
     if (provider !== "magnuspay_pix" && provider !== "zennith_pix" && provider !== "vexopay_pix") {
       toast.error("Este pedido não pode ser retomado como PIX. Volte ao método de pagamento original.");
@@ -299,6 +305,13 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
 
   const handleResumePayment = async (purchase: Purchase, event?: React.MouseEvent) => {
     event?.stopPropagation();
+    if (purchase.status !== "pending") {
+      setPixCharge(null);
+      setCryptoCharge(null);
+      await refreshPurchases();
+      toast.success("Este pedido já está pago.");
+      return;
+    }
     const provider = purchase.paymentProvider || "";
     if (["magnuspay_pix", "zennith_pix", "vexopay_pix"].includes(provider)) {
       await handlePayPix(purchase, event);
@@ -358,6 +371,8 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
   };
 
   const handlePixPaid = async () => {
+    setPixCharge(null);
+    setCryptoCharge(null);
     await refreshPurchases();
     toast.success("Pagamento confirmado. Pedido atualizado.");
   };

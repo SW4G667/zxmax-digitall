@@ -998,7 +998,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     const { data, error } = await (supabase as any)
       .from("withdrawals")
-      .select("id,user_id,user_email,amount,method,status,created_at,pix_key,rejection_reason,provider_tx,retry_of,fee,net_amount")
+      .select("id,user_id,user_email,amount,method,status,created_at,pix_key,rejection_reason,provider_tx_id,retry_of,fee,net_amount")
       .order("created_at", { ascending: false });
     if (error) {
       console.error("[zxmax:withdrawals]", error);
@@ -1059,37 +1059,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const approveWithdraw = async (id: number) => {
     const withdrawal = state.withdrawals.find((w) => w.id === id);
-    if (!withdrawal?.pixKey) throw new Error("Este saque não tem chave Pix cadastrada.");
-    const storedNet = Number(withdrawal.netAmount);
-    const storedFee = Number(withdrawal.fee);
-    const net = Number.isFinite(storedNet) && storedNet > 0
-      ? storedNet
-      : Math.round((Number(withdrawal.amount) - (Number.isFinite(storedFee) ? storedFee : state.config.withdrawFee)) * 100) / 100;
-    if (!Number.isFinite(net) || net <= 0) throw new Error("Valor líquido do saque inválido.");
-    const res = await unwrapEdgeCall<{ id?: string; status?: string; error?: string }>(
-      await supabase.functions.invoke("zennith-withdraw", {
-        body: {
-          amount: net,
-          pixKey: withdrawal.pixKey,
-          clientReference: `zxmax-withdraw-${id}`,
-        },
-      }),
-      "Erro ao processar saque na ZennithPay.",
-    );
-    if (res.errorMessage || !res.data) {
-      // 404 = function ainda não publicada — mensagem honesta em vez de falha genérica.
-      if (res.status === 404 || /not found/i.test(res.errorMessage || "")) {
-        throw new Error("Função de saque ZennithPay ainda não publicada no Supabase. Publique as edges antes de aprovar saques.");
-      }
-      throw new Error(res.errorMessage || "Erro ao processar saque na ZennithPay");
+    if (!withdrawal) throw new Error("Saque não encontrado.");
+    if (withdrawal.status === "approved") {
+      await Promise.all([refreshWithdrawals(), refreshBalance()]);
+      return;
     }
-    const data = res.data;
-    const providerTx = data?.id ? String(data.id) : null;
-    const { error: rpcError } = await (supabase as any).rpc("approve_withdrawal", {
-      _id: id,
-      _provider_tx: providerTx,
-    });
-    if (rpcError) throw new Error(rpcError.message || "Erro ao aprovar o saque");
+    if (withdrawal.status !== "pending") throw new Error("Este saque não está pendente.");
+    if (!withdrawal.pixKey) throw new Error("Este saque não tem chave Pix cadastrada.");
+
+    const res = await unwrapEdgeCall<{ success?: boolean; id?: string; status?: string; alreadyProcessed?: boolean }>(
+      await supabase.functions.invoke("process-withdrawal", { body: { withdrawalId: id } }),
+      "Não foi possível processar o saque.",
+    );
+    if (res.errorMessage || !res.data?.success) {
+      throw new Error(res.errorMessage || "Não foi possível processar o saque.");
+    }
     await Promise.all([refreshWithdrawals(), refreshBalance()]);
   };
 

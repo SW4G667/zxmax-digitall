@@ -32,6 +32,9 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
   const checkingRef = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const attemptsRef = useRef(0);
+  const onPaidRef = useRef(onPaid);
+  onPaidRef.current = onPaid;
+  const chargeKey = charge ? `${charge.provider || "pix"}:${charge.purchaseId || 0}:${charge.evopayId}` : "";
 
   const stopPolling = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -76,7 +79,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
         stopPolling();
         setStatus("paid");
         setCheckMessage("Pagamento confirmado.");
-        await onPaid();
+        await onPaidRef.current();
         return;
       }
 
@@ -103,7 +106,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
       checkingRef.current = false;
       setChecking(false);
     }
-  }, [charge, onPaid]);
+  }, [charge]);
 
   useEffect(() => {
     if (!charge) return;
@@ -140,7 +143,10 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
     void tick();
     intervalRef.current = setInterval(() => void tick(), 4000);
     return stopPolling;
-  }, [charge?.evopayId, charge?.provider, charge?.purchaseId, verifyPayment]);
+  // Reset only for a genuinely different charge. Parent rerenders and
+  // callback identity changes must never resurrect a paid QR code.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chargeKey]);
 
   if (!charge) return null;
 

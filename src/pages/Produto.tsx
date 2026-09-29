@@ -621,8 +621,11 @@ export default function ProdutoPage() {
   };
 
   const handlePixPaid = async () => {
+    setPixCharge(null);
+    setCryptoCharge(null);
+    setCheckoutOpen(false);
     await refreshPurchases();
-    toast.success("Pagamento confirmado!");
+    toast.success("Pagamento confirmado! Pedido atualizado.");
   };
 
   const handleSendQuestion = async () => {

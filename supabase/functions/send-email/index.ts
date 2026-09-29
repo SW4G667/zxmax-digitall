@@ -428,6 +428,7 @@ serve(async (req) => {
       }
     }
 
+    const queueKey = `${type}:${logId}:${idempotencyKey || "v1"}`;
     let previousQuery = admin.from("webhook_logs")
       .select("id")
       .eq("source", "email")
@@ -440,16 +441,24 @@ serve(async (req) => {
 
     if (!RESEND_API_KEY || !EMAIL_FROM) {
       const reason = !RESEND_API_KEY ? "email_provider_not_configured" : "email_sender_not_configured";
+      await admin.from("email_outbox").upsert({
+        event_key: queueKey,
+        event_type: type,
+        payload: body,
+        status: "pending",
+        last_error: reason,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "event_key" });
       await admin.from("webhook_logs").insert({
         source: "email",
         event_type: type,
-        status: "skipped_config",
+        status: "queued_config",
         order_id: logId,
         charge_id: idempotencyKey,
         payload: { recipient: sellerRecipientTypes.has(type) || type === "new_question" || type === "new_review" || type === "product_approved" || type === "product_rejected" || type === "product_removed" ? "seller" : "buyer", subject },
         error: reason,
       });
-      return json({ skipped: true, reason }, 202);
+      return json({ queued: true, reason }, 202);
     }
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -462,6 +471,16 @@ serve(async (req) => {
       return json({ error: "Não foi possível entregar a notificação." }, 502);
     }
     await admin.from("webhook_logs").insert({ source: "email", event_type: type, status: "sent", order_id: logId, charge_id: idempotencyKey || result.id || null, payload: { recipient: sellerRecipientTypes.has(type) || type === "new_question" || type === "new_review" || type === "product_approved" || type === "product_rejected" || type === "product_removed" ? "seller" : "buyer", subject, resend_id: result.id || null }, error: null });
+    await admin.from("email_outbox").upsert({
+      event_key: queueKey,
+      event_type: type,
+      payload: body,
+      status: "sent",
+      attempts: 1,
+      last_error: null,
+      sent_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "event_key" });
     return json({ sent: true, id: result.id });
   } catch (error) {
     console.error("send-email failure", error instanceof Error ? error.message : "unknown");
