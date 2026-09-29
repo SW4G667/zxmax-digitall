@@ -631,8 +631,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (data: Partial<Pick<Profile, "display_name" | "avatar_url" | "pix_key" | "document_type">>) => {
       const u = userRef.current;
       if (!u) return;
-      await supabase.from("profiles").update(data).eq("user_id", u.id);
-      await fetchProfile(u.id);
+      const { data: saved, error } = await supabase
+        .from("profiles")
+        .update(data)
+        .eq("user_id", u.id)
+        .select("*")
+        .single();
+      if (error) throw error;
+      // Apply the row returned by the write immediately. A second GET racing
+      // with profile/public-profile refreshes was restoring the old name/avatar.
+      if (saved && userRef.current?.id === u.id) setProfile(saved as Profile);
+      window.dispatchEvent(new Event("zxmax:profile-updated"));
     },
     [fetchProfile]
   );
