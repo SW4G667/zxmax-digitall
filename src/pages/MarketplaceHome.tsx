@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { Product, useStore } from "@/store/StoreContext";
-import { formatBRL, ROBUX_CATEGORY, storefrontProducts } from "@/lib/catalog";
+import { formatBRL, lowestProductPrice, productHasAutoDelivery, productHasMixedDelivery, ROBUX_CATEGORY, storefrontProducts } from "@/lib/catalog";
 import { useSiteBranding } from "@/context/SiteBrandingContext";
 
 const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -33,6 +33,9 @@ function MarketplaceCard({
   verified?: boolean;
   onOpen: () => void;
 }) {
+  const hasAutoDelivery = productHasAutoDelivery(product);
+  const mixedDelivery = productHasMixedDelivery(product);
+  const variationCount = product.category === ROBUX_CATEGORY ? 0 : (product.variations?.length || 0);
   return (
     <button
       type="button"
@@ -51,8 +54,8 @@ function MarketplaceCard({
           </div>
         )}
         <div className="absolute left-2 top-2 flex flex-wrap gap-1">
-          {product.deliveryType === "auto" ? (
-            <span className="rounded-md border border-emerald-300/15 bg-emerald-400/90 px-1.5 py-1 text-[7px] font-black uppercase tracking-wide text-[#06120b]">Entrega automática</span>
+          {hasAutoDelivery ? (
+            <span className="rounded-md border border-emerald-300/15 bg-emerald-400/90 px-1.5 py-1 text-[7px] font-black uppercase tracking-wide text-[#06120b]">{mixedDelivery ? "Auto + manual" : "Entrega automática"}</span>
           ) : null}
         </div>
       </div>
@@ -66,7 +69,8 @@ function MarketplaceCard({
         </div>
         <div className="mt-auto pt-3">
           <p className="text-[8px] text-white/24">a partir de</p>
-          <p className="mt-0.5 text-[15px] font-extrabold tracking-[-0.025em] text-white sm:text-base">{formatBRL(product.price)}</p>
+          <p className="mt-0.5 text-[15px] font-extrabold tracking-[-0.025em] text-white sm:text-base">{formatBRL(lowestProductPrice(product))}</p>
+          {variationCount > 0 ? <p className="mt-0.5 text-[8px] text-white/28">{variationCount} opções</p> : null}
         </div>
       </div>
     </button>
