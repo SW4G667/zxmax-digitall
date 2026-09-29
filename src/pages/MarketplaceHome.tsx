@@ -9,7 +9,6 @@ import {
   Package,
   Search,
   ShieldCheck,
-  Sparkles,
   Zap,
 } from "lucide-react";
 import AppShell from "@/components/AppShell";
@@ -193,8 +192,8 @@ export default function MarketplaceHome() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-[1180px] space-y-9 pb-3">
-        <section className="relative overflow-hidden rounded-2xl border border-white/[0.075] bg-[#0f0f13]">
+      <div className="mx-auto max-w-[1180px] space-y-7 pb-3">
+        <section className="relative overflow-hidden border-b border-white/[0.075] bg-[#0b0b0e]">
           {branding.heroBannerUrl ? (
             <>
               <img src={branding.heroBannerUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-55" />
@@ -204,19 +203,16 @@ export default function MarketplaceHome() {
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_5%,rgba(22,140,255,.18),transparent_34%),radial-gradient(circle_at_10%_100%,rgba(91,33,182,.10),transparent_36%)]" />
           )}
 
-          <div className="relative px-4 py-6 sm:px-7 sm:py-9 lg:px-10 lg:py-11">
+          <div className="relative px-1 py-5 sm:px-2 sm:py-7">
             <div className="max-w-[650px]">
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-black/20 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.16em] text-white/48">
-                <Sparkles className="h-3 w-3 text-[var(--zx-accent)]" /> Marketplace digital
-              </div>
-              <h1 className="mt-4 max-w-[620px] text-[31px] font-extrabold leading-[1.04] tracking-[-0.05em] text-white sm:text-5xl">
+              <h1 className="max-w-[620px] text-[28px] font-extrabold leading-[1.06] tracking-[-0.045em] text-white sm:text-[40px]">
                 {branding.heroTitle}
               </h1>
-              <p className="mt-3 max-w-[560px] text-xs leading-5 text-white/48 sm:text-sm sm:leading-6">
+              <p className="mt-2 max-w-[560px] text-xs leading-5 text-white/42 sm:text-sm">
                 {branding.heroSubtitle}
               </p>
 
-              <form onSubmit={submitSearch} className="mt-5 flex max-w-[610px] items-center rounded-xl border border-white/[0.12] bg-[#111116]/95 p-1.5 shadow-2xl shadow-black/15 focus-within:border-[var(--zx-accent)]">
+              <form onSubmit={submitSearch} className="mt-4 flex max-w-[680px] items-center rounded-lg border border-white/[0.11] bg-[#141418] p-1 focus-within:border-[var(--zx-accent)]">
                 <Search className="ml-2 h-4 w-4 shrink-0 text-white/28" />
                 <input
                   value={query}
@@ -361,20 +357,7 @@ export default function MarketplaceHome() {
           </section>
         ) : null}
 
-        <section className="grid gap-2.5 border-t border-white/[0.07] pt-7 sm:grid-cols-3">
-          <div className="flex items-start gap-3 rounded-xl border border-white/[0.06] bg-[#101013] p-4">
-            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[var(--zx-accent)]" />
-            <div><h3 className="text-xs font-bold text-white">Pedido organizado</h3><p className="mt-1 text-[9.5px] leading-4 text-white/32">Pagamento, entrega e histórico permanecem ligados ao mesmo pedido.</p></div>
-          </div>
-          <div className="flex items-start gap-3 rounded-xl border border-white/[0.06] bg-[#101013] p-4">
-            <Zap className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
-            <div><h3 className="text-xs font-bold text-white">Entrega automática</h3><p className="mt-1 text-[9.5px] leading-4 text-white/32">Anúncios compatíveis liberam a entrega após a confirmação do pagamento.</p></div>
-          </div>
-          <div className="flex items-start gap-3 rounded-xl border border-white/[0.06] bg-[#101013] p-4">
-            <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0 text-[var(--zx-accent)]" />
-            <div><h3 className="text-xs font-bold text-white">Vendedores identificados</h3><p className="mt-1 text-[9.5px] leading-4 text-white/32">Perfis e sinais de verificação ajudam na decisão de compra.</p></div>
-          </div>
-        </section>
+
       </div>
     </AppShell>
   );
