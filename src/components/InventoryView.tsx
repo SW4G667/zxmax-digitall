@@ -486,12 +486,16 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
         ...productPayload,
         seller: state.currentUser!.name,
         variations: publicVariations.length ? publicVariations : undefined,
+        // New listings persist product + automatic stock atomically.
+        inventoryPayload,
       } as any);
       if (!created) return;
       productId = Number(created);
     }
 
-    if (!isRobuxListing) {
+    // Existing listings still replace inventory explicitly. New listings already
+    // did this inside create_product_listing, in the same transaction.
+    if (editingId !== null && !isRobuxListing) {
       const { data: inventoryResult, error: inventoryError } = await (supabase as any).rpc(
         "replace_product_auto_inventory",
         { _product_id: productId, _inventories: inventoryPayload },
@@ -499,7 +503,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
       if (inventoryError || inventoryResult?.success === false) {
         console.warn("[zxmax:inventory:save]", inventoryError);
         setEditingId(productId);
-        toast.error("O anúncio foi salvo, mas o estoque automático não. O formulário ficou aberto para você tentar novamente.");
+        toast.error("O produto foi atualizado, mas o estoque automático não. O formulário continuará aberto.");
         return;
       }
     }
