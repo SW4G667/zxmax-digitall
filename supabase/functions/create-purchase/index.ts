@@ -67,7 +67,8 @@ serve(async (req) => {
     const user = userData.user;
     const body = await req.json().catch(() => ({}));
     const productId = Number(body.productId);
-    const variationName = typeof body.variationName === "string" ? body.variationName : null;
+    const variationId = typeof body.variationId === "string" && body.variationId.trim() ? body.variationId.trim() : null;
+    const variationName = typeof body.variationName === "string" && body.variationName.trim() ? body.variationName.trim() : null;
     const requestedQty = Number(body.quantity);
     const paymentMethod = ["magnuspay_pix", "zennith_pix", "vexopay_pix", "crypto", "card", "boleto", "wallet"].includes(String(body.paymentMethod)) ? String(body.paymentMethod) : null;
     if (!productId || Number.isNaN(productId)) return json({ error: "Produto inválido" }, 400);
@@ -130,7 +131,7 @@ serve(async (req) => {
 
     const { data: product, error: productError } = await admin
       .from("products")
-      .select("id, seller_id, seller_email, seller_public_id, price, approved, variations, category, stock, min_quantity")
+      .select("id, seller_id, seller_email, seller_public_id, price, approved, variations, category, stock, min_quantity, delivery_type, inventory_mode")
       .eq("id", productId)
       .maybeSingle();
 
@@ -150,27 +151,49 @@ serve(async (req) => {
     }
 
     const variations = Array.isArray(product.variations) ? product.variations : [];
-    const variation = variationName ? variations.find((v: any) => v?.name === variationName) : null;
+    const variation = variationId
+      ? variations.find((v: any) => String(v?.id || "") === variationId)
+      : variationName
+        ? variations.find((v: any) => String(v?.name || "") === variationName)
+        : null;
+
+    const isRobux = product.category === ROBUX_CATEGORY;
+    if (!isRobux && variations.length > 0 && !variation) {
+      return json({ error: "Escolha uma variação válida antes de comprar." }, 400);
+    }
+
     const unitPrice = Number(variation ? variation.price : product.price);
     if (!unitPrice || Number.isNaN(unitPrice) || unitPrice < 2) {
       return json({ error: "O preço mínimo de um produto é R$ 2,00" }, 400);
     }
 
-    const isRobux = product.category === ROBUX_CATEGORY;
     const units = packageUnits(product);
-    const minQty = Number(product.min_quantity) > 0 ? Number(product.min_quantity) : (isRobux ? units : 1);
-    const quantity = Number.isFinite(requestedQty) && requestedQty > 0 ? requestedQty : (isRobux ? units : 1);
+    const variationMin = Number((variation as any)?.minQuantity);
+    const productMin = Number(product.min_quantity);
+    const minQty = Number.isFinite(variationMin) && variationMin > 0
+      ? Math.floor(variationMin)
+      : Number.isFinite(productMin) && productMin > 0
+        ? Math.floor(productMin)
+        : (isRobux ? units : 1);
+
+    const defaultQty = isRobux ? units : minQty;
+    const quantity = Number.isFinite(requestedQty) && requestedQty > 0
+      ? Math.floor(requestedQty)
+      : defaultQty;
+
     if (quantity < minQty) {
       return json({ error: `Quantidade mínima: ${minQty}` }, 400);
     }
-    const stock = product.stock == null ? null : Number(product.stock);
+
+    const selectedStockRaw = variation?.stock ?? product.stock;
+    const stock = selectedStockRaw == null ? null : Number(selectedStockRaw);
     if (stock != null && Number.isFinite(stock) && quantity > stock) {
-      return json({ error: `Estoque disponível: ${stock}` }, 400);
+      return json({ error: `Estoque disponível: ${Math.max(0, Math.floor(stock))}` }, 409);
     }
 
     const safeProductAmount = isRobux
       ? roundMoney((quantity / units) * unitPrice)
-      : roundMoney(unitPrice);
+      : roundMoney(unitPrice * quantity);
     const amount = roundMoney(safeProductAmount + buyerFee);
     if (amount < 2) return json({ error: "Valor mínimo do pedido é R$ 2,00." }, 400);
 
@@ -191,7 +214,8 @@ serve(async (req) => {
       status: "pending",
       amount,
       messages: [],
-      variation_name: variationName || (isRobux ? `${quantity} Robux` : null),
+      variation_id: variation?.id || null,
+      variation_name: variation?.name || variationName || (isRobux ? `${quantity} Robux` : null),
       payment_provider: paymentMethod,
     };
 
@@ -207,20 +231,35 @@ serve(async (req) => {
     ({ data: purchase, error: purchaseError } = await admin
       .from("purchases")
       .insert(withExtras)
-      .select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,payment_provider,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at,product_amount,buyer_fee,quantity")
+      .select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,payment_provider,messages,reviewed,review_stars,review_comment,variation_id,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at,product_amount,buyer_fee,quantity")
       .maybeSingle());
 
     if (purchaseError) {
       const retry = await admin
         .from("purchases")
         .insert(purchasePayload)
-        .select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,payment_provider,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at")
+        .select("id,product_id,buyer_id,buyer_email,buyer_public_id,seller_id,seller_email,seller_public_id,status,amount,payment_provider,messages,reviewed,review_stars,review_comment,variation_id,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at")
         .maybeSingle();
       purchase = retry.data;
       purchaseError = retry.error;
     }
 
     if (purchaseError || !purchase) throw purchaseError || new Error("Falha ao criar pedido");
+
+    // Automatic inventory is reserved before a payment is generated. This
+    // prevents two buyers from paying for the same last code/item.
+    if (product.inventory_mode === "items") {
+      const { error: reserveError } = await admin.rpc("reserve_purchase_inventory", { _purchase_id: Number(purchase.id) });
+      if (reserveError) {
+        await admin.from("purchases").delete().eq("id", purchase.id).eq("status", "pending");
+        const unavailable = String(reserveError.message || "").includes("automatic_stock_unavailable");
+        return json({
+          error: unavailable
+            ? "Esta variação acabou de ficar sem estoque. Atualize a página e escolha outra opção."
+            : "Não foi possível reservar o estoque desta compra. Tente novamente."
+        }, unavailable ? 409 : 500);
+      }
+    }
 
     await notifyOrderEmail("purchase_created", Number(purchase.id));
 
