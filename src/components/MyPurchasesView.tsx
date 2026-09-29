@@ -170,7 +170,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
     { total: 0, pending: 0, inProgress: 0, done: 0, amount: 0 },
   );
 
-  const selected = selectedId ? state.purchases.find((p) => p.id === selectedId) : null;
+  const selected = selectedId ? state.purchases.find((p) => Number(p.id) === Number(selectedId)) : null;
   const selectedProduct = selected ? state.products.find((p) => p.id === selected.productId) : null;
   const selectedAsSeller = !!selected && selected.sellerId === state.currentUser?.id;
   const automaticDeliveryMessage = selected?.messages
