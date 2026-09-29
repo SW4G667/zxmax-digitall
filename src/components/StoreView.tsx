@@ -62,7 +62,7 @@ export default function StoreView() {
   // Robux has its own dedicated storefront at /robux (Eldorado-style); it must
   // NOT appear in the common store listing.
   const categories = useMemo(
-    () => ["Todos", ...state.config.categories.filter((c) => c !== ROBUX_CATEGORY)],
+    () => ["Todos", ...state.config.categories.filter((c) => !isRobuxCategory(c))],
     [state.config.categories],
   );
 
