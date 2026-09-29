@@ -12,7 +12,7 @@ const corsHeaders = {
 const PUBLIC_COLUMNS =
   "id,seller_id,seller_public_id,seller_name,name,price,category,image,banner," +
   "description,approved,delivery_type,variations,questions,sales,rating," +
-  "created_at,updated_at,stock,min_quantity,delivery_time";
+  "created_at,updated_at,stock,min_quantity,delivery_time,inventory_mode";
 
 const LEGACY_COLUMNS =
   "id,seller_id,seller_public_id,seller_name,name,price,category,image,banner," +
