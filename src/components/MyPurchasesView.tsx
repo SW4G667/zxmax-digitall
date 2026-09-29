@@ -23,6 +23,11 @@ const statusMap: Record<Purchase["status"], { label: string; cls: string }> = {
   refunded: { label: "Reembolsado", cls: "bg-amber-500/20 text-amber-500 border-amber-500/30" },
 };
 
+const purchaseDisplayAmount = (purchase: Purchase) => {
+  const providerAmount = Number(purchase.providerAmount);
+  return Number.isFinite(providerAmount) && providerAmount > 0 ? providerAmount : purchase.amount;
+};
+
 function StageStepper({ status }: { status: Purchase["status"] }) {
   if (status === "cancelled" || status === "dispute" || status === "refunded") return null;
 
@@ -158,7 +163,8 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
       if (purchase.status === "pending") summary.pending += 1;
       if (["paid", "delivered_pending_confirmation"].includes(purchase.status)) summary.inProgress += 1;
       if (purchase.status === "delivered") summary.done += 1;
-      summary.amount += Number.isFinite(purchase.amount) ? purchase.amount : 0;
+      const visibleAmount = purchaseDisplayAmount(purchase);
+      summary.amount += Number.isFinite(visibleAmount) ? visibleAmount : 0;
       return summary;
     },
     { total: 0, pending: 0, inProgress: 0, done: 0, amount: 0 },
@@ -182,7 +188,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
   const selectedCounterparty = selected
     ? (selectedAsSeller
       ? `Comprador: ${selectedBuyer?.name || "Usuário"} · #${selected.buyerPublicId || "—"}`
-      : `Vendedor: ${selectedProduct?.seller || "—"}`)
+      : `Vendedor: ${selectedProduct?.seller || `#${selected.sellerPublicId || "—"}`}`)
     : "";
 
   const handlePayPix = async (purchase: Purchase, e?: React.MouseEvent) => {
@@ -196,15 +202,25 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
     const product = state.products.find((p) => p.id === purchase.productId);
     const expired = purchase.pixExpiresAt ? new Date(purchase.pixExpiresAt).getTime() < Date.now() : true;
     setResumeId(purchase.id);
-    // Reuse existing valid QR
-    if (purchase.pixQrCode && purchase.evopayChargeId && !expired) {
-      setPixCharge({ evopayId: purchase.evopayChargeId, provider, qrCodeText: purchase.pixQrCode, amount: purchase.amount, purchaseId: purchase.id });
+    // Reuse an existing valid QR. MagnusPay stores its ID in provider_payment_id;
+    // legacy PIX providers may still use evopay_charge_id.
+    const existingChargeId = purchase.providerPaymentId || purchase.evopayChargeId;
+    if (purchase.pixQrCode && existingChargeId && !expired) {
+      setPixCharge({
+        evopayId: existingChargeId,
+        provider,
+        qrCodeText: purchase.pixQrCode,
+        amount: purchaseDisplayAmount(purchase),
+        baseAmount: purchase.amount,
+        providerFee: purchase.providerFee,
+        purchaseId: purchase.id,
+      });
       return;
     }
     // Generate a new Pix
     setLoadingPix(purchase.id);
     try {
-      const res = await unwrapEdgeCall<{ id: string; qrCodeText: string; qrCodeUrl?: string; expiresAt?: string; amount?: number }>(
+      const res = await unwrapEdgeCall<{ id: string; qrCodeText: string; qrCodeUrl?: string; expiresAt?: string; amount?: number; baseAmount?: number; providerFee?: number | null }>(
         await supabase.functions.invoke(
           provider === "magnuspay_pix"
             ? "create-magnuspay-pix"
@@ -231,7 +247,16 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
       const data = res.data;
       if (data?.qrCodeText) {
         savePixCharge(purchase.id, { evopayId: data.id, qrCodeText: data.qrCodeText, expiresAt: data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
-        setPixCharge({ evopayId: data.id, provider, qrCodeText: data.qrCodeText, amount: data.amount ?? purchase.amount, qrCodeUrl: data.qrCodeUrl, purchaseId: purchase.id });
+        setPixCharge({
+          evopayId: data.id,
+          provider,
+          qrCodeText: data.qrCodeText,
+          amount: Number(data.amount ?? purchaseDisplayAmount(purchase)),
+          baseAmount: data.baseAmount == null ? purchase.amount : Number(data.baseAmount),
+          providerFee: data.providerFee == null ? purchase.providerFee : Number(data.providerFee),
+          qrCodeUrl: data.qrCodeUrl,
+          purchaseId: purchase.id,
+        });
       } else {
         toast.error("Erro ao gerar PIX. Tente novamente.");
       }
@@ -314,8 +339,27 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
   };
 
   const handlePixPaid = async () => {
-    void refreshPurchases();
-    toast.success("Pagamento confirmado. Atualizando o pedido...");
+    await refreshPurchases();
+    toast.success("Pagamento confirmado. Pedido atualizado.");
+  };
+
+  const handleVerifyPendingPayment = async (purchase: Purchase) => {
+    if (purchase.paymentProvider !== "magnuspay_pix") return;
+    setLoadingPix(purchase.id);
+    try {
+      const result = await unwrapEdgeCall<{ paid?: boolean; status?: string }>(
+        await supabase.functions.invoke("check-magnuspay-status", { body: { purchaseId: purchase.id } }),
+        "Não foi possível verificar o pagamento agora.",
+      );
+      if (result.errorMessage) throw new Error(result.errorMessage);
+      await refreshPurchases();
+      if (result.data?.paid) toast.success("Pagamento confirmado e pedido aprovado.");
+      else toast.info("A MagnusPay ainda não marcou este PIX como concluído.");
+    } catch (error: any) {
+      toast.error(error?.message || "Não foi possível verificar o pagamento.");
+    } finally {
+      setLoadingPix(null);
+    }
   };
 
   const handleSellerRefund = async () => {
@@ -363,7 +407,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
     setShowReview(true);
   };
 
-  if (selected && selectedProduct) {
+  if (selected) {
     const isChatLocked = selected.status === "pending" || selected.status === "cancelled";
 
     return (
@@ -373,17 +417,24 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
         </button>
 
         <div className="glass-card p-5 mb-4 flex gap-4 items-center">
-          <img src={selectedProduct.image} className="w-16 h-16 rounded-2xl object-cover" alt={selectedProduct.name} />
+          {selectedProduct?.image ? (
+            <img src={selectedProduct.image} className="w-16 h-16 rounded-2xl object-cover" alt={selectedProduct.name || ""} />
+          ) : (
+            <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center shrink-0"><PackageCheck className="w-7 h-7 text-muted-foreground" /></div>
+          )}
           <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-foreground truncate">{selectedProduct.name}</h3>
+            <h3 className="font-bold text-foreground truncate">{selectedProduct?.name || `Produto #${selected.productId}`}</h3>
             <p className="text-xs text-muted-foreground">
               {state.currentUser?.isAdmin
                 ? `Comprador #${selected.buyerPublicId || "—"} · Vendedor #${selected.sellerPublicId || "—"}`
                 : selectedAsSeller
                   ? selectedCounterparty
-                  : <>Vendedor: <span className="text-primary font-semibold">{selectedProduct.seller}</span></>}
+                  : <>Vendedor: <span className="text-primary font-semibold">{selectedProduct?.seller || `#${selected.sellerPublicId || "—"}`}</span></>}
             </p>
-            <p className="text-sm font-black text-foreground mt-0.5">R$ {selected.amount.toFixed(2)}</p>
+            <p className="text-sm font-black text-foreground mt-0.5">{formatBRL(purchaseDisplayAmount(selected))}</p>
+            {selected.providerAmount != null && Math.abs(selected.providerAmount - selected.amount) >= 0.01 && (
+              <p className="mt-1 text-[10px] leading-4 text-muted-foreground">Pedido ZXMAX {formatBRL(selected.amount)} · acréscimo do provedor {formatBRL(Math.max(0, selected.providerAmount - selected.amount))}</p>
+            )}
           </div>
           <Badge className={statusMap[selected.status].cls}>{statusMap[selected.status].label}</Badge>
         </div>
@@ -393,10 +444,17 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
           <div className="glass-card p-4 mb-4 border-2 border-yellow-500/30 bg-yellow-500/5">
             <p className="text-sm text-foreground mb-1">Seu pedido está aguardando pagamento.</p>
             <p className="text-xs text-muted-foreground mb-3">Método original: {selected.paymentProvider === "card" ? "Cartão" : selected.paymentProvider === "boleto" ? "Boleto" : selected.paymentProvider === "crypto" ? "Cripto" : selected.paymentProvider === "wallet" ? "Saldo ZXMAX" : "PIX"}.</p>
-            <Button onClick={(event) => void handleResumePayment(selected, event)} disabled={loadingPix === selected.id} className="w-full btn-gradient font-bold">
-              {selected.paymentProvider === "card" ? <CreditCard className="w-4 h-4 mr-2" /> : selected.paymentProvider === "wallet" ? <WalletCards className="w-4 h-4 mr-2" /> : selected.paymentProvider === "crypto" ? <Bitcoin className="w-4 h-4 mr-2" /> : <QrCode className="w-4 h-4 mr-2" />}
-              {loadingPix === selected.id ? "Preparando..." : paymentLabel(selected)}
-            </Button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button onClick={(event) => void handleResumePayment(selected, event)} disabled={loadingPix === selected.id} className="w-full btn-gradient font-bold">
+                {selected.paymentProvider === "card" ? <CreditCard className="w-4 h-4 mr-2" /> : selected.paymentProvider === "wallet" ? <WalletCards className="w-4 h-4 mr-2" /> : selected.paymentProvider === "crypto" ? <Bitcoin className="w-4 h-4 mr-2" /> : <QrCode className="w-4 h-4 mr-2" />}
+                {loadingPix === selected.id ? "Preparando..." : paymentLabel(selected)}
+              </Button>
+              {selected.paymentProvider === "magnuspay_pix" && (
+                <Button variant="outline" onClick={() => void handleVerifyPendingPayment(selected)} disabled={loadingPix === selected.id} className="w-full font-bold">
+                  <RefreshCw className={`w-4 h-4 mr-2 ${loadingPix === selected.id ? "animate-spin" : ""}`} /> Verificar pagamento
+                </Button>
+              )}
+            </div>
           </div>
         )}
 
@@ -621,11 +679,11 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
           return (
             <div key={p.id} className="glass-card p-4 sm:p-5 hover:border-primary/40 transition">
               <div className="flex items-start gap-4">
-                <img src={prod?.image} className="w-16 h-16 rounded-lg object-cover shrink-0" alt="" />
+                {prod?.image ? <img src={prod.image} className="w-16 h-16 rounded-lg object-cover shrink-0" alt="" /> : <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center shrink-0"><PackageCheck className="w-6 h-6 text-muted-foreground" /></div>}
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start gap-2">
                     <div className="min-w-0">
-                      <h4 className="font-bold text-foreground truncate">{prod?.name}</h4>
+                      <h4 className="font-bold text-foreground truncate">{prod?.name || `Produto #${p.productId}`}</h4>
                       {p.variationName && <p className="text-[10px] text-primary font-bold">Opção: {p.variationName}</p>}
                       <p className="text-xs text-muted-foreground mt-0.5">Pedido #{p.id} · {new Date(p.createdAt).toLocaleDateString("pt-BR")}</p>
                       {p.sellerId === state.currentUser?.id && <p className="text-[11px] text-primary mt-1">Comprador: {buyer?.name || "Usuário"} · #{p.buyerPublicId || "—"}</p>}
@@ -633,7 +691,10 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
                     <Badge className={`${statusMap[p.status].cls} shrink-0`}>{statusMap[p.status].label}</Badge>
                   </div>
                   <div className="flex items-center justify-between mt-2 gap-3 flex-wrap">
-                    <p className="text-sm font-black text-foreground">R$ {p.amount.toFixed(2)}</p>
+                    <div>
+                      <p className="text-sm font-black text-foreground">{formatBRL(purchaseDisplayAmount(p))}</p>
+                      {p.providerAmount != null && Math.abs(p.providerAmount - p.amount) >= 0.01 && <p className="text-[9px] text-muted-foreground">Total do provedor</p>}
+                    </div>
                     <div className="flex items-center gap-2">
                       {p.status === "pending" && p.buyerId === state.currentUser?.id ? (
                         <button
@@ -653,7 +714,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
                         </button>
                       )}
                       <button
-                        onClick={() => setSelectedId(p.id)}
+                        onClick={(event) => { event.stopPropagation(); setSelectedId(p.id); }}
                         className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 transition flex items-center gap-1.5"
                       >
                         <Eye className="w-3.5 h-3.5" /> Detalhes
