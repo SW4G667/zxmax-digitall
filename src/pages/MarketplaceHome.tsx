@@ -193,50 +193,24 @@ export default function MarketplaceHome() {
   return (
     <AppShell>
       <div className="mx-auto max-w-[1180px] space-y-7 pb-3">
-        <section className="relative overflow-hidden border-b border-white/[0.075] bg-[#0b0b0e]">
-          {branding.heroBannerUrl ? (
-            <>
-              <img src={branding.heroBannerUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-55" />
-              <div className="absolute inset-0 bg-gradient-to-r from-[#090a0d] via-[#090a0d]/90 to-[#090a0d]/35" />
-            </>
-          ) : (
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_5%,rgba(22,140,255,.18),transparent_34%),radial-gradient(circle_at_10%_100%,rgba(91,33,182,.10),transparent_36%)]" />
-          )}
-
-          <div className="relative px-1 py-5 sm:px-2 sm:py-7">
-            <div className="max-w-[650px]">
-              <h1 className="max-w-[620px] text-[28px] font-extrabold leading-[1.06] tracking-[-0.045em] text-white sm:text-[40px]">
-                {branding.heroTitle}
-              </h1>
-              <p className="mt-2 max-w-[560px] text-xs leading-5 text-white/42 sm:text-sm">
-                {branding.heroSubtitle}
-              </p>
-
-              <form onSubmit={submitSearch} className="mt-4 flex max-w-[680px] items-center rounded-lg border border-white/[0.11] bg-[#141418] p-1 focus-within:border-[var(--zx-accent)]">
-                <Search className="ml-2 h-4 w-4 shrink-0 text-white/28" />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="O que você está procurando?"
-                  className="min-w-0 flex-1 bg-transparent px-2 py-2 text-xs text-white outline-none placeholder:text-white/28 sm:text-sm"
-                  aria-label="Buscar no marketplace"
-                />
-                <button type="submit" className="rounded-lg bg-[var(--zx-accent)] px-4 py-2.5 text-[11px] font-bold text-white transition hover:brightness-110 sm:px-5">
-                  Buscar
-                </button>
-              </form>
-
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <Link to="/loja" className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.035] px-3 py-2 text-[10px] font-bold text-white/78 transition hover:bg-white/[0.07] hover:text-white">
-                  Explorar anúncios <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-                <Link to="/meus-produtos" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[10px] font-bold text-white/45 transition hover:text-white">
-                  Quero anunciar
-                </Link>
-              </div>
-            </div>
-          </div>
+        <section className="pt-1">
+          <form onSubmit={submitSearch} className="flex items-center rounded-xl border border-white/[0.1] bg-[#121216] p-1.5 focus-within:border-[var(--zx-accent)]">
+            <Search className="ml-2 h-4 w-4 shrink-0 text-white/30" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar produtos, contas, scripts..." className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-xs text-white outline-none placeholder:text-white/28 sm:text-sm" aria-label="Buscar no marketplace" />
+            <button type="submit" className="rounded-lg bg-[var(--zx-accent)] px-4 py-2.5 text-[11px] font-bold text-white">Buscar</button>
+          </form>
         </section>
+
+
+
+        <ProductRow
+          title="Produtos em destaque"
+          subtitle="Anúncios públicos disponíveis agora."
+          products={featured}
+          onOpen={(id) => navigate(`/produto/${id}`)}
+          verified={verifiedSeller}
+          moreTo="/loja?sort=vendidos"
+        />
 
         <section>
           <div className="mb-3 flex items-end justify-between gap-3">
@@ -319,15 +293,6 @@ export default function MarketplaceHome() {
             </div>
           </section>
         ) : null}
-
-        <ProductRow
-          title="Em destaque"
-          subtitle="Ofertas públicas aprovadas, sem misturar anúncios que ainda estão em análise."
-          products={featured}
-          onOpen={(id) => navigate(`/produto/${id}`)}
-          verified={verifiedSeller}
-          moreTo="/loja?sort=vendidos"
-        />
 
         <ProductRow
           title="Novidades"
