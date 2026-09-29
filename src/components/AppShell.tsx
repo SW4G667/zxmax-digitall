@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import Header from "@/components/Header";
 import SideMenu from "@/components/SideMenu";
-import BottomNav from "@/components/BottomNav";
 import ProfileModal from "@/components/ProfileModal";
 import AuthScreen from "@/components/AuthScreen";
 import SiteFooter from "@/components/SiteFooter";
@@ -51,13 +50,8 @@ export default function AppShell({ children }: Props) {
 
   const accountArea = ["/meus-produtos", "/minhas-compras", "/suporte", "/admin", "/sacar", "/perfil", "/configuracoes"]
     .some((prefix) => location.pathname.startsWith(prefix));
-  // A navegação inferior é útil nas áreas operacionais principais, mas ficava
-  // reaparecendo em Perfil/Configurações/Admin/Saque e duplicava os controles.
-  const showBottomNav = ["/meus-produtos", "/minhas-compras", "/suporte"]
-    .some((prefix) => location.pathname.startsWith(prefix));
-
   return (
-    <div className={`min-h-screen bg-[#0b0b0e] text-white ${accountArea && user ? "pb-20" : ""}`}>
+    <div className="min-h-screen bg-[#0b0b0e] text-white">
       <Header
         onProfileClick={() => setProfileOpen(true)}
         onAuthClick={() => setAuthOpen(true)}
@@ -70,7 +64,6 @@ export default function AppShell({ children }: Props) {
       </div>
 
       {!accountArea ? <SiteFooter /> : null}
-      {showBottomNav && user ? <BottomNav /> : null}
 
       <SideMenu
         open={menuOpen}
