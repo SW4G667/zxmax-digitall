@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { AlertTriangle, Eye, EyeOff, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Eye, EyeOff, Mail, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,7 +20,16 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [passStrength, setPassStrength] = useState(0);
+  const [confirmationEmail, setConfirmationEmail] = useState("");
+  const [resendSeconds, setResendSeconds] = useState(0);
+  const [resending, setResending] = useState(false);
   const isPreviewHost = isGeneratedVercelPreviewHost();
+
+  useEffect(() => {
+    if (resendSeconds <= 0) return;
+    const timer = window.setInterval(() => setResendSeconds((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [resendSeconds]);
 
   useEffect(() => {
     let score = 0;
@@ -47,6 +56,34 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
     } catch {
       void recordSecurityEvent(supabase, "auth.discord", "failure");
       toast.error("Não foi possível iniciar o login com Discord agora. Tente novamente em instantes.");
+    }
+  };
+
+  const handleResendConfirmation = async () => {
+    const target = confirmationEmail || email.trim();
+    if (!target || resendSeconds > 0 || resending) return;
+    setResending(true);
+    setError("");
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: "signup",
+        email: target,
+        options: { emailRedirectTo: getAppUrl("/auth/callback") },
+      });
+      if (resendError) {
+        if (/rate limit|seconds|wait|frequent/i.test(resendError.message)) {
+          setError("Aguarde um pouco antes de solicitar outro e-mail.");
+        } else {
+          setError("Não foi possível reenviar agora. Confira o endereço e tente novamente.");
+        }
+        return;
+      }
+      setResendSeconds(60);
+      toast.success("Novo e-mail de confirmação solicitado.");
+    } catch {
+      setError("Não foi possível reenviar agora. Tente novamente em instantes.");
+    } finally {
+      setResending(false);
     }
   };
 
@@ -102,15 +139,20 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
         const { error: signUpError } = await signUp(email, password, name.trim());
         if (signUpError) setError(signUpError);
         else {
-          toast.success("Conta criada! Verifique seu e-mail.");
-          setMode("login");
+          const cleanEmail = email.trim();
+          setConfirmationEmail(cleanEmail);
+          setResendSeconds(60);
+          toast.success("Conta criada. Confirme seu e-mail para continuar.");
         }
       } else {
         const { error: signInError } = await signIn(email, password);
         if (signInError) {
           void recordSecurityEvent(supabase, "auth.login", "failure");
           if (signInError.includes("Invalid login")) setError("Email ou senha incorretos.");
-          else if (signInError.includes("Email not confirmed")) setError("Confirme seu e-mail antes.");
+          else if (signInError.includes("Email not confirmed")) {
+            setConfirmationEmail(email.trim());
+            setError("");
+          }
           else setError(signInError);
         } else {
           void recordSecurityEvent(supabase, "auth.login", "success");
@@ -124,6 +166,51 @@ export default function AuthScreen({ onClose }: { onClose?: () => void }) {
       setLoading(false);
     }
   };
+
+  if (confirmationEmail) {
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/75 p-4">
+        <div className="zx-auth-panel relative w-full max-w-[410px]">
+          {onClose ? (
+            <button onClick={onClose} aria-label="Fechar autenticação" className="zx-auth-close absolute right-3 top-3"><X className="h-4 w-4" /></button>
+          ) : null}
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--zx-accent)]/25 bg-[var(--zx-accent)]/10 text-[var(--zx-accent)]">
+            <Mail className="h-6 w-6" />
+          </div>
+          <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">Confirmação de e-mail</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-white">Confira sua caixa de entrada</h1>
+          <p className="mt-2 text-sm leading-6 text-white/50">
+            Enviamos a confirmação para <strong className="text-white">{confirmationEmail}</strong>. Abra o e-mail da ZXMAX e use o botão de confirmação.
+          </p>
+          <div className="mt-5 rounded-xl border border-white/[0.08] bg-white/[0.025] p-4">
+            <div className="flex gap-3">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+              <div className="text-[11px] leading-5 text-white/45">
+                Se não aparecer em alguns minutos, confira Spam/Lixo eletrônico. Evite pedir vários e-mails seguidos: o Supabase aplica limite de reenvio.
+              </div>
+            </div>
+          </div>
+          {error ? <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-red-400/20 bg-red-500/[0.08] p-3 text-xs text-red-200"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div> : null}
+          <button
+            type="button"
+            onClick={handleResendConfirmation}
+            disabled={resending || resendSeconds > 0}
+            className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--zx-accent)] px-4 py-3 text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            <RefreshCw className={`h-4 w-4 ${resending ? "animate-spin" : ""}`} />
+            {resending ? "Reenviando..." : resendSeconds > 0 ? `Reenviar em ${resendSeconds}s` : "Reenviar confirmação"}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setConfirmationEmail(""); setMode("login"); setError(""); }}
+            className="mt-3 w-full rounded-xl border border-white/[0.09] px-4 py-3 text-xs font-semibold text-white/60 hover:bg-white/[0.03] hover:text-white"
+          >
+            Voltar para entrar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/75 p-4">
