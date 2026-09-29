@@ -229,7 +229,7 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
     setRefunding(false);
 
     if (result.success) {
-      toast.success("Reembolso efetuado para a carteira ZXMAX do comprador.");
+      toast.success("Reembolso solicitado para o meio de pagamento original.");
       setShowRefundModal(false);
       setRefundReason("");
       void load();
@@ -399,7 +399,7 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
                 <span>Pedido Reembolsado pelo Vendedor</span>
               </div>
               <p className="text-xs text-foreground">
-                O valor de R$ {Number(purchase.amount).toFixed(2)} foi creditado na carteira ZXMAX do comprador.
+                O reembolso de R$ {Number(purchase.amount).toFixed(2)} foi direcionado ao meio de pagamento original.
               </p>
               {purchase.refundReason && (
                 <p className="text-[11px] text-muted-foreground italic">
@@ -434,7 +434,11 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
             const isAdminMessage = m.sender_role === "admin";
             const mineLanguage = String(navigator.language || "pt-BR").split(/[-_]/)[0].toLowerCase();
             const senderLanguage = String(m.sender_locale || "").split(/[-_]/)[0].toLowerCase();
-            const differentParticipantLocale = !isMe && !!m.body && !!senderLanguage && mineLanguage !== senderLanguage;
+            // Old messages have no sender_locale. Do not make translation
+            // disappear just because the migration was added after the order:
+            // every incoming text can be translated; locale is only a hint.
+            // Own messages never show the action.
+            const differentParticipantLocale = !isMe && !!m.body && (!senderLanguage || mineLanguage !== senderLanguage);
             return (
               <div key={m.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${isAdminMessage ? "border border-amber-400/25 bg-amber-400/[0.07] text-foreground" : isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-secondary text-foreground rounded-bl-md"}`}>
@@ -522,7 +526,7 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
             <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3 text-xs text-foreground space-y-1">
               <p className="font-bold">⚠️ Informação importante:</p>
               <p>
-                O valor de <span className="font-black text-destructive">R$ {Number(purchase.amount).toFixed(2)}</span> será creditado na carteira ZXMAX do comprador.
+                O valor de <span className="font-black text-destructive">R$ {Number(purchase.amount).toFixed(2)}</span> deve voltar pelo meio de pagamento original. A carteira ZXMAX não é usada como destino do reembolso.
               </p>
               <p className="text-muted-foreground">O reembolso só é permitido ao vendedor enquanto o saldo da venda ainda estiver retido.</p>
             </div>
