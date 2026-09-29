@@ -161,6 +161,9 @@ serve(async (req) => {
     const qrCodeUrl = data.qrcodeUrl || data.qrCodeUrl || null;
     const qrCodeBase64 = data.qrCodeBase64 || null;
     const paymentLink = data.paymentLink || null;
+    const providerAmount = Number(data.amount ?? amount);
+    const providerFee = Number(data.platformFee ?? data.fee ?? 0);
+    const providerNetAmount = Number(data.netAmount ?? amount);
 
     if (!transactionId || !copyPaste) {
       await writeMagnusLog(admin, {
@@ -189,6 +192,14 @@ serve(async (req) => {
       payment_provider: "magnuspay_pix",
       provider_payment_id: transactionId,
       payment_status: "pending",
+      // MagnusPay can force feeToCustomer on the active route even when the
+      // request sends false. Persist the exact amount bound to this charge so
+      // confirmation validates what the buyer actually paid, while amount /
+      // product_amount / buyer_fee remain untouched for ZXMAX accounting.
+      provider_amount: Number.isFinite(providerAmount) ? providerAmount : amount,
+      provider_fee: Number.isFinite(providerFee) ? providerFee : null,
+      provider_net_amount: Number.isFinite(providerNetAmount) ? providerNetAmount : null,
+      provider_checked_at: null,
       pix_qr_code: copyPaste,
       pix_expires_at: expiresAt,
       updated_at: new Date().toISOString(),
@@ -217,9 +228,11 @@ serve(async (req) => {
         endpoint: "/transactions/create",
         status: "PENDING",
         externalId: data.externalId || null,
-        providerAmount: data.amount ?? null,
-        platformFee: data.platformFee ?? null,
-        netAmount: data.netAmount ?? null,
+        providerAmount: Number.isFinite(providerAmount) ? providerAmount : null,
+        platformFee: Number.isFinite(providerFee) ? providerFee : null,
+        netAmount: Number.isFinite(providerNetAmount) ? providerNetAmount : null,
+        requestedAmount: amount,
+        payerFeeForcedOrApplied: Number.isFinite(providerAmount) && Math.abs(providerAmount - amount) >= 0.01,
         limits,
       },
       error: null,
@@ -229,7 +242,10 @@ serve(async (req) => {
       id: transactionId,
       transactionId,
       status: "PENDING",
-      amount: Number(data.amount ?? amount),
+      amount: Number.isFinite(providerAmount) ? providerAmount : amount,
+      baseAmount: amount,
+      providerFee: Number.isFinite(providerFee) ? providerFee : null,
+      providerNetAmount: Number.isFinite(providerNetAmount) ? providerNetAmount : null,
       qrCodeText: copyPaste,
       qrCodeUrl: qrCodeUrl ? String(qrCodeUrl) : null,
       qrCodeBase64: qrCodeBase64 ? String(qrCodeBase64) : null,
