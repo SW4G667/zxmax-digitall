@@ -447,7 +447,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
     if (!result.success) return toast.error(result.error || "Não foi possível concluir o reembolso.");
     setRefundOpen(false);
     setRefundReason("");
-    toast.success("Reembolso enviado para a carteira ZXMAX do comprador.");
+    toast.success("Solicitação enviada. O comprador precisa confirmar os dados PIX neste pedido.");
   };
 
   const handleDispute = async () => {
@@ -463,7 +463,8 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
   };
 
   const handleReview = async () => {
-    if (!selectedId || !comment.trim()) {
+    if (!selectedId || !selected || selected.buyerId !== state.currentUser?.id || selected.status !== "delivered" || selected.reviewed) return;
+    if (!comment.trim()) {
       toast.error("Por favor, escreva um comentário.");
       return;
     }
@@ -471,6 +472,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
     if (ok) {
       toast.success("Avaliação enviada!");
       setShowReview(false);
+      setComment("");
     }
   };
 
@@ -564,15 +566,16 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
           </div>
         )}
 
-        {/* Review Form */}
-        {showReview && (
+        {/* Review Form: fica disponível após o comprador confirmar o recebimento e continua visível após recarregar até ser enviado. */}
+        {(showReview || (selected.status === "delivered" && !selectedAsSeller && selected.buyerId === state.currentUser?.id && !selected.reviewed)) && (
           <div className="glass-card p-5 mb-4 animate-fade-in-up">
-            <h4 className="font-bold text-foreground mb-3 flex items-center gap-2">
+            <h4 className="font-bold text-foreground mb-1 flex items-center gap-2">
               <StarEmoji className="w-5 h-5" /> Avaliar Produto
             </h4>
+            <p className="mb-3 text-xs text-muted-foreground">Como foi sua experiência? Toque nas estrelas e conte o que achou.</p>
             <div className="flex gap-1 mb-3">
               {[1, 2, 3, 4, 5].map((s) => (
-                <button key={s} onClick={() => setRating(s)}>
+                <button key={s} type="button" onClick={() => setRating(s)} aria-label={`${s} estrela${s > 1 ? "s" : ""}`} className="rounded-md p-0.5 transition hover:scale-110">
                   <StarEmoji className="w-7 h-7" filled={s <= rating} />
                 </button>
               ))}
@@ -583,7 +586,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
               placeholder="Escreva seu comentário (obrigatório)..."
               className="w-full bg-secondary/50 border border-border/40 rounded-xl p-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none h-20 mb-3"
             />
-            <Button onClick={handleReview} className="btn-gradient w-full">Enviar Avaliação</Button>
+            <Button onClick={handleReview} disabled={!comment.trim() || rating < 1 || rating > 5} className="btn-gradient w-full">Enviar avaliação</Button>
           </div>
         )}
 
@@ -603,7 +606,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
             )}
           </div>
         </div>
-        <OrderChat orderId={selected.id} locked={isChatLocked} />
+        <OrderChat orderId={selected.id} locked={isChatLocked} purchase={selected} onRefresh={() => void refreshOrderList()} />
 
         <PixPaymentModal charge={pixCharge} onClose={() => setPixCharge(null)} onPaid={handlePixPaid} />
         <CryptoPaymentModal charge={cryptoCharge} onClose={() => setCryptoCharge(null)} onPaid={handlePixPaid} />
@@ -618,7 +621,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
                 </div>
                 <button type="button" onClick={() => setRefundOpen(false)} className="grid h-9 w-9 place-items-center rounded-xl border border-white/[0.08] text-white/45 hover:text-white" aria-label="Cancelar reembolso"><X className="h-4 w-4" /></button>
               </div>
-              <p className="mt-3 text-xs leading-5 text-white/45">O valor volta para a carteira ZXMAX do comprador. Essa ação só é permitida enquanto o saldo da venda ainda estiver no período de segurança.</p>
+              <p className="mt-3 text-xs leading-5 text-white/45">O comprador informará o nome do titular e a chave PIX neste pedido. Depois disso, você verá os dados para copiar e confirmar o envio do reembolso. A carteira ZXMAX não é usada como destino.</p>
               <label className="mt-4 block text-xs font-bold text-white/65">Motivo do reembolso
                 <textarea value={refundReason} onChange={(event) => setRefundReason(event.target.value)} maxLength={600} rows={4} placeholder="Explique claramente o motivo..." className="mt-2 w-full resize-none rounded-xl border border-white/[0.09] bg-black/20 p-3 text-sm text-white outline-none focus:border-amber-400/45" />
               </label>
