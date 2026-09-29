@@ -94,6 +94,23 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
   const refreshPurchasesRef = useRef(refreshPurchases);
   refreshPurchasesRef.current = refreshPurchases;
 
+  const openOrder = useCallback((purchaseId: number) => {
+    setSelectedId(purchaseId);
+    const params = new URLSearchParams(window.location.search);
+    params.set("order", String(purchaseId));
+    window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  const closeOrder = useCallback(() => {
+    setSelectedId(null);
+    setShowReview(false);
+    const params = new URLSearchParams(window.location.search);
+    params.delete("order");
+    const search = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${search ? `?${search}` : ""}`);
+  }, []);
+
   const openOrderDetails = useCallback((purchaseId: number) => {
     setSelectedId(Number(purchaseId));
     setShowReview(false);
@@ -420,7 +437,7 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
 
     return (
       <div className="animate-fade-in-up max-w-2xl mx-auto">
-        <button onClick={() => { setSelectedId(null); setShowReview(false); }} className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 transition-colors">
+        <button onClick={closeOrder} className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Voltar
         </button>
 
