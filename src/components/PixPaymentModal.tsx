@@ -177,12 +177,25 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
 
   const copyCode = async () => {
     try {
-      await navigator.clipboard.writeText(charge.qrCodeText);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(charge.qrCodeText);
+      } else {
+        const area = document.createElement("textarea");
+        area.value = charge.qrCodeText;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        const copied = document.execCommand("copy");
+        area.remove();
+        if (!copied) throw new Error("copy_failed");
+      }
       setCopied(true);
       toast.success("Código PIX copiado!");
       setTimeout(() => setCopied(false), 2500);
     } catch {
-      toast.error("Não foi possível copiar. Copie manualmente.");
+      toast.error("Não foi possível copiar o código PIX neste navegador.");
     }
   };
 
@@ -236,7 +249,8 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
             </div>
 
             <div className="bg-muted rounded-xl p-3 mb-3">
-              <p className="text-[11px] text-foreground break-all font-mono leading-relaxed">{charge.qrCodeText}</p>
+              <p className="text-xs font-semibold text-foreground">Código PIX pronto</p>
+              <p className="mt-1 text-[10px] leading-4 text-muted-foreground">Use o botão abaixo para copiar o código completo com segurança.</p>
             </div>
 
             <button onClick={copyCode} className="w-full btn-gradient flex items-center justify-center gap-2 p-3 rounded-xl font-bold mb-3">
