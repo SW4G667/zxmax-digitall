@@ -92,6 +92,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
           </form>
 
           <div className="ml-auto flex items-center gap-1.5">
+            <button onClick={() => navigate("/robux")} className={`flex h-9 items-center rounded-lg border px-3 text-[11px] font-black transition lg:hidden ${location.pathname === "/robux" ? "border-[#f4b42c] bg-[#f4b42c] text-black" : "border-[#f4b42c]/40 bg-[#f4b42c]/10 text-[#ffc84a]"}`} aria-label="Abrir mercado de Robux">Robux</button>
             <button
               type="button"
               onClick={() => navigate("/robux")}
