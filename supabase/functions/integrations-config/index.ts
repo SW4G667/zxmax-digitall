@@ -26,6 +26,15 @@ async function caller(req: Request) {
   return data.user ?? null;
 }
 
+async function resolvePrimaryPixKey(admin: any, config: any) {
+  const mode = String(config?.mode || "production").toLowerCase();
+  if (mode === "sandbox") {
+    const { data: sandboxKey, error } = await admin.rpc("get_gateway_secret_server", { _name: "zxmax_pix_sandbox_api_key" });
+    if (!error && sandboxKey) return String(sandboxKey).trim();
+  }
+  return String(Deno.env.get("MAGNUSPAY_API_KEY") || "").trim();
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -47,7 +56,8 @@ serve(async (req) => {
     const stripe = row("stripe");
     const platform = row("platform");
 
-    const magnusReady = Boolean(String(Deno.env.get("MAGNUSPAY_API_KEY") || "").trim());
+    const magnusApiKey = await resolvePrimaryPixKey(admin, magnus);
+    const magnusReady = Boolean(magnusApiKey);
     const zennithReady = Boolean(Deno.env.get("ZENNITH_API_KEY"));
     const vexoReady = Boolean(Deno.env.get("VEXOPAY_CLIENT_ID") && Deno.env.get("VEXOPAY_CLIENT_SECRET"));
     const stripeReady = Boolean(Deno.env.get("STRIPE_SECRET_KEY") && Deno.env.get("STRIPE_WEBHOOK_SECRET"));
@@ -121,6 +131,7 @@ serve(async (req) => {
             pixEnabled: incoming.pixEnabled === true,
             pixFee: clampFee(incoming.pixFee, (current as any).pixFee),
             ...(provider === "vexopay" ? { cryptoEnabled: incoming.cryptoEnabled === true } : {}),
+            ...(provider === "magnuspay" ? { mode: String((current as any).mode || "production") } : {}),
           };
 
       const { error: saveError } = await admin.from("app_settings").upsert({ key: provider, value: next }, { onConflict: "key" });
@@ -138,8 +149,8 @@ serve(async (req) => {
 
     if (action === "test") {
       if (provider === "magnuspay") {
-        const apiKey = String(Deno.env.get("MAGNUSPAY_API_KEY") || "").trim();
-        if (!apiKey) return json({ ok: false, message: "Configure MAGNUSPAY_API_KEY nos Secrets do Supabase." });
+        const apiKey = magnusApiKey;
+        if (!apiKey) return json({ ok: false, message: "A credencial do PIX principal não está configurada no servidor." });
 
         const response = await fetch(MAGNUSPAY_API + "/transactions/fees", {
           method: "GET",
@@ -152,7 +163,7 @@ serve(async (req) => {
         if (!response.ok || parsed?.success === false) {
           return json({
             ok: false,
-            message: String(parsed?.message || ("A MagnusPay respondeu HTTP " + response.status + ".")).slice(0, 220),
+            message: String(parsed?.message || ("O provedor PIX respondeu HTTP " + response.status + ".")).slice(0, 220),
             status: response.status,
           });
         }
@@ -161,7 +172,7 @@ serve(async (req) => {
         const minDeposit = Number(fees.minDeposit || 0);
         return json({
           ok: true,
-          message: "MagnusPay conectada. Rota: " + String(fees.route || fees.gateway || "ativa") + ". Depósito mínimo: R$ " + minDeposit.toFixed(2).replace(".", ",") + ".",
+          message: "PIX principal conectado. Depósito mínimo: R$ " + minDeposit.toFixed(2).replace(".", ",") + ".",
           provider: {
             route: fees.route || null,
             gateway: fees.gateway || null,
