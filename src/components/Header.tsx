@@ -6,7 +6,6 @@ import { useAuth } from "@/hooks/useAuth";
 import NotificationBell from "@/components/NotificationBell";
 import DiscordIcon from "@/components/DiscordIcon";
 import useFavorites from "@/hooks/useFavorites";
-import BrandMark from "@/components/BrandMark";
 import { useSiteBranding } from "@/context/SiteBrandingContext";
 
 interface Props {
@@ -68,8 +67,10 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
     <header className="sticky top-0 z-50 border-b border-white/[0.08] bg-[#0b0b0e]/95 backdrop-blur-lg">
       <div className="mx-auto max-w-[1240px] px-3 sm:px-4">
         <div className="flex h-14 items-center gap-2 sm:h-16 sm:gap-3">
-          <button onClick={() => navigate("/")} className="shrink-0" aria-label="Ir para a página inicial">
-            <BrandMark compact />
+          <button onClick={() => navigate("/")} className="shrink-0 rounded-md px-1 py-1" aria-label="Ir para a página inicial">
+            <span className="inline-flex max-w-[150px] truncate text-[15px] font-extrabold tracking-[-0.045em] text-white">
+              {branding.siteName || "ZXMAX"}
+            </span>
           </button>
 
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Navegação principal">
