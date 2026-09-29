@@ -98,7 +98,7 @@ serve(async (req) => {
     if (!providerId) return json({ received: true });
 
     const { data: purchase } = await admin.from("purchases")
-      .select("id,amount,status,payment_status,provider_payment_id,payment_provider")
+      .select("id,amount,provider_amount,status,payment_status,provider_payment_id,payment_provider")
       .eq("payment_provider", "magnuspay_pix")
       .eq("provider_payment_id", providerId)
       .maybeSingle();
@@ -112,7 +112,7 @@ serve(async (req) => {
     const verifiedId = String(node?.id || node?.transactionId || node?.transaction_id || "");
     const verifiedStatus = String(node?.status || "").toUpperCase();
     const verifiedAmount = normalizeMoney(node?.amount);
-    const expectedAmount = normalizeMoney(purchase.amount);
+    const expectedAmount = normalizeMoney(purchase.provider_amount ?? purchase.amount);
 
     if (!verified.ok || verifiedId !== providerId || !Number.isFinite(verifiedAmount) || verifiedAmount !== expectedAmount) {
       await admin.from("webhook_logs").insert({
@@ -148,6 +148,7 @@ serve(async (req) => {
     if (verifiedStatus === "EXPIRED" || verifiedStatus === "FAILED") {
       await admin.from("purchases").update({
         payment_status: verifiedStatus === "FAILED" ? "failed" : "expired",
+        provider_checked_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }).eq("id", purchase.id).eq("provider_payment_id", providerId);
 
