@@ -72,3 +72,6 @@ verify_jwt = true
 
 [functions.discord-membership]
 verify_jwt = true
+
+[functions.translate-order-message]
+verify_jwt = true
