@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useStore, Product } from "@/store/StoreContext";
-import { Plus, X, Trash2, Upload, Users, Clock, MessageSquare, Pencil, Package, Coins } from "lucide-react";
+import { Plus, X, Trash2, Upload, Users, Clock, MessageSquare, Pencil, Package, Coins, Zap, Boxes, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { formatBRL, formatRobuxPackage, formatStockLabel, isValidProductPrice, listingStatus, MIN_PRODUCT_PRICE, parsePriceInput, productStock, ROBUX_CATEGORY } from "@/lib/catalog";
@@ -10,12 +10,40 @@ import { getAppUrl } from "@/lib/appUrl";
 import { useSiteBranding } from "@/context/SiteBrandingContext";
 
 interface Variation {
+  id: string;
   name: string;
   price: string;
+  stock: string;
+  minQuantity: string;
+  deliveryTime: string;
+  deliveryType: "auto" | "manual";
+  autoItems: string;
 }
 
+const makeVariationId = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `var_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+
+const parseAutoItems = (value: string): string[] =>
+  [...new Set(value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean))];
+
+const autoItemCount = (value: string): number => parseAutoItems(value).length;
+
+const emptyVariation = (seed?: Partial<Variation>): Variation => ({
+  id: makeVariationId(),
+  name: "",
+  price: "",
+  stock: "",
+  minQuantity: "1",
+  deliveryTime: "",
+  deliveryType: "manual",
+  autoItems: "",
+  ...seed,
+});
+
 export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId: number) => void }) {
-  const { state, addProduct, updateProduct, deleteProduct } = useStore();
+  const { state, addProduct, updateProduct, deleteProduct, refreshProducts } = useStore();
   const { branding } = useSiteBranding();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
@@ -28,7 +56,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const [form, setForm] = useState({
     name: "", category: state.config.categories[0] || "", description: "", price: "",
     image: "", banner: "",
-    deliveryType: "manual" as "auto" | "manual", deliveryContent: "",
+    deliveryType: "manual" as "auto" | "manual", deliveryContent: "", autoItems: "",
     stock: "", minQuantity: "", deliveryTime: "",
     robuxAmount: "", // e.g., 100 Robux = price
   });
@@ -152,13 +180,26 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   }, [state.currentUser?.emailConfirmed, state.currentUser?.discordMemberVerified, state.currentUser?.isAdmin]);
 
   const resetForm = () => {
-    setForm({ name: "", category: state.config.categories[0] || "", description: "", price: "", image: "", banner: "", deliveryType: "manual", deliveryContent: "", stock: "", minQuantity: "", deliveryTime: "", robuxAmount: "" });
+    setForm({ name: "", category: state.config.categories[0] || "", description: "", price: "", image: "", banner: "", deliveryType: "manual", deliveryContent: "", autoItems: "", stock: "", minQuantity: "", deliveryTime: "", robuxAmount: "" });
     setVariations([]);
     setEditingId(null);
   };
 
-  const openEdit = (p: Product) => {
+  const openEdit = async (p: Product) => {
     const robuxVariation = p.category === ROBUX_CATEGORY ? p.variations?.[0] : undefined;
+    const mappedVariations: Variation[] = p.category === ROBUX_CATEGORY
+      ? []
+      : (p.variations || []).map((v, index) => ({
+          id: v.id || `legacy_${p.id}_${index + 1}`,
+          name: v.name,
+          price: String(v.price),
+          stock: v.stock == null ? "" : String(v.stock),
+          minQuantity: v.minQuantity == null ? "1" : String(v.minQuantity),
+          deliveryTime: v.deliveryTime || p.deliveryTime || "",
+          deliveryType: v.deliveryType || p.deliveryType || "manual",
+          autoItems: "",
+        }));
+
     setEditingId(p.id);
     setForm({
       name: p.category === ROBUX_CATEGORY ? "Robux" : p.name,
@@ -168,14 +209,58 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
       image: p.image || "",
       banner: p.banner || "",
       deliveryType: p.deliveryType,
-      deliveryContent: p.deliveryContent || "",
+      deliveryContent: "",
+      autoItems: "",
       stock: String(p.stock ?? (robuxVariation as any)?.stock ?? ""),
       minQuantity: String(p.minQuantity ?? (robuxVariation as any)?.minQuantity ?? ""),
       deliveryTime: p.deliveryTime || "",
       robuxAmount: robuxVariation?.name ? robuxVariation.name.replace(/\D/g, "") : "",
     });
-    setVariations(p.category === ROBUX_CATEGORY ? [] : (p.variations || []).map((v) => ({ name: v.name, price: String(v.price) })));
+    setVariations(mappedVariations);
     setShowForm(true);
+
+    if (p.category === ROBUX_CATEGORY) return;
+
+    try {
+      if (p.inventoryMode === "items") {
+        const { data, error } = await (supabase as any).rpc("get_product_auto_inventory", { _product_id: p.id });
+        if (error) throw error;
+        const rows = Array.isArray(data) ? data : [];
+        const baseItems = rows.filter((row: any) => !row.variation_id).map((row: any) => String(row.content || "")).filter(Boolean);
+        setForm((current) => ({ ...current, autoItems: baseItems.join("\n") }));
+        setVariations((current) => current.map((variation) => ({
+          ...variation,
+          autoItems: rows
+            .filter((row: any) => String(row.variation_id || "") === variation.id)
+            .map((row: any) => String(row.content || ""))
+            .filter(Boolean)
+            .join("\n"),
+        })));
+      } else if (p.deliveryType === "auto") {
+        // Legacy listings stored one reusable delivery text in product_delivery.
+        // Loading it here lets the seller migrate it into the new private item stock.
+        const { data } = await (supabase as any)
+          .from("product_delivery")
+          .select("delivery_content")
+          .eq("product_id", p.id)
+          .maybeSingle();
+        const legacyContent = String(data?.delivery_content || "").trim();
+        if (legacyContent) {
+          if (mappedVariations.length) {
+            setVariations((current) => current.map((variation) => ({
+              ...variation,
+              deliveryType: "auto",
+              autoItems: legacyContent,
+            })));
+          } else {
+            setForm((current) => ({ ...current, autoItems: legacyContent }));
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("[zxmax:inventory:load]", error);
+      toast.warning("O anúncio abriu, mas não foi possível carregar o estoque automático agora.");
+    }
   };
 
   const handleDelete = async (id: number) => {
