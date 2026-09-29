@@ -6,7 +6,7 @@ describe("order chat international UX", () => {
     const chat = await readFile("src/components/OrderChat.tsx", "utf8");
     const edge = await readFile("supabase/functions/translate-order-message/index.ts", "utf8");
     expect(chat).toContain("Resumo do pedido");
-    expect(chat).toContain("purchase.quantity");
+    expect(chat).toContain("purchase?.quantity");
     expect(chat).toContain('"translate-order-message"');
     expect(chat).toContain('message.sender_id === me');
     expect(chat).toContain("differentParticipantLocale");
