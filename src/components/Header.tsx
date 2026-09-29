@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Heart, Menu, Search, Shield, UserRound, Wallet } from "lucide-react";
+import { Coins, Heart, Menu, Search, Shield, UserRound, Wallet } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useStore } from "@/store/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
@@ -99,6 +99,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
               aria-label="Abrir mercado de Robux"
               className="flex h-9 items-center rounded-lg border border-[#ffd66b]/40 bg-[#ffbd2e] px-3 text-[11px] font-black text-black shadow-[0_6px_20px_rgba(255,189,46,0.16)] transition hover:bg-[#ffd05c] active:scale-[0.97] sm:px-4 sm:text-xs"
             >
+              <Coins className="mr-1.5 h-3.5 w-3.5" />
               Robux
             </button>
             <button
