@@ -752,7 +752,14 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                           <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
                               <p className="text-[10px] font-black uppercase tracking-[0.13em] text-[#70bcff]">Variação {index + 1}</p>
-                              <p className="mt-0.5 truncate text-xs font-semibold text-white/45">{variation.name || "Sem nome"}</p>
+                              <div className="mt-1 flex flex-wrap items-center gap-2">
+                                <p className="truncate text-xs font-semibold text-white/55">{variation.name || "Sem nome"}</p>
+                                <span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-wide ${variation.deliveryType === "auto" ? "border-emerald-300/20 bg-emerald-400/[0.08] text-emerald-200" : "border-[#168cff]/20 bg-[#168cff]/[0.08] text-[#82caff]"}`}>
+                                  {variation.deliveryType === "auto"
+                                    ? `Automática · ${autoItemCount(variation.autoItems)} item(ns)`
+                                    : `Manual · estoque ${variation.stock || "0"}`}
+                                </span>
+                              </div>
                             </div>
                             <button type="button" onClick={() => setVariations((current) => current.filter((_, currentIndex) => currentIndex !== index))} className="rounded-lg p-2 text-red-300/65 transition hover:bg-red-500/10 hover:text-red-300" aria-label={`Remover variação ${index + 1}`}><Trash2 className="h-4 w-4" /></button>
                           </div>
@@ -770,7 +777,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
 
                           <div className="mt-3 grid gap-3 sm:grid-cols-3">
                             <label className="block">
-                              <span className="mb-1 block text-[10px] font-bold uppercase text-white/35">Estoque</span>
+                              <span className="mb-1 block text-[10px] font-bold uppercase text-white/35">{variation.deliveryType === "auto" ? "Estoque automático" : "Estoque"}</span>
                               <input
                                 value={variation.deliveryType === "auto" ? String(autoItemCount(variation.autoItems)) : variation.stock}
                                 onChange={(e) => updateVariation(index, { stock: e.target.value })}
@@ -778,8 +785,9 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                                 type="number"
                                 min="0"
                                 placeholder="0"
-                                className="w-full rounded-xl border border-[#292933] bg-[#09090d] p-3 text-sm text-white outline-none focus:border-[#168cff] read-only:text-[#6fc1ff]"
+                                className="w-full rounded-xl border border-[#292933] bg-[#09090d] p-3 text-sm text-white outline-none focus:border-[#168cff] read-only:cursor-not-allowed read-only:border-emerald-300/15 read-only:bg-emerald-400/[0.035] read-only:text-[#7ee7bd]"
                               />
+                              {variation.deliveryType === "auto" && <span className="mt-1.5 block text-[9px] leading-3 text-emerald-200/45">Calculado pelos itens cadastrados abaixo.</span>}
                             </label>
                             <label className="block">
                               <span className="mb-1 block text-[10px] font-bold uppercase text-white/35">Qtd. mínima</span>
@@ -808,7 +816,10 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                           {variation.deliveryType === "auto" && (
                             <div className="mt-3 rounded-xl border border-emerald-300/10 bg-emerald-400/[0.035] p-3">
                               <div className="mb-2 flex items-center justify-between gap-3">
-                                <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-200/80"><KeyRound className="h-3.5 w-3.5" /> Itens para entrega</p>
+                                <div>
+                                  <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-200/80"><KeyRound className="h-3.5 w-3.5" /> Estoque + entrega automática</p>
+                                  <p className="mt-1 text-[9px] text-white/30">Cada linha abaixo é uma unidade real do estoque desta variação.</p>
+                                </div>
                                 <span className="rounded-full bg-emerald-300/10 px-2 py-1 text-[10px] font-bold text-emerald-200">{autoItemCount(variation.autoItems)} disponível(is)</span>
                               </div>
                               <textarea value={variation.autoItems} onChange={(e) => updateVariation(index, { autoItems: e.target.value })} rows={5} placeholder={"Um item por linha\nexemplo-chave-001\nexemplo-chave-002"} className="w-full resize-y rounded-xl border border-[#292933] bg-[#08080b] p-3 font-mono text-xs leading-5 text-white outline-none placeholder:text-white/18 focus:border-emerald-300/30" />
@@ -850,7 +861,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
 
               {!isRobuxCategory && variations.length > 0 && (
                 <div className="rounded-xl border border-[#168cff]/15 bg-[#168cff]/[0.045] px-4 py-3 text-[11px] leading-5 text-[#8acbff]/75">
-                  A forma de entrega agora é definida dentro de cada variação. Você pode misturar opções manuais e automáticas no mesmo anúncio.
+                  Cada variação tem estoque e entrega próprios. Em Manual, digite a quantidade em estoque. Em Automática, cadastre um item por linha: a quantidade de linhas válidas vira o estoque daquela variação e um item é entregue somente após o pagamento confirmado.
                 </div>
               )}
 
