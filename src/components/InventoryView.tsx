@@ -637,9 +637,43 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
             <form onSubmit={handleCreate} className="space-y-4">
               {!isRobuxListing && <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nome do Produto" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />}
               
-              <select value={form.category} onChange={(e) => { const category = e.target.value; setForm({ ...form, category, ...(category === ROBUX_CATEGORY ? { name: "Robux", description: "", deliveryType: "manual" as const } : {}) }); if (category === ROBUX_CATEGORY) setVariations([]); }} className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm focus:border-[#0084ff] outline-none">
-                {state.config.categories.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <div className="rounded-2xl border border-[#25252e] bg-[#0a0a0f] p-3">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-white/35">Categoria</p>
+                    <p className="mt-0.5 text-xs font-bold text-white">{isRobuxCategory(form.category) ? "Robux" : form.category || "Escolha uma categoria"}</p>
+                  </div>
+                  <span className="rounded-lg border border-white/[0.07] bg-white/[0.03] px-2 py-1 text-[9px] font-bold text-white/30">1 opção</span>
+                </div>
+                <div className="grid max-h-48 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3" role="radiogroup" aria-label="Categoria do produto">
+                  {state.config.categories.map((rawCategory) => {
+                    const category = isRobuxCategory(rawCategory) ? ROBUX_CATEGORY : rawCategory;
+                    const selected = isRobuxCategory(category) ? isRobuxCategory(form.category) : form.category === category;
+                    return (
+                      <button
+                        key={rawCategory}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => {
+                          setForm({
+                            ...form,
+                            category,
+                            ...(isRobuxCategory(category) ? { name: "Robux", description: "", deliveryType: "manual" as const } : {}),
+                          });
+                          if (isRobuxCategory(category)) setVariations([]);
+                        }}
+                        className={`flex min-h-12 items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-[11px] font-bold transition ${selected ? "border-[#168cff]/60 bg-[#168cff]/12 text-white shadow-[0_0_0_1px_rgba(22,140,255,.08)]" : "border-white/[0.07] bg-white/[0.025] text-white/55 hover:border-white/[0.14] hover:text-white"}`}
+                      >
+                        <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${selected ? "bg-[#168cff]/20 text-[#5aaeff]" : "bg-white/[0.04] text-white/30"}`}>
+                          {isRobuxCategory(category) ? <Coins className="h-3.5 w-3.5" /> : <Package className="h-3.5 w-3.5" />}
+                        </span>
+                        <span className="min-w-0 leading-4">{isRobuxCategory(category) ? "Robux" : category}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
               {isRobuxListing && (
                 <div className="bg-[#ffbd2e]/10 border border-[#ffbd2e]/20 rounded-xl p-4 space-y-3">
