@@ -13,7 +13,9 @@ const BodySchema = z.object({
   action: z.enum([
     "confirm_delivery",        // vendedor confirma entrega -> delivered_pending_confirmation
     "confirm_receipt",         // comprador confirma recebimento -> delivered; saldo segue retenção
-    "seller_refund",           // vendedor reembolsa comprador -> refunded
+    "seller_refund",           // vendedor inicia reembolso -> comprador informa destino PIX
+    "submit_refund_details",    // comprador confirma e informa titular + chave PIX
+    "complete_refund",          // vendedor confirma que o PIX foi enviado
     "open_dispute",            // comprador abre disputa -> dispute
     "send_message",            // participantes enviam mensagem autorizada ao pedido
     "approve",                 // admin aprova -> delivered
@@ -22,6 +24,8 @@ const BodySchema = z.object({
   ]),
   reason: z.string().trim().optional(),
   message: z.string().trim().min(1).max(1000).optional(),
+  accountHolderName: z.string().trim().max(120).optional(),
+  pixKey: z.string().trim().max(180).optional(),
 });
 
 const containsExternalContact = (text: string): boolean => {
@@ -86,7 +90,7 @@ serve(async (req) => {
       return json({ error: "Dados inválidos", fields: parsed.error.flatten().fieldErrors }, 400);
     }
 
-    const { orderId, action, reason, message } = parsed.data;
+    const { orderId, action, reason, message, accountHolderName, pixKey } = parsed.data;
     const admin = createClient(supabaseUrl, serviceKey);
 
     const { data: order } = await admin
@@ -195,22 +199,66 @@ serve(async (req) => {
     }
 
     if (action === "seller_refund") {
-      if (!isSeller && !isAdmin) return json({ error: "Apenas o vendedor do pedido ou um administrador pode realizar o reembolso." }, 403);
+      if (!isSeller && !isAdmin) return json({ error: "Apenas o vendedor do pedido ou um administrador pode solicitar o reembolso." }, 403);
       if (["refunded", "cancelled"].includes(order.status)) return json({ error: "Este pedido já foi reembolsado ou cancelado." }, 400);
       if (order.status === "pending") return json({ error: "Não é possível reembolsar um pedido pendente de pagamento." }, 400);
-
       const cleanReason = (reason || "").trim();
       if (cleanReason.length < 10) return json({ error: "O motivo do reembolso deve ter pelo menos 10 caracteres." }, 400);
       if (containsExternalContact(cleanReason)) return json({ error: "Não é permitido enviar contatos externos no motivo do reembolso." }, 400);
 
-      const { data, error } = await admin.rpc("refund_purchase_to_wallet_server", {
-        _purchase_id: Number(order.id),
-        _reason: cleanReason,
-        _actor_id: auth.user.id,
-      });
-      if (error) return json({ error: error.message || "Não foi possível concluir o reembolso." }, 409);
+      const { data: existing } = await admin.from("refund_requests").select("id,status").eq("purchase_id", order.id).maybeSingle();
+      if (existing && existing.status !== "cancelled") return json({ success: true, status: existing.status, refundPending: true });
+
+      const { error: requestError } = await admin.from("refund_requests").upsert({
+        purchase_id: order.id, buyer_id: order.buyer_id, seller_id: order.seller_id,
+        reason: cleanReason, status: "awaiting_buyer_details", account_holder_name: null,
+        pix_key: null, details_submitted_at: null, paid_at: null, updated_at: now,
+      }, { onConflict: "purchase_id" });
+      if (requestError) throw requestError;
+
+      messages = [...messages, { from: "System", text: "↩️ O vendedor solicitou um reembolso. Comprador: use o botão “Confirmar reembolso” neste pedido para informar, com segurança, o nome do titular e a chave PIX de destino.", date: now }];
+      const { error: updateError } = await admin.from("purchases").update({
+        refund_reason: cleanReason, messages, updated_at: now,
+      }).eq("id", order.id);
+      if (updateError) throw updateError;
       await notifyOrderEmails(["refund_buyer", "refund_seller"], Number(order.id));
-      return json(data || { success: true, status: "refunded" });
+      return json({ success: true, status: "awaiting_buyer_details", refundPending: true });
+    }
+
+    if (action === "submit_refund_details") {
+      if (!isBuyer) return json({ error: "Apenas o comprador pode confirmar os dados do reembolso." }, 403);
+      const holderName = String(accountHolderName || "").trim().replace(/\s+/g, " ");
+      const refundPixKey = String(pixKey || "").trim();
+      if (holderName.length < 5 || holderName.length > 120) return json({ error: "Informe o nome completo do titular exatamente como consta no banco." }, 400);
+      if (refundPixKey.length < 5 || refundPixKey.length > 180) return json({ error: "Informe uma chave PIX válida." }, 400);
+      const { data: request } = await admin.from("refund_requests").select("id,status").eq("purchase_id", order.id).eq("buyer_id", auth.user.id).maybeSingle();
+      if (!request) return json({ error: "Não existe solicitação de reembolso para este pedido." }, 404);
+      if (request.status === "paid") return json({ error: "Este reembolso já foi concluído." }, 409);
+      const { error } = await admin.from("refund_requests").update({
+        account_holder_name: holderName, pix_key: refundPixKey, status: "ready_to_pay",
+        details_submitted_at: now, updated_at: now,
+      }).eq("id", request.id);
+      if (error) throw error;
+      messages = [...messages, { from: "System", text: "✅ O comprador confirmou os dados bancários do reembolso. Os dados PIX ficam visíveis somente aos participantes autorizados do pedido.", date: now }];
+      await admin.from("purchases").update({ messages, updated_at: now }).eq("id", order.id);
+      return json({ success: true, status: "ready_to_pay" });
+    }
+
+    if (action === "complete_refund") {
+      if (!isSeller && !isAdmin) return json({ error: "Apenas o vendedor ou a administração pode concluir o reembolso." }, 403);
+      const { data: request } = await admin.from("refund_requests").select("id,status").eq("purchase_id", order.id).maybeSingle();
+      if (!request || request.status !== "ready_to_pay") return json({ error: "Os dados do comprador ainda não foram confirmados." }, 409);
+      // This action records a refund only after the seller confirms the transfer
+      // was actually sent. It never credits the internal ZXMAX wallet.
+      const { error: reqError } = await admin.from("refund_requests").update({ status: "paid", paid_at: now, updated_at: now }).eq("id", request.id);
+      if (reqError) throw reqError;
+      messages = [...messages, { from: "System", text: "✅ O vendedor marcou o reembolso PIX como enviado. O valor não foi creditado na carteira ZXMAX.", date: now }];
+      const { error: orderError } = await admin.from("purchases").update({
+        status: "refunded", refunded_at: now, seller_released: false, released_at: null, messages, updated_at: now,
+      }).eq("id", order.id);
+      if (orderError) throw orderError;
+      await notifyOrderEmails(["refund_buyer", "refund_seller"], Number(order.id));
+      return json({ success: true, status: "refunded" });
     }
 
     if (action === "open_dispute") {
