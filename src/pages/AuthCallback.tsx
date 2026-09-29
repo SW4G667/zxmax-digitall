@@ -5,9 +5,8 @@ import LoadingScreen from "@/components/LoadingScreen";
 import { recordSecurityEvent } from "@/lib/securityEvents";
 
 /**
- * Callback exclusivo de OAuth. A troca PKCE é feita pelo SDK Supabase quando
- * ele processa a URL; esta tela apenas aguarda uma sessão autenticada e remove
- * parâmetros transitórios antes de encaminhar o usuário à loja.
+ * Callback único do Supabase Auth. Ele atende confirmação de e-mail, recuperação
+ * concluída e OAuth do Discord sem tratar todos os logins como se fossem Discord.
  */
 export default function AuthCallback() {
   const navigate = useNavigate();
@@ -33,12 +32,13 @@ export default function AuthCallback() {
 
     const intent = params.get("intent");
     const requestedNext = params.get("next");
+    const isDiscordFlow = intent === "listing" || Boolean(window.sessionStorage.getItem("zxmax_discord_verify_user"));
     const nextPath = requestedNext?.startsWith("/") ? requestedNext : "/meus-produtos?new=1";
 
     const cleanAndContinue = async (session: any) => {
       if (!active || finishedRef.current) return;
       finishedRef.current = true;
-      setMessage(intent === "listing" ? "Verificando e-mail e servidor do Discord..." : "Concluindo autenticação segura...");
+      setMessage(intent === "listing" ? "Verificando e-mail e servidor do Discord..." : "Confirmando sua conta...");
 
       const expectedUserId = window.sessionStorage.getItem("zxmax_discord_verify_user");
       if (intent === "listing" && expectedUserId && session?.user?.id !== expectedUserId) {
@@ -47,6 +47,13 @@ export default function AuthCallback() {
         if (!active) return;
         setFailed(true);
         setMessage("O Discord autorizado pertence a outra conta. Entre novamente na ZXMAX e use o Discord vinculado ao mesmo e-mail.");
+        return;
+      }
+
+      if (!isDiscordFlow) {
+        void recordSecurityEvent(supabase, "auth.email_confirmation", "success");
+        window.history.replaceState({}, document.title, "/auth/callback");
+        navigate("/loja?email=confirmed", { replace: true });
         return;
       }
 
@@ -89,9 +96,11 @@ export default function AuthCallback() {
       if (active) {
         if (finishedRef.current) return;
         finishedRef.current = true;
-        void recordSecurityEvent(supabase, "auth.discord", "failure");
+        void recordSecurityEvent(supabase, isDiscordFlow ? "auth.discord" : "auth.email_confirmation", "failure");
         setFailed(true);
-        setMessage("A autenticação demorou mais que o esperado. Verifique a configuração do Discord ou tente novamente.");
+        setMessage(isDiscordFlow
+          ? "A autenticação demorou mais que o esperado. Verifique o Discord ou tente novamente."
+          : "A confirmação demorou mais que o esperado. Abra novamente o link recebido ou solicite outro e-mail.");
       }
     }, 10_000);
 
