@@ -11,7 +11,7 @@ describe("página de categorias", () => {
     expect(page).toContain("storefrontProducts(state.products, state.currentUser?.id)");
     expect(page).toContain("approved.filter((product) => product.category === category)");
     expect(page).toContain('"/loja?cat=" + encodeURIComponent(category)');
-    expect(page).toContain('category === ROBUX_CATEGORY ? "/robux"');
+    expect(page).toContain('isRobuxCategory(category) ? "/robux"');
   });
 
   it("mantém descoberta no menu sem duplicar todos os filtros do catálogo", async () => {
