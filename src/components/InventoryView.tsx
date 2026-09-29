@@ -460,7 +460,6 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
       image: form.image,
       banner: form.banner || undefined,
       deliveryType: effectiveDeliveryType,
-      deliveryContent: "",
       inventoryMode,
       variations: publicVariations,
       stock: effectiveStock,
