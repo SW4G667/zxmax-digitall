@@ -305,19 +305,30 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canOpenListingForm()) return;
-    if ((!isRobuxCategory && !form.name.trim()) || !form.price.trim()) return toast.error("Preencha nome e preço.");
+    if ((!isRobuxCategory && !form.name.trim()) || !form.price.trim()) {
+      return toast.error("Preencha nome e preço.");
+    }
+
     const finalPrice = parsePriceInput(form.price);
-    if (!isValidProductPrice(finalPrice)) return toast.error(`Informe um preço válido a partir de ${formatBRL(MIN_PRODUCT_PRICE)}. Use 2,00 ou 2.00.`);
+    if (!isValidProductPrice(finalPrice)) {
+      return toast.error(`Informe um preço válido a partir de ${formatBRL(MIN_PRODUCT_PRICE)}. Use 2,00 ou 2.00.`);
+    }
 
     const stockNum = form.stock.trim() === "" ? undefined : Number.parseInt(form.stock, 10);
     const minQtyNum = form.minQuantity.trim() === "" ? undefined : Number.parseInt(form.minQuantity, 10);
     if (stockNum !== undefined && (!Number.isFinite(stockNum) || stockNum < 0)) return toast.error("Estoque inválido.");
     if (minQtyNum !== undefined && (!Number.isFinite(minQtyNum) || minQtyNum <= 0)) return toast.error("Quantidade mínima inválida.");
 
-    // The advertised price is always the package price.
-    let finalVariations = variations
-      .filter((v) => v.name && v.price)
-      .map((v) => ({ name: v.name, price: parsePriceInput(v.price) }));
+    let finalVariations: Array<{
+      id?: string;
+      name: string;
+      price: number;
+      stock?: number;
+      minQuantity?: number;
+      deliveryType?: "auto" | "manual";
+      deliveryTime?: string;
+      autoItems?: string;
+    }> = [];
 
     if (isRobuxCategory) {
       const robuxQty = Number.parseInt(form.robuxAmount, 10);
@@ -326,42 +337,144 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
       if (minQtyNum === undefined || minQtyNum <= 0) return toast.error("Informe a quantidade mínima de compra de Robux.");
       if (minQtyNum > stockNum) return toast.error("A quantidade mínima não pode exceder o estoque disponível.");
       finalVariations = [{
+        id: `robux_${robuxQty}`,
         name: `${robuxQty} Robux`,
         price: finalPrice,
+        stock: stockNum,
+        minQuantity: minQtyNum,
+        deliveryType: "manual",
+        deliveryTime: form.deliveryTime || undefined,
       }];
-    }
-    finalVariations = finalVariations.filter((v) => isValidProductPrice(v.price));
-    if (variations.some((v) => v.name && v.price && !isValidProductPrice(parsePriceInput(v.price)))) {
-      return toast.error(`Toda variação precisa custar pelo menos ${formatBRL(MIN_PRODUCT_PRICE)}.`);
+    } else {
+      const partiallyFilled = variations.some((variation) => Boolean(variation.name.trim()) !== Boolean(variation.price.trim()));
+      if (partiallyFilled) return toast.error("Complete o nome e o preço de todas as variações.");
+
+      for (let index = 0; index < variations.length; index += 1) {
+        const variation = variations[index];
+        if (!variation.name.trim() && !variation.price.trim()) continue;
+
+        const price = parsePriceInput(variation.price);
+        if (!isValidProductPrice(price)) {
+          return toast.error(`A variação "${variation.name || index + 1}" precisa custar pelo menos ${formatBRL(MIN_PRODUCT_PRICE)}.`);
+        }
+
+        const minQuantity = variation.minQuantity.trim() === "" ? 1 : Number.parseInt(variation.minQuantity, 10);
+        if (!Number.isFinite(minQuantity) || minQuantity <= 0) {
+          return toast.error(`Quantidade mínima inválida na variação "${variation.name}".`);
+        }
+
+        const automaticItems = parseAutoItems(variation.autoItems);
+        const variationStock = variation.deliveryType === "auto"
+          ? automaticItems.length
+          : Number.parseInt(variation.stock, 10);
+
+        if (!Number.isFinite(variationStock) || variationStock < 0) {
+          return toast.error(`Informe o estoque da variação "${variation.name}".`);
+        }
+        if (variationStock > 0 && minQuantity > variationStock) {
+          return toast.error(`A quantidade mínima da variação "${variation.name}" não pode ser maior que o estoque.`);
+        }
+
+        finalVariations.push({
+          id: variation.id,
+          name: variation.name.trim(),
+          price,
+          stock: variationStock,
+          minQuantity,
+          deliveryType: variation.deliveryType,
+          deliveryTime: variation.deliveryTime.trim() || undefined,
+          autoItems: variation.autoItems,
+        });
+      }
     }
 
+    const hasVariations = !isRobuxCategory && finalVariations.length > 0;
+    const anyAutomatic = !isRobuxCategory && (
+      hasVariations
+        ? finalVariations.some((variation) => variation.deliveryType === "auto")
+        : form.deliveryType === "auto"
+    );
+    const allAutomatic = hasVariations && finalVariations.every((variation) => variation.deliveryType === "auto");
+    const effectiveDeliveryType: "auto" | "manual" = isRobuxCategory
+      ? "manual"
+      : hasVariations
+        ? (allAutomatic ? "auto" : "manual")
+        : form.deliveryType;
+    const inventoryMode: "legacy" | "items" = anyAutomatic ? "items" : "legacy";
+
+    const baseAutoItems = parseAutoItems(form.autoItems);
+    const effectiveStock = isRobuxCategory
+      ? stockNum
+      : hasVariations
+        ? finalVariations.reduce((sum, variation) => sum + Number(variation.stock || 0), 0)
+        : form.deliveryType === "auto"
+          ? baseAutoItems.length
+          : stockNum;
+
+    const effectiveMinQuantity = hasVariations
+      ? Math.min(...finalVariations.map((variation) => Number(variation.minQuantity || 1)))
+      : minQtyNum;
+
+    const publicVariations = finalVariations.map(({ autoItems: _autoItems, ...variation }) => variation);
+    const inventoryPayload = isRobuxCategory
+      ? []
+      : hasVariations
+        ? finalVariations
+            .filter((variation) => variation.deliveryType === "auto")
+            .map((variation) => ({
+              variationId: variation.id,
+              items: parseAutoItems(variation.autoItems || ""),
+            }))
+        : form.deliveryType === "auto"
+          ? [{ variationId: null, items: baseAutoItems }]
+          : [];
+
+    const productPayload = {
+      name: isRobuxCategory ? "Robux" : form.name.trim(),
+      category: form.category,
+      description: isRobuxCategory ? "" : form.description,
+      price: finalPrice,
+      image: form.image,
+      banner: form.banner || undefined,
+      deliveryType: effectiveDeliveryType,
+      deliveryContent: "",
+      inventoryMode,
+      variations: publicVariations,
+      stock: effectiveStock,
+      minQuantity: effectiveMinQuantity,
+      deliveryTime: form.deliveryTime || undefined,
+    } as const;
+
+    let productId: number;
     if (editingId !== null) {
-      const ok = await updateProduct(editingId, {
-        name: isRobuxCategory ? "Robux" : form.name, category: form.category, description: isRobuxCategory ? "" : form.description,
-        price: finalPrice, image: form.image, banner: form.banner || undefined,
-        deliveryType: form.deliveryType, deliveryContent: form.deliveryContent,
-        variations: finalVariations.length > 0 ? finalVariations : [],
-        stock: stockNum,
-        minQuantity: minQtyNum,
-        deliveryTime: form.deliveryTime || undefined,
-      });
+      const ok = await updateProduct(editingId, productPayload as any);
       if (!ok) return;
-      toast.success("Produto atualizado!");
+      productId = editingId;
     } else {
       const created = await addProduct({
-        name: isRobuxCategory ? "Robux" : form.name, category: form.category, description: isRobuxCategory ? "" : form.description,
-        price: finalPrice, image: form.image, banner: form.banner || undefined,
+        ...productPayload,
         seller: state.currentUser!.name,
-        deliveryType: form.deliveryType, deliveryContent: form.deliveryContent,
-        variations: finalVariations.length > 0 ? finalVariations : undefined,
-        stock: stockNum,
-        minQuantity: minQtyNum,
-        deliveryTime: form.deliveryTime || undefined,
+        variations: publicVariations.length ? publicVariations : undefined,
       } as any);
-      // addProduct owns the success/failure toast: it knows whether the server
-      // published the listing immediately or queued it for moderation.
       if (!created) return;
+      productId = Number(created);
     }
+
+    if (!isRobuxCategory) {
+      const { data: inventoryResult, error: inventoryError } = await (supabase as any).rpc(
+        "replace_product_auto_inventory",
+        { _product_id: productId, _inventories: inventoryPayload },
+      );
+      if (inventoryError || inventoryResult?.success === false) {
+        console.warn("[zxmax:inventory:save]", inventoryError);
+        setEditingId(productId);
+        toast.error("O anúncio foi salvo, mas o estoque automático não. O formulário ficou aberto para você tentar novamente.");
+        return;
+      }
+    }
+
+    await refreshProducts();
+    if (editingId !== null) toast.success("Produto e estoque atualizados!");
     setShowForm(false);
     resetForm();
   };
