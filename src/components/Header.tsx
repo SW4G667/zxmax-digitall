@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Coins, Heart, Menu, Search, Shield, UserRound, Wallet } from "lucide-react";
+import { Heart, Menu, Search, Shield, UserRound, Wallet } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useStore } from "@/store/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
@@ -92,16 +92,6 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
           </form>
 
           <div className="ml-auto flex items-center gap-1.5">
-            <button onClick={() => navigate("/robux")} className={`flex h-9 items-center rounded-lg border px-3 text-[11px] font-black transition lg:hidden ${location.pathname === "/robux" ? "border-[#f4b42c] bg-[#f4b42c] text-black" : "border-[#f4b42c]/40 bg-[#f4b42c]/10 text-[#ffc84a]"}`} aria-label="Abrir mercado de Robux">Robux</button>
-            <button
-              type="button"
-              onClick={() => navigate("/robux")}
-              aria-label="Abrir mercado de Robux"
-              className="flex h-9 items-center rounded-lg border border-[#ffd66b]/40 bg-[#ffbd2e] px-3 text-[11px] font-black text-black shadow-[0_6px_20px_rgba(255,189,46,0.16)] transition hover:bg-[#ffd05c] active:scale-[0.97] sm:px-4 sm:text-xs"
-            >
-              <Coins className="mr-1.5 h-3.5 w-3.5" />
-              Robux
-            </button>
             <button
               onClick={openListing}
               aria-label={user ? "Abrir meus anúncios" : "Anunciar"}

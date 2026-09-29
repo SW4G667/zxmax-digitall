@@ -234,12 +234,22 @@ export default function MarketplaceHome() {
         </section>
 
         <section>
-          <div className="mb-3 flex items-end justify-between">
-            <div>
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div className="min-w-0">
               <h2 className="text-lg font-extrabold tracking-[-0.025em] text-white sm:text-xl">Categorias populares</h2>
               <p className="mt-1 text-[10px] text-white/30">Acesse rapidamente o tipo de produto que procura.</p>
             </div>
-            <Link to="/categorias" className="text-[10px] font-bold text-[var(--zx-accent)] hover:text-white">Ver todas</Link>
+            <div className="flex shrink-0 items-center gap-2">
+              <Link
+                to="/robux"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#f4b42c]/40 bg-[#f4b42c]/12 px-3 text-[10px] font-black text-[#ffc84a] shadow-[0_6px_18px_rgba(244,180,44,.08)] transition hover:border-[#f4b42c]/65 hover:bg-[#f4b42c]/18 active:scale-[0.98]"
+                aria-label="Abrir mercado de Robux"
+              >
+                <Zap className="h-3.5 w-3.5" />
+                Robux
+              </Link>
+              <Link to="/categorias" className="text-[10px] font-bold text-[var(--zx-accent)] hover:text-white">Ver todas</Link>
+            </div>
           </div>
           <div className="-mx-3 flex snap-x gap-2.5 overflow-x-auto px-3 pb-1 sm:mx-0 sm:grid sm:grid-cols-4 sm:px-0 lg:grid-cols-8">
             {categoryTiles.map(({ category, count, image }) => {
