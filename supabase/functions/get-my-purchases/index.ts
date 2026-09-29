@@ -13,7 +13,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 // A área de pedidos usa IDs públicos da contraparte. E-mail não é necessário
 // para acompanhar uma compra e não deve retornar ao navegador nesse contrato.
-const PURCHASE_COLUMNS = "id,product_id,buyer_id,buyer_public_id,seller_id,seller_public_id,status,amount,payment_provider,messages,reviewed,review_stars,review_comment,variation_name,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at,delivered_pending_at,refund_reason,refunded_at,seller_released,released_at";
+const PURCHASE_COLUMNS = "id,product_id,buyer_id,buyer_public_id,seller_id,seller_public_id,status,amount,payment_provider,messages,reviewed,review_stars,review_comment,variation_id,variation_name,quantity,product_amount,buyer_fee,created_at,updated_at,evopay_charge_id,pix_qr_code,pix_expires_at,delivered_pending_at,refund_reason,refunded_at,seller_released,released_at";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
