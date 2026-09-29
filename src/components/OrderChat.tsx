@@ -110,9 +110,8 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
       ...(country ? { country_code: country } : {}),
     }).eq("user_id", me);
 
-    const ids = [purchase.buyerId, purchase.sellerId].filter(Boolean);
     void (async () => {
-      const { data } = await supabase.from("profiles").select("user_id,locale,country_code").in("user_id", ids);
+      const { data } = await (supabase as any).rpc("get_order_participant_locales", { _order_id: orderId });
       const next: Record<string, { locale?: string | null; country?: string | null }> = {};
       for (const row of data || []) next[row.user_id] = { locale: row.locale, country: row.country_code };
       next[me] = { locale, country: country || next[me]?.country || null };
