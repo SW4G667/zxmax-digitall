@@ -187,14 +187,23 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
 
   const openEdit = async (p: Product) => {
     const robuxVariation = p.category === ROBUX_CATEGORY ? p.variations?.[0] : undefined;
+    const rawVariations = p.variations || [];
+    const singleLegacyVariation = rawVariations.length === 1;
     const mappedVariations: Variation[] = p.category === ROBUX_CATEGORY
       ? []
-      : (p.variations || []).map((v, index) => ({
+      : rawVariations.map((v, index) => ({
           id: v.id || `legacy_${p.id}_${index + 1}`,
           name: v.name,
           price: String(v.price),
-          stock: v.stock == null ? "" : String(v.stock),
-          minQuantity: v.minQuantity == null ? "1" : String(v.minQuantity),
+          // Anúncios antigos guardavam estoque/mínimo no produto, não na variação.
+          // Quando há uma única variação, herdar esses valores é seguro e evita
+          // abrir o editor com estoque vazio ou quantidade mínima errada.
+          stock: v.stock == null
+            ? (singleLegacyVariation && p.stock != null ? String(p.stock) : "")
+            : String(v.stock),
+          minQuantity: v.minQuantity == null
+            ? (singleLegacyVariation && p.minQuantity != null ? String(p.minQuantity) : "1")
+            : String(v.minQuantity),
           deliveryTime: v.deliveryTime || p.deliveryTime || "",
           deliveryType: v.deliveryType || p.deliveryType || "manual",
           autoItems: "",
