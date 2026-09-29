@@ -3,7 +3,7 @@ import { useStore, Product } from "@/store/StoreContext";
 import { Plus, X, Trash2, Upload, Users, Clock, MessageSquare, Pencil, Package, Coins, Zap, Boxes, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { formatBRL, formatRobuxPackage, formatStockLabel, isValidProductPrice, listingStatus, MIN_PRODUCT_PRICE, parsePriceInput, productStock, ROBUX_CATEGORY, isRobuxCategory } from "@/lib/catalog";
+import { formatBRL, formatRobuxPackage, formatStockLabel, isValidProductPrice, listingStatus, MIN_PRODUCT_PRICE, parsePriceInput, productStock, isRobuxCategory } from "@/lib/catalog";
 import { useSearchParams } from "react-router-dom";
 import { getDiscordListingRedirectTo } from "@/lib/discordAuth";
 import { getAppUrl } from "@/lib/appUrl";
@@ -186,10 +186,10 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
   };
 
   const openEdit = async (p: Product) => {
-    const robuxVariation = p.category === ROBUX_CATEGORY ? p.variations?.[0] : undefined;
+    const robuxVariation = isRobuxCategory(p.category) ? p.variations?.[0] : undefined;
     const rawVariations = p.variations || [];
     const singleLegacyVariation = rawVariations.length === 1;
-    const mappedVariations: Variation[] = p.category === ROBUX_CATEGORY
+    const mappedVariations: Variation[] = isRobuxCategory(p.category)
       ? []
       : rawVariations.map((v, index) => ({
           id: v.id || `legacy_${p.id}_${index + 1}`,
@@ -211,9 +211,9 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
 
     setEditingId(p.id);
     setForm({
-      name: p.category === ROBUX_CATEGORY ? "Robux" : p.name,
+      name: isRobuxCategory(p.category) ? "Robux" : p.name,
       category: p.category,
-      description: p.category === ROBUX_CATEGORY ? "" : p.description || "",
+      description: isRobuxCategory(p.category) ? "" : p.description || "",
       price: String(p.price),
       image: p.image || "",
       banner: p.banner || "",
@@ -228,7 +228,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     setVariations(mappedVariations);
     setShowForm(true);
 
-    if (p.category === ROBUX_CATEGORY) return;
+    if (isRobuxCategory(p.category)) return;
 
     try {
       if (p.inventoryMode === "items") {
@@ -428,7 +428,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
         : form.deliveryType === "auto"
     );
     const allAutomatic = hasVariations && finalVariations.every((variation) => variation.deliveryType === "auto");
-    const effectiveDeliveryType: "auto" | "manual" = isRobuxCategory
+    const effectiveDeliveryType: "auto" | "manual" = isRobuxListing
       ? "manual"
       : hasVariations
         ? (allAutomatic ? "auto" : "manual")
@@ -436,7 +436,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     const inventoryMode: "legacy" | "items" = anyAutomatic ? "items" : "legacy";
 
     const baseAutoItems = parseAutoItems(form.autoItems);
-    const effectiveStock = isRobuxCategory
+    const effectiveStock = isRobuxListing
       ? stockNum
       : hasVariations
         ? finalVariations.reduce((sum, variation) => sum + Number(variation.stock || 0), 0)
@@ -449,7 +449,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
       : minQtyNum;
 
     const publicVariations = finalVariations.map(({ autoItems: _autoItems, ...variation }) => variation);
-    const inventoryPayload = isRobuxCategory
+    const inventoryPayload = isRobuxListing
       ? []
       : hasVariations
         ? finalVariations
@@ -463,9 +463,9 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
           : [];
 
     const productPayload = {
-      name: isRobuxCategory ? "Robux" : form.name.trim(),
+      name: isRobuxListing ? "Robux" : form.name.trim(),
       category: form.category,
-      description: isRobuxCategory ? "" : form.description,
+      description: isRobuxListing ? "" : form.description,
       price: finalPrice,
       image: form.image,
       banner: form.banner || undefined,

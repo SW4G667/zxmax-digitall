@@ -217,6 +217,14 @@ export default function MarketplaceHome() {
               <p className="mt-1 text-[10px] text-white/30">Acesse rapidamente o tipo de produto que procura.</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => navigate("/robux")}
+                aria-label="Abrir mercado de Robux"
+                className="rounded-lg bg-[#f5b642] px-3 py-1.5 text-[10px] font-black text-black transition hover:brightness-110"
+              >
+                Robux
+              </button>
               <Link to="/categorias" className="text-[10px] font-bold text-[var(--zx-accent)] hover:text-white">Ver todas</Link>
             </div>
           </div>

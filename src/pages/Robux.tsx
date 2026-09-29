@@ -39,8 +39,8 @@ interface RobuxOffer {
 }
 
 const SORT_OPTIONS: { id: SortKey; label: string }[] = [
-  { id: "barato", label: "Menor preço por unidade" },
-  { id: "min", label: "Menor compra mínima" },
+  { id: "barato", label: "Mais barato" },
+  { id: "min", label: "Menor mínimo" },
   { id: "recomendado", label: "Mais avaliações" },
 ];
 
@@ -169,50 +169,65 @@ export default function RobuxPage() {
           <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-3"><p className="text-[9px] uppercase tracking-wide text-white/35">Estoque visível</p><p className="mt-1 text-lg font-black text-white">{knownStock ? knownStock.toLocaleString("pt-BR") : "—"}</p></div>
         </section>
 
-        <section className="mt-5 grid gap-3 rounded-lg border border-white/[0.08] bg-[#101013] p-3 sm:grid-cols-[minmax(0,1fr)_210px_200px_auto]">
-          <label className="flex h-10 min-w-0 items-center rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 focus-within:border-[var(--zx-accent)]">
-            <Search className="h-4 w-4 shrink-0 text-white/28" />
-            <span className="sr-only">Buscar oferta de Robux</span>
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar vendedor ou oferta..."
-              className="ml-2 min-w-0 flex-1 bg-transparent text-xs text-white outline-none placeholder:text-white/24"
-            />
-          </label>
+        <section className="mt-5 rounded-lg border border-white/[0.08] bg-[#101013] p-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-white/35">Ordenar ofertas</p>
+              <p className="mt-1 text-[10px] text-white/28">Compare por preço, compra mínima ou avaliações.</p>
+            </div>
+            <div role="group" aria-label="Ordenar ofertas" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:px-0">
+              {SORT_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={sort === option.id}
+                  onClick={() => setSort(option.id)}
+                  className={`shrink-0 rounded-md border px-3 py-2 text-[10px] font-bold transition ${
+                    sort === option.id
+                      ? "border-[#f5b642]/50 bg-[#f5b642] text-black"
+                      : "border-white/[0.09] bg-[#0b0b0e] text-white/55 hover:border-white/[0.16] hover:text-white"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          <label className="block">
-            <span className="sr-only">Preço máximo do pacote</span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={maxPrice}
-              onChange={(event) => setMaxPrice(event.target.value)}
-              placeholder="Preço máximo"
-              className="h-10 w-full rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 text-xs text-white outline-none placeholder:text-white/24 focus:border-[var(--zx-accent)]"
-            />
-          </label>
+          <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_210px_auto]">
+            <label className="flex h-10 min-w-0 items-center rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 focus-within:border-[var(--zx-accent)]">
+              <Search className="h-4 w-4 shrink-0 text-white/28" />
+              <span className="sr-only">Buscar oferta de Robux</span>
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar vendedor ou oferta..."
+                className="ml-2 min-w-0 flex-1 bg-transparent text-xs text-white outline-none placeholder:text-white/24"
+              />
+            </label>
 
-          <label className="block">
-            <span className="sr-only">Ordenar ofertas</span>
-            <select
-              value={sort}
-              onChange={(event) => setSort(event.target.value as SortKey)}
-              className="h-10 w-full rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 text-xs text-white outline-none focus:border-[var(--zx-accent)]"
+            <label className="block">
+              <span className="sr-only">Preço máximo do pacote</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={maxPrice}
+                onChange={(event) => setMaxPrice(event.target.value)}
+                placeholder="Preço máximo"
+                className="h-10 w-full rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 text-xs text-white outline-none placeholder:text-white/24 focus:border-[var(--zx-accent)]"
+              />
+            </label>
+
+            <button
+              type="button"
+              disabled={!hasFilters}
+              onClick={() => { setSearch(""); setMaxPrice(""); }}
+              className="h-10 rounded-md border border-white/[0.08] px-3 text-[11px] font-semibold text-white/42 transition hover:bg-white/[0.035] hover:text-white disabled:cursor-default disabled:opacity-30"
             >
-              {SORT_OPTIONS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-            </select>
-          </label>
-
-          <button
-            type="button"
-            disabled={!hasFilters}
-            onClick={() => { setSearch(""); setMaxPrice(""); }}
-            className="h-10 rounded-md border border-white/[0.08] px-3 text-[11px] font-semibold text-white/42 transition hover:bg-white/[0.035] hover:text-white disabled:cursor-default disabled:opacity-30"
-          >
-            Limpar
-          </button>
+              Limpar filtros
+            </button>
+          </div>
         </section>
 
         <div className="mt-6 flex items-end justify-between gap-3">
