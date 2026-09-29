@@ -51,7 +51,7 @@ export default function AuthCallback() {
       }
 
       if (!isDiscordFlow) {
-        void recordSecurityEvent(supabase, "auth.email_confirmation", "success");
+        void recordSecurityEvent(supabase, "auth.login", "success");
         window.history.replaceState({}, document.title, "/auth/callback");
         navigate("/loja?email=confirmed", { replace: true });
         return;
@@ -96,7 +96,7 @@ export default function AuthCallback() {
       if (active) {
         if (finishedRef.current) return;
         finishedRef.current = true;
-        void recordSecurityEvent(supabase, isDiscordFlow ? "auth.discord" : "auth.email_confirmation", "failure");
+        void recordSecurityEvent(supabase, isDiscordFlow ? "auth.discord" : "auth.login", "failure");
         setFailed(true);
         setMessage(isDiscordFlow
           ? "A autenticação demorou mais que o esperado. Verifique o Discord ou tente novamente."
