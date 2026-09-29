@@ -142,7 +142,7 @@ serve(async (req) => {
       });
       return json({
         error: "O PIX atingiu um limite temporário. Aguarde alguns instantes e tente novamente.",
-        code: "magnus_rate_limited",
+        code: "pix_rate_limited",
         retryAfter: limits.retryAfter || limits.reset,
       }, 429);
     }
@@ -163,8 +163,8 @@ serve(async (req) => {
         error: providerMessage,
       });
       return json({
-        error: providerMessage,
-        code: parsed?.code || `magnus_http_${response.status}`,
+        error: "Não foi possível gerar o PIX agora. Tente novamente em instantes.",
+        code: "pix_provider_error",
       }, 502);
     }
 
@@ -194,7 +194,7 @@ serve(async (req) => {
       });
       return json({
         error: "O provedor retornou uma resposta incompleta para o PIX. Tente novamente.",
-        code: "magnus_invalid_response",
+        code: "pix_invalid_response",
       }, 502);
     }
 
