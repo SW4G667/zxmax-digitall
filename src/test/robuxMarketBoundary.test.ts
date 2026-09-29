@@ -34,7 +34,7 @@ describe("mercado de Robux", () => {
     expect(productPage).not.toContain("Eldorado-style");
     expect(productPage).not.toContain("TradeShield");
     expect(marketPage).toContain("Mercado de Robux");
-    expect(marketPage).toContain("Somente anúncios aprovados com perfil público válido aparecem neste mercado.");
+    expect(marketPage).toContain("Escolha quantos Robux quer comprar, compare o preço final e o prazo, depois pague pelo checkout protegido.");
     expect(marketPage).toContain(".filter((offer) => Boolean(offer.sellerPublicId && offer.sellerName))");
     expect(marketPage).toContain("Valor/un.");
     expect(marketPage).toContain("ID público:");

@@ -10,7 +10,7 @@ describe("order chat international UX", () => {
     expect(chat).toContain('"translate-order-message"');
     expect(chat).toContain('message.sender_id === me');
     expect(chat).toContain("differentParticipantLocale");
-    expect(edge).toContain("message.sender_id === auth.user.id");
+    expect(edge).toContain("message.sender_id === userData.user.id");
     expect(edge).toContain("message_translations");
   });
 });
