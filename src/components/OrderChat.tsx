@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useStore, Purchase } from "@/store/StoreContext";
-import { Send, ImagePlus, Loader2, Clock, CheckCircle2, ShieldCheck, Undo2, AlertCircle, PackageCheck, Crown, X, Languages, ShoppingBag } from "lucide-react";
+import { Send, ImagePlus, Loader2, Clock, CheckCircle2, ShieldCheck, Undo2, AlertCircle, PackageCheck, Crown, X, Languages, ShoppingBag, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { containsExternalContact } from "@/lib/externalContact";
@@ -276,6 +276,25 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
     toast.success("Dados confirmados. O vendedor já pode realizar o reembolso PIX.");
   };
 
+  const copyRefundValue = async (label: string, value?: string | null) => {
+    const clean = String(value || "").trim();
+    if (!clean) return toast.error(`${label} não disponível.`);
+    try {
+      await navigator.clipboard.writeText(clean);
+      toast.success(`${label} copiado.`);
+    } catch {
+      const input = document.createElement("textarea");
+      input.value = clean;
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.appendChild(input);
+      input.select();
+      const copied = document.execCommand("copy");
+      input.remove();
+      copied ? toast.success(`${label} copiado.`) : toast.error("Não foi possível copiar automaticamente.");
+    }
+  };
+
   const completeRefund = async () => {
     if (!window.confirm("Confirme somente depois de realmente enviar o PIX ao comprador. Esta ação encerra o pedido como reembolsado.")) return;
     setRefundDetailsLoading(true);
@@ -472,9 +491,21 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
               {(isSeller || isAdmin) && refundRequest.status === "awaiting_buyer_details" ? <p className="mt-2 text-[10px] font-semibold text-amber-200/70">Aguardando o comprador informar os dados PIX.</p> : null}
               {(isSeller || isAdmin) && refundRequest.status === "ready_to_pay" ? (
                 <div className="mt-3 rounded-xl border border-white/[0.08] bg-black/20 p-3">
-                  <p className="text-[9px] uppercase tracking-wide text-white/35">Titular</p><p className="mt-1 break-words text-xs font-bold text-white">{refundRequest.account_holder_name}</p>
-                  <p className="mt-3 text-[9px] uppercase tracking-wide text-white/35">Chave PIX</p><p className="mt-1 break-all text-xs font-bold text-white">{refundRequest.pix_key}</p>
-                  <button type="button" onClick={() => void completeRefund()} disabled={refundDetailsLoading} className="mt-3 rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black text-black disabled:opacity-50">{refundDetailsLoading ? "Processando…" : "Já enviei o PIX · concluir reembolso"}</button>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-[9px] uppercase tracking-wide text-white/35">Titular</p>
+                      <p className="mt-1 break-words text-xs font-bold text-white">{refundRequest.account_holder_name}</p>
+                    </div>
+                    <button type="button" onClick={() => void copyRefundValue("Nome do titular", refundRequest.account_holder_name)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 py-2 text-[9px] font-bold text-white/65 hover:bg-white/[0.08] hover:text-white"><Copy className="h-3.5 w-3.5" /> Copiar</button>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-[9px] uppercase tracking-wide text-white/35">Chave PIX</p>
+                      <p className="mt-1 break-all text-xs font-bold text-white">{refundRequest.pix_key}</p>
+                    </div>
+                    <button type="button" onClick={() => void copyRefundValue("Chave PIX", refundRequest.pix_key)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 py-2 text-[9px] font-bold text-white/65 hover:bg-white/[0.08] hover:text-white"><Copy className="h-3.5 w-3.5" /> Copiar</button>
+                  </div>
+                  <button type="button" onClick={() => void completeRefund()} disabled={refundDetailsLoading} className="mt-3 w-full rounded-lg bg-emerald-500 px-3 py-2.5 text-[10px] font-black text-black disabled:opacity-50">{refundDetailsLoading ? "Processando…" : "Já enviei o PIX · concluir reembolso"}</button>
                 </div>
               ) : null}
             </div>
