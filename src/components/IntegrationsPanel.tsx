@@ -58,11 +58,7 @@ const emptyConfig: Record<Provider["id"], GatewayConfig> = {
   vexopay: { pixEnabled: false, cryptoEnabled: false, pixFee: 1.2 },
 };
 
-const MAGNUSPAY_BASE_URL = "https://api.magnuspay.com.br";
 const SUPABASE_PUBLIC_URL = String(import.meta.env.VITE_SUPABASE_URL || "").replace(/\/$/, "");
-const MAGNUSPAY_WEBHOOK_URL = SUPABASE_PUBLIC_URL
-  ? `${SUPABASE_PUBLIC_URL}/functions/v1/magnuspay-webhook`
-  : "https://SEU-PROJETO.supabase.co/functions/v1/magnuspay-webhook";
 
 export default function IntegrationsPanel() {
   const [configs, setConfigs] = useState<Record<Provider["id"], GatewayConfig>>(emptyConfig);
@@ -190,26 +186,17 @@ export default function IntegrationsPanel() {
               <div><h3 className="font-bold text-card-foreground">{provider.name}</h3><p className="mt-1 max-w-2xl text-sm text-muted-foreground">{provider.description}</p></div>
               <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-bold ${ready ? "border-emerald-300/15 bg-emerald-400/[0.08] text-emerald-300" : "border-white/[0.08] bg-white/[0.025] text-white/40"}`}><BadgeCheck className="h-3.5 w-3.5" />{ready ? "Secrets detectados" : "Secrets pendentes"}</span>
             </div>
-            <p className="mt-3 text-[11px] text-white/38">Secrets necessários: <code className="text-white/62">{provider.secretNames.join(", ")}</code>. Os valores nunca são enviados ao navegador.</p>
+            <p className="mt-3 text-[11px] text-white/38">{provider.id === "magnuspay" ? "Credencial PIX protegida no servidor. O valor nunca é enviado ao navegador." : <>Secrets necessários: <code className="text-white/62">{provider.secretNames.join(", ")}</code>. Os valores nunca são enviados ao navegador.</>}</p>
 
             {provider.id === "magnuspay" ? (
               <div className="mt-4 rounded-lg border border-[#168cff]/20 bg-[#168cff]/[0.055] p-3.5">
-                <p className="text-[11px] font-bold text-white">Configuração da provedor PIX</p>
-                <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-[10px] leading-4 text-white/45">
-                  <li>Gere sua API Key no painel de credenciais da provedor PIX.</li>
-                  <li>Cadastre a chave no Supabase como <code className="text-white/70">MAGNUSPAY_API_KEY</code>.</li>
-                  <li>Configure o webhook abaixo no painel da provedor PIX. A assinatura <code className="text-white/70">X-Magnus-Signature</code> é validada no servidor.</li>
-                  <li>Use “Validar configuração” para testar a chave de verdade no endpoint oficial de taxas.</li>
-                </ol>
-                <div className="mt-3 grid gap-2">
-                  <div className="rounded-md border border-white/[0.07] bg-black/15 px-3 py-2">
-                    <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-white/25">Base da API</p>
-                    <code className="mt-1 block break-all text-[10px] text-white/62">{MAGNUSPAY_BASE_URL}</code>
-                  </div>
-                  <div className="rounded-md border border-white/[0.07] bg-black/15 px-3 py-2">
-                    <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-white/25">Webhook</p>
-                    <code className="mt-1 block break-all text-[10px] text-white/62">{MAGNUSPAY_WEBHOOK_URL}</code>
-                  </div>
+                <p className="text-[11px] font-bold text-white">Configuração do PIX principal</p>
+                <p className="mt-2 text-[10px] leading-4 text-white/45">
+                  A credencial de pagamento fica protegida no servidor e pode operar em ambiente de testes ou produção. O checkout mostra somente PIX para o comprador.
+                </p>
+                <div className="mt-3 rounded-md border border-white/[0.07] bg-black/15 px-3 py-2">
+                  <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-white/25">Privacidade do gateway</p>
+                  <p className="mt-1 text-[10px] leading-4 text-white/55">Nome do provedor, endpoint, assinatura e nome do secret não são exibidos na interface pública.</p>
                 </div>
               </div>
             ) : null}

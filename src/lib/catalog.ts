@@ -192,7 +192,7 @@ export function robuxPackageUnits(product: {
   category?: string | null;
   variations?: { name?: string; price?: number }[] | null;
 }): number {
-  if (product.category !== ROBUX_CATEGORY) return 1;
+  if (!isRobuxCategory(product.category)) return 1;
   const label = product.variations?.[0]?.name ?? "";
   const digits = String(label).replace(/\D/g, "");
   const units = Number.parseInt(digits, 10);

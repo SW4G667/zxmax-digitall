@@ -11,8 +11,8 @@ describe("fronteira do mercado de Robux", () => {
     expect(home).toContain("const robux = useMemo");
     expect(home).toContain('navigate("/robux")');
     expect(home).toContain('["Bots Discord", "Contas", "Scripts"]');
-    expect(store).toContain("approved.filter((p) => p.category !== ROBUX_CATEGORY)");
-    expect(categories).toContain('category === ROBUX_CATEGORY ? "/robux"');
+    expect(store).toContain("approved.filter((p) => !isRobuxCategory(p.category))");
+    expect(categories).toContain('isRobuxCategory(category) ? "/robux"');
     expect(categories).toContain("Mercado próprio");
   });
 });

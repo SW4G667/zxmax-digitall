@@ -9,7 +9,7 @@ import UserProfileModal from "@/components/UserProfileModal";
 import AppShell from "@/components/AppShell";
 import useFavorites from "@/hooks/useFavorites";
 import { supabase } from "@/integrations/supabase/client";
-import { formatBRL, formatRobuxPackage, formatRobuxUnitPrice, formatStockLabel, lowestProductPrice, productHasMixedDelivery, productMinQuantity, productStock, ROBUX_CATEGORY, robuxPackageUnits, unitPriceFromPackage, variationDeliveryType, variationMinQuantity, variationStock } from "@/lib/catalog";
+import { formatBRL, formatRobuxPackage, formatRobuxUnitPrice, formatStockLabel, lowestProductPrice, productHasMixedDelivery, productMinQuantity, productStock, ROBUX_CATEGORY, isRobuxCategory, robuxPackageUnits, unitPriceFromPackage, variationDeliveryType, variationMinQuantity, variationStock } from "@/lib/catalog";
 import CryptoPaymentModal, { CryptoCharge } from "@/components/CryptoPaymentModal";
 import { unwrapEdgeCall } from "@/lib/edgeErrors";
 import { checkoutMethods, classifyPaymentMethods, paymentMethodsNotice, PaymentMethodsState } from "@/lib/paymentMethods";
@@ -123,7 +123,7 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
       >
         <div className="p-6 border-b border-[#1e1e28] sticky top-0 bg-[#15151a] z-10">
           <h3 className="font-black text-white text-lg">Checkout ZXMAX</h3>
-          <p className="text-xs text-white/40 mt-1">{product.name} • {quantity.toLocaleString("pt-BR")} {product.category === ROBUX_CATEGORY ? "Robux" : "un."}</p>
+          <p className="text-xs text-white/40 mt-1">{product.name} • {quantity.toLocaleString("pt-BR")} {isRobuxCategory(product.category) ? "Robux" : "un."}</p>
         </div>
 
         <div className="p-6 space-y-5">
@@ -172,7 +172,7 @@ function CheckoutModal({ product, quantity, unitPrice, subtotal, onClose, onConf
           )}
 
           <div className="bg-[#0a0a0f] border border-[#1e1e28] rounded-xl p-4 space-y-2">
-            <div className="flex justify-between text-xs"><span className="text-white/40">Preço unitário</span><span className="text-white">{formatBRL(unitPrice * (product.category === ROBUX_CATEGORY ? robuxPackageUnits(product) : 1))} / {product.category === ROBUX_CATEGORY ? `${robuxPackageUnits(product).toLocaleString("pt-BR")} Robux` : "un."}</span></div>
+            <div className="flex justify-between text-xs"><span className="text-white/40">Preço unitário</span><span className="text-white">{formatBRL(unitPrice * (isRobuxCategory(product.category) ? robuxPackageUnits(product) : 1))} / {isRobuxCategory(product.category) ? `${robuxPackageUnits(product).toLocaleString("pt-BR")} Robux` : "un."}</span></div>
             <div className="flex justify-between text-xs"><span className="text-white/40">Quantidade</span><span className="text-white">{quantity}</span></div>
             <div className="flex justify-between text-xs"><span className="text-white/40">Subtotal</span><span className="text-white">{formatBRL(subtotal)}</span></div>
             {method === "crypto" && (
@@ -252,7 +252,7 @@ export default function ProdutoPage() {
     : null;
   const sellerIdentityReady = Boolean(publicSellerId);
 
-  const isRobux = product?.category === ROBUX_CATEGORY;
+  const isRobux = isRobuxCategory(product?.category);
 
   useEffect(() => {
     let active = true;
@@ -271,7 +271,7 @@ export default function ProdutoPage() {
   // For Robux, aggregate all sellers in same category as offers
   const sellerOffers: SellerOffer[] = useMemo(() => {
     if (!isRobux) return [];
-    const robuxProducts = state.products.filter((p) => p.category === ROBUX_CATEGORY && p.approved && (p.sellerPublicId || state.userDirectory?.[p.sellerId]?.publicId));
+    const robuxProducts = state.products.filter((p) => isRobuxCategory(p.category) && p.approved && (p.sellerPublicId || state.userDirectory?.[p.sellerId]?.publicId));
     const offers: SellerOffer[] = robuxProducts.map((p) => {
       // Real review aggregates persisted on the product row (reviews migration);
       // before it exists these are undefined and the UI shows "Novo • 0 avaliações".

@@ -9,7 +9,7 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: { functions: { invo
 import IntegrationsPanel from "@/components/IntegrationsPanel";
 
 describe("IntegrationsPanel — gateways seguros", () => {
-  it("mostra métodos e instruções da MagnusPay sem criar campos para segredos", async () => {
+  it("mostra o PIX principal sem divulgar o provedor nem criar campos para segredos", async () => {
     invoke.mockResolvedValue({
       data: {
         integrations: {
@@ -31,9 +31,10 @@ describe("IntegrationsPanel — gateways seguros", () => {
     render(<IntegrationsPanel />);
 
     await waitFor(() => expect(screen.getByText("Stripe · cartão e boleto")).toBeInTheDocument());
-    expect(screen.getByText("MagnusPay PIX")).toBeInTheDocument();
-    expect(screen.getAllByText(/MAGNUSPAY_API_KEY/).length).toBeGreaterThan(0);
-    expect(screen.getByText("https://api.magnuspay.com.br")).toBeInTheDocument();
+    expect(screen.getByText("PIX principal")).toBeInTheDocument();
+    expect(screen.queryByText(/MAGNUSPAY_API_KEY/i)).toBeNull();
+    expect(screen.queryByText(/magnuspay\.com/i)).toBeNull();
+    expect(screen.getByText(/Credencial PIX protegida no servidor/i)).toBeInTheDocument();
     expect(screen.getByLabelText("Oferecer cartão")).toBeChecked();
     expect(screen.getByLabelText("Oferecer boleto")).toBeChecked();
     expect(screen.getByLabelText("Validade do boleto (dias)")).toHaveValue(3);

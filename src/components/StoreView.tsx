@@ -4,7 +4,7 @@ import { Search, RefreshCw, AlertTriangle, PackageOpen, SlidersHorizontal, Badge
 import { useNavigate, useLocation } from "react-router-dom";
 import AuthScreen from "@/components/AuthScreen";
 import UserProfileModal from "@/components/UserProfileModal";
-import { formatBRL, ROBUX_CATEGORY, robuxPackageUnits, storefrontProducts } from "@/lib/catalog";
+import { formatBRL, ROBUX_CATEGORY, isRobuxCategory, robuxPackageUnits, storefrontProducts } from "@/lib/catalog";
 
 const PAGE_SIZE = 20;
 
@@ -56,7 +56,7 @@ export default function StoreView() {
   );
   // Robux lives on its own /robux storefront; keep it out of the common grid.
   const nonRobux = useMemo(
-    () => approved.filter((p) => p.category !== ROBUX_CATEGORY),
+    () => approved.filter((p) => !isRobuxCategory(p.category)),
     [approved],
   );
   // Robux has its own dedicated storefront at /robux (Eldorado-style); it must
@@ -167,7 +167,7 @@ export default function StoreView() {
   const hasActiveFilters = maxPrice !== null || deliveryFilter !== "todos" || onlyVerified || !!debouncedSearch || category !== "Todos";
 
   const priceLabel = (p: (typeof approved)[number]) => {
-    if (p.category !== ROBUX_CATEGORY) return formatBRL(p.price);
+    if (!isRobuxCategory(p.category)) return formatBRL(p.price);
     const units = robuxPackageUnits(p);
     return units > 1 ? `${formatBRL(p.price)} / ${units.toLocaleString("pt-BR")}` : formatBRL(p.price);
   };

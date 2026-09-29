@@ -3,7 +3,7 @@ import { Bot, Boxes, Gamepad2, Package, Search, Sparkles, Zap } from "lucide-rea
 import { useNavigate } from "react-router-dom";
 import AppShell from "@/components/AppShell";
 import { useStore } from "@/store/StoreContext";
-import { ROBUX_CATEGORY, storefrontProducts } from "@/lib/catalog";
+import { ROBUX_CATEGORY, isRobuxCategory, storefrontProducts } from "@/lib/catalog";
 import { useSiteBranding } from "@/context/SiteBrandingContext";
 
 const iconFor = (category: string) => {
@@ -40,7 +40,7 @@ export default function Categorias() {
   }, [approved, query, state.config.categories]);
 
   const openCategory = (category: string) => {
-    navigate(category === ROBUX_CATEGORY ? "/robux" : "/loja?cat=" + encodeURIComponent(category));
+    navigate(isRobuxCategory(category) ? "/robux" : "/loja?cat=" + encodeURIComponent(category));
   };
 
   return (

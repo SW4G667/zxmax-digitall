@@ -31,13 +31,14 @@ describe("e-mails transacionais seguros", () => {
       "dispute_opened_seller",
       "dispute_resolved_buyer",
       "dispute_resolved_seller",
+      "chat_message",
       "new_review",
     ]) expect(email).toContain(type);
   });
 
   it("continua autorizando e evitando duplicação antes de acessar o provedor", async () => {
     const email = await source();
-    expect(email).toContain('if (type !== "new_question" && !internalCall)');
+    expect(email).toContain('if (type !== "new_question" && type !== "chat_message" && !internalCall)');
     expect(email).toContain("Este tipo de notificação é processado pelo servidor.");
     expect(email).toContain("if (!internalCall && actorId !== question.author_id)");
     expect(email).toContain('.eq("status", "sent")');
