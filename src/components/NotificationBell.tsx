@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, CheckCheck, CircleDollarSign, Headphones, MessageCircleQuestion, Shield, ShoppingBag, X } from "lucide-react";
+import { Bell, CheckCheck, CircleDollarSign, Headphones, MessageCircleQuestion, Shield, ShoppingBag, Trash2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -28,6 +28,7 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState<"all" | "orders" | "messages" | "sales" | "notices">("all");
   const ref = useRef<HTMLDivElement>(null);
 
   const showNativeNotification = useCallback((row: NotificationRow) => {
@@ -99,6 +100,9 @@ export default function NotificationBell() {
   if (!user) return null;
 
   const unread = rows.filter((row) => !row.read_at).length;
+  const groupOf = (row: NotificationRow) => row.type === "sale" ? "sales" : (row.type === "question" || row.type === "chat" || row.type === "support") ? "messages" : row.type === "notice" ? "notices" : "orders";
+  const visibleRows = filter === "all" ? rows : rows.filter((row) => groupOf(row) === filter);
+  const groupUnread = (group: typeof filter) => group === "all" ? unread : rows.filter((row) => !row.read_at && groupOf(row) === group).length;
 
   const markAllRead = async () => {
     const unreadIds = rows.filter((row) => !row.read_at).map((row) => row.id);
@@ -111,6 +115,24 @@ export default function NotificationBell() {
       .eq("user_id", user.id)
       .is("read_at", null);
     if (error) void load();
+  };
+
+  const deleteNotification = async (event: React.MouseEvent, row: NotificationRow) => {
+    event.stopPropagation();
+    const previous = rows;
+    setRows((current) => current.filter((item) => item.id !== row.id));
+    const { error } = await (supabase as any).from("notifications").delete().eq("id", row.id).eq("user_id", user.id);
+    if (error) setRows(previous);
+  };
+
+  const clearVisible = async () => {
+    const ids = visibleRows.map((row) => row.id);
+    if (!ids.length) return;
+    if (!window.confirm(filter === "all" ? "Apagar todas as suas notificações?" : "Apagar as notificações desta categoria?")) return;
+    const previous = rows;
+    setRows((current) => current.filter((row) => !ids.includes(row.id)));
+    const { error } = await (supabase as any).from("notifications").delete().eq("user_id", user.id).in("id", ids);
+    if (error) setRows(previous);
   };
 
   const openNotification = async (row: NotificationRow) => {
@@ -160,17 +182,27 @@ export default function NotificationBell() {
             </div>
           </header>
 
+          <div className="flex items-center gap-1 overflow-x-auto border-b border-white/[0.07] px-3 py-2 scrollbar-none">
+            {([
+              ["all", "Tudo"], ["orders", "Pedidos"], ["messages", "Mensagens"], ["sales", "Vendas"], ["notices", "Avisos"],
+            ] as const).map(([key, label]) => {
+              const count = groupUnread(key);
+              return <button key={key} type="button" onClick={() => setFilter(key)} className={`shrink-0 rounded-lg px-2.5 py-1.5 text-[10px] font-bold transition ${filter === key ? "bg-[#168cff] text-white" : "bg-white/[0.035] text-white/45 hover:text-white"}`}>{label}{count ? <span className="ml-1.5 opacity-80">{count}</span> : null}</button>;
+            })}
+            {visibleRows.length ? <button type="button" onClick={() => void clearVisible()} className="ml-auto shrink-0 rounded-lg px-2 py-1.5 text-[9px] font-bold text-red-300/65 hover:bg-red-500/10 hover:text-red-300">Limpar</button> : null}
+          </div>
+
           <div className="max-h-[60dvh] overflow-y-auto">
             {loading && rows.length === 0 ? (
               <p className="px-4 py-10 text-center text-xs text-white/35">Carregando notificações…</p>
-            ) : rows.length === 0 ? (
+            ) : visibleRows.length === 0 ? (
               <div className="px-6 py-10 text-center">
                 <Bell className="mx-auto h-6 w-6 text-white/18" />
-                <p className="mt-3 text-xs font-semibold text-white/55">Nenhuma notificação ainda</p>
+                <p className="mt-3 text-xs font-semibold text-white/55">{rows.length ? "Nada nesta categoria" : "Nenhuma notificação ainda"}</p>
                 <p className="mt-1 text-[10px] leading-4 text-white/28">Vendas, perguntas, pedidos, disputas e avisos aparecerão aqui.</p>
               </div>
             ) : (
-              rows.map((row) => (
+              visibleRows.map((row) => (
                 <button
                   key={row.id}
                   type="button"
@@ -188,6 +220,7 @@ export default function NotificationBell() {
                     {row.body ? <span className="mt-1 block line-clamp-2 text-[10px] leading-4 text-white/38">{row.body}</span> : null}
                     <span className="mt-1.5 block text-[9px] text-white/22">{new Date(row.created_at).toLocaleString("pt-BR")}</span>
                   </span>
+                  <button type="button" onClick={(event) => void deleteNotification(event, row)} className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-white/20 transition hover:bg-red-500/10 hover:text-red-300" title="Apagar notificação" aria-label="Apagar notificação"><Trash2 className="h-3.5 w-3.5" /></button>
                 </button>
               ))
             )}
