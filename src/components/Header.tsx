@@ -76,8 +76,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Navegação principal">
             <button onClick={() => navigate("/loja")} className="rounded-md px-2.5 py-2 text-xs font-medium text-white/52 transition hover:bg-white/[0.04] hover:text-white">Loja</button>
             <button onClick={() => navigate("/categorias")} className="rounded-md px-2.5 py-2 text-xs font-medium text-white/52 transition hover:bg-white/[0.04] hover:text-white">Categorias</button>
-            <button onClick={() => navigate("/robux")} className={`rounded-md px-2.5 py-2 text-xs font-semibold transition ${location.pathname === "/robux" ? "bg-white/[0.05] text-[var(--zx-accent)]" : "text-white/52 hover:bg-white/[0.04] hover:text-white"}`}>Robux</button>
-          </nav>
+                      </nav>
 
           <form onSubmit={submitSearch} className="hidden min-w-0 flex-1 md:flex">
             <div className="flex h-10 w-full max-w-xl items-center rounded-lg border border-white/[0.1] bg-[#151519] px-3 focus-within:border-[var(--zx-accent)]">
@@ -93,6 +92,14 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
           </form>
 
           <div className="ml-auto flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => navigate("/robux")}
+              aria-label="Abrir mercado de Robux"
+              className="flex h-9 items-center rounded-lg border border-[#ffd66b]/40 bg-[#ffbd2e] px-3 text-[11px] font-black text-black shadow-[0_6px_20px_rgba(255,189,46,0.16)] transition hover:bg-[#ffd05c] active:scale-[0.97] sm:px-4 sm:text-xs"
+            >
+              Robux
+            </button>
             <button
               onClick={openListing}
               aria-label={user ? "Abrir meus anúncios" : "Anunciar"}

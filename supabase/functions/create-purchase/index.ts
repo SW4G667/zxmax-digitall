@@ -197,6 +197,16 @@ serve(async (req) => {
     const amount = roundMoney(safeProductAmount + buyerFee);
     if (amount < 2) return json({ error: "Valor mínimo do pedido é R$ 2,00." }, 400);
 
+    const configuredPixMax = Number(magnus.maxPixAmount);
+    const pixMaxAmount = Number.isFinite(configuredPixMax) && configuredPixMax > 0 ? configuredPixMax : 5000;
+    if (paymentMethod === "magnuspay_pix" && amount > pixMaxAmount) {
+      return json({
+        error: `PIX aceita até R$ ${pixMaxAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} por pagamento. Reduza a quantidade ou escolha outra forma de pagamento.`,
+        code: "pix_amount_limit",
+        maxAmount: pixMaxAmount,
+      }, 400);
+    }
+
     const { data: profile } = await admin
       .from("profiles")
       .select("public_id, email")

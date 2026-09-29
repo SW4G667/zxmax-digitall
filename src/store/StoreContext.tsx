@@ -116,6 +116,9 @@ export interface Purchase {
   createdAt: string;
   updatedAt?: string;
   amount: number;
+  quantity?: number;
+  productAmount?: number;
+  buyerFee?: number;
   paymentProvider?: "magnuspay_pix" | "zennith_pix" | "vexopay_pix" | "crypto" | "card" | "boleto" | "wallet";
   providerPaymentId?: string;
   paymentStatus?: string;
@@ -341,6 +344,9 @@ const mapPurchaseRow = (p: any): Purchase => ({
   createdAt: p.created_at,
   updatedAt: p.updated_at || undefined,
   amount: Number(p.amount),
+  quantity: p.quantity == null ? undefined : Number(p.quantity),
+  productAmount: p.product_amount == null ? undefined : Number(p.product_amount),
+  buyerFee: p.buyer_fee == null ? undefined : Number(p.buyer_fee),
   paymentProvider: p.payment_provider || undefined,
   providerPaymentId: p.provider_payment_id || undefined,
   paymentStatus: p.payment_status || undefined,

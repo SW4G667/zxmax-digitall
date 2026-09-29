@@ -100,6 +100,16 @@ serve(async (req) => {
     if (!Number.isFinite(amount) || amount < 1) {
       return json({ error: "O PIX exige valor mínimo de R$ 1,00." }, 400);
     }
+    const { data: pixSetting } = await admin.from("app_settings").select("value").eq("key", "magnuspay").maybeSingle();
+    const configuredMax = Number(pixSetting?.value?.maxPixAmount);
+    const maxPixAmount = Number.isFinite(configuredMax) && configuredMax > 0 ? configuredMax : 5000;
+    if (amount > maxPixAmount) {
+      return json({
+        error: `PIX aceita até R$ ${maxPixAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} por pagamento. Reduza a quantidade ou escolha outra forma de pagamento.`,
+        code: "pix_amount_limit",
+        maxAmount: maxPixAmount,
+      }, 400);
+    }
 
     const payerName = typeof body.buyerName === "string" ? body.buyerName.trim().slice(0, 120) : "";
     const payerDocument = typeof body.payerDocument === "string"

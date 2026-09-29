@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useStore, Purchase } from "@/store/StoreContext";
-import { Send, ImagePlus, Loader2, Clock, CheckCircle2, ShieldCheck, Undo2, AlertCircle, PackageCheck, Crown, X } from "lucide-react";
+import { Send, ImagePlus, Loader2, Clock, CheckCircle2, ShieldCheck, Undo2, AlertCircle, PackageCheck, Crown, X, Languages, ShoppingBag } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { containsExternalContact } from "@/lib/externalContact";
@@ -36,6 +36,9 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
   const [refundReason, setRefundReason] = useState("");
   const [refunding, setRefunding] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [participantLocales, setParticipantLocales] = useState<Record<string, { locale?: string | null; country?: string | null }>>({});
+  const [translations, setTranslations] = useState<Record<string, string>>({});
+  const [translationLoading, setTranslationLoading] = useState<string | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -45,6 +48,10 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
   const isSeller = !!me && purchase?.sellerId === me;
   const isBuyer = !!me && purchase?.buyerId === me;
   const isAdmin = state.currentUser?.isAdmin || false;
+  const product = purchase ? state.products.find((item) => item.id === purchase.productId) : undefined;
+  const orderQuantity = Number(purchase?.quantity || 1);
+  const productSubtotal = Number(purchase?.productAmount ?? Math.max(0, Number(purchase?.amount || 0) - Number(purchase?.buyerFee || 0)));
+  const isRobuxOrder = product?.category === "Robux" || product?.category === "Robux e Gift Cards";
 
   const signImages = async (rows: OrderMessage[]) => {
     const withImages = await Promise.all(
@@ -91,6 +98,47 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
+
+  useEffect(() => {
+    if (!me || !purchase) return;
+    const locale = navigator.language || Intl.DateTimeFormat().resolvedOptions().locale || "pt-BR";
+    const parts = locale.replace("_", "-").split("-");
+    const country = (parts[1] || (parts[0].toLowerCase() === "pt" ? "BR" : "")).toUpperCase();
+
+    void supabase.from("profiles").update({
+      locale,
+      ...(country ? { country_code: country } : {}),
+    }).eq("user_id", me);
+
+    const ids = [purchase.buyerId, purchase.sellerId].filter(Boolean);
+    void (async () => {
+      const { data } = await supabase.from("profiles").select("user_id,locale,country_code").in("user_id", ids);
+      const next: Record<string, { locale?: string | null; country?: string | null }> = {};
+      for (const row of data || []) next[row.user_id] = { locale: row.locale, country: row.country_code };
+      next[me] = { locale, country: country || next[me]?.country || null };
+      setParticipantLocales(next);
+    })();
+  }, [me, purchase?.buyerId, purchase?.sellerId]);
+
+  const translateMessage = async (message: OrderMessage) => {
+    if (!message.body || message.sender_id === me) return;
+    if (translations[message.id]) {
+      setTranslations((current) => {
+        const next = { ...current };
+        delete next[message.id];
+        return next;
+      });
+      return;
+    }
+    setTranslationLoading(message.id);
+    const { data, error } = await supabase.functions.invoke("translate-order-message", { body: { messageId: message.id } });
+    setTranslationLoading(null);
+    if (error || !data?.translated) {
+      toast.error(data?.error || "Não foi possível traduzir esta mensagem.");
+      return;
+    }
+    setTranslations((current) => ({ ...current, [message.id]: String(data.translated) }));
+  };
 
   const sendMessage = async (body: string | null, imagePath: string | null) => {
     if (!me) return false;
@@ -238,6 +286,31 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
 
   return (
     <div>
+      {purchase && (
+        <section className="mb-3 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#111218]" aria-label="Resumo do pedido">
+          <div className="flex items-center gap-3 border-b border-white/[0.06] p-4">
+            <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.035]">
+              {product?.image ? <img src={product.image} alt="" className="h-full w-full object-cover" /> : <ShoppingBag className="h-5 w-5 text-white/45" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#69b9ff]">Pedido #{purchase.id}</p>
+              <h3 className="mt-1 truncate text-sm font-black text-white">{product?.name || `Produto #${purchase.productId}`}</h3>
+              {purchase.variationName ? <p className="mt-0.5 truncate text-[10px] text-white/40">{purchase.variationName}</p> : null}
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-black text-white">R$ {Number(purchase.amount).toFixed(2).replace(".", ",")}</p>
+              <p className="mt-0.5 text-[9px] text-white/35">total pago</p>
+            </div>
+          </div>
+          <dl className="grid grid-cols-2 gap-px bg-white/[0.05] sm:grid-cols-4">
+            <div className="bg-[#111218] p-3"><dt className="text-[9px] uppercase text-white/30">Quantidade</dt><dd className="mt-1 text-xs font-bold text-white">{orderQuantity.toLocaleString("pt-BR")} {isRobuxOrder ? "Robux" : "un."}</dd></div>
+            <div className="bg-[#111218] p-3"><dt className="text-[9px] uppercase text-white/30">Produto</dt><dd className="mt-1 text-xs font-bold text-white">R$ {productSubtotal.toFixed(2).replace(".", ",")}</dd></div>
+            <div className="bg-[#111218] p-3"><dt className="text-[9px] uppercase text-white/30">Entrega</dt><dd className="mt-1 text-xs font-bold text-white">{product?.deliveryType === "auto" ? "Automática" : "Manual"}</dd></div>
+            <div className="bg-[#111218] p-3"><dt className="text-[9px] uppercase text-white/30">Prazo</dt><dd className="mt-1 truncate text-xs font-bold text-white">{product?.deliveryTime || "Não informado"}</dd></div>
+          </dl>
+        </section>
+      )}
+
       {/* Escrow Banner & Action Bar */}
       {purchase && (
         <div className="glass-card p-4 mb-3 border border-border/40 bg-card/60 space-y-3">
@@ -379,6 +452,16 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
               );
             }
             const isAdminMessage = m.sender_role === "admin";
+            const mineLocale = me ? participantLocales[me] : undefined;
+            const senderLocale = participantLocales[m.sender_id];
+            const mineLanguage = String(mineLocale?.locale || "").split(/[-_]/)[0].toLowerCase();
+            const senderLanguage = String(senderLocale?.locale || "").split(/[-_]/)[0].toLowerCase();
+            const mineCountry = String(mineLocale?.country || "").toUpperCase();
+            const senderCountry = String(senderLocale?.country || "").toUpperCase();
+            const differentParticipantLocale = !isMe && !!m.body && (
+              (!!mineLanguage && !!senderLanguage && mineLanguage !== senderLanguage) ||
+              (!!mineCountry && !!senderCountry && mineCountry !== senderCountry)
+            );
             return (
               <div key={m.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${isAdminMessage ? "border border-amber-400/25 bg-amber-400/[0.07] text-foreground" : isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-secondary text-foreground rounded-bl-md"}`}>
@@ -396,6 +479,23 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
                     </a>
                   )}
                   {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
+                  {translations[m.id] && (
+                    <div className="mt-2 border-t border-current/10 pt-2">
+                      <p className="text-[9px] font-bold uppercase tracking-wide opacity-55">Tradução</p>
+                      <p className="mt-1 whitespace-pre-wrap break-words">{translations[m.id]}</p>
+                    </div>
+                  )}
+                  {differentParticipantLocale && (
+                    <button
+                      type="button"
+                      onClick={() => void translateMessage(m)}
+                      disabled={translationLoading === m.id}
+                      className={`mt-2 inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[9px] font-bold transition ${isMe ? "border-white/20 text-white/80" : "border-[#168cff]/25 bg-[#168cff]/10 text-[#76c2ff]"} disabled:opacity-50`}
+                    >
+                      {translationLoading === m.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Languages className="h-3 w-3" />}
+                      {translations[m.id] ? "Ver original" : "Traduzir"}
+                    </button>
+                  )}
                   <p className={`text-[9px] mt-1 opacity-60 ${isMe ? "text-right" : "text-left"}`}>
                     {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </p>

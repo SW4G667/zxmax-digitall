@@ -11,6 +11,7 @@ import {
   productMinQuantity,
   productStock,
   ROBUX_CATEGORY,
+  isRobuxCategory,
   robuxPackageUnits,
   unitPriceFromPackage,
 } from "@/lib/catalog";
@@ -56,7 +57,7 @@ export default function RobuxPage() {
     const max = Number(maxPrice);
 
     const listed = state.products
-      .filter((product) => product.category === ROBUX_CATEGORY && product.approved)
+      .filter((product) => isRobuxCategory(product.category) && product.approved)
       .map((product) => {
         const identity = state.userDirectory?.[product.sellerId];
         const sellerPublicId = String(product.sellerPublicId || identity?.publicId || "");
@@ -102,6 +103,8 @@ export default function RobuxPage() {
 
   const isLoading = catalogStatus === "loading" && state.products.length === 0;
   const hasFilters = Boolean(search.trim() || maxPrice);
+  const bestUnitPrice = offers.length ? Math.min(...offers.map((offer) => offer.pricePerUnit)) : null;
+  const knownStock = offers.reduce((sum, offer) => sum + (offer.stock == null ? 0 : offer.stock), 0);
 
   return (
     <AppShell>
@@ -139,6 +142,27 @@ export default function RobuxPage() {
             </button>
           </div>
         </header>
+
+        <section className="mt-4 grid gap-2 sm:grid-cols-3" aria-label="Como comprar Robux">
+          {[
+            ["1", "Escolha uma oferta", "Compare preço por Robux, mínimo, estoque e prazo."],
+            ["2", "Informe a quantidade", "Você pode comprar a partir do mínimo definido pelo vendedor."],
+            ["3", "Pague e acompanhe", "Depois do pagamento, entrega e conversa ficam no pedido protegido."],
+          ].map(([step, title, description]) => (
+            <div key={step} className="rounded-xl border border-white/[0.08] bg-[#101013] p-3.5">
+              <div className="flex items-start gap-3">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#ffbd2e] text-xs font-black text-black">{step}</span>
+                <div><p className="text-xs font-bold text-white">{title}</p><p className="mt-1 text-[10px] leading-4 text-white/40">{description}</p></div>
+              </div>
+            </div>
+          ))}
+        </section>
+
+        <section className="mt-3 grid grid-cols-3 gap-2">
+          <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-3"><p className="text-[9px] uppercase tracking-wide text-white/35">Ofertas</p><p className="mt-1 text-lg font-black text-white">{offers.length}</p></div>
+          <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-3"><p className="text-[9px] uppercase tracking-wide text-white/35">Melhor preço</p><p className="mt-1 truncate text-sm font-black text-[#75c5ff]">{bestUnitPrice == null ? "—" : formatRobuxUnitPrice(bestUnitPrice)}</p></div>
+          <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-3"><p className="text-[9px] uppercase tracking-wide text-white/35">Estoque visível</p><p className="mt-1 text-lg font-black text-white">{knownStock ? knownStock.toLocaleString("pt-BR") : "—"}</p></div>
+        </section>
 
         <section className="mt-5 grid gap-3 rounded-lg border border-white/[0.08] bg-[#101013] p-3 sm:grid-cols-[minmax(0,1fr)_210px_200px_auto]">
           <label className="flex h-10 min-w-0 items-center rounded-md border border-white/[0.09] bg-[#0b0b0e] px-3 focus-within:border-[var(--zx-accent)]">
@@ -275,7 +299,7 @@ export default function RobuxPage() {
                       onClick={() => navigate(`/produto/${offer.productId}`)}
                       className="mt-3 w-full rounded-md bg-[var(--zx-accent)] px-4 py-2 text-[11px] font-semibold text-white transition hover:brightness-110 md:w-auto"
                     >
-                      Ver oferta
+                      Escolher oferta
                     </button>
                   </div>
                 </div>
