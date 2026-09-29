@@ -37,7 +37,6 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
   const [refundReason, setRefundReason] = useState("");
   const [refunding, setRefunding] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
-  const [participantLocales, setParticipantLocales] = useState<Record<string, { locale?: string | null; country?: string | null }>>({});
   const [translations, setTranslations] = useState<Record<string, string>>({});
   const [translationLoading, setTranslationLoading] = useState<string | null>(null);
 
@@ -100,26 +99,6 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
-  useEffect(() => {
-    if (!me || !purchase) return;
-    const locale = navigator.language || Intl.DateTimeFormat().resolvedOptions().locale || "pt-BR";
-    const parts = locale.replace("_", "-").split("-");
-    const country = (parts[1] || (parts[0].toLowerCase() === "pt" ? "BR" : "")).toUpperCase();
-
-    void supabase.from("profiles").update({
-      locale,
-      ...(country ? { country_code: country } : {}),
-    }).eq("user_id", me);
-
-    void (async () => {
-      const { data } = await (supabase as any).rpc("get_order_participant_locales", { _order_id: orderId });
-      const next: Record<string, { locale?: string | null; country?: string | null }> = {};
-      for (const row of data || []) next[row.user_id] = { locale: row.locale, country: row.country_code };
-      next[me] = { locale, country: country || next[me]?.country || null };
-      setParticipantLocales(next);
-    })();
-  }, [me, purchase?.buyerId, purchase?.sellerId]);
-
   const translateMessage = async (message: OrderMessage) => {
     if (!message.body || message.sender_id === me) return;
     if (translations[message.id]) {
@@ -131,7 +110,7 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
       return;
     }
     setTranslationLoading(message.id);
-    const { data, error } = await supabase.functions.invoke("translate-order-message", { body: { messageId: message.id } });
+    const { data, error } = await supabase.functions.invoke("translate-order-message", { body: { messageId: message.id, targetLanguage: navigator.language || "pt-BR" } });
     setTranslationLoading(null);
     if (error || !data?.translated) {
       toast.error(data?.error || "Não foi possível traduzir esta mensagem.");
@@ -147,6 +126,7 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
       sender_id: me,
       body,
       image_path: imagePath,
+      sender_locale: navigator.language || "pt-BR",
     }).select("id").single();
     if (error) {
       toast.error("Não foi possível enviar a mensagem.");
@@ -452,16 +432,9 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
               );
             }
             const isAdminMessage = m.sender_role === "admin";
-            const mineLocale = me ? participantLocales[me] : undefined;
-            const senderLocale = participantLocales[m.sender_id];
-            const mineLanguage = String(mineLocale?.locale || "").split(/[-_]/)[0].toLowerCase();
-            const senderLanguage = String(senderLocale?.locale || "").split(/[-_]/)[0].toLowerCase();
-            const mineCountry = String(mineLocale?.country || "").toUpperCase();
-            const senderCountry = String(senderLocale?.country || "").toUpperCase();
-            const differentParticipantLocale = !isMe && !!m.body && (
-              (!!mineLanguage && !!senderLanguage && mineLanguage !== senderLanguage) ||
-              (!!mineCountry && !!senderCountry && mineCountry !== senderCountry)
-            );
+            const mineLanguage = String(navigator.language || "pt-BR").split(/[-_]/)[0].toLowerCase();
+            const senderLanguage = String(m.sender_locale || "").split(/[-_]/)[0].toLowerCase();
+            const differentParticipantLocale = !isMe && !!m.body && !!senderLanguage && mineLanguage !== senderLanguage;
             return (
               <div key={m.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${isAdminMessage ? "border border-amber-400/25 bg-amber-400/[0.07] text-foreground" : isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-secondary text-foreground rounded-bl-md"}`}>
