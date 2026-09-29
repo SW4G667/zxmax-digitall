@@ -1,8 +1,8 @@
 import React, { useState, useRef } from "react";
 import { useStore } from "@/store/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
-import { StarEmoji, MoneyEmoji, DoorEmoji, CameraEmoji, KeyEmoji } from "@/components/CustomEmojis";
-import { X, Edit, Upload, Shield } from "lucide-react";
+import { MoneyEmoji, DoorEmoji } from "@/components/CustomEmojis";
+import { X, Edit, Upload, Shield, Camera, Loader2, Wallet, BadgeCheck, ChevronRight, KeyRound, FileCheck2, MailCheck } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import TwoFactorPanel from "@/components/TwoFactorPanel";
@@ -127,120 +127,124 @@ export default function ProfileModal({ open, onClose }: Props) {
   const displayName = profile?.display_name || storeUser.name;
   const publicId = profile?.public_id ?? storeUser.publicId;
   const verifiedSeller = profile?.is_verified_seller ?? storeUser.isVerified;
-
+  const pixValue = profile?.pix_key || storeUser.pixKey || "";
+  const verificationReady = Boolean(storeUser.documentVerified);
+  const emailReady = Boolean(storeUser.emailConfirmed);
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm" onClick={onClose}>
-      <div className="glass-card w-full max-w-lg p-7 bg-card animate-fade-in-up max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-start mb-6">
-          <h3 className="text-2xl font-bold text-foreground">Meu Perfil</h3>
-          <button onClick={onClose} className="p-2 hover:bg-muted rounded-xl"><X className="w-5 h-5 text-muted-foreground" /></button>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-3 sm:p-4 backdrop-blur-md" onClick={onClose}>
+      <div className="w-full max-w-xl max-h-[92vh] overflow-y-auto rounded-[28px] border border-white/[0.09] bg-[#0d0d11] shadow-[0_30px_100px_rgba(0,0,0,0.65)] animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/[0.06] bg-[#0d0d11]/95 px-5 py-4 backdrop-blur-xl sm:px-6">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#63b7ff]">Conta ZXMAX</p>
+            <h3 className="mt-1 text-xl font-black text-white">Meu perfil</h3>
+          </div>
+          <button onClick={onClose} className="grid h-10 w-10 place-items-center rounded-xl border border-white/[0.07] bg-white/[0.035] text-white/45 transition hover:bg-white/[0.08] hover:text-white" aria-label="Fechar perfil">
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
-        <div className="flex items-center gap-5 mb-6 p-5 bg-muted rounded-2xl">
-          <div className="relative">
-            <img src={profile?.avatar_url || storeUser.avatar} className="w-20 h-20 rounded-2xl object-cover shadow-lg" alt="Avatar" />
-            <input type="file" ref={avatarInputRef} accept="image/*" onChange={handleAvatarUpload} className="hidden" />
-            <button onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading} className="absolute -bottom-2 -right-2 bg-card p-1.5 rounded-lg shadow-md border border-border hover:bg-muted transition disabled:opacity-50">
-              <CameraEmoji className="w-4 h-4" />
+        <div className="p-5 sm:p-6">
+          <section className="relative overflow-hidden rounded-[24px] border border-[#168cff]/20 bg-[linear-gradient(135deg,rgba(22,140,255,0.12),rgba(255,255,255,0.025)_48%,rgba(255,255,255,0.015))] p-5">
+            <div className="pointer-events-none absolute -right-12 -top-16 h-44 w-44 rounded-full bg-[#168cff]/10 blur-3xl" />
+            <div className="relative flex items-center gap-4">
+              <div className="relative shrink-0">
+                <img src={profile?.avatar_url || storeUser.avatar} className="h-20 w-20 rounded-2xl border border-white/[0.12] bg-[#15151b] object-cover shadow-xl sm:h-24 sm:w-24" alt="Foto do perfil" />
+                <input type="file" ref={avatarInputRef} accept="image/*" onChange={handleAvatarUpload} className="hidden" />
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={avatarUploading}
+                  className="absolute -bottom-2 -right-2 grid h-9 w-9 place-items-center rounded-xl border border-[#168cff]/35 bg-[#168cff] text-white shadow-lg transition hover:bg-[#0875e6] disabled:opacity-60"
+                  aria-label="Alterar foto de perfil"
+                >
+                  {avatarUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                </button>
+              </div>
+
+              <div className="min-w-0 flex-1">
+                {editing ? (
+                  <div className="flex gap-2">
+                    <input value={editName} onChange={(e) => setEditName(e.target.value)} className="min-w-0 flex-1 rounded-xl border border-white/[0.1] bg-black/25 px-3 py-2 text-sm font-bold text-white outline-none focus:border-[#168cff]/60" autoFocus />
+                    <button onClick={handleSave} className="rounded-xl bg-[#168cff] px-3 py-2 text-xs font-black text-white">Salvar</button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <p className="truncate text-lg font-black text-white sm:text-xl">{displayName}</p>
+                    <button type="button" onClick={() => { setEditName(displayName); setEditing(true); }} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white/40 hover:bg-white/[0.06] hover:text-white" aria-label="Editar nome">
+                      <Edit className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+                <p className="mt-1 font-mono text-[11px] text-white/40">ID público · {publicId}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {verifiedSeller && <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-400/[0.08] px-2.5 py-1 text-[10px] font-bold text-emerald-300"><BadgeCheck className="h-3.5 w-3.5" /> Vendedor verificado</span>}
+                  {emailReady && <span className="inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[10px] font-bold text-white/60"><MailCheck className="h-3.5 w-3.5" /> E-mail confirmado</span>}
+                  {verificationReady && <span className="inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[10px] font-bold text-white/60"><FileCheck2 className="h-3.5 w-3.5" /> Identidade aprovada</span>}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-[#168cff]/15 bg-[#168cff]/[0.055] p-4">
+              <div className="flex items-center gap-2 text-[#72c0ff]"><Wallet className="h-4 w-4" /><p className="text-[10px] font-black uppercase tracking-wide">Saldo disponível</p></div>
+              <p className="mt-2 text-2xl font-black tracking-tight text-white">R$ {storeUser.balance.toFixed(2)}</p>
+              <p className="mt-1 text-[10px] text-white/35">Valor liberado para saque.</p>
+            </div>
+            <div className="rounded-2xl border border-emerald-400/10 bg-emerald-400/[0.035] p-4">
+              <p className="text-[10px] font-black uppercase tracking-wide text-emerald-300/80">Ganhos totais</p>
+              <p className="mt-2 text-2xl font-black tracking-tight text-white">R$ {storeUser.earnings.toFixed(2)}</p>
+              <p className="mt-1 text-[10px] text-white/35">Histórico acumulado de vendas.</p>
+            </div>
+          </div>
+
+          <section className="mt-4 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-white/45"><KeyRound className="h-4 w-4 text-[#69baff]" /> Chave PIX para saque</p>
+                {!editingPix && <p className={`mt-2 truncate text-sm font-semibold ${pixValue ? "text-white" : "text-white/35"}`}>{pixValue || "Nenhuma chave cadastrada"}</p>}
+              </div>
+              {!editingPix && (
+                <button type="button" onClick={() => { setPixKey(pixValue); setEditingPix(true); }} className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-black text-[#69baff] hover:bg-[#168cff]/10">
+                  {pixValue ? "Editar" : "Cadastrar"}
+                </button>
+              )}
+            </div>
+            {editingPix && (
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+                <input value={pixKey} onChange={(e) => setPixKey(e.target.value)} placeholder="CPF, e-mail, telefone ou chave aleatória" className="min-w-0 rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-[#168cff]/50" autoFocus />
+                <button onClick={handleSavePix} className="rounded-xl bg-[#168cff] px-4 py-2.5 text-xs font-black text-white">Salvar</button>
+                <button onClick={() => setEditingPix(false)} className="rounded-xl border border-white/[0.08] px-3 py-2.5 text-xs font-bold text-white/50">Cancelar</button>
+              </div>
+            )}
+          </section>
+
+          <button onClick={() => handleWithdraw("normal")} className="mt-4 flex w-full items-center justify-between rounded-2xl bg-white px-4 py-4 text-left text-sm font-black text-black transition hover:bg-white/90">
+            <span className="flex items-center gap-3"><MoneyEmoji className="h-5 w-5" /> Solicitar saque</span>
+            <span className="flex items-center gap-1 text-[10px] font-bold text-black/45">5 a 7 dias úteis <ChevronRight className="h-4 w-4" /></span>
+          </button>
+
+          <div className="mt-3 grid gap-2">
+            <input type="file" ref={fileInputRef} accept="image/*,.pdf" onChange={handleDocumentUpload} className="hidden" />
+            <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="flex w-full items-center justify-between rounded-2xl border border-white/[0.07] bg-white/[0.02] px-4 py-3.5 text-left transition hover:bg-white/[0.05] disabled:opacity-50">
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/[0.05] text-white/55">{uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}</span>
+                <span><span className="block text-sm font-bold text-white">{uploading ? "Enviando documento…" : "Enviar documentos"}</span><span className="block text-[10px] text-white/35">RG, certidão ou arquivo de verificação · até 5 MB</span></span>
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-white/25" />
             </button>
+
+            <a href="/perfil" onClick={onClose} className="flex w-full items-center justify-between rounded-2xl border border-white/[0.07] bg-white/[0.02] px-4 py-3.5 text-left transition hover:bg-white/[0.05]">
+              <span className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-xl bg-white/[0.05] text-white/55"><Shield className="h-4 w-4" /></span><span><span className="block text-sm font-bold text-white">Dados pessoais e verificação</span><span className="block text-[10px] text-white/35">Segurança, identidade e situação da conta</span></span></span>
+              <ChevronRight className="h-4 w-4 text-white/25" />
+            </a>
           </div>
-          <div className="flex-1">
-            {editing ? (
-              <div className="flex gap-2">
-                <input value={editName} onChange={(e) => setEditName(e.target.value)} className="text-lg font-bold bg-card rounded-xl px-3 py-1 border border-border text-foreground flex-1" autoFocus />
-                <button onClick={handleSave} className="btn-gradient px-3 py-1 text-xs">Salvar</button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <p className="text-lg font-bold text-foreground">{displayName}</p>
-                <button onClick={() => setEditing(true)}><Edit className="w-4 h-4 text-muted-foreground" /></button>
-              </div>
-            )}
-            <p className="text-muted-foreground text-xs mt-0.5 font-mono break-all">ID público: {publicId}</p>
-            {verifiedSeller && (
-              <p className="text-success text-sm mt-0.5 font-semibold flex items-center gap-1">
-                <Shield className="w-3 h-3" /> Vendedor Verificado
-              </p>
-            )}
-          </div>
-        </div>
 
-        <div className="grid grid-cols-2 gap-3 mb-6">
-          <div className="p-4 bg-primary/5 rounded-2xl">
-            <p className="text-[10px] font-bold text-primary uppercase">Saldo Disponível</p>
-            <p className="text-2xl font-black text-primary">R$ {storeUser.balance.toFixed(2)}</p>
-          </div>
-          <div className="p-4 bg-success/5 rounded-2xl">
-            <p className="text-[10px] font-bold text-success uppercase">Ganhos Totais</p>
-            <p className="text-2xl font-black text-success">R$ {storeUser.earnings.toFixed(2)}</p>
-          </div>
-        </div>
+          {isAdmin && <div className="mt-4"><TwoFactorPanel /></div>}
 
-        {/* Pix Key */}
-        <div className="mb-4 p-4 bg-muted rounded-2xl">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
-              <KeyEmoji className="w-4 h-4" /> Dados para Saque (Pix)
-            </p>
-            {!editingPix && (
-              <button onClick={() => setEditingPix(true)} className="text-primary text-xs font-bold">{profile?.pix_key || storeUser.pixKey ? "Editar" : "Cadastrar"}</button>
-            )}
-          </div>
-          {editingPix ? (
-            <div className="flex gap-2">
-              <input
-                value={pixKey}
-                onChange={(e) => setPixKey(e.target.value)}
-                placeholder="CPF, email, telefone ou chave aleatória"
-                className="flex-1 p-2.5 rounded-xl bg-card text-foreground text-sm border border-border outline-none focus:ring-2 ring-primary"
-                autoFocus
-              />
-              <button onClick={handleSavePix} className="btn-gradient px-3 py-1 text-xs">Salvar</button>
-              <button onClick={() => setEditingPix(false)} className="text-xs text-muted-foreground">Cancelar</button>
-            </div>
-          ) : (
-            <p className="text-sm text-foreground">{profile?.pix_key || storeUser.pixKey || <span className="text-muted-foreground italic">Nenhuma chave cadastrada</span>}</p>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <button onClick={() => handleWithdraw("normal")} className="w-full flex items-center justify-between p-4 bg-foreground text-background rounded-xl font-bold text-sm hover:opacity-90 transition">
-            <div className="flex items-center gap-2">
-              <MoneyEmoji className="w-5 h-5" />
-              <span>Solicitar Saque (5 a 7 dias úteis)</span>
-            </div>
-          </button>
-
-          <input
-            type="file"
-            ref={fileInputRef}
-            accept="image/*,.pdf"
-            onChange={handleDocumentUpload}
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="w-full flex items-center justify-center gap-2 p-3 border border-border rounded-xl text-muted-foreground font-semibold text-sm hover:bg-muted transition disabled:opacity-50"
-          >
-            <Upload className="w-4 h-4" /> {uploading ? "Enviando..." : "Enviar Documentos (RG / Certidão)"}
-          </button>
-          
-          <a href="/perfil" className="w-full flex items-center justify-center gap-2 p-3 border border-border rounded-xl text-muted-foreground font-semibold text-sm hover:bg-muted transition">
-            <Shield className="w-4 h-4" /> Dados pessoais e verificação
-          </a>
-
-          {isAdmin && <TwoFactorPanel />}
-
-          <button
-            onClick={() => {
-              onClose();
-              logout();
-            }}
-            className="w-full flex items-center justify-center gap-2 p-3 text-destructive font-bold text-sm hover:bg-destructive/5 rounded-xl transition"
-          >
-            <DoorEmoji className="w-5 h-5" /> Sair da Conta
+          <button onClick={() => { onClose(); logout(); }} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-red-400 transition hover:bg-red-500/[0.06]">
+            <DoorEmoji className="h-5 w-5" /> Sair da conta
           </button>
         </div>
       </div>
