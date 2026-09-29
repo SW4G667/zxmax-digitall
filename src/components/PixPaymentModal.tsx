@@ -21,7 +21,7 @@ interface Props {
   onPaid: () => void | Promise<void>;
 }
 
-const PAID_STATUSES = new Set(["COMPLETED", "PAID", "CONFIRMED"]);
+const PAID_STATUSES = new Set(["COMPLETED", "PAID", "CONFIRMED", "APPROVED"]);
 
 export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
   const [copied, setCopied] = useState(false);
@@ -53,7 +53,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
       });
 
       const gatewayStatus = String(data?.status || "").toUpperCase();
-      const gatewayPaid = !error && PAID_STATUSES.has(gatewayStatus);
+      const gatewayPaid = !error && (data?.paid === true || PAID_STATUSES.has(gatewayStatus));
 
       let localPaid = false;
       try {
@@ -80,7 +80,7 @@ export default function PixPaymentModal({ charge, onClose, onPaid }: Props) {
         return;
       }
 
-      if (["EXPIRED", "CANCELED", "FAILED"].includes(gatewayStatus)) {
+      if (["EXPIRED", "CANCELED", "CANCELLED", "FAILED"].includes(gatewayStatus)) {
         stopPolling();
         setStatus("expired");
         setCheckMessage("Esta cobrança expirou ou falhou. Gere um novo PIX.");
