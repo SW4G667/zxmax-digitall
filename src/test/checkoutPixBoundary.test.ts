@@ -49,7 +49,8 @@ describe("checkout PIX exclusivo e neutro", () => {
     const pixConfirmation = product.slice(product.indexOf("const handlePixPaid"), product.indexOf("const handleSendQuestion"));
     expect(pixConfirmation).not.toContain('functions.invoke("send-email"');
     expect(purchases).not.toContain("markPurchasePaid");
-    expect(purchases).toContain("void refreshPurchases()");
+    expect(purchases).toContain("await refreshPurchases()");
+    expect(purchases).toContain('functions.invoke("check-magnuspay-status"');
   });
 
   it("não devolve detalhes ou marca do gateway em erros de geração PIX ao comprador", async () => {
