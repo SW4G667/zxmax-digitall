@@ -10,6 +10,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
 });
 const MAGNUSPAY_API = "https://api.magnuspay.com.br";
+const MAGNUSPAY_PAID_STATUSES = new Set(["COMPLETED", "PAID", "CONFIRMED", "APPROVED"]);
 const normalizeMoney = (value: unknown) => Math.round(Number(value) * 100);
 
 async function writeMagnusLog(client: any, row: Record<string, unknown>) {
@@ -123,10 +124,10 @@ serve(async (req) => {
 
     await admin.from("purchases").update({ provider_checked_at: new Date().toISOString() }).eq("id", purchase.id);
 
-    if (status === "COMPLETED") {
+    if (MAGNUSPAY_PAID_STATUSES.has(status)) {
       const { data: applied, error: applyError } = await admin.rpc("apply_verified_payment_v2", {
         _provider: "magnuspay",
-        _event_key: `magnuspay:${id}:COMPLETED`,
+        _event_key: `magnuspay:${id}:${status}`,
         _event_type: "transaction.completed",
         _purchase_id: purchase.id,
         _charge_id: id,
@@ -145,7 +146,7 @@ serve(async (req) => {
       });
     }
 
-    if (status === "EXPIRED" || status === "FAILED") {
+    if (["EXPIRED", "FAILED", "CANCELED", "CANCELLED"].includes(status)) {
       await admin.from("purchases").update({
         payment_status: status === "EXPIRED" ? "expired" : "failed",
         updated_at: new Date().toISOString(),
