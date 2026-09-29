@@ -103,7 +103,7 @@ serve(async (req) => {
         payload: { endpoint: "/transactions/check", code: parsed?.code || null },
         error: providerMessage,
       });
-      return json({ error: providerMessage, code: parsed?.code || `magnus_http_${response.status}` }, 502);
+      return json({ error: "Não foi possível consultar o PIX agora. Tente novamente em instantes.", code: "pix_provider_error" }, 502);
     }
 
     const data = parsed.data;
