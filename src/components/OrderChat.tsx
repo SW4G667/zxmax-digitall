@@ -20,6 +20,15 @@ interface OrderMessage {
   imageUrl?: string;
 }
 
+interface RefundRequest {
+  id: number;
+  purchase_id: number;
+  status: "awaiting_buyer_details" | "ready_to_pay" | "paid" | "cancelled";
+  reason: string;
+  account_holder_name?: string | null;
+  pix_key?: string | null;
+}
+
 interface Props {
   orderId: number;
   locked?: boolean;
@@ -39,6 +48,11 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
   const [actionLoading, setActionLoading] = useState(false);
   const [translations, setTranslations] = useState<Record<string, string>>({});
   const [translationLoading, setTranslationLoading] = useState<string | null>(null);
+  const [refundRequest, setRefundRequest] = useState<RefundRequest | null>(null);
+  const [refundDetailsOpen, setRefundDetailsOpen] = useState(false);
+  const [refundHolderName, setRefundHolderName] = useState("");
+  const [refundPixKey, setRefundPixKey] = useState("");
+  const [refundDetailsLoading, setRefundDetailsLoading] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -66,6 +80,12 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
     return withImages;
   };
 
+  const loadRefundRequest = async () => {
+    if (!me) return;
+    const { data } = await (supabase as any).from("refund_requests").select("id,purchase_id,status,reason,account_holder_name,pix_key").eq("purchase_id", orderId).maybeSingle();
+    setRefundRequest((data as RefundRequest | null) || null);
+  };
+
   const load = async () => {
     const { data } = await supabase
       .from("order_messages")
@@ -73,6 +93,7 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
       .eq("order_id", orderId)
       .order("created_at", { ascending: true });
     if (data) setMessages(await signImages(data as OrderMessage[]));
+    await loadRefundRequest();
   };
 
   useEffect(() => {
@@ -229,7 +250,7 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
     setRefunding(false);
 
     if (result.success) {
-      toast.success("Reembolso solicitado para o meio de pagamento original.");
+      toast.success("Solicitação enviada. O comprador agora verá “Confirmar reembolso” neste pedido.");
       setShowRefundModal(false);
       setRefundReason("");
       void load();
@@ -237,6 +258,33 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
     } else {
       toast.error(result.error || "Falha ao processar o reembolso.");
     }
+  };
+
+  const submitRefundDetails = async () => {
+    const holder = refundHolderName.trim().replace(/\s+/g, " ");
+    const key = refundPixKey.trim();
+    if (holder.length < 5) return toast.error("Digite o nome completo exatamente como consta no banco.");
+    if (key.length < 5) return toast.error("Informe uma chave PIX válida.");
+    setRefundDetailsLoading(true);
+    const { data, error } = await supabase.functions.invoke("order-action", { body: { orderId, action: "submit_refund_details", accountHolderName: holder, pixKey: key } });
+    setRefundDetailsLoading(false);
+    if (error || data?.error) return toast.error(data?.error || "Não foi possível confirmar os dados.");
+    setRefundDetailsOpen(false);
+    setRefundHolderName("");
+    setRefundPixKey("");
+    await load();
+    toast.success("Dados confirmados. O vendedor já pode realizar o reembolso PIX.");
+  };
+
+  const completeRefund = async () => {
+    if (!window.confirm("Confirme somente depois de realmente enviar o PIX ao comprador. Esta ação encerra o pedido como reembolsado.")) return;
+    setRefundDetailsLoading(true);
+    const { data, error } = await supabase.functions.invoke("order-action", { body: { orderId, action: "complete_refund" } });
+    setRefundDetailsLoading(false);
+    if (error || data?.error) return toast.error(data?.error || "Não foi possível concluir o reembolso.");
+    await load();
+    if (onRefresh) onRefresh();
+    toast.success("Reembolso marcado como enviado.");
   };
 
   if (locked) {
@@ -262,7 +310,7 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
     autoReleaseText = `${dayMonth} às ${timeStr}`;
   }
 
-  const isRefundable = (isSeller || isAdmin) && purchase && ["paid", "delivered_pending_confirmation", "delivered"].includes(purchase.status);
+  const isRefundable = (isSeller || isAdmin) && !refundRequest && purchase && ["paid", "delivered_pending_confirmation", "delivered"].includes(purchase.status);
 
   return (
     <div>
@@ -411,6 +459,29 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
         </div>
       )}
 
+      {refundRequest && refundRequest.status !== "cancelled" && (
+        <section className="mb-3 rounded-2xl border border-amber-400/20 bg-amber-400/[0.055] p-4">
+          <div className="flex items-start gap-3">
+            <Undo2 className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-black text-white">{refundRequest.status === "awaiting_buyer_details" ? "Reembolso aguardando confirmação" : refundRequest.status === "ready_to_pay" ? "Dados PIX confirmados" : "Reembolso enviado"}</p>
+              <p className="mt-1 text-[10px] leading-4 text-white/45">{refundRequest.reason}</p>
+              {isBuyer && refundRequest.status === "awaiting_buyer_details" ? (
+                <button type="button" onClick={() => setRefundDetailsOpen(true)} className="mt-3 rounded-lg bg-white px-3 py-2 text-[10px] font-black text-black">Confirmar reembolso</button>
+              ) : null}
+              {(isSeller || isAdmin) && refundRequest.status === "awaiting_buyer_details" ? <p className="mt-2 text-[10px] font-semibold text-amber-200/70">Aguardando o comprador informar os dados PIX.</p> : null}
+              {(isSeller || isAdmin) && refundRequest.status === "ready_to_pay" ? (
+                <div className="mt-3 rounded-xl border border-white/[0.08] bg-black/20 p-3">
+                  <p className="text-[9px] uppercase tracking-wide text-white/35">Titular</p><p className="mt-1 break-words text-xs font-bold text-white">{refundRequest.account_holder_name}</p>
+                  <p className="mt-3 text-[9px] uppercase tracking-wide text-white/35">Chave PIX</p><p className="mt-1 break-all text-xs font-bold text-white">{refundRequest.pix_key}</p>
+                  <button type="button" onClick={() => void completeRefund()} disabled={refundDetailsLoading} className="mt-3 rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black text-black disabled:opacity-50">{refundDetailsLoading ? "Processando…" : "Já enviei o PIX · concluir reembolso"}</button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Messages Feed */}
       <div ref={scrollRef} className="glass-card p-4 mb-3 min-h-[280px] max-h-[400px] overflow-y-auto flex flex-col gap-2">
         {messages.length === 0 ? (
@@ -510,6 +581,23 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
           <Send className="w-4 h-4" />
         </button>
       </div>
+
+      {refundDetailsOpen && isBuyer && refundRequest?.status === "awaiting_buyer_details" && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm" onClick={() => setRefundDetailsOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-white/[0.1] bg-[#121217] p-5" onClick={(event) => event.stopPropagation()}>
+            <h3 className="text-lg font-black text-white">Confirmar reembolso</h3>
+            <p className="mt-1 text-[11px] leading-5 text-white/45">Informe os dados da conta que deve receber o PIX. Eles ficam vinculados somente a este pedido.</p>
+            <label className="mt-4 block text-[10px] font-bold uppercase text-white/45">Nome completo do titular</label>
+            <input value={refundHolderName} onChange={(e) => setRefundHolderName(e.target.value)} placeholder="Exatamente como consta no banco" className="mt-1 w-full rounded-xl border border-white/[0.1] bg-black/25 px-3 py-3 text-sm text-white outline-none focus:border-[#168cff]/60" />
+            <label className="mt-3 block text-[10px] font-bold uppercase text-white/45">Chave PIX</label>
+            <input value={refundPixKey} onChange={(e) => setRefundPixKey(e.target.value)} placeholder="CPF, e-mail, telefone ou chave aleatória" className="mt-1 w-full rounded-xl border border-white/[0.1] bg-black/25 px-3 py-3 text-sm text-white outline-none focus:border-[#168cff]/60" />
+            <div className="mt-4 flex gap-2">
+              <button type="button" onClick={() => setRefundDetailsOpen(false)} className="flex-1 rounded-xl border border-white/[0.1] py-2.5 text-xs font-bold text-white/60">Cancelar</button>
+              <button type="button" onClick={() => void submitRefundDetails()} disabled={refundDetailsLoading} className="flex-1 rounded-xl bg-[#168cff] py-2.5 text-xs font-black text-white disabled:opacity-50">{refundDetailsLoading ? "Confirmando…" : "Confirmar dados"}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Seller Refund Modal */}
       {showRefundModal && purchase && (
