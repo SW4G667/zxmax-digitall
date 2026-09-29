@@ -264,6 +264,7 @@ export type Database = {
           avatar_url: string | null
           birth_date: string | null
           city: string
+          country_code: string | null
           cpf: string
           created_at: string
           display_name: string
@@ -272,6 +273,7 @@ export type Database = {
           full_name: string
           id: string
           is_verified_seller: boolean
+          locale: string | null
           phone: string
           pix_key: string | null
           public_id: number
@@ -287,6 +289,7 @@ export type Database = {
           avatar_url?: string | null
           birth_date?: string | null
           city?: string
+          country_code?: string | null
           cpf?: string
           created_at?: string
           display_name?: string
@@ -295,6 +298,7 @@ export type Database = {
           full_name?: string
           id?: string
           is_verified_seller?: boolean
+          locale?: string | null
           phone?: string
           pix_key?: string | null
           public_id?: number
@@ -310,6 +314,7 @@ export type Database = {
           avatar_url?: string | null
           birth_date?: string | null
           city?: string
+          country_code?: string | null
           cpf?: string
           created_at?: string
           display_name?: string
@@ -318,6 +323,7 @@ export type Database = {
           full_name?: string
           id?: string
           is_verified_seller?: boolean
+          locale?: string | null
           phone?: string
           pix_key?: string | null
           public_id?: number
