@@ -245,7 +245,7 @@ export default function MarketplaceHome() {
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#f4b42c]/40 bg-[#f4b42c]/12 px-3 text-[10px] font-black text-[#ffc84a] shadow-[0_6px_18px_rgba(244,180,44,.08)] transition hover:border-[#f4b42c]/65 hover:bg-[#f4b42c]/18 active:scale-[0.98]"
                 aria-label="Abrir mercado de Robux"
               >
-                <Zap className="h-3.5 w-3.5" />
+                <span className="inline-flex h-4 w-4 items-center justify-center rounded-[4px] bg-[#ffc84a] text-[7px] font-black leading-none text-[#211500]">R$</span>
                 Robux
               </Link>
               <Link to="/categorias" className="text-[10px] font-bold text-[var(--zx-accent)] hover:text-white">Ver todas</Link>
