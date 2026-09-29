@@ -94,6 +94,14 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
   const refreshPurchasesRef = useRef(refreshPurchases);
   refreshPurchasesRef.current = refreshPurchases;
 
+  const openOrderDetails = useCallback((purchaseId: number) => {
+    setSelectedId(Number(purchaseId));
+    setShowReview(false);
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }, []);
+
   const refreshOrderList = useCallback(async (notify = false) => {
     if (!sessionReady) {
       setSyncState("loading");
@@ -707,14 +715,14 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
                         </button>
                       ) : (
                         <button
-                          onClick={(e) => { e.stopPropagation(); setSelectedId(p.id); }}
+                          onClick={(e) => { e.stopPropagation(); openOrderDetails(p.id); }}
                           className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 transition flex items-center gap-1.5"
                         >
                           <MessageSquare className="w-3.5 h-3.5" /> Chat
                         </button>
                       )}
                       <button
-                        onClick={(event) => { event.stopPropagation(); setSelectedId(p.id); }}
+                        onClick={(event) => { event.stopPropagation(); openOrderDetails(p.id); }}
                         className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 transition flex items-center gap-1.5"
                       >
                         <Eye className="w-3.5 h-3.5" /> Detalhes
