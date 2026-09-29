@@ -121,7 +121,7 @@ export default function OrderChat({ orderId, locked, purchase: propPurchase, onR
 
   const sendMessage = async (body: string | null, imagePath: string | null) => {
     if (!me) return false;
-    const { data, error } = await supabase.from("order_messages").insert({
+    const { data, error } = await (supabase as any).from("order_messages").insert({
       order_id: orderId,
       sender_id: me,
       body,
