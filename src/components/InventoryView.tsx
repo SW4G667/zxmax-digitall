@@ -302,6 +302,29 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     e.target.value = "";
   };
 
+  const updateVariation = (index: number, patch: Partial<Variation>) => {
+    setVariations((current) => current.map((variation, currentIndex) =>
+      currentIndex === index ? { ...variation, ...patch } : variation
+    ));
+  };
+
+  const addVariation = () => {
+    setVariations((current) => [
+      ...current,
+      emptyVariation(current.length === 0 ? {
+        price: form.price,
+        stock: form.stock,
+        minQuantity: form.minQuantity || "1",
+        deliveryTime: form.deliveryTime,
+        deliveryType: form.deliveryType,
+        autoItems: form.autoItems,
+      } : {
+        minQuantity: "1",
+        deliveryType: "manual",
+      }),
+    ]);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canOpenListingForm()) return;
@@ -597,7 +620,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
 
       {showForm && (
         <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#15151a] border border-[#25252e] rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
+          <div className="bg-[#15151a] border border-[#25252e] rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto p-4 sm:p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-black text-white">{editingId !== null ? "Editar Produto" : "Criar Produto"}</h3>
               <button onClick={() => { setShowForm(false); resetForm(); }} className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-white/40 hover:text-white"><X className="w-5 h-5" /></button>
@@ -638,14 +661,46 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
               )}
 
               {!isRobuxCategory && (
-                <>
-                  <input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} type="text" inputMode="decimal" placeholder="Preço (R$) — ex: 2,00" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm focus:border-[#0084ff] outline-none" />
-                  <div className="grid grid-cols-3 gap-2">
-                    <input value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} type="number" placeholder="Estoque" className="p-2.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-xs" />
-                    <input value={form.minQuantity} onChange={(e) => setForm({ ...form, minQuantity: e.target.value })} type="number" placeholder="Qtd mín" className="p-2.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-xs" />
-                    <input value={form.deliveryTime} onChange={(e) => setForm({ ...form, deliveryTime: e.target.value })} placeholder="Prazo de entrega" className="p-2.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-xs" />
+                <section className="rounded-2xl border border-white/[0.07] bg-[#101014] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.12em] text-white/55">Oferta principal</p>
+                      <p className="mt-1 text-[11px] leading-4 text-white/35">Use o preço base para o anúncio. Se criar variações, estoque, mínimo e entrega passam a ser configurados em cada opção.</p>
+                    </div>
+                    <Package className="h-5 w-5 shrink-0 text-[#5aaeff]" />
                   </div>
-                </>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1.5 block text-[10px] font-bold uppercase text-white/35">Preço base (R$)</span>
+                      <input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} type="text" inputMode="decimal" placeholder="2,00" className="w-full rounded-xl border border-[#25252e] bg-[#09090d] p-3 text-sm text-white outline-none focus:border-[#168cff]" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-[10px] font-bold uppercase text-white/35">Prazo padrão</span>
+                      <input value={form.deliveryTime} onChange={(e) => setForm({ ...form, deliveryTime: e.target.value })} placeholder="Ex.: imediato, até 1 hora" className="w-full rounded-xl border border-[#25252e] bg-[#09090d] p-3 text-sm text-white outline-none focus:border-[#168cff]" />
+                    </label>
+                  </div>
+                  {variations.length === 0 && (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="mb-1.5 block text-[10px] font-bold uppercase text-white/35">Estoque</span>
+                        <input
+                          value={form.deliveryType === "auto" ? String(autoItemCount(form.autoItems)) : form.stock}
+                          onChange={(e) => setForm({ ...form, stock: e.target.value })}
+                          readOnly={form.deliveryType === "auto"}
+                          type="number"
+                          min="0"
+                          placeholder="Quantidade disponível"
+                          className="w-full rounded-xl border border-[#25252e] bg-[#09090d] p-3 text-sm text-white outline-none focus:border-[#168cff] read-only:text-[#6fc1ff]"
+                        />
+                        {form.deliveryType === "auto" && <span className="mt-1 block text-[10px] text-white/30">Calculado pelos itens automáticos cadastrados.</span>}
+                      </label>
+                      <label className="block">
+                        <span className="mb-1.5 block text-[10px] font-bold uppercase text-white/35">Quantidade mínima</span>
+                        <input value={form.minQuantity} onChange={(e) => setForm({ ...form, minQuantity: e.target.value })} type="number" min="1" placeholder="1" className="w-full rounded-xl border border-[#25252e] bg-[#09090d] p-3 text-sm text-white outline-none focus:border-[#168cff]" />
+                      </label>
+                    </div>
+                  )}
+                </section>
               )}
 
               {!isRobuxCategory && <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Descrição detalhada" rows={3} className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white placeholder:text-white/20 text-sm resize-none focus:border-[#0084ff] outline-none" />}
@@ -668,26 +723,128 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
               </div>
 
               {!isRobuxCategory && (
-                <div className="bg-[#0a0a0f] border border-[#1e1e28] rounded-xl p-3">
-                  <div className="flex justify-between items-center mb-2">
-                    <p className="text-xs font-bold uppercase text-white/30">Variações</p>
-                    <button type="button" onClick={() => setVariations([...variations, { name: "", price: "" }])} className="text-[#0084ff] text-xs font-bold">+ Adicionar</button>
-                  </div>
-                  {variations.map((v, i) => (
-                    <div key={i} className="flex gap-2 mb-2">
-                      <input value={v.name} onChange={(e) => { const nv = [...variations]; nv[i].name = e.target.value; setVariations(nv); }} placeholder="Nome" className="flex-1 p-2.5 rounded-lg bg-[#15151a] border border-[#25252e] text-white text-xs" />
-                      <input value={v.price} onChange={(e) => { const nv = [...variations]; nv[i].price = e.target.value; setVariations(nv); }} placeholder="Preço" type="number" step="0.01" className="w-20 p-2.5 rounded-lg bg-[#15151a] border border-[#25252e] text-white text-xs" />
-                      <button type="button" onClick={() => setVariations(variations.filter((_, j) => j !== i))} className="text-red-400"><Trash2 className="w-4 h-4" /></button>
+                <section className="rounded-2xl border border-[#25252e] bg-[#0c0c10] p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.12em] text-white/60"><Boxes className="h-4 w-4 text-[#5aaeff]" /> Variações</p>
+                      <p className="mt-1 text-[11px] leading-4 text-white/35">Cada variação pode ter preço, estoque, mínimo, prazo e tipo de entrega próprios.</p>
                     </div>
-                  ))}
-                </div>
+                    <button type="button" onClick={addVariation} className="shrink-0 rounded-lg border border-[#168cff]/30 bg-[#168cff]/10 px-3 py-2 text-xs font-black text-[#78c5ff] transition hover:bg-[#168cff]/20">+ Adicionar</button>
+                  </div>
+
+                  {variations.length === 0 ? (
+                    <div className="mt-4 rounded-xl border border-dashed border-white/[0.09] px-4 py-6 text-center">
+                      <p className="text-xs font-semibold text-white/50">Sem variações</p>
+                      <p className="mt-1 text-[10px] text-white/30">O anúncio usará um único preço, estoque e forma de entrega.</p>
+                    </div>
+                  ) : (
+                    <div className="mt-4 space-y-3">
+                      {variations.map((variation, index) => (
+                        <article key={variation.id} className="rounded-2xl border border-white/[0.08] bg-[#131318] p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-black uppercase tracking-[0.13em] text-[#70bcff]">Variação {index + 1}</p>
+                              <p className="mt-0.5 truncate text-xs font-semibold text-white/45">{variation.name || "Sem nome"}</p>
+                            </div>
+                            <button type="button" onClick={() => setVariations((current) => current.filter((_, currentIndex) => currentIndex !== index))} className="rounded-lg p-2 text-red-300/65 transition hover:bg-red-500/10 hover:text-red-300" aria-label={`Remover variação ${index + 1}`}><Trash2 className="h-4 w-4" /></button>
+                          </div>
+
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            <label className="block">
+                              <span className="mb-1 block text-[10px] font-bold uppercase text-white/35">Nome</span>
+                              <input value={variation.name} onChange={(e) => updateVariation(index, { name: e.target.value })} placeholder="Ex.: Premium, 30 dias, Conta 1" className="w-full rounded-xl border border-[#292933] bg-[#09090d] p-3 text-sm text-white outline-none focus:border-[#168cff]" />
+                            </label>
+                            <label className="block">
+                              <span className="mb-1 block text-[10px] font-bold uppercase text-white/35">Preço (R$)</span>
+                              <input value={variation.price} onChange={(e) => updateVariation(index, { price: e.target.value })} placeholder="2,00" inputMode="decimal" className="w-full rounded-xl border border-[#292933] bg-[#09090d] p-3 text-sm text-white outline-none focus:border-[#168cff]" />
+                            </label>
+                          </div>
+
+                          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                            <label className="block">
+                              <span className="mb-1 block text-[10px] font-bold uppercase text-white/35">Estoque</span>
+                              <input
+                                value={variation.deliveryType === "auto" ? String(autoItemCount(variation.autoItems)) : variation.stock}
+                                onChange={(e) => updateVariation(index, { stock: e.target.value })}
+                                readOnly={variation.deliveryType === "auto"}
+                                type="number"
+                                min="0"
+                                placeholder="0"
+                                className="w-full rounded-xl border border-[#292933] bg-[#09090d] p-3 text-sm text-white outline-none focus:border-[#168cff] read-only:text-[#6fc1ff]"
+                              />
+                            </label>
+                            <label className="block">
+                              <span className="mb-1 block text-[10px] font-bold uppercase text-white/35">Qtd. mínima</span>
+                              <input value={variation.minQuantity} onChange={(e) => updateVariation(index, { minQuantity: e.target.value })} type="number" min="1" placeholder="1" className="w-full rounded-xl border border-[#292933] bg-[#09090d] p-3 text-sm text-white outline-none focus:border-[#168cff]" />
+                            </label>
+                            <label className="block">
+                              <span className="mb-1 block text-[10px] font-bold uppercase text-white/35">Prazo</span>
+                              <input value={variation.deliveryTime} onChange={(e) => updateVariation(index, { deliveryTime: e.target.value })} placeholder="Ex.: imediato" className="w-full rounded-xl border border-[#292933] bg-[#09090d] p-3 text-sm text-white outline-none focus:border-[#168cff]" />
+                            </label>
+                          </div>
+
+                          <div className="mt-4">
+                            <p className="mb-2 text-[10px] font-bold uppercase text-white/35">Entrega desta variação</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button type="button" onClick={() => updateVariation(index, { deliveryType: "manual" })} className={`rounded-xl border px-3 py-3 text-left transition ${variation.deliveryType === "manual" ? "border-[#168cff]/45 bg-[#168cff]/12 text-white" : "border-white/[0.07] bg-white/[0.025] text-white/45"}`}>
+                                <span className="flex items-center gap-2 text-xs font-black"><Package className="h-4 w-4" /> Manual</span>
+                                <span className="mt-1 block text-[10px] leading-4 opacity-65">O vendedor entrega pelo pedido.</span>
+                              </button>
+                              <button type="button" onClick={() => updateVariation(index, { deliveryType: "auto" })} className={`rounded-xl border px-3 py-3 text-left transition ${variation.deliveryType === "auto" ? "border-emerald-300/30 bg-emerald-400/[0.08] text-white" : "border-white/[0.07] bg-white/[0.025] text-white/45"}`}>
+                                <span className="flex items-center gap-2 text-xs font-black"><Zap className="h-4 w-4" /> Automática</span>
+                                <span className="mt-1 block text-[10px] leading-4 opacity-65">Entrega um item do estoque ao confirmar o pagamento.</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {variation.deliveryType === "auto" && (
+                            <div className="mt-3 rounded-xl border border-emerald-300/10 bg-emerald-400/[0.035] p-3">
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-200/80"><KeyRound className="h-3.5 w-3.5" /> Itens para entrega</p>
+                                <span className="rounded-full bg-emerald-300/10 px-2 py-1 text-[10px] font-bold text-emerald-200">{autoItemCount(variation.autoItems)} disponível(is)</span>
+                              </div>
+                              <textarea value={variation.autoItems} onChange={(e) => updateVariation(index, { autoItems: e.target.value })} rows={5} placeholder={"Um item por linha\nexemplo-chave-001\nexemplo-chave-002"} className="w-full resize-y rounded-xl border border-[#292933] bg-[#08080b] p-3 font-mono text-xs leading-5 text-white outline-none placeholder:text-white/18 focus:border-emerald-300/30" />
+                              <p className="mt-2 text-[10px] leading-4 text-white/30">Cada linha é consumida uma única vez. O conteúdo fica privado e só aparece no pedido que teve o pagamento confirmado.</p>
+                            </div>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
               )}
 
-              <div className="flex gap-3 text-sm">
-                <label className="flex items-center gap-2 text-white"><input type="radio" checked={form.deliveryType === "manual"} onChange={() => setForm({ ...form, deliveryType: "manual" })} /> Manual</label>
-                <label className="flex items-center gap-2 text-white"><input type="radio" checked={form.deliveryType === "auto"} onChange={() => setForm({ ...form, deliveryType: "auto" })} /> Automática</label>
-              </div>
-              {form.deliveryType === "auto" && <input value={form.deliveryContent} onChange={(e) => setForm({ ...form, deliveryContent: e.target.value })} placeholder="Código de entrega" className="w-full p-3.5 rounded-xl bg-[#0a0a0f] border border-[#25252e] text-white text-sm" />}
+              {!isRobuxCategory && variations.length === 0 && (
+                <section className="rounded-2xl border border-white/[0.07] bg-[#101014] p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.12em] text-white/55">Forma de entrega</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setForm({ ...form, deliveryType: "manual" })} className={`rounded-xl border px-3 py-3 text-left transition ${form.deliveryType === "manual" ? "border-[#168cff]/45 bg-[#168cff]/12 text-white" : "border-white/[0.07] bg-white/[0.025] text-white/45"}`}>
+                      <span className="flex items-center gap-2 text-xs font-black"><Package className="h-4 w-4" /> Manual</span>
+                      <span className="mt-1 block text-[10px] leading-4 opacity-65">Você entrega depois que o pagamento for confirmado.</span>
+                    </button>
+                    <button type="button" onClick={() => setForm({ ...form, deliveryType: "auto" })} className={`rounded-xl border px-3 py-3 text-left transition ${form.deliveryType === "auto" ? "border-emerald-300/30 bg-emerald-400/[0.08] text-white" : "border-white/[0.07] bg-white/[0.025] text-white/45"}`}>
+                      <span className="flex items-center gap-2 text-xs font-black"><Zap className="h-4 w-4" /> Automática</span>
+                      <span className="mt-1 block text-[10px] leading-4 opacity-65">O site entrega um item cadastrado após o pagamento.</span>
+                    </button>
+                  </div>
+                  {form.deliveryType === "auto" && (
+                    <div className="mt-3 rounded-xl border border-emerald-300/10 bg-emerald-400/[0.035] p-3">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-200/80"><KeyRound className="h-3.5 w-3.5" /> Estoque automático</p>
+                        <span className="rounded-full bg-emerald-300/10 px-2 py-1 text-[10px] font-bold text-emerald-200">{autoItemCount(form.autoItems)} disponível(is)</span>
+                      </div>
+                      <textarea value={form.autoItems} onChange={(e) => setForm({ ...form, autoItems: e.target.value })} rows={6} placeholder={"Um produto/código por linha\nconta@email.com:senha\nCHAVE-XXXX-YYYY"} className="w-full resize-y rounded-xl border border-[#292933] bg-[#08080b] p-3 font-mono text-xs leading-5 text-white outline-none placeholder:text-white/18 focus:border-emerald-300/30" />
+                      <p className="mt-2 text-[10px] leading-4 text-white/30">O número de linhas válidas vira o estoque. O conteúdo não aparece na página pública.</p>
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {!isRobuxCategory && variations.length > 0 && (
+                <div className="rounded-xl border border-[#168cff]/15 bg-[#168cff]/[0.045] px-4 py-3 text-[11px] leading-5 text-[#8acbff]/75">
+                  A forma de entrega agora é definida dentro de cada variação. Você pode misturar opções manuais e automáticas no mesmo anúncio.
+                </div>
+              )}
 
               <button type="submit" className="w-full bg-[#0084ff] hover:bg-[#0066cc] text-white p-3.5 rounded-xl font-bold text-sm transition">{editingId !== null ? "Salvar" : "Criar Produto"}</button>
             </form>
