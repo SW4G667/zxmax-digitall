@@ -32,7 +32,7 @@ jobs:
             echo "::error::SUPABASE_ACCESS_TOKEN não configurado."
             exit 1
           fi
-          for fn in admin-login admin-remove-product admin-verify check-evopay-status check-magnuspay-status create-evopay-pix create-magnuspay-pix create-purchase create-stripe-checkout create-vexopay-crypto create-zennith-pix deliver-discord-webhook discord-callback evopay-webhook evopay-withdraw get-my-purchases integrations-config manage-discord-webhooks mark-order-delivered moderate-product notify-product-event order-action public-products security-event send-email site-config stripe-webhook vexopay-webhook zennith-webhook zennith-withdraw magnuspay-webhook discord-membership tag-icon-upload; do
+          for fn in admin-login admin-remove-product admin-verify check-evopay-status check-magnuspay-status create-evopay-pix create-magnuspay-pix create-purchase create-stripe-checkout create-vexopay-crypto create-zennith-pix deliver-discord-webhook discord-callback evopay-webhook evopay-withdraw get-my-purchases integrations-config manage-discord-webhooks mark-order-delivered moderate-product notify-product-event order-action public-products security-event send-email translate-order-message site-config stripe-webhook vexopay-webhook zennith-webhook zennith-withdraw magnuspay-webhook discord-membership tag-icon-upload; do
             echo "==> Deploy $fn"
             supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"
           done
