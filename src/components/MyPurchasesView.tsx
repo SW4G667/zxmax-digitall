@@ -167,6 +167,17 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
   const selected = selectedId ? state.purchases.find((p) => p.id === selectedId) : null;
   const selectedProduct = selected ? state.products.find((p) => p.id === selected.productId) : null;
   const selectedAsSeller = !!selected && selected.sellerId === state.currentUser?.id;
+  const automaticDeliveryMessage = selected?.messages
+    ?.slice()
+    .reverse()
+    .find((message) => typeof message?.text === "string" && message.text.startsWith("📦 ENTREGA AUTOMÁTICA"));
+  const automaticDeliveryContent = automaticDeliveryMessage?.text
+    ?.replace(/^📦 ENTREGA AUTOMÁTICA\s*/u, "")
+    .trim() || "";
+  const automaticDeliveryWarning = selected?.messages
+    ?.slice()
+    .reverse()
+    .find((message) => typeof message?.text === "string" && message.text.startsWith("⚠️ Pagamento confirmado"));
   const selectedBuyer = selected ? state.userDirectory?.[selected.buyerId] : undefined;
   const selectedCounterparty = selected
     ? (selectedAsSeller
@@ -395,15 +406,22 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs font-bold text-success uppercase bg-success/10 px-2 py-0.5 rounded-full">📦 Informações de Entrega</span>
             </div>
-            {selectedProduct.deliveryType === "auto" && selectedProduct.deliveryContent ? (
-              <div className="flex items-center gap-2 bg-muted rounded-xl p-3">
-                <p className="flex-1 text-sm text-foreground font-mono break-all">{selectedProduct.deliveryContent}</p>
-                <button onClick={() => { navigator.clipboard.writeText(selectedProduct.deliveryContent || ""); toast.success("Copiado!"); }} className="shrink-0 p-1.5 hover:bg-card rounded-lg">
-                  <Copy className="w-4 h-4 text-muted-foreground" />
-                </button>
+            {automaticDeliveryContent ? (
+              <div className="rounded-xl border border-success/20 bg-background/45 p-3">
+                <div className="flex items-start gap-2">
+                  <pre className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-sm text-foreground">{automaticDeliveryContent}</pre>
+                  <button onClick={() => { navigator.clipboard.writeText(automaticDeliveryContent); toast.success("Entrega copiada!"); }} className="shrink-0 rounded-lg p-2 hover:bg-card" aria-label="Copiar entrega automática">
+                    <Copy className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                </div>
+                <p className="mt-2 text-[10px] leading-4 text-muted-foreground">Este conteúdo pertence somente a este pedido pago. Se houver mais de uma unidade, cada item entregue aparece em uma linha.</p>
+              </div>
+            ) : automaticDeliveryWarning ? (
+              <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-3">
+                <p className="text-sm text-foreground">{automaticDeliveryWarning.text.replace(/^⚠️\s*/u, "")}</p>
               </div>
             ) : (
-              <p className="text-sm text-foreground">Aguardando o vendedor entregar. Combine pelo chat abaixo.</p>
+              <p className="text-sm text-foreground">Aguardando a entrega do vendedor. Use o chat do pedido para acompanhar.</p>
             )}
             {selected.status === "paid" && (
               <Button onClick={handleConfirm} className="w-full mt-3 bg-success hover:bg-success/90 text-white font-bold">
