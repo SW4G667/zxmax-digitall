@@ -542,7 +542,7 @@ export default function ProdutoPage() {
 
       if (method === "magnuspay_pix" || method === "zennith_pix" || method === "vexopay_pix") {
         const pixFunction = method === "magnuspay_pix" ? "create-magnuspay-pix" : method === "zennith_pix" ? "create-zennith-pix" : "create-evopay-pix";
-        const res = await unwrapEdgeCall<{ id: string; qrCodeText: string; qrCodeUrl?: string; expiresAt?: string; amount?: number }>(
+        const res = await unwrapEdgeCall<{ id: string; qrCodeText: string; qrCodeUrl?: string; expiresAt?: string; amount?: number; baseAmount?: number; providerFee?: number | null }>(
           await supabase.functions.invoke(pixFunction, {
             body: { purchaseId, productName: !isRobux && selectedVariation ? `${product.name} - ${selectedVariation.name}` : product.name, buyerName: state.currentUser?.name, payerDocument: cpf || undefined },
           }),
@@ -556,7 +556,16 @@ export default function ProdutoPage() {
           return;
         }
         savePixCharge(purchaseId, { evopayId: res.data.id, qrCodeText: res.data.qrCodeText, expiresAt: res.data.expiresAt || new Date(Date.now() + 3600 * 1000).toISOString() });
-        setPixCharge({ evopayId: res.data.id, provider: method, qrCodeText: res.data.qrCodeText, amount: Number(res.data.amount ?? subtotal), qrCodeUrl: res.data.qrCodeUrl, purchaseId });
+        setPixCharge({
+          evopayId: res.data.id,
+          provider: method,
+          qrCodeText: res.data.qrCodeText,
+          amount: Number(res.data.amount ?? subtotal),
+          baseAmount: res.data.baseAmount == null ? undefined : Number(res.data.baseAmount),
+          providerFee: res.data.providerFee == null ? undefined : Number(res.data.providerFee),
+          qrCodeUrl: res.data.qrCodeUrl,
+          purchaseId,
+        });
         setCheckoutOpen(false);
         return;
       }
@@ -612,7 +621,7 @@ export default function ProdutoPage() {
   };
 
   const handlePixPaid = async () => {
-    void refreshPurchases();
+    await refreshPurchases();
     toast.success("Pagamento confirmado!");
   };
 
