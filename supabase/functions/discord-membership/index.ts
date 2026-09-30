@@ -36,17 +36,19 @@ async function getConfiguredDiscord(admin: any) {
   const current = data?.value && typeof data.value === "object" ? data.value : {};
   const inviteUrl = String(current?.discordInviteUrl || "").trim();
   const storedGuildId = String(current?.discordGuildId || "").trim();
-  if (storedGuildId) return { inviteUrl, guildId: storedGuildId };
+  const storedGuildName = String(current?.discordGuildName || "").trim();
+  if (storedGuildId) return { inviteUrl, guildId: storedGuildId, guildName: storedGuildName };
 
   const code = inviteCode(inviteUrl);
-  if (!code) return { inviteUrl, guildId: null as string | null };
+  if (!code) return { inviteUrl, guildId: null as string | null, guildName: "" };
 
   const response = await fetch(`${DISCORD_API}/invites/${encodeURIComponent(code)}?with_counts=false&with_expiration=false`, {
     headers: { Accept: "application/json" },
   });
-  if (!response.ok) return { inviteUrl, guildId: null as string | null };
+  if (!response.ok) return { inviteUrl, guildId: null as string | null, guildName: "" };
   const payload = await response.json().catch(() => ({}));
   const guildId = payload?.guild?.id ? String(payload.guild.id) : null;
+  const guildName = payload?.guild?.name ? String(payload.guild.name).trim().slice(0, 100) : "";
 
   // Backfill the resolved guild ID once. Future membership checks no longer
   // depend on the invite endpoint and changing to another server invalidates
@@ -54,10 +56,10 @@ async function getConfiguredDiscord(admin: any) {
   if (guildId) {
     await admin.from("app_settings").upsert({
       key: "site_branding",
-      value: { ...current, discordInviteUrl: inviteUrl, discordGuildId: guildId },
+      value: { ...current, discordInviteUrl: inviteUrl, discordGuildId: guildId, discordGuildName: guildName },
     }, { onConflict: "key" }).catch(() => {});
   }
-  return { inviteUrl, guildId };
+  return { inviteUrl, guildId, guildName };
 }
 
 async function discordUser(providerToken: string) {
@@ -121,8 +123,10 @@ serve(async (req) => {
       .eq("user_id", user.id)
       .maybeSingle();
 
+    const verifiedAt = profile?.discord_member_verified_at ? new Date(profile.discord_member_verified_at).getTime() : 0;
     const membershipCurrent = Boolean(
-      profile?.discord_member_verified_at &&
+      verifiedAt &&
+      Date.now() - verifiedAt <= 2 * 60 * 1000 &&
       profile?.discord_user_id &&
       configured.guildId &&
       String(profile.discord_guild_id || "") === configured.guildId
@@ -182,6 +186,13 @@ serve(async (req) => {
     }
 
     if (!membership.member) {
+      // Revoga imediatamente qualquer prova antiga. Assim, sair do servidor
+      // impede um novo anúncio mesmo que a pessoa já tenha sido validada antes.
+      await admin
+        .from("profiles")
+        .update({ discord_member_verified_at: null, discord_guild_id: configured.guildId })
+        .eq("user_id", user.id);
+
       return json({
         verified: false,
         emailConfirmed: true,

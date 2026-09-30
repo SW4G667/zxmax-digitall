@@ -73,8 +73,33 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
       toast.info("Confirme o e-mail da sua conta antes de anunciar.");
       return false;
     }
-    if (!state.currentUser?.discordMemberVerified) {
+    // A prova antiga não libera um novo anúncio. Cada criação passa novamente
+    // pelo OAuth do Discord para detectar também quem saiu do servidor.
+    setDiscordGateOpen(true);
+    return false;
+  };
+
+  const verifyDiscordMembershipNow = async (): Promise<boolean> => {
+    if (state.currentUser?.isAdmin) return true;
+    if (!state.currentUser?.emailConfirmed) {
+      toast.info("Confirme o e-mail da sua conta antes de anunciar.");
+      return false;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const providerToken = String(sessionData.session?.provider_token || "").trim();
+    if (!providerToken) {
       setDiscordGateOpen(true);
+      toast.info("Autorize o Discord novamente para confirmar que você ainda está no servidor.");
+      return false;
+    }
+
+    const { data, error } = await supabase.functions.invoke("discord-membership", {
+      body: { action: "verify", providerToken },
+    });
+    if (error || data?.verified !== true || data?.discordMember !== true) {
+      setDiscordGateOpen(true);
+      toast.error(data?.error || "Entre no servidor oficial e autorize o Discord novamente.");
       return false;
     }
     return true;
@@ -152,14 +177,15 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
 
   useEffect(() => {
     const discordState = searchParams.get("discord");
+    const discordVerifiedNow = discordState === "verified";
     if (discordState === "join") {
       setDiscordGateOpen(true);
-      toast.info("Entre no servidor da ZXMAX e clique em Verificar com Discord novamente.");
+      toast.info("Entre no servidor da ZXMAX e clique em Autorizar e verificar novamente.");
     } else if (discordState === "retry") {
       setDiscordGateOpen(true);
       toast.error("Não foi possível confirmar sua entrada no Discord. Tente novamente.");
-    } else if (discordState === "verified") {
-      toast.success("Discord verificado. Você já pode anunciar.");
+    } else if (discordVerifiedNow) {
+      toast.success("Discord verificado agora. Você já pode preencher o anúncio.");
     }
 
     if (discordState) {
@@ -169,7 +195,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     }
 
     if (searchParams.get("new") !== "1") return;
-    if (!canOpenListingForm()) return;
+    if (!discordVerifiedNow && !canOpenListingForm()) return;
     resetForm();
     setShowForm(true);
     const next = new URLSearchParams(searchParams);
@@ -336,7 +362,8 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canOpenListingForm()) return;
+    if (!state.currentUser) return;
+    if (editingId === null && !(await verifyDiscordMembershipNow())) return;
     if (!form.category.trim()) return toast.error("Escolha uma categoria para o anúncio.");
     if ((!isRobuxListing && !form.name.trim()) || !form.price.trim()) {
       return toast.error("Preencha nome e preço.");
@@ -525,8 +552,8 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#70bdff]">Requisito para anunciar</p>
-                <h2 id="discord-listing-gate-title" className="mt-1 text-xl font-black text-white">Confirme o e-mail e entre no Discord</h2>
-                <p className="mt-2 text-xs leading-5 text-white/45">Não precisa cadastrar número de telefone. Para publicar, basta ter o e-mail da ZXMAX confirmado e estar no servidor oficial do Discord.</p>
+                <h2 id="discord-listing-gate-title" className="mt-1 text-xl font-black text-white">Autorize o Discord para anunciar</h2>
+                <p className="mt-2 text-xs leading-5 text-white/45">Para cada novo anúncio, o Discord abre a autorização e a ZXMAX confirma se essa conta está no servidor oficial. Se você sair do servidor, a próxima verificação bloqueia a criação.</p>
               </div>
               <button type="button" onClick={() => setDiscordGateOpen(false)} className="rounded-lg p-2 text-white/35 hover:bg-white/5 hover:text-white" aria-label="Fechar"><X className="h-4 w-4" /></button>
             </div>
@@ -537,8 +564,8 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                 <span className={`text-xs font-black ${state.currentUser?.emailConfirmed ? "text-emerald-300" : "text-amber-300"}`}>{state.currentUser?.emailConfirmed ? "OK" : "Pendente"}</span>
               </div>
               <div className="flex items-center justify-between rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-3">
-                <span className="text-xs font-semibold text-white/65">Servidor do Discord</span>
-                <span className={`text-xs font-black ${state.currentUser?.discordMemberVerified ? "text-emerald-300" : "text-amber-300"}`}>{state.currentUser?.discordMemberVerified ? "Verificado" : "Necessário"}</span>
+                <span className="text-xs font-semibold text-white/65">Verificação do servidor</span>
+                <span className="text-xs font-black text-amber-300">Obrigatória agora</span>
               </div>
             </div>
 
@@ -558,10 +585,10 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
                 <div className="rounded-xl border border-amber-300/15 bg-amber-300/[0.06] px-4 py-3 text-center text-xs font-bold text-amber-100/70">O convite do servidor ainda não foi configurado pela administração.</div>
               )}
               <button type="button" onClick={() => void startDiscordVerification()} disabled={discordStarting || !state.currentUser?.emailConfirmed || !discordInvite} className="rounded-xl bg-[#168cff] px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-45">
-                {discordStarting ? "Abrindo Discord..." : "2. Verificar com Discord"}
+                {discordStarting ? "Abrindo Discord..." : "2. Autorizar e verificar no Discord"}
               </button>
             </div>
-            <p className="mt-3 text-[10px] leading-4 text-white/28">A ZXMAX verifica somente se o e-mail foi confirmado e se o Discord vinculado está no servidor oficial. CPF, RG e selfie continuam restritos aos fluxos financeiros de carteira e saque.</p>
+            <p className="mt-3 text-[10px] leading-4 text-white/28">A autorização usa os escopos de identidade e servidores do Discord somente para vincular a conta e confirmar a presença no servidor oficial. A verificação é refeita antes de criar o anúncio.</p>
           </section>
         </div>
       )}

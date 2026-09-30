@@ -10,8 +10,8 @@ describe("fronteira do mercado de Robux", () => {
     const categories = await readFile(join(process.cwd(), "src/pages/Categorias.tsx"), "utf8");
 
     expect(home).toContain("publicProducts.filter((product) => !isRobuxCategory(product.category))");
-    expect(home).toContain('onClick={() => navigate("/robux")}');
-    expect(home).toContain('aria-label="Abrir mercado de Robux"');
+    expect(home).toContain('robuxShortcutProduct ? `/produto/${robuxShortcutProduct.id}` : "/robux"');
+    expect(home).toContain('aria-label="Abrir produto de Robux"');
     expect(header).not.toContain('navigate("/robux")');
     expect(home).toContain('["Bots Discord", "Contas", "Scripts"]');
     expect(store).toContain("approved.filter((p) => !isRobuxCategory(p.category))");
@@ -19,17 +19,17 @@ describe("fronteira do mercado de Robux", () => {
     expect(categories).toContain("Mercado próprio");
   });
 
-  it("mantém a ordenação de ofertas explícita e selecionável", async () => {
-    const page = await readFile(join(process.cwd(), "src/pages/Robux.tsx"), "utf8");
+  it("faz /robux abrir diretamente a melhor oferta e mantém comparação dentro do produto", async () => {
+    const route = await readFile(join(process.cwd(), "src/pages/Robux.tsx"), "utf8");
+    const product = await readFile(join(process.cwd(), "src/pages/Produto.tsx"), "utf8");
 
-    expect(page).toContain('type SortKey = "barato" | "min" | "recomendado"');
-    expect(page).toContain('{ id: "barato", label: "Mais barato" }');
-    expect(page).toContain('{ id: "min", label: "Menor mínimo" }');
-    expect(page).toContain('role="group" aria-label="Ordenar ofertas"');
-    expect(page).toContain("onClick={() => setSort(option.id)}");
-    expect(page).toContain('if (sort === "min")');
-    expect(page).toContain('if (sort === "recomendado")');
-    expect(page).toContain("left.pricePerUnit - right.pricePerUnit");
+    expect(route).toContain('navigate(`/produto/${bestOffer.id}`, { replace: true })');
+    expect(route).toContain("unitPriceFromPackage(a) - unitPriceFromPackage(b)");
+    expect(product).toContain("Outros vendedores ({Math.max(0, sellerOffers.length - 1)})");
+    expect(product).toContain('{ id: "recomendado", label: "Recomendado" }');
+    expect(product).toContain('{ id: "barato", label: "Mais baratos primeiro" }');
+    expect(product).toContain('{ id: "min", label: "Menor qtd. mín." }');
+    expect(product).toContain("sellerOffers.filter((offer) => offer.id !== productId).map");
   });
 
   it("não aplica regras de Robux a anúncios de outras categorias", async () => {

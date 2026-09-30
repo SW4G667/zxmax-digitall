@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { Product, useStore } from "@/store/StoreContext";
-import { formatBRL, lowestProductPrice, productHasAutoDelivery, productHasMixedDelivery, isRobuxCategory, storefrontProducts } from "@/lib/catalog";
+import { formatBRL, lowestProductPrice, productHasAutoDelivery, productHasMixedDelivery, isRobuxCategory, storefrontProducts, unitPriceFromPackage } from "@/lib/catalog";
 import { useSiteBranding } from "@/context/SiteBrandingContext";
 
 const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -132,6 +132,19 @@ export default function MarketplaceHome() {
     [publicProducts],
   );
 
+  const productStockAvailable = (product: Product) => product.stock == null || Number(product.stock) > 0;
+
+  const robuxShortcutProduct = useMemo(
+    () => [...publicProducts]
+      .filter((product) =>
+        isRobuxCategory(product.category) &&
+        (product.sellerPublicId || state.userDirectory?.[product.sellerId]?.publicId) &&
+        productStockAvailable(product)
+      )
+      .sort((a, b) => unitPriceFromPackage(a) - unitPriceFromPackage(b) || Number(a.id) - Number(b.id))[0] || null,
+    [publicProducts, state.userDirectory],
+  );
+
   const verifiedSeller = (sellerId: string) => Boolean(state.userDirectory?.[sellerId]?.isVerified);
 
   const newest = useMemo(
@@ -219,8 +232,8 @@ export default function MarketplaceHome() {
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                onClick={() => navigate("/robux")}
-                aria-label="Abrir mercado de Robux"
+                onClick={() => navigate(robuxShortcutProduct ? `/produto/${robuxShortcutProduct.id}` : "/robux")}
+                aria-label="Abrir produto de Robux"
                 className="rounded-lg bg-[#f5b642] px-3 py-1.5 text-[10px] font-black text-black transition hover:brightness-110"
               >
                 Robux
