@@ -76,7 +76,7 @@ function AssetCard({
             type="file"
             accept="image/png,image/jpeg,image/webp,image/gif,image/x-icon"
             className="hidden"
-            onChange={(event) => onUpload(slot, event.target.files?.[0])}
+            onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; onUpload(slot, file); }}
           />
           <button
             type="button"
@@ -140,21 +140,30 @@ export default function AdminBranding() {
 
     const reader = new FileReader();
     reader.onload = async () => {
+      const dataUrl = String(reader.result || "");
+      const field = fieldForSlot[slot];
+      const previousValue = form[field];
+      if (!dataUrl) return toast.error("Não consegui ler essa imagem no aparelho.");
+
+      setForm((current) => ({ ...current, [field]: dataUrl }));
       setUploading(slot);
       try {
         const { data, error } = await supabase.functions.invoke("site-config", {
-          body: { action: "upload", slot, dataUrl: String(reader.result || "") },
+          body: { action: "upload", slot, dataUrl },
         });
         if (error || data?.error) throw new Error(data?.error || "Falha ao enviar imagem.");
-        if (data?.branding) setForm((current) => ({ ...current, ...data.branding }));
+        if (!data?.branding?.[field]) throw new Error("A imagem foi enviada, mas não consegui confirmar a URL final.");
+        setForm((current) => ({ ...current, ...data.branding }));
         await refreshBranding();
-        toast.success("Imagem atualizada.");
+        toast.success("Imagem enviada e salva.");
       } catch (error: any) {
+        setForm((current) => ({ ...current, [field]: previousValue }));
         toast.error(error?.message || "Não foi possível enviar a imagem.");
       } finally {
         setUploading(null);
       }
     };
+    reader.onerror = () => toast.error("Não consegui ler essa imagem no aparelho.");
     reader.readAsDataURL(file);
   };
 
