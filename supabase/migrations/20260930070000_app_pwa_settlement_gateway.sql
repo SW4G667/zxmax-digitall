@@ -1,16 +1,18 @@
 -- ZXMAX app-only management mode, Robux isolation, gateway wallet and delivery settlement.
 -- 2026-09-30
 
--- Fix legacy test listings that escaped into Bots Discord.
-update public.products
-set category='Robux', updated_at=now()
-where lower(btrim(coalesce(name,'')))='robux'
-  and category not in ('Robux','Robux e Gift Cards');
-
+-- Legacy rows named "Robux" escaped into ordinary categories. Do not
+-- rewrite malformed rows into the Robux schema because the existing Robux
+-- canonicalization trigger correctly rejects packages without quantity data.
+-- Remove them from every public storefront instead; valid Robux offers already
+-- live in the dedicated Robux category.
 update public.products
 set approved=false, listing_status='paused', updated_at=now()
 where lower(btrim(coalesce(name,'')))='robux'
-  and coalesce(btrim(image),'')='';
+  and (
+    category not in ('Robux','Robux e Gift Cards')
+    or coalesce(btrim(image),'')=''
+  );
 
 -- Public products must have a real image. Existing paused legacy rows are left editable.
 create or replace function public.enforce_product_image()
