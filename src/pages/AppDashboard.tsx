@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownToLine, BarChart3, CheckCircle2, Clock3, Copy, CreditCard, Download,
-  FileText, Headset, Home, ListChecks, Menu, MessageSquare, Package, Plus,
+  Headset, Home, ListChecks, Menu, MessageSquare, Package, Plus,
   Receipt, RefreshCw, RotateCcw, ShieldCheck, ShoppingBag, TicketCheck,
   UserRound, Wallet, X,
 } from "lucide-react";
@@ -204,13 +204,6 @@ export default function AppDashboard() {
     setTab("products");
     setNewProductRequest((value) => value + 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const publicSiteUrl = (path: string) => {
-    const url = new URL(path, window.location.origin);
-    url.searchParams.set("external", "1");
-    url.searchParams.set("from", "app");
-    return url.toString();
   };
 
   const install = async () => {
@@ -513,11 +506,6 @@ export default function AppDashboard() {
               ["home","Visão geral",Home],["gateway","Cobranças e Gateway",CreditCard],["sales","Vendas e entregas",ShoppingBag],
               ["products","Produtos e estoque",Package],["support","Tickets e suporte",Headset],["refunds","Reembolsos",RotateCcw],["account","Perfil e conta",UserRound],
             ].map(([id,label,Icon]: any)=><button key={id} onClick={()=>switchTab(id)} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-left text-[11px] font-bold ${tab===id?"bg-white text-black":"text-white/55 hover:bg-white/[0.04]"}`}><Icon className="h-4 w-4" />{label}</button>)}
-          </div>
-          <div className="my-5 h-px bg-white/[0.07]" />
-          <p className="px-3 text-[8px] font-black uppercase tracking-[0.14em] text-white/22">Ajuda e documentos</p>
-          <div className="mt-2 grid gap-1">
-            {[["Central de ajuda","/central-de-ajuda"],["Termos de uso","/termos"],["Privacidade","/privacidade"],["Regras","/regras"],["Reembolsos e política","/reembolsos"],["Tarifas e prazos","/tarifas-e-prazos"]].map(([label,href])=><a key={href} href={publicSiteUrl(href)} target="_blank" rel="external noopener noreferrer" onClick={()=>setMenuOpen(false)} className="flex items-center justify-between rounded-xl px-3 py-3 text-[10px] font-semibold text-white/45 hover:bg-white/[0.04] hover:text-white"><span className="flex items-center gap-2"><FileText className="h-3.5 w-3.5" />{label}</span></a>)}
           </div>
           {discordInvite ? <a href={discordInvite} target="_blank" rel="noopener noreferrer" className="mt-5 flex items-center gap-3 rounded-xl border border-[#5865F2]/20 bg-[#5865F2]/[0.05] px-3 py-3 text-[10px] font-bold text-white/60"><DiscordIcon className="h-4 w-4" /> Entrar no Discord da ZXMAX</a> : null}
         </aside>
