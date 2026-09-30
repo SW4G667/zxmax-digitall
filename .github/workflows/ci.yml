@@ -24,7 +24,7 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Restore VOLT v0.3 source
+      - name: Restore corrected VOLT v0.3 source
         shell: bash
         run: |
           set -euxo pipefail
@@ -32,10 +32,90 @@ jobs:
           base64 -d /tmp/volt.tar.gz.b64 > /tmp/volt.tar.gz
           mkdir -p /tmp/volt-src
           tar -xzf /tmp/volt.tar.gz -C /tmp/volt-src
-          test -f /tmp/volt-src/VOLT-Game-Space/settings.gradle.kts
-          test -f /tmp/volt-src/VOLT-Game-Space/app/build.gradle.kts
-          sed -i 's/androidx.compose:compose-bom:2026.09.00/androidx.compose:compose-bom:2025.08.00/' /tmp/volt-src/VOLT-Game-Space/app/build.gradle.kts
-          grep -n "compose-bom" /tmp/volt-src/VOLT-Game-Space/app/build.gradle.kts
+          ROOT=/tmp/volt-src/VOLT-Game-Space
+          test -f "$ROOT/app/build.gradle.kts"
+          sed -i 's/androidx.compose:compose-bom:2026.09.00/androidx.compose:compose-bom:2025.08.00/' "$ROOT/app/build.gradle.kts"
+
+          cat > "$ROOT/app/src/main/java/com/volt/gamespace/core/FpsProbe.kt" <<'KOTLIN'
+          package com.volt.gamespace.core
+
+          import com.volt.gamespace.shizuku.ShizukuBridge
+
+          data class FpsSample(val fps: Double?, val source: String)
+
+          class FpsProbe(private val shizuku: ShizukuBridge) {
+              fun sample(packageName: String): FpsSample {
+                  if (!shizuku.hasPermission()) return FpsSample(null, "Shizuku não autorizado")
+
+                  val safe = packageName.replace("'", "")
+                  val layer = shizuku.exec(
+                      "sh", "-c",
+                      "dumpsys SurfaceFlinger --list 2>/dev/null | grep -F '$safe' | head -n 1"
+                  )?.trim().orEmpty()
+
+                  if (layer.isBlank() || layer.startsWith("ERROR:")) {
+                      return FpsSample(null, "Surface do jogo não encontrada")
+                  }
+
+                  val cleanLayer = layer.replace("'", "'\\''")
+                  val raw = shizuku.exec(
+                      "sh", "-c",
+                      "dumpsys SurfaceFlinger --latency '$cleanLayer' 2>/dev/null"
+                  ).orEmpty()
+
+                  val timestamps = raw.lineSequence()
+                      .drop(1)
+                      .mapNotNull { line ->
+                          line.trim().split(Regex("\\s+")).getOrNull(1)?.toLongOrNull()
+                      }
+                      .filter { it > 0L }
+                      .toList()
+                      .takeLast(120)
+
+                  if (timestamps.size < 3) return FpsSample(null, "Latência indisponível neste aparelho")
+
+                  val deltaNs = timestamps.last() - timestamps.first()
+                  if (deltaNs <= 0L) return FpsSample(null, "Amostra inválida")
+
+                  val fps = (timestamps.size - 1) * 1_000_000_000.0 / deltaNs
+                  if (fps !in 1.0..500.0) return FpsSample(null, "Amostra fora do intervalo")
+                  return FpsSample(fps, "SurfaceFlinger")
+              }
+          }
+          KOTLIN
+
+          cat > "$ROOT/app/src/main/java/com/volt/gamespace/shizuku/ShellUserService.kt" <<'KOTLIN'
+          package com.volt.gamespace.shizuku
+
+          import android.content.Context
+          import androidx.annotation.Keep
+          import java.util.concurrent.TimeUnit
+          import kotlin.system.exitProcess
+
+          @Keep
+          class ShellUserService() : IShellService.Stub() {
+              @Keep constructor(context: Context) : this()
+
+              override fun exec(command: Array<out String>): String {
+                  return try {
+                      val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+                      if (!process.waitFor(6, TimeUnit.SECONDS)) {
+                          process.destroyForcibly()
+                          return "ERROR: timeout"
+                      }
+                      process.inputStream.bufferedReader().use { it.readText() }.trim()
+                  } catch (t: Throwable) {
+                      "ERROR: ${t.javaClass.simpleName}: ${t.message}"
+                  }
+              }
+
+              override fun destroy() {
+                  exitProcess(0)
+              }
+          }
+          KOTLIN
+
+          grep -n "compose-bom" "$ROOT/app/build.gradle.kts"
 
       - name: Install Android SDK 36
         shell: bash
