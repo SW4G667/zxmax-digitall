@@ -30,6 +30,8 @@ describe("fronteira do mercado de Robux", () => {
     expect(product).toContain('{ id: "barato", label: "Mais baratos primeiro" }');
     expect(product).toContain('{ id: "min", label: "Menor qtd. mín." }');
     expect(product).toContain("sellerOffers.filter((offer) => offer.id !== productId).map");
+    expect(product).toContain("Nenhum outro vendedor disponível agora.");
+    expect(product).not.toContain("sellerOffers.length > 1 && <section");
   });
 
   it("não aplica regras de Robux a anúncios de outras categorias", async () => {
