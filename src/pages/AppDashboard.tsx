@@ -18,6 +18,7 @@ import ProfileModal from "@/components/ProfileModal";
 import InventoryView from "@/components/InventoryView";
 import MyPurchasesView from "@/components/MyPurchasesView";
 import SupportView from "@/components/SupportView";
+import BannedScreen from "@/components/BannedScreen";
 
 type AppTab = "home" | "gateway" | "sales" | "products" | "support" | "refunds" | "account";
 
@@ -41,6 +42,7 @@ type DashboardData = {
   ticketCount: number;
   refundCount: number;
   documentVerified: boolean;
+  gatewayAuthorized: boolean;
   gatewayGross: number;
   gatewayNet: number;
   gatewaySettings: { depositFeePercent: number; withdrawFee: number; minWithdraw: number };
@@ -56,7 +58,7 @@ const emptyData: DashboardData = {
   balance: 0, marketplaceBalance: 0, gatewayBalance: 0, salesCount: 0, salesValue: 0,
   marketplacePending: 0, pendingOrders: 0, messageCount: 0, questionCount: 0,
   activeListings: 0, openTickets: 0, ticketCount: 0, refundCount: 0,
-  documentVerified: false, gatewayGross: 0, gatewayNet: 0,
+  documentVerified: false, gatewayAuthorized: false, gatewayGross: 0, gatewayNet: 0,
   gatewaySettings: { depositFeePercent: 0, withdrawFee: 0, minWithdraw: 5 },
   recentSales: [], ledger: [], withdrawals: [], charges: [], refunds: [], dailyRevenue: [],
 };
@@ -76,7 +78,7 @@ const NAV: Array<{ id: AppTab; label: string; icon: React.ComponentType<{ classN
 ];
 
 export default function AppDashboard() {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, banned, isAdmin } = useAuth();
   const { state } = useStore();
   const { branding } = useSiteBranding();
   const [data, setData] = useState<DashboardData>(emptyData);
@@ -106,10 +108,13 @@ export default function AppDashboard() {
   const load = useCallback(async () => {
     if (!user) return;
     setBusy(true);
-    const { data: payload, error } = await (supabase as any).rpc("get_my_app_dashboard");
+    const [{ data: payload, error }, { data: gatewayAuthorized, error: gatewayAccessError }] = await Promise.all([
+      (supabase as any).rpc("get_my_app_dashboard_secure"),
+      (supabase as any).rpc("can_use_merchant_gateway"),
+    ]);
     setBusy(false);
     if (error || !payload) {
-      toast.error("Não foi possível atualizar o painel agora.");
+      if (!banned) toast.error("Não foi possível atualizar o painel agora.");
       return;
     }
     setData({
@@ -129,6 +134,7 @@ export default function AppDashboard() {
       ticketCount: Number(payload.ticketCount || 0),
       refundCount: Number(payload.refundCount || 0),
       documentVerified: payload.documentVerified === true,
+      gatewayAuthorized: !gatewayAccessError && gatewayAuthorized === true,
       gatewayGross: Number(payload.gatewayGross || 0),
       gatewayNet: Number(payload.gatewayNet || 0),
       gatewaySettings: {
@@ -143,7 +149,7 @@ export default function AppDashboard() {
       refunds: Array.isArray(payload.refunds) ? payload.refunds : [],
       dailyRevenue: Array.isArray(payload.dailyRevenue) ? payload.dailyRevenue : [],
     });
-  }, [user]);
+  }, [user, banned]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -191,7 +197,7 @@ export default function AppDashboard() {
   const createCharge = async () => {
     const amount = Number(String(chargeAmount).replace(",", "."));
     const description = chargeDescription.trim();
-    if (!data.documentVerified) return toast.error("Aprovação de documentos é obrigatória para criar cobranças.");
+    if (!data.gatewayAuthorized) return toast.error("Sua conta ainda não está autorizada para usar cobranças do App Gateway.");
     if (!Number.isFinite(amount) || amount < 2 || amount > 5000) return toast.error("Use um valor entre R$ 2,00 e R$ 5.000,00.");
     if (description.length < 4 || description.length > 120) return toast.error("Descreva a cobrança em 4 a 120 caracteres.");
 
@@ -222,7 +228,7 @@ export default function AppDashboard() {
 
   const requestGatewayWithdraw = async () => {
     const amount = Number(String(withdrawAmount).replace(",", "."));
-    if (!data.documentVerified) return toast.error("Aprovação de documentos é obrigatória para sacar.");
+    if (!data.gatewayAuthorized) return toast.error("Sua conta ainda não está autorizada para sacar pelo App Gateway.");
     if (!profile?.pix_key) return toast.error("Cadastre uma chave Pix na sua conta antes de sacar.");
     if (!Number.isFinite(amount) || amount < data.gatewaySettings.minWithdraw) return toast.error(`Saque mínimo: ${formatBRL(data.gatewaySettings.minWithdraw)}.`);
     if (amount > data.gatewayBalance) return toast.error("Saldo Gateway insuficiente.");
@@ -253,6 +259,7 @@ export default function AppDashboard() {
   const totalRevenue = data.salesValue + data.gatewayNet;
 
   if (loading) return <div className="min-h-screen bg-black" />;
+  if (user && banned) return <BannedScreen />;
 
   if (!user) {
     return (
@@ -406,7 +413,7 @@ export default function AppDashboard() {
         <div className="rounded-2xl border border-white/[0.065] bg-[#09090b] p-4"><p className="text-[9px] text-white/28">Saldo Marketplace</p><p className="mt-1 text-base font-black">{formatBRL(data.marketplaceBalance)}</p></div>
       </section>
       <section className="rounded-2xl border border-white/[0.065] bg-[#09090b] p-4">
-        <div className="flex items-center justify-between"><div><p className="text-xs font-black">Verificação</p><p className="mt-1 text-[9px] text-white/28">Necessária para cobranças e saques.</p></div><span className={`rounded-full px-2.5 py-1 text-[8px] font-black ${data.documentVerified?"bg-emerald-300/10 text-emerald-300":"bg-amber-300/10 text-amber-200"}`}>{data.documentVerified?"APROVADA":"PENDENTE"}</span></div>
+        <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-black">Acesso financeiro</p><p className="mt-1 text-[9px] text-white/28">{data.documentVerified ? "Documentos aprovados para cobranças e saques." : isAdmin && data.gatewayAuthorized ? "Conta administrativa autorizada sem alterar o status dos documentos." : "Envie e aprove os documentos para liberar cobranças e saques."}</p></div><span className={`shrink-0 rounded-full px-2.5 py-1 text-[8px] font-black ${data.gatewayAuthorized?"bg-emerald-300/10 text-emerald-300":"bg-amber-300/10 text-amber-200"}`}>{data.documentVerified?"DOCUMENTOS OK":isAdmin&&data.gatewayAuthorized?"ACESSO ADMIN":"PENDENTE"}</span></div>
       </section>
       {!installed ? <button onClick={()=>void install()} className="flex w-full items-center justify-between rounded-2xl border border-white/[0.065] bg-[#09090b] p-4 text-left"><span><span className="block text-xs font-black">Instalar ZXMAX</span><span className="mt-1 block text-[9px] text-white/28">Instala o aplicativo de gerenciamento.</span></span><Download className="h-4 w-4 text-white/40" /></button> : <div className="flex items-center gap-2 rounded-2xl border border-emerald-300/10 bg-emerald-300/[0.035] p-4 text-[10px] font-bold text-emerald-200"><CheckCircle2 className="h-4 w-4" /> Aplicativo instalado neste dispositivo.</div>}
     </div>
@@ -464,7 +471,7 @@ export default function AppDashboard() {
       {chargeOpen ? <div className="fixed inset-0 z-[90] grid place-items-center bg-black/80 p-4 backdrop-blur-sm" onClick={()=>setChargeOpen(false)}>
         <section className="w-full max-w-md rounded-[24px] border border-white/[0.09] bg-[#09090b] p-5" onClick={(e)=>e.stopPropagation()}>
           <div className="flex items-center justify-between"><div><p className="text-[9px] font-black uppercase tracking-[0.14em] text-white/28">App Gateway</p><h2 className="mt-1 text-lg font-black">Criar cobrança PIX</h2></div><button onClick={()=>setChargeOpen(false)} className="grid h-9 w-9 place-items-center rounded-xl border border-white/10"><X className="h-4 w-4" /></button></div>
-          {!data.documentVerified ? <div className="mt-5 rounded-xl border border-amber-300/10 bg-amber-300/[0.04] p-4 text-[10px] leading-5 text-amber-100/60">Aprovação de documentos é obrigatória para criar cobranças.</div> : <>
+          {!data.gatewayAuthorized ? <div className="mt-5 rounded-xl border border-amber-300/10 bg-amber-300/[0.04] p-4 text-[10px] leading-5 text-amber-100/60">Sua conta ainda não está autorizada para criar cobranças. Usuários comuns precisam de documentos aprovados.</div> : <>
             <label className="mt-5 block text-[9px] font-bold uppercase text-white/28">Valor<input value={chargeAmount} onChange={(e)=>setChargeAmount(e.target.value)} inputMode="decimal" placeholder="50,00" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black p-3 text-sm text-white outline-none" /></label>
             <label className="mt-3 block text-[9px] font-bold uppercase text-white/28">Descrição<input value={chargeDescription} onChange={(e)=>setChargeDescription(e.target.value)} maxLength={120} placeholder="Ex.: serviço digital" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black p-3 text-sm text-white outline-none" /></label>
             <div className="mt-4 rounded-xl bg-white/[0.025] p-3 text-[9px] leading-4 text-white/35">Taxa de depósito ZXMAX: <b className="text-white/70">{data.gatewaySettings.depositFeePercent.toFixed(2).replace(".",",")}%</b>. O valor líquido entra no saldo Gateway somente após confirmação direta do provedor.</div>

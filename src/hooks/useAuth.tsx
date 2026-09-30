@@ -390,6 +390,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [applySession, hydrateAccount]);
 
+  useEffect(() => {
+    const userId = user?.id;
+    if (!userId) return;
+
+    const recheckBan = () => { void checkBan(userId); };
+    const interval = window.setInterval(recheckBan, 15_000);
+    const onFocus = () => recheckBan();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") recheckBan();
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [user?.id, checkBan]);
+
   const signUp = useCallback(async (email: string, password: string, displayName: string) => {
     const last = localStorage.getItem("zxmax_last_signup");
     if (last && Date.now() - Number(last) < 5000) {

@@ -451,7 +451,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         isVerified: profile?.is_verified_seller || false,
         emailConfirmed: Boolean((authUser as any)?.email_confirmed_at || (authUser as any)?.confirmed_at),
         discordMemberVerified: Boolean((profile as any)?.discord_member_verified_at),
-        documentVerified: (profile as any)?.verification_status === "approved" || profile?.is_verified_seller || false,
+        documentVerified: (profile as any)?.verification_status === "approved",
       };
       setState((s) => {
         // Avoid switching to admin account randomly - only update if user id matches or currentUser is null
@@ -1403,12 +1403,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!error && !data?.error) {
         setState(s => ({
           ...s,
-          currentUser: s.currentUser?.id === userId ? { ...s.currentUser, isVerified: true } : s.currentUser,
+          currentUser: s.currentUser?.id === userId ? { ...s.currentUser, isVerified: true, documentVerified: true } : s.currentUser,
           userDirectory: {
             ...(s.userDirectory || {}),
-            ...(s.userDirectory?.[userId] ? { [userId]: { ...s.userDirectory[userId], isVerified: true } } : {}),
+            ...(s.userDirectory?.[userId] ? { [userId]: { ...s.userDirectory[userId], isVerified: true, documentVerified: true } } : {}),
           },
         }));
+        window.dispatchEvent(new Event("zxmax:profile-updated"));
         return true;
       }
     } catch {

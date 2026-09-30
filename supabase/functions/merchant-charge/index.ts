@@ -40,12 +40,17 @@ serve(async (req) => {
     if (userError || !userData.user) return json({ error: "Sessão inválida." }, 401);
     const user = userData.user;
 
+    const { data: banned, error: banError } = await admin.rpc("is_banned", { _user_id: user.id });
+    if (banError) return json({ error: "Não foi possível validar a situação da conta." }, 503);
+    if (banned === true) return json({ error: "Conta suspensa. Operações financeiras estão bloqueadas.", code: "account_banned" }, 403);
+
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "");
 
     if (action === "create") {
-      const { data: profile } = await admin.from("profiles").select("verification_status").eq("user_id", user.id).maybeSingle();
-      if (profile?.verification_status !== "approved") {
+      const { data: gatewayAuthorized, error: gatewayAccessError } = await admin.rpc("can_use_merchant_gateway", { _user_id: user.id });
+      if (gatewayAccessError) return json({ error: "Não foi possível validar a autorização financeira da conta." }, 503);
+      if (gatewayAuthorized !== true) {
         return json({ error: "Aprovação de documentos é obrigatória para criar cobranças.", code: "documents_required" }, 403);
       }
 
