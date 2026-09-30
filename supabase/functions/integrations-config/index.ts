@@ -170,15 +170,22 @@ serve(async (req) => {
 
         const fees = parsed?.data || {};
         const minDeposit = Number(fees.minDeposit || 0);
+        const withdrawFee = Number(fees?.withdraw?.fixed);
+        const withdrawText = Number.isFinite(withdrawFee)
+          ? " Saque atual do gateway: R$ " + withdrawFee.toFixed(2).replace(".", ",") + "."
+          : "";
         return json({
           ok: true,
-          message: "PIX principal conectado. Depósito mínimo: R$ " + minDeposit.toFixed(2).replace(".", ",") + ".",
+          message: "PIX principal conectado. Depósito mínimo: R$ " + minDeposit.toFixed(2).replace(".", ",") + "." + withdrawText,
           provider: {
             route: fees.route || null,
             gateway: fees.gateway || null,
             minDeposit: fees.minDeposit ?? null,
             maxDeposit: fees.maxDeposit ?? null,
             feeToCustomerForced: fees.feeToCustomerForced ?? null,
+            withdrawFee: fees?.withdraw?.fixed ?? null,
+            minWithdraw: fees?.withdraw?.minWithdraw ?? null,
+            maxWithdraw: fees?.withdraw?.maxWithdraw ?? null,
           },
         });
       }

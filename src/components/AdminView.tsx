@@ -425,7 +425,7 @@ export default function AdminView() {
                       const tid = toast.loading("Processando saque via PIX...");
                       try {
                         await approveWithdraw(w.id);
-                        toast.success("Saque aprovado e enviado via PIX!", { id: tid });
+                        toast.success("Saque enviado ou consultado no gateway. Se ainda estiver PENDENTE, use o botão novamente mais tarde para confirmar a conclusão.", { id: tid });
                       } catch (err: any) {
                         toast.error("Erro ao processar saque: " + (err?.message || "Tente novamente."), { id: tid });
                       }

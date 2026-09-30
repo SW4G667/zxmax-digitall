@@ -150,7 +150,7 @@ serve(async (req) => {
         const providerNet = Number(node.netAmount ?? charge.provider_net_amount ?? charge.amount);
         const credit = Number.isFinite(providerNet) && providerNet > 0 ? Math.min(Number(charge.amount), providerNet) : Number(charge.amount);
 
-        await admin.from("wallet_ledger").upsert({
+        const { error: ledgerError } = await admin.from("wallet_ledger").upsert({
           user_id: user.id,
           amount: Math.round(credit * 100) / 100,
           kind: "merchant_charge_credit",
@@ -159,6 +159,9 @@ serve(async (req) => {
           dedupe_key: `merchant_charge:${charge.id}:paid`,
           available_at: new Date().toISOString(),
         }, { onConflict: "dedupe_key", ignoreDuplicates: true });
+        if (ledgerError) {
+          return json({ error: "Pagamento confirmado, mas o crédito da carteira precisa ser reconciliado.", code: "wallet_credit_pending" }, 503);
+        }
 
         await admin.from("merchant_charges").update({
           status: "paid",
