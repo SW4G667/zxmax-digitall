@@ -1,4 +1,4 @@
-const CACHE = "zxmax-shell-v2";
+const CACHE = "zxmax-shell-v3";
 const SHELL = ["/app", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {

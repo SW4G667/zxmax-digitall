@@ -92,6 +92,7 @@ export default function AppDashboard() {
     return saved && ["home","gateway","sales","products","support","refunds","account"].includes(saved) ? saved : "home";
   });
   const [menuOpen, setMenuOpen] = useState(false);
+  const [newProductRequest, setNewProductRequest] = useState(0);
   const [authOpen, setAuthOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [chargeOpen, setChargeOpen] = useState(false);
@@ -195,6 +196,21 @@ export default function AppDashboard() {
   const switchTab = (next: AppTab) => {
     setTab(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const openProducts = () => switchTab("products");
+  const openOrders = () => switchTab("sales");
+  const completeListingRequirements = () => {
+    setTab("products");
+    setNewProductRequest((value) => value + 1);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const publicSiteUrl = (path: string) => {
+    const url = new URL(path, window.location.origin);
+    url.searchParams.set("external", "1");
+    url.searchParams.set("from", "app");
+    return url.toString();
   };
 
   const install = async () => {
@@ -461,8 +477,8 @@ export default function AppDashboard() {
   const content = tab==="home" ? renderHome()
     : tab==="gateway" ? renderGateway()
     : tab==="sales" ? <MyPurchasesView initialScope="sales" />
-    : tab==="products" ? <InventoryView />
-    : tab==="support" ? <SupportView />
+    : tab==="products" ? <InventoryView requestNewProduct={newProductRequest} />
+    : tab==="support" ? <SupportView onOpenOrders={openOrders} onOpenProducts={openProducts} onCompleteListingRequirements={completeListingRequirements} />
     : tab==="refunds" ? renderRefunds()
     : renderAccount();
 
@@ -501,7 +517,7 @@ export default function AppDashboard() {
           <div className="my-5 h-px bg-white/[0.07]" />
           <p className="px-3 text-[8px] font-black uppercase tracking-[0.14em] text-white/22">Ajuda e documentos</p>
           <div className="mt-2 grid gap-1">
-            {[["Central de ajuda","/central-de-ajuda"],["Termos de uso","/termos"],["Privacidade","/privacidade"],["Regras","/regras"],["Reembolsos e política","/reembolsos"],["Tarifas e prazos","/tarifas-e-prazos"]].map(([label,href])=><a key={href} href={href} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between rounded-xl px-3 py-3 text-[10px] font-semibold text-white/45 hover:bg-white/[0.04] hover:text-white"><span className="flex items-center gap-2"><FileText className="h-3.5 w-3.5" />{label}</span></a>)}
+            {[["Central de ajuda","/central-de-ajuda"],["Termos de uso","/termos"],["Privacidade","/privacidade"],["Regras","/regras"],["Reembolsos e política","/reembolsos"],["Tarifas e prazos","/tarifas-e-prazos"]].map(([label,href])=><a key={href} href={publicSiteUrl(href)} target="_blank" rel="external noopener noreferrer" onClick={()=>setMenuOpen(false)} className="flex items-center justify-between rounded-xl px-3 py-3 text-[10px] font-semibold text-white/45 hover:bg-white/[0.04] hover:text-white"><span className="flex items-center gap-2"><FileText className="h-3.5 w-3.5" />{label}</span></a>)}
           </div>
           {discordInvite ? <a href={discordInvite} target="_blank" rel="noopener noreferrer" className="mt-5 flex items-center gap-3 rounded-xl border border-[#5865F2]/20 bg-[#5865F2]/[0.05] px-3 py-3 text-[10px] font-bold text-white/60"><DiscordIcon className="h-4 w-4" /> Entrar no Discord da ZXMAX</a> : null}
         </aside>

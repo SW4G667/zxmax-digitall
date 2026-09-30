@@ -42,7 +42,7 @@ const emptyVariation = (seed?: Partial<Variation>): Variation => ({
   ...seed,
 });
 
-export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId: number) => void }) {
+export default function InventoryView({ onOpenChat, requestNewProduct = 0 }: { onOpenChat?: (purchaseId: number) => void; requestNewProduct?: number }) {
   const { state, addProduct, updateProduct, deleteProduct, refreshProducts } = useStore();
   const { branding } = useSiteBranding();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -175,6 +175,13 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     resetForm();
     setShowForm(true);
   };
+
+  useEffect(() => {
+    if (!requestNewProduct) return;
+    openCreateForm();
+    // The parent increments the token only for an explicit in-app request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestNewProduct]);
 
   useEffect(() => {
     const discordState = searchParams.get("discord");

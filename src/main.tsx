@@ -28,6 +28,10 @@ const zxStandalone = () =>
 
 const enforceManagementApp = () => {
   if (!zxStandalone()) return;
+  const params = new URLSearchParams(window.location.search);
+  // Public documents intentionally opened from the App are allowed to render
+  // as the marketplace/site instead of being rewritten back to the dashboard.
+  if (params.get("external") === "1") return;
   const allowed = ["/app", "/auth/callback", "/reset-password"];
   if (!allowed.some((path) => window.location.pathname.startsWith(path))) {
     window.history.replaceState({}, "", "/app");

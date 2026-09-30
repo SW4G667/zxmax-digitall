@@ -52,7 +52,13 @@ const FAQ = [
   },
 ];
 
-export default function SupportView() {
+type SupportViewProps = {
+  onOpenOrders?: () => void;
+  onOpenProducts?: () => void;
+  onCompleteListingRequirements?: () => void;
+};
+
+export default function SupportView({ onOpenOrders, onOpenProducts, onCompleteListingRequirements }: SupportViewProps = {}) {
   const { state, addTicket, replyTicket, closeTicket } = useStore();
   const { branding } = useSiteBranding();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -249,17 +255,33 @@ export default function SupportView() {
           <p className="mt-1 text-[10px] leading-4 text-white/34">Fale com a equipe e mantenha o histórico salvo.</p>
         </button>
 
-        <Link to="/minhas-compras" className="rounded-2xl border border-white/[0.08] bg-[#111114] p-4 text-left transition hover:border-white/[0.15] hover:bg-white/[0.025]">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-amber-400/10 text-amber-300"><ShoppingBag className="h-4 w-4" /></span>
-          <p className="mt-3 text-sm font-black text-white">Problema com pedido</p>
-          <p className="mt-1 text-[10px] leading-4 text-white/34">Pagamento, entrega, chat ou disputa da compra.</p>
-        </Link>
+        {onOpenOrders ? (
+          <button type="button" onClick={onOpenOrders} className="rounded-2xl border border-white/[0.08] bg-[#111114] p-4 text-left transition hover:border-white/[0.15] hover:bg-white/[0.025]">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-amber-400/10 text-amber-300"><ShoppingBag className="h-4 w-4" /></span>
+            <p className="mt-3 text-sm font-black text-white">Problema com pedido</p>
+            <p className="mt-1 text-[10px] leading-4 text-white/34">Pagamento, entrega, chat ou disputa da compra.</p>
+          </button>
+        ) : (
+          <Link to="/minhas-compras" className="rounded-2xl border border-white/[0.08] bg-[#111114] p-4 text-left transition hover:border-white/[0.15] hover:bg-white/[0.025]">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-amber-400/10 text-amber-300"><ShoppingBag className="h-4 w-4" /></span>
+            <p className="mt-3 text-sm font-black text-white">Problema com pedido</p>
+            <p className="mt-1 text-[10px] leading-4 text-white/34">Pagamento, entrega, chat ou disputa da compra.</p>
+          </Link>
+        )}
 
-        <Link to="/meus-produtos" className="rounded-2xl border border-white/[0.08] bg-[#111114] p-4 text-left transition hover:border-white/[0.15] hover:bg-white/[0.025]">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-400/10 text-emerald-300"><Package className="h-4 w-4" /></span>
-          <p className="mt-3 text-sm font-black text-white">Sou vendedor</p>
-          <p className="mt-1 text-[10px] leading-4 text-white/34">Anúncios, vendas, entrega e acesso ao Discord.</p>
-        </Link>
+        {onOpenProducts ? (
+          <button type="button" onClick={onOpenProducts} className="rounded-2xl border border-white/[0.08] bg-[#111114] p-4 text-left transition hover:border-white/[0.15] hover:bg-white/[0.025]">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-400/10 text-emerald-300"><Package className="h-4 w-4" /></span>
+            <p className="mt-3 text-sm font-black text-white">Sou vendedor</p>
+            <p className="mt-1 text-[10px] leading-4 text-white/34">Anúncios, vendas, entrega e acesso ao Discord.</p>
+          </button>
+        ) : (
+          <Link to="/meus-produtos" className="rounded-2xl border border-white/[0.08] bg-[#111114] p-4 text-left transition hover:border-white/[0.15] hover:bg-white/[0.025]">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-400/10 text-emerald-300"><Package className="h-4 w-4" /></span>
+            <p className="mt-3 text-sm font-black text-white">Sou vendedor</p>
+            <p className="mt-1 text-[10px] leading-4 text-white/34">Anúncios, vendas, entrega e acesso ao Discord.</p>
+          </Link>
+        )}
 
         {discordInvite ? (
           <a href={discordInvite} target="_blank" rel="noreferrer" className="rounded-2xl border border-[#5865f2]/20 bg-[#5865f2]/[0.055] p-4 text-left transition hover:border-[#5865f2]/40 hover:bg-[#5865f2]/10">
@@ -283,9 +305,15 @@ export default function SupportView() {
             <h2 className="mt-1 text-base font-black text-white">E-mail confirmado + servidor oficial do Discord</h2>
             <p className="mt-1 max-w-2xl text-[11px] leading-5 text-white/35">Não existe exigência de telefone para publicar anúncio. CPF, RG e selfie ficam separados e são usados somente para carteira e saque.</p>
           </div>
-          <Link to={state.currentUser ? "/meus-produtos?new=1" : "/loja?login=1"} className="rounded-lg bg-[var(--zx-accent)] px-4 py-2.5 text-[11px] font-black text-white">
-            {state.currentUser ? "Concluir requisitos" : "Entrar na conta"}
-          </Link>
+          {state.currentUser && onCompleteListingRequirements ? (
+            <button type="button" onClick={onCompleteListingRequirements} className="rounded-lg bg-[var(--zx-accent)] px-4 py-2.5 text-[11px] font-black text-white">
+              Concluir requisitos
+            </button>
+          ) : (
+            <Link to={state.currentUser ? "/meus-produtos?new=1" : "/loja?login=1"} className="rounded-lg bg-[var(--zx-accent)] px-4 py-2.5 text-[11px] font-black text-white">
+              {state.currentUser ? "Concluir requisitos" : "Entrar na conta"}
+            </Link>
+          )}
         </div>
         {state.currentUser ? (
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
