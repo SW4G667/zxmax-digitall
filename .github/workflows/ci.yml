@@ -10,6 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Checkout staged source
+        uses: actions/checkout@v4
+
       - name: Java 17
         uses: actions/setup-java@v4
         with:
@@ -25,11 +28,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p /tmp/volt-parts
-          for i in 00 01 02 03 04 05 06; do
-            curl --fail --location --retry 3               "https://raw.githubusercontent.com/SW4G667/007-AI/e6f62a96942e14a840c79f5bb40b882e4c768f4c/volt-build-chunks/part_${i}.b64"               -o "/tmp/volt-parts/part_${i}.b64"
-          done
-          cat /tmp/volt-parts/part_*.b64 > /tmp/volt.tar.gz.b64
+          cat volt-build-chunks/part_*.b64 > /tmp/volt.tar.gz.b64
           base64 -d /tmp/volt.tar.gz.b64 > /tmp/volt.tar.gz
           mkdir -p /tmp/volt-src
           tar -xzf /tmp/volt.tar.gz -C /tmp/volt-src
