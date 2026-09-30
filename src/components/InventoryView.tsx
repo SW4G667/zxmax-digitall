@@ -134,7 +134,8 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     setDiscordStarting(true);
     try {
       window.sessionStorage.setItem("zxmax_discord_verify_user", state.currentUser.id);
-      const redirectTo = getDiscordListingRedirectTo("/meus-produtos?new=1");
+      const returnPath = window.location.pathname.startsWith("/app") ? "/app?new=1&appTab=products" : "/meus-produtos?new=1";
+      const redirectTo = getDiscordListingRedirectTo(returnPath);
       const options = { redirectTo, scopes: "identify email guilds" };
 
       // Preserve the current ZXMAX account. New Discord identities are linked

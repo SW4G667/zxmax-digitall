@@ -12,6 +12,7 @@ const DEFAULTS = {
   vexopay: { pixEnabled: false, cryptoEnabled: false, pixFee: 1.2 },
   stripe: { cardEnabled: false, boletoEnabled: false, boletoExpiresAfterDays: 3 },
   platform: { buyer_fee: 0.9 },
+  merchant_gateway: { depositFeePercent: 0, withdrawFee: 0, minWithdraw: 5 },
 };
 const clampFee = (value: unknown, fallback: number) => {
   const fee = Number(value);
@@ -41,7 +42,7 @@ serve(async (req) => {
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "get");
-    const keys = ["magnuspay", "zennithpay", "vexopay", "stripe", "platform"];
+    const keys = ["magnuspay", "zennithpay", "vexopay", "stripe", "platform", "merchant_gateway"];
     const { data: rows, error } = await admin.from("app_settings").select("key,value").in("key", keys);
     if (error) return json({ error: "Não foi possível consultar a configuração de pagamentos." }, 503);
 
@@ -55,6 +56,7 @@ serve(async (req) => {
     const vexopay = row("vexopay");
     const stripe = row("stripe");
     const platform = row("platform");
+    const merchantGateway = row("merchant_gateway");
 
     const magnusApiKey = await resolvePrimaryPixKey(admin, magnus);
     const magnusReady = Boolean(magnusApiKey);
@@ -110,8 +112,26 @@ serve(async (req) => {
 
     if (action === "get") return json({
       integrations: { magnuspay: magnus, zennithpay: zennith, vexopay, stripe },
+      merchantGateway: {
+        depositFeePercent: Math.max(0, Math.min(50, Number((merchantGateway as any).depositFeePercent || 0))),
+        withdrawFee: clampFee((merchantGateway as any).withdrawFee, 0),
+        minWithdraw: Math.max(1, Math.min(1000000, Number((merchantGateway as any).minWithdraw || 5))),
+      },
       secretStatus,
     });
+
+    if (action === "save_merchant_gateway") {
+      const incoming = body.values || {};
+      const next = {
+        depositFeePercent: Math.round(Math.max(0, Math.min(50, Number(incoming.depositFeePercent || 0))) * 100) / 100,
+        withdrawFee: clampFee(incoming.withdrawFee, 0),
+        minWithdraw: Math.round(Math.max(1, Math.min(1000000, Number(incoming.minWithdraw || 5))) * 100) / 100,
+      };
+      if (next.withdrawFee >= next.minWithdraw) return json({ error: "A taxa de saque precisa ser menor que o saque mínimo." }, 400);
+      const { error: saveError } = await admin.from("app_settings").upsert({ key: "merchant_gateway", value: next }, { onConflict: "key" });
+      if (saveError) return json({ error: "Não foi possível salvar as taxas do App Gateway." }, 400);
+      return json({ saved: true, merchantGateway: next });
+    }
 
     const provider = body.provider === "magnuspay" || body.provider === "zennithpay" || body.provider === "vexopay" || body.provider === "stripe"
       ? body.provider as keyof typeof DEFAULTS

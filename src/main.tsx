@@ -22,6 +22,20 @@ if (typeof window !== "undefined") {
 
 createRoot(document.getElementById("root")!).render(<App />);
 
+const zxStandalone = () =>
+  window.matchMedia?.("(display-mode: standalone)")?.matches === true ||
+  (navigator as Navigator & { standalone?: boolean }).standalone === true;
+
+const enforceManagementApp = () => {
+  if (!zxStandalone()) return;
+  const allowed = ["/app", "/auth/callback", "/reset-password"];
+  if (!allowed.some((path) => window.location.pathname.startsWith(path))) {
+    window.history.replaceState({}, "", "/app");
+  }
+};
+enforceManagementApp();
+window.addEventListener("popstate", enforceManagementApp);
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch((error) => {

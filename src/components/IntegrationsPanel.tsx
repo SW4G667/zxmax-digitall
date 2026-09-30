@@ -16,6 +16,12 @@ type StripeConfig = {
   boletoExpiresAfterDays?: number;
 };
 
+type MerchantGatewayConfig = {
+  depositFeePercent: number;
+  withdrawFee: number;
+  minWithdraw: number;
+};
+
 type DiscordOAuthStatus = {
   enabled?: boolean;
   providerCallback?: string;
@@ -64,13 +70,14 @@ export default function IntegrationsPanel() {
   const [configs, setConfigs] = useState<Record<Provider["id"], GatewayConfig>>(emptyConfig);
   const [stripe, setStripe] = useState<StripeConfig>({ cardEnabled: false, boletoEnabled: false, boletoExpiresAfterDays: 3 });
   const [discord, setDiscord] = useState<DiscordOAuthStatus>({});
+  const [merchantGateway, setMerchantGateway] = useState<MerchantGatewayConfig>({ depositFeePercent: 0, withdrawFee: 0, minWithdraw: 5 });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [secretStatus, setSecretStatus] = useState<Record<string, boolean>>({});
 
   const load = async () => {
     setLoading(true);
-    const result = await unwrapEdgeCall<{ integrations?: Record<string, GatewayConfig & StripeConfig>; secretStatus?: Record<string, boolean>; discord?: DiscordOAuthStatus }>(
+    const result = await unwrapEdgeCall<{ integrations?: Record<string, GatewayConfig & StripeConfig>; merchantGateway?: MerchantGatewayConfig; secretStatus?: Record<string, boolean>; discord?: DiscordOAuthStatus }>(
       await supabase.functions.invoke("integrations-config", { body: { action: "get" } }),
       "Não foi possível carregar a configuração de pagamentos.",
     );
@@ -84,6 +91,11 @@ export default function IntegrationsPanel() {
     setStripe({ cardEnabled: false, boletoEnabled: false, boletoExpiresAfterDays: 3, ...(received.stripe || {}) });
     setSecretStatus(result.data?.secretStatus || {});
     setDiscord(result.data?.discord || {});
+    setMerchantGateway({
+      depositFeePercent: Number(result.data?.merchantGateway?.depositFeePercent || 0),
+      withdrawFee: Number(result.data?.merchantGateway?.withdrawFee || 0),
+      minWithdraw: Number(result.data?.merchantGateway?.minWithdraw || 5),
+    });
     setLoading(false);
   };
 
@@ -131,6 +143,23 @@ export default function IntegrationsPanel() {
       toast.success(result.data.message || "Conexão verificada no servidor.");
     } catch (error: any) {
       toast.error(error?.message || "Teste não concluído.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveMerchantGateway = async () => {
+    setBusy("merchant:save");
+    try {
+      const result = await unwrapEdgeCall<{ saved?: boolean; merchantGateway?: MerchantGatewayConfig }>(
+        await supabase.functions.invoke("integrations-config", { body: { action: "save_merchant_gateway", values: merchantGateway } }),
+        "Não foi possível salvar as taxas do App Gateway.",
+      );
+      if (result.errorMessage || !result.data?.saved) throw new Error(result.errorMessage || "As taxas não foram salvas.");
+      toast.success("Taxas do App Gateway atualizadas.");
+      await load();
+    } catch (error: any) {
+      toast.error(error?.message || "Não foi possível salvar as taxas.");
     } finally {
       setBusy(null);
     }
@@ -216,6 +245,20 @@ export default function IntegrationsPanel() {
           </article>
         );
       })}
+      <article className="rounded-xl border border-white/[0.08] bg-[#101013] p-4 sm:p-5">
+        <div>
+          <h3 className="font-bold text-card-foreground">App Gateway · taxas próprias</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Cobranças do aplicativo têm saldo separado das vendas do marketplace e entram na carteira Gateway assim que o pagamento é confirmado pelo provedor.</p>
+        </div>
+        <div className="mt-5 grid gap-4 md:grid-cols-3">
+          <label className="space-y-1 text-sm font-medium">Taxa de depósito (%)<input type="number" min="0" max="50" step="0.01" value={merchantGateway.depositFeePercent} onChange={(e) => setMerchantGateway((c) => ({ ...c, depositFeePercent: Number(e.target.value) }))} className="w-full rounded-lg border border-input bg-background px-3 py-2" /></label>
+          <label className="space-y-1 text-sm font-medium">Taxa de saque (R$)<input type="number" min="0" step="0.01" value={merchantGateway.withdrawFee} onChange={(e) => setMerchantGateway((c) => ({ ...c, withdrawFee: Number(e.target.value) }))} className="w-full rounded-lg border border-input bg-background px-3 py-2" /></label>
+          <label className="space-y-1 text-sm font-medium">Saque mínimo (R$)<input type="number" min="1" step="0.01" value={merchantGateway.minWithdraw} onChange={(e) => setMerchantGateway((c) => ({ ...c, minWithdraw: Number(e.target.value) }))} className="w-full rounded-lg border border-input bg-background px-3 py-2" /></label>
+        </div>
+        <p className="mt-3 text-[11px] leading-5 text-white/40">A taxa de depósito é descontada do valor líquido da cobrança. A taxa de saque é aplicada apenas aos saques feitos pelo App Gateway. Nenhuma dessas taxas altera o prazo das vendas de produtos.</p>
+        <button type="button" onClick={() => void saveMerchantGateway()} disabled={busy !== null} className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">{busy === "merchant:save" ? "Salvando…" : "Salvar taxas do App Gateway"}</button>
+      </article>
+
       {(() => {
         const ready = Boolean(secretStatus.STRIPE_SECRET_KEY && secretStatus.STRIPE_WEBHOOK_SECRET);
         return (

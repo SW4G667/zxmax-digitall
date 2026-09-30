@@ -388,7 +388,8 @@ export default function MyPurchasesView({ initialSelectedId, initialScope = "all
       const params = new URLSearchParams();
       params.set("order", String(purchaseId));
       params.set("payment", "confirmed");
-      window.location.replace(`/minhas-compras?${params.toString()}`);
+      const base = window.location.pathname.startsWith("/app") ? "/app" : "/minhas-compras";
+      window.location.replace(`${base}?${params.toString()}`);
       return;
     }
 

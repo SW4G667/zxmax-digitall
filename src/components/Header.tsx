@@ -113,7 +113,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
                 href={branding.discordInviteUrl || state.config.discordLink}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="zx-icon-action hidden sm:flex border-[#5865F2]/25"
+                className="zx-icon-action flex border-[#5865F2]/25"
                 title="Comunidade"
                 aria-label="Abrir comunidade no Discord"
               >

@@ -23,7 +23,7 @@ interface Props {
   hideFooter?: boolean;
 }
 
-export default function AppShell({ children, hideFooter = false }: Props) {
+export default function AppShell({ children, hideFooter: _hideFooter = false }: Props) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();

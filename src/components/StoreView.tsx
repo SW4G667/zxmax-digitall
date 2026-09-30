@@ -4,7 +4,7 @@ import { Search, RefreshCw, AlertTriangle, PackageOpen, SlidersHorizontal, Badge
 import { useNavigate, useLocation } from "react-router-dom";
 import AuthScreen from "@/components/AuthScreen";
 import UserProfileModal from "@/components/UserProfileModal";
-import { formatBRL, ROBUX_CATEGORY, isRobuxCategory, robuxPackageUnits, storefrontProducts } from "@/lib/catalog";
+import { formatBRL, ROBUX_CATEGORY, isRobuxCategory, isRobuxProduct, robuxPackageUnits, storefrontProducts } from "@/lib/catalog";
 
 const PAGE_SIZE = 20;
 
@@ -56,7 +56,7 @@ export default function StoreView() {
   );
   // Robux lives on its own /robux storefront; keep it out of the common grid.
   const nonRobux = useMemo(
-    () => approved.filter((p) => !isRobuxCategory(p.category)),
+    () => approved.filter((p) => !isRobuxProduct(p)),
     [approved],
   );
   // Robux has its own dedicated storefront at /robux (Eldorado-style); it must

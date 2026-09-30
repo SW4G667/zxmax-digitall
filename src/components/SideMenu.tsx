@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   BadgeCheck, ClipboardCheck, Headset, Heart, HelpCircle, Home, KeyRound, LayoutGrid,
   LogIn, LogOut, Moon, Package, Receipt, Settings, Shield, ShoppingBag, Store, Sun,
-  Tag, User, Users, Wallet, X, Palette, Smartphone,
+  Tag, User, Users, Wallet, X, Palette, Smartphone, FileText, Scale, CircleHelp,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useStore } from "@/store/StoreContext";
@@ -100,6 +100,13 @@ export default function SideMenu({ open, onClose, onNavigate: _onNavigate, onOpe
       entries: [
         { key: "support-center", label: "Central de ajuda", to: "/central-de-ajuda", icon: Headset },
         { key: "how", label: "Como funciona", to: "/como-funciona", icon: HelpCircle },
+        { key: "faq", label: "Perguntas frequentes", to: "/faq", icon: CircleHelp },
+        { key: "terms", label: "Termos de uso", to: "/termos", icon: FileText },
+        { key: "privacy", label: "Privacidade", to: "/privacidade", icon: Shield },
+        { key: "rules", label: "Regras da plataforma", to: "/regras", icon: Scale },
+        { key: "refunds", label: "Reembolsos", to: "/reembolsos", icon: Receipt },
+        { key: "fees", label: "Tarifas e prazos", to: "/tarifas-e-prazos", icon: Wallet },
+        { key: "payments", label: "Formas de pagamento", to: "/formas-de-pagamento", icon: KeyRound },
       ],
     };
 

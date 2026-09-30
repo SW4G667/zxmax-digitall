@@ -1,5 +1,5 @@
 const CACHE = "zxmax-shell-v1";
-const SHELL = ["/", "/app", "/manifest.webmanifest"];
+const SHELL = ["/app", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).catch(() => undefined));
@@ -27,7 +27,7 @@ self.addEventListener("fetch", (event) => {
           void caches.open(CACHE).then((cache) => cache.put(request, copy));
           return response;
         })
-        .catch(async () => (await caches.match(request)) || (await caches.match("/")) || Response.error())
+        .catch(async () => (await caches.match(request)) || (await caches.match("/app")) || Response.error())
     );
     return;
   }

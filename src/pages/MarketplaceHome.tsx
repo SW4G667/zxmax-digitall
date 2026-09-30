@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { Product, useStore } from "@/store/StoreContext";
-import { formatBRL, lowestProductPrice, productHasAutoDelivery, productHasMixedDelivery, isRobuxCategory, storefrontProducts, unitPriceFromPackage } from "@/lib/catalog";
+import { formatBRL, lowestProductPrice, productHasAutoDelivery, productHasMixedDelivery, isRobuxCategory, isRobuxProduct, storefrontProducts, unitPriceFromPackage } from "@/lib/catalog";
 import { useSiteBranding } from "@/context/SiteBrandingContext";
 
 const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -128,7 +128,7 @@ export default function MarketplaceHome() {
   );
 
   const homeProducts = useMemo(
-    () => publicProducts.filter((product) => !isRobuxCategory(product.category)),
+    () => publicProducts.filter((product) => !isRobuxProduct(product)),
     [publicProducts],
   );
 
@@ -137,7 +137,7 @@ export default function MarketplaceHome() {
   const robuxShortcutProduct = useMemo(
     () => [...publicProducts]
       .filter((product) =>
-        isRobuxCategory(product.category) &&
+        isRobuxProduct(product) &&
         (product.sellerPublicId || state.userDirectory?.[product.sellerId]?.publicId) &&
         productStockAvailable(product)
       )

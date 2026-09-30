@@ -130,6 +130,7 @@ export default function ProfileModal({ open, onClose }: Props) {
   const pixValue = profile?.pix_key || storeUser.pixKey || "";
   const verificationReady = Boolean(storeUser.documentVerified);
   const emailReady = Boolean(storeUser.emailConfirmed);
+  const inManagementApp = window.location.pathname.startsWith("/app");
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 p-3 sm:p-4 backdrop-blur-md" onClick={onClose}>
@@ -220,10 +221,12 @@ export default function ProfileModal({ open, onClose }: Props) {
             )}
           </section>
 
-          <button onClick={() => handleWithdraw("normal")} className="mt-4 flex w-full items-center justify-between rounded-2xl bg-white px-4 py-4 text-left text-sm font-black text-black transition hover:bg-white/90">
-            <span className="flex items-center gap-3"><MoneyEmoji className="h-5 w-5" /> Solicitar saque</span>
-            <span className="flex items-center gap-1 text-[10px] font-bold text-black/45">5 a 7 dias úteis <ChevronRight className="h-4 w-4" /></span>
-          </button>
+          {!inManagementApp ? (
+            <button onClick={() => handleWithdraw("normal")} className="mt-4 flex w-full items-center justify-between rounded-2xl bg-white px-4 py-4 text-left text-sm font-black text-black transition hover:bg-white/90">
+              <span className="flex items-center gap-3"><MoneyEmoji className="h-5 w-5" /> Solicitar saque</span>
+              <span className="flex items-center gap-1 text-[10px] font-bold text-black/45">Saldo do marketplace <ChevronRight className="h-4 w-4" /></span>
+            </button>
+          ) : null}
 
           <div className="mt-3 grid gap-2">
             <input type="file" ref={fileInputRef} accept="image/*,.pdf" onChange={handleDocumentUpload} className="hidden" />
@@ -235,10 +238,12 @@ export default function ProfileModal({ open, onClose }: Props) {
               <ChevronRight className="h-4 w-4 shrink-0 text-white/25" />
             </button>
 
-            <a href="/perfil" onClick={onClose} className="flex w-full items-center justify-between rounded-2xl border border-white/[0.07] bg-white/[0.02] px-4 py-3.5 text-left transition hover:bg-white/[0.05]">
-              <span className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-xl bg-white/[0.05] text-white/55"><Shield className="h-4 w-4" /></span><span><span className="block text-sm font-bold text-white">Dados pessoais e verificação</span><span className="block text-[10px] text-white/35">Segurança, identidade e situação da conta</span></span></span>
-              <ChevronRight className="h-4 w-4 text-white/25" />
-            </a>
+            {!inManagementApp ? (
+              <a href="/perfil" onClick={onClose} className="flex w-full items-center justify-between rounded-2xl border border-white/[0.07] bg-white/[0.02] px-4 py-3.5 text-left transition hover:bg-white/[0.05]">
+                <span className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-xl bg-white/[0.05] text-white/55"><Shield className="h-4 w-4" /></span><span><span className="block text-sm font-bold text-white">Dados pessoais e verificação</span><span className="block text-[10px] text-white/35">Segurança, identidade e situação da conta</span></span></span>
+                <ChevronRight className="h-4 w-4 text-white/25" />
+              </a>
+            ) : null}
           </div>
 
           {isAdmin && <div className="mt-4"><TwoFactorPanel /></div>}

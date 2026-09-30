@@ -148,7 +148,12 @@ serve(async (req) => {
       if (PAID.has(status)) {
         const providerFee = Number(node.platformFee ?? node.fee ?? charge.provider_fee ?? 0);
         const providerNet = Number(node.netAmount ?? charge.provider_net_amount ?? charge.amount);
-        const credit = Number.isFinite(providerNet) && providerNet > 0 ? Math.min(Number(charge.amount), providerNet) : Number(charge.amount);
+        const { data: gatewaySetting } = await admin.from("app_settings").select("value").eq("key", "merchant_gateway").maybeSingle();
+        const depositFeePercent = Math.max(0, Math.min(50, Number(gatewaySetting?.value?.depositFeePercent || 0)));
+        const netBeforePlatform = Number.isFinite(providerNet) && providerNet > 0 ? Math.min(Number(charge.amount), providerNet) : Number(charge.amount);
+        const platformFee = Math.round((Number(charge.amount) * depositFeePercent / 100) * 100) / 100;
+        const credit = Math.max(0, Math.round((netBeforePlatform - platformFee) * 100) / 100);
+        if (credit <= 0) return json({ error: "A taxa configurada deixou a cobrança sem valor líquido para crédito." }, 409);
 
         const { error: ledgerError } = await admin.from("wallet_ledger").upsert({
           user_id: user.id,
@@ -168,10 +173,12 @@ serve(async (req) => {
           provider_amount: providerAmount,
           provider_fee: Number.isFinite(providerFee) ? providerFee : null,
           provider_net_amount: Number.isFinite(providerNet) ? providerNet : null,
+          platform_fee: platformFee,
+          credited_amount: credit,
           paid_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }).eq("id", charge.id).eq("owner_id", user.id);
-        return json({ paid: true, status: "paid", credited: Math.round(credit * 100) / 100 });
+        return json({ paid: true, status: "paid", credited: credit, platformFee, depositFeePercent });
       }
 
       const expired = status === "EXPIRED" || (charge.expires_at && new Date(charge.expires_at).getTime() < Date.now());

@@ -147,7 +147,7 @@ export interface Withdrawal {
   userEmail: string;
   userId: string;
   amount: number;
-  method: "normal" | "flex" | "admin_fee";
+  method: "normal" | "flex" | "gateway" | "admin_fee";
   status: "pending" | "approved" | "rejected";
   createdAt: string;
   pixKey?: string;
@@ -292,7 +292,7 @@ const defaultConfig: AppConfig = {
   withdrawFee: WITHDRAW_FEE,
   smallWithdrawMin: 5,
   smallWithdrawExtraFee: 1,
-  sellerReleaseDays: 7,
+  sellerReleaseDays: 10,
   discordLink: "",
   categories: ["Robux e Gift Cards", "Bots Discord", "Contas", "Scripts", "Assinaturas", "Designs Digitais", "Serviços Online", "Consultoria Virtual", "Keys de Software", "Arquivos", "Jogos e Itens"],
   globalNotice: "",
@@ -399,7 +399,7 @@ const mapWithdrawalRow = (w: any): Withdrawal => ({
   userEmail: w.user_email || "",
   userId: w.user_id,
   amount: Number(w.amount),
-  method: w.method === "flex" ? "flex" : w.method === "admin_fee" ? "admin_fee" : "normal",
+  method: w.method === "flex" ? "flex" : w.method === "gateway" ? "gateway" : w.method === "admin_fee" ? "admin_fee" : "normal",
   status: w.status,
   createdAt: w.created_at,
   pixKey: w.pix_key || undefined,
@@ -679,6 +679,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     const price = parsePriceInput(p.price);
     if (!p.name?.trim()) { toast.error("Informe o nome do anúncio."); return false; }
+    if (!p.image?.trim()) { toast.error("Envie uma imagem principal antes de publicar."); return false; }
     if (price < MIN_PRODUCT_PRICE) {
       toast.error(`O preço mínimo é R$ ${MIN_PRODUCT_PRICE.toFixed(2).replace(".", ",")}.`);
       return false;
@@ -732,6 +733,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     if (!isAdmin && existing.sellerId !== actorId) {
       toast.error("Você não tem permissão para editar este anúncio.");
+      return false;
+    }
+    const resultingImage = p.image === undefined ? existing.image : p.image;
+    if (!String(resultingImage || "").trim()) {
+      toast.error("Todo anúncio precisa de uma imagem principal.");
       return false;
     }
     // If price or delivery content changed, send back to review - but admin edits stay approved

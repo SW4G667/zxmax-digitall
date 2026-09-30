@@ -79,7 +79,7 @@ export default function AdminView() {
   const [withdrawFee, setWithdrawFee] = useState("3,50");
   const [smallWithdrawMin, setSmallWithdrawMin] = useState("5,00");
   const [smallWithdrawExtraFee, setSmallWithdrawExtraFee] = useState("1,00");
-  const [sellerReleaseDays, setSellerReleaseDays] = useState("7");
+  const [sellerReleaseDays, setSellerReleaseDays] = useState("10");
   const [operatorCapabilities, setOperatorCapabilities] = useState<string[]>([]);
   const [operatorAccessLoading, setOperatorAccessLoading] = useState(!isAdmin);
 
@@ -263,7 +263,7 @@ export default function AdminView() {
     setWithdrawFee(formatBRL(data?.withdrawFee ?? 3.50).replace("R$ ", ""));
     setSmallWithdrawMin(formatBRL(data?.smallWithdrawMin ?? 5).replace("R$ ", ""));
     setSmallWithdrawExtraFee(formatBRL(data?.smallWithdrawExtraFee ?? 1).replace("R$ ", ""));
-    setSellerReleaseDays(String(data?.sellerReleaseDays ?? 7));
+    setSellerReleaseDays(String(data?.sellerReleaseDays ?? 10));
   }, []);
 
   useEffect(() => { if (tab === "config") void loadPlatformSettings(); }, [tab, loadPlatformSettings]);
@@ -295,7 +295,7 @@ export default function AdminView() {
     if (parsedWithdrawFee < 0 || parsedWithdrawFee >= parsedWithdraw) { toast.error("A taxa de saque deve ser menor que o saque mínimo."); return; }
     if (parsedSmallWithdrawMin < 1 || parsedSmallWithdrawMin > parsedWithdraw) { toast.error("O mínimo reduzido deve ficar entre R$ 1,00 e o saque mínimo normal."); return; }
     if (parsedSmallWithdrawExtraFee < 0 || parsedSmallWithdrawExtraFee >= parsedSmallWithdrawMin) { toast.error("A taxa adicional do saque reduzido é inválida."); return; }
-    if (!Number.isInteger(parsedSellerReleaseDays) || parsedSellerReleaseDays < 5 || parsedSellerReleaseDays > 7) { toast.error("O prazo de liberação do saldo deve ficar entre 5 e 7 dias."); return; }
+    if (!Number.isInteger(parsedSellerReleaseDays) || parsedSellerReleaseDays < 1 || parsedSellerReleaseDays > 30) { toast.error("O prazo de liberação do saldo deve ficar entre 1 e 30 dias."); return; }
 
     setPlatformSaving(true);
     const { error } = await (supabase as any).rpc("update_platform_settings", {
@@ -412,7 +412,7 @@ export default function AdminView() {
             pendingWithdrawals.map((w) => (
               <div key={w.id} className="glass-card p-5 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-bold text-muted-foreground uppercase">{w.method === "flex" ? "Saque reduzido" : w.method === "admin_fee" ? "Saque de taxas" : "Saque normal"}</p>
+                  <p className="text-xs font-bold text-muted-foreground uppercase">{w.method === "flex" ? "Saque reduzido" : w.method === "gateway" ? "Saque do App Gateway" : w.method === "admin_fee" ? "Saque de taxas" : "Saque normal"}</p>
                   <p className="text-xl font-black text-foreground">{formatBRL(w.netAmount ?? Math.max(0, w.amount - (w.fee ?? state.config.withdrawFee)))}</p>
                   <p className="text-[10px] text-muted-foreground">Solicitado {formatBRL(w.amount)} · taxa {formatBRL(w.fee ?? state.config.withdrawFee)}</p>
                   <p className="text-xs text-muted-foreground mt-1">Usuário: {w.userEmail}</p>
@@ -884,8 +884,8 @@ export default function AdminView() {
                 <input value={smallWithdrawExtraFee} inputMode="decimal" onChange={(event) => setSmallWithdrawExtraFee(event.target.value)} placeholder="1,00" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
               </label>
               <label className="text-xs font-bold text-muted-foreground">Liberação do saldo (dias)
-                <input value={sellerReleaseDays} inputMode="numeric" onChange={(event) => setSellerReleaseDays(event.target.value.replace(/\D/g, "").slice(0, 1))} placeholder="7" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
-                <span className="mt-1 block text-[10px] font-normal">Permitido: 5 a 7 dias.</span>
+                <input value={sellerReleaseDays} inputMode="numeric" onChange={(event) => setSellerReleaseDays(event.target.value.replace(/\D/g, "").slice(0, 2))} placeholder="10" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
+                <span className="mt-1 block text-[10px] font-normal">Permitido: 1 a 30 dias. A configuração padrão é 10 dias após a confirmação da entrega.</span>
               </label>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -895,7 +895,7 @@ export default function AdminView() {
           </div>
           <div className="glass-card p-6 space-y-3">
             <h3 className="font-bold text-foreground">Como as taxas são aplicadas</h3>
-            <p className="text-xs leading-5 text-muted-foreground">A taxa base do comprador é definida aqui. Na aba <strong className="text-foreground">APIs & Credenciais</strong>, cada gateway pode ter um adicional próprio. A taxa de saque configurada representa o custo aplicado ao processamento pelo gateway; o saque normal e o saque reduzido têm mínimos próprios, e o reduzido soma o adicional configurado. O saldo de vendas só fica disponível depois do prazo de segurança de 5 a 7 dias.</p>
+            <p className="text-xs leading-5 text-muted-foreground">A taxa base do comprador é definida aqui. Na aba <strong className="text-foreground">APIs & Credenciais</strong>, cada gateway pode ter um adicional próprio. A taxa de saque configurada representa o custo aplicado ao processamento pelo gateway; o saque normal e o saque reduzido têm mínimos próprios, e o reduzido soma o adicional configurado. Em vendas de produtos, o prazo de segurança só começa depois que a entrega é confirmada pelo comprador ou concluída automaticamente após 5 dias. O padrão atual é 10 dias.</p>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-xl bg-muted p-3"><p className="text-[10px] font-bold uppercase text-muted-foreground">Comprador</p><p className="mt-1 text-base font-black text-foreground">{formatBRL(parsePriceInput(buyerFee))}</p></div>
               <div className="rounded-xl bg-muted p-3"><p className="text-[10px] font-bold uppercase text-muted-foreground">Saque normal</p><p className="mt-1 text-base font-black text-foreground">{formatBRL(parsePriceInput(minWithdraw))}</p></div>

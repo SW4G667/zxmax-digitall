@@ -19,6 +19,8 @@ export const MAX_PRODUCT_PRICE = 1_000_000;
 export const ROBUX_CATEGORY = "Robux";
 export const LEGACY_ROBUX_CATEGORY = "Robux e Gift Cards";
 export const isRobuxCategory = (category: string | null | undefined) => category === ROBUX_CATEGORY || category === LEGACY_ROBUX_CATEGORY;
+export const isRobuxProduct = (product: { category?: string | null; name?: string | null }) =>
+  isRobuxCategory(product.category) || String(product.name || "").trim().toLocaleLowerCase("pt-BR") === "robux";
 
 export interface CatalogVariation {
   id?: string;
