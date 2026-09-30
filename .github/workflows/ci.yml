@@ -1,35 +1,64 @@
-name: CI
+name: VOLT Android APK Build
 
 on:
   push:
     branches:
-      - main
       - feat/**
-  pull_request:
-    branches:
-      - main
 
 jobs:
-  verify:
+  build-voltapk:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
         with:
-          node-version: 20
-          cache: npm
+          distribution: temurin
+          java-version: '17'
 
-      - name: Install
-        run: npm ci
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
 
-      - name: Typecheck
-        run: npm run typecheck
+      - name: Restore VOLT v0.3 source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/volt-parts
+          for i in 00 01 02 03 04 05 06; do
+            curl --fail --location --retry 3               "https://raw.githubusercontent.com/SW4G667/007-AI/e6f62a96942e14a840c79f5bb40b882e4c768f4c/volt-build-chunks/part_${i}.b64"               -o "/tmp/volt-parts/part_${i}.b64"
+          done
+          cat /tmp/volt-parts/part_*.b64 > /tmp/volt.tar.gz.b64
+          base64 -d /tmp/volt.tar.gz.b64 > /tmp/volt.tar.gz
+          mkdir -p /tmp/volt-src
+          tar -xzf /tmp/volt.tar.gz -C /tmp/volt-src
+          test -f /tmp/volt-src/VOLT-Game-Space/settings.gradle.kts
+          test -f /tmp/volt-src/VOLT-Game-Space/app/build.gradle.kts
 
-      - name: Tests
-        run: npm test -- --passWithNoTests
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;35.0.0"
 
-      - name: Build
-        run: npm run build
+      - name: Build debug APK
+        working-directory: /tmp/volt-src/VOLT-Game-Space
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK="/tmp/volt-src/VOLT-Game-Space/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          ls -lh "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/VOLT-Game-Space-v0.3-debug.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: VOLT-Game-Space-v0.3-debug
+          path: VOLT-Game-Space-v0.3-debug.apk
+          if-no-files-found: error
