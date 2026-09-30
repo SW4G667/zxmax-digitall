@@ -59,7 +59,7 @@ const CONTENT: Record<MarketplaceInfoKind, {
     title: "Venda com uma vitrine organizada",
     intro: "Crie anúncios, acompanhe pedidos e mantenha a comunicação e a entrega vinculadas à sua conta.",
     sections: [
-      { title: "Publique seu anúncio", text: "Defina categoria, preço, estoque, descrição e forma de entrega com informações claras.", icon: Store },
+      { title: "Publique seu anúncio", text: "Envie uma imagem principal e defina categoria, preço, estoque, descrição e forma de entrega com informações claras.", icon: Store },
       { title: "Acompanhe novas vendas", text: "Pedidos pagos aparecem na sua área para que você saiba o que precisa entregar.", icon: Receipt },
       { title: "Use entrega automática quando fizer sentido", text: "Produtos compatíveis podem reduzir trabalho manual e acelerar o recebimento pelo comprador.", icon: Zap },
       { title: "Construa reputação", text: "Mantenha anúncios corretos, responda clientes e cumpra o que foi descrito na oferta.", icon: BadgeCheck },
@@ -96,12 +96,12 @@ const CONTENT: Record<MarketplaceInfoKind, {
   tarifas: {
     eyebrow: "Transparência",
     title: "Tarifas e prazos",
-    intro: "Valores, eventuais taxas e prazos aplicáveis devem aparecer no fluxo correspondente antes de uma ação financeira ser concluída.",
+    intro: "Vendas do marketplace e cobranças do App Gateway usam saldos e prazos diferentes. Taxas e valores aplicáveis são apresentados no fluxo correspondente antes da ação financeira.",
     sections: [
       { title: "Preço do anúncio", text: "O valor principal é definido no produto e exibido no anúncio e no checkout.", icon: Receipt },
-      { title: "Taxas aplicáveis", text: "Quando houver cobrança adicional, ela deve ser apresentada antes da confirmação para evitar surpresa no total.", icon: Banknote },
+      { title: "Taxas aplicáveis", text: "O App Gateway pode ter taxa de depósito, taxa de saque e saque mínimo próprios; vendas do marketplace seguem as taxas e o prazo de segurança configurados para vendas.", icon: Banknote },
       { title: "Prazo de entrega", text: "Cada vendedor informa o prazo ou o tipo de entrega do anúncio; ofertas automáticas são identificadas separadamente.", icon: Clock3 },
-      { title: "Prazo do pedido", text: "O andamento pode variar conforme pagamento, entrega e necessidade de suporte.", icon: PackageCheck },
+      { title: "Saldo de vendas", text: "Após a entrega, o comprador tem até 5 dias para confirmar. Sem ação, a entrega é concluída automaticamente; então começa o período de segurança da carteira, atualmente em 10 dias.", icon: PackageCheck },
     ],
     primary: { label: "Abrir catálogo", to: "/loja" },
     secondary: { label: "Formas de pagamento", to: "/formas-de-pagamento" },

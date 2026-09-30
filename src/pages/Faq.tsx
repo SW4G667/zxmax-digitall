@@ -16,16 +16,19 @@ export default function Faq() {
         <p>Abra uma disputa no pedido em <em>Minhas compras</em>. A equipe analisa as mensagens do chat e as provas enviadas. Se a falha for do vendedor, o valor é devolvido e ele pode ser suspenso.</p>
       </Section>
       <Section heading="Como recebo o dinheiro das minhas vendas?">
-        <p>O valor da venda entra no seu saldo já com a comissão da plataforma descontada. Para sacar, cadastre uma chave Pix no perfil, envie seus documentos para verificação e solicite o saque. Após a aprovação da equipe, o Pix é enviado em 5 a 7 dias úteis.</p>
+        <p>Vendas de produtos não entram imediatamente no saldo disponível. Depois que o vendedor entrega, o comprador pode confirmar o recebimento. Se não houver confirmação, o sistema conclui a entrega automaticamente após 5 dias. Só então começa o período de segurança da carteira, atualmente configurado em 10 dias; ao final dele, o valor da venda é liberado para o saldo do marketplace.</p>
+      </Section>
+      <Section heading="Cobrança do App Gateway é igual a uma venda?">
+        <p>Não. Uma cobrança criada pelo App Gateway não usa o período de entrega de produto. Depois que o provedor confirma o pagamento diretamente no servidor, o valor líquido — já considerando as taxas configuradas — entra imediatamente no saldo Gateway. Esse saldo e seus saques ficam separados do saldo de vendas do marketplace.</p>
       </Section>
       <Section heading="Qual é o valor mínimo?">
-        <p>O valor mínimo de um produto é R$ 2,00 e o valor mínimo de saque é R$ 2,00.</p>
+        <p>O valor mínimo de um produto é R$ 2,00. Mínimos e taxas de saque podem variar entre a carteira do marketplace e o App Gateway; o valor vigente é mostrado no painel antes da solicitação.</p>
       </Section>
       <Section heading="Por que preciso enviar documentos?">
-        <p>A verificação (RG ou certidão) protege a plataforma contra fraude e lavagem de dinheiro. Ela é exigida apenas para quem vai <strong>sacar</strong> valores, e os arquivos ficam em armazenamento privado, visíveis somente para a equipe de verificação.</p>
+        <p>A verificação de identidade ajuda a reduzir fraude e uso indevido da plataforma. Ela é exigida para recursos financeiros sensíveis, como criar cobranças pelo App Gateway e solicitar saques. Os arquivos de verificação ficam em armazenamento privado e não aparecem publicamente no perfil.</p>
       </Section>
       <Section heading="Meu anúncio sumiu da loja. O que houve?">
-        <p>Todo anúncio passa por moderação. Enquanto não é aprovado pela equipe, ele aparece somente para você em <em>Meus produtos</em>. Se você editar informações essenciais (preço, descrição, entrega), ele volta para a fila de aprovação.</p>
+        <p>Todo anúncio passa por moderação e precisa ter uma imagem principal. Enquanto não é aprovado pela equipe, ele aparece somente para você em <em>Meus produtos</em>. Se você editar informações essenciais, o anúncio pode voltar para a fila de aprovação.</p>
       </Section>
       <Section heading="Posso vender qualquer coisa?">
         <p>Não. Conteúdo adulto, gore, material criminoso, lavagem de dinheiro e produtos que você não pode entregar são proibidos e resultam em suspensão. Veja a página de <a className="text-primary font-semibold" href="/regras">Regras</a>.</p>
