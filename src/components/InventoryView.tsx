@@ -3,7 +3,7 @@ import { useStore, Product } from "@/store/StoreContext";
 import { Plus, X, Trash2, Upload, Users, Clock, MessageSquare, Pencil, Package, Coins, Zap, Boxes, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { formatBRL, formatRobuxPackage, formatStockLabel, isValidProductPrice, listingStatus, MIN_PRODUCT_PRICE, parsePriceInput, productStock, isRobuxCategory } from "@/lib/catalog";
+import { formatBRL, formatRobuxPackage, formatStockLabel, isValidProductPrice, listingStatus, MIN_PRODUCT_PRICE, parsePriceInput, productStock, ROBUX_CATEGORY, isRobuxCategory } from "@/lib/catalog";
 import { useSearchParams } from "react-router-dom";
 import { getDiscordListingRedirectTo } from "@/lib/discordAuth";
 import { getAppUrl } from "@/lib/appUrl";
