@@ -7,7 +7,7 @@ describe("App Gateway PIX charge UX", () => {
     const app = await readFile(join(process.cwd(), "src/pages/AppDashboard.tsx"), "utf8");
     expect(app).toContain('import { QRCodeSVG } from "qrcode.react"');
     expect(app).toContain("<QRCodeSVG value={activeCharge.qrCode}");
-    expect(app).toContain("Abrir cobrança");
+    expect(app).toContain("Abrir cobrança novamente");
     expect(app).toContain("Você pode fechar esta janela");
   });
 
