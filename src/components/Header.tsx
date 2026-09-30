@@ -21,6 +21,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
   const navigate = useNavigate();
   const location = useLocation();
   const { branding } = useSiteBranding();
+  const appMode = location.pathname.startsWith("/app");
   const routeOwnsMobileSearch = ["/", "/loja", "/robux", "/categorias"].includes(location.pathname);
   const { count } = useFavorites();
   const [favCount, setFavCount] = useState(count);
@@ -78,7 +79,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
             <button onClick={() => navigate("/categorias")} className="rounded-md px-2.5 py-2 text-xs font-medium text-white/52 transition hover:bg-white/[0.04] hover:text-white">Categorias</button>
                       </nav>
 
-          <form onSubmit={submitSearch} className="hidden min-w-0 flex-1 md:flex">
+          <form onSubmit={submitSearch} className={appMode ? "hidden" : "hidden min-w-0 flex-1 md:flex"}>
             <div className="flex h-10 w-full max-w-xl items-center rounded-lg border border-white/[0.1] bg-[#151519] px-3 focus-within:border-[var(--zx-accent)]">
               <Search className="h-4 w-4 shrink-0 text-white/30" />
               <input
@@ -153,7 +154,7 @@ export default function Header({ onProfileClick, onAuthClick, onMenuClick, menuO
           </div>
         </div>
 
-        {!routeOwnsMobileSearch ? (
+        {!appMode && !routeOwnsMobileSearch ? (
           <form onSubmit={submitSearch} className="pb-3 md:hidden">
             <div className="flex h-9 items-center rounded-lg border border-white/[0.09] bg-[#131317] px-3 focus-within:border-[#168cff]/60">
               <Search className="h-3.5 w-3.5 shrink-0 text-white/28" />

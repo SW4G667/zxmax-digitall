@@ -4,6 +4,7 @@ export interface SiteBranding {
   siteName: string;
   logoUrl: string;
   faviconUrl: string;
+  appIconUrl: string;
   heroTitle: string;
   heroSubtitle: string;
   heroBannerUrl: string;
@@ -22,6 +23,7 @@ const defaults: SiteBranding = {
   siteName: "ZXMAX",
   logoUrl: "",
   faviconUrl: "",
+  appIconUrl: "",
   heroTitle: "Compre e venda produtos digitais",
   heroSubtitle: "Encontre ofertas, acompanhe seus pedidos e anuncie com um fluxo simples e seguro.",
   heroBannerUrl: "",

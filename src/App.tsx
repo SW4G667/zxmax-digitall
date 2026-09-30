@@ -24,6 +24,7 @@ import MaintenanceGate from "@/components/MaintenanceGate";
 import AdminBranding from "./pages/AdminBranding.tsx";
 import MarketplaceHome from "./pages/MarketplaceHome.tsx";
 import MarketplaceInfo from "./pages/MarketplaceInfo.tsx";
+import AppDashboard from "./pages/AppDashboard.tsx";
 import { SiteBrandingProvider } from "@/context/SiteBrandingContext";
 
 const queryClient = new QueryClient();
@@ -46,6 +47,7 @@ const App = () => (
                     <Route path="/produto/:id" element={<Produto />} />
                     <Route path="/robux" element={<Robux />} />
                     <Route path="/favoritos" element={<Favoritos />} />
+                    <Route path="/app" element={<AppDashboard />} />
 
                     <Route path="/como-funciona" element={<MarketplaceInfo kind="como-funciona" />} />
                     <Route path="/comprar" element={<MarketplaceInfo kind="comprar" />} />

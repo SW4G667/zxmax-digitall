@@ -15,6 +15,7 @@ const DEFAULTS = {
   siteName: "ZXMAX",
   logoUrl: "",
   faviconUrl: "",
+  appIconUrl: "",
   heroTitle: "Compre e venda produtos digitais",
   heroSubtitle: "Encontre ofertas, acompanhe seus pedidos e anuncie com um fluxo simples e seguro.",
   heroBannerUrl: "",
@@ -33,6 +34,7 @@ const DEFAULTS = {
 const UPLOAD_SLOTS: Record<string, { field: keyof typeof DEFAULTS; maxBytes: number }> = {
   logo: { field: "logoUrl", maxBytes: 2 * 1024 * 1024 },
   favicon: { field: "faviconUrl", maxBytes: 2 * 1024 * 1024 },
+  appIcon: { field: "appIconUrl", maxBytes: 3 * 1024 * 1024 },
   heroBanner: { field: "heroBannerUrl", maxBytes: 5 * 1024 * 1024 },
   socialPreview: { field: "socialPreviewUrl", maxBytes: 5 * 1024 * 1024 },
   robuxBanner: { field: "robuxBannerUrl", maxBytes: 5 * 1024 * 1024 },
@@ -116,10 +118,12 @@ serve(async (req) => {
   if (req.method === "GET") {
     const requestUrl = new URL(req.url);
     const asset = requestUrl.searchParams.get("asset");
-    if (asset === "favicon" || asset === "socialPreview") {
+    if (asset === "favicon" || asset === "socialPreview" || asset === "appIcon") {
       const configured = asset === "favicon"
         ? safeUrl(current.faviconUrl)
-        : safeUrl(current.socialPreviewUrl) || safeUrl(current.logoUrl);
+        : asset === "appIcon"
+          ? safeUrl(current.appIconUrl) || safeUrl(current.logoUrl) || safeUrl(current.faviconUrl)
+          : safeUrl(current.socialPreviewUrl) || safeUrl(current.logoUrl);
       const fallback = "https://zxmax.vercel.app/favicon.ico";
       return new Response(null, {
         status: 302,
@@ -204,6 +208,7 @@ serve(async (req) => {
         siteName: safeText(values.siteName ?? current.siteName, 40) || DEFAULTS.siteName,
         logoUrl: values.logoUrl === undefined ? current.logoUrl : safeUrl(values.logoUrl),
         faviconUrl: values.faviconUrl === undefined ? current.faviconUrl : safeUrl(values.faviconUrl),
+        appIconUrl: values.appIconUrl === undefined ? current.appIconUrl : safeUrl(values.appIconUrl),
         heroTitle: safeText(values.heroTitle ?? current.heroTitle, 100) || DEFAULTS.heroTitle,
         heroSubtitle: safeText(values.heroSubtitle ?? current.heroSubtitle, 220) || DEFAULTS.heroSubtitle,
         heroBannerUrl: values.heroBannerUrl === undefined ? current.heroBannerUrl : safeUrl(values.heroBannerUrl),

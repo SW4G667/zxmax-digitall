@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   BadgeCheck, ClipboardCheck, Headset, Heart, HelpCircle, Home, KeyRound, LayoutGrid,
   LogIn, LogOut, Moon, Package, Receipt, Settings, Shield, ShoppingBag, Store, Sun,
-  Tag, User, Users, Wallet, X, Palette,
+  Tag, User, Users, Wallet, X, Palette, Smartphone,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useStore } from "@/store/StoreContext";
@@ -109,6 +109,7 @@ export default function SideMenu({ open, onClose, onNavigate: _onNavigate, onOpe
       id: "account",
       title: "Minha conta",
       entries: [
+        { key: "app", label: "App ZXMAX", to: "/app", icon: Smartphone },
         { key: "profile", label: "Meu perfil", to: "/perfil", icon: User },
         { key: "orders", label: "Meus pedidos", to: "/minhas-compras", icon: ShoppingBag, badge: openOrders || undefined },
         { key: "transactions", label: "Transações", to: "/minhas-compras", icon: Receipt },
@@ -141,6 +142,7 @@ export default function SideMenu({ open, onClose, onNavigate: _onNavigate, onOpe
           { key: "admin-home", label: "Painel administrativo", to: "/admin", icon: Shield },
           { key: "admin-products", label: "Moderação de anúncios", to: "/admin?tab=products", icon: ClipboardCheck, badge: pendingModeration || undefined },
           { key: "admin-orders", label: "Pedidos", to: "/admin?tab=orders", icon: Receipt },
+          { key: "admin-transactions", label: "Transações e saldos", to: "/admin?tab=transactions", icon: Wallet },
           { key: "admin-tags", label: "Tags de usuários", to: "/admin?tab=tags", icon: Tag },
           { key: "admin-roles", label: "Cargos e permissões", to: "/admin?tab=roles", icon: Users },
           { key: "admin-apis", label: "Pagamentos e integrações", to: "/admin?tab=apis", icon: KeyRound },

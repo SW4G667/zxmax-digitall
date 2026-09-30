@@ -1,0 +1,23 @@
+{
+  "name": "ZXMAX Marketplace",
+  "short_name": "ZXMAX",
+  "description": "Painel ZXMAX para vendas, carteira, cobranças e pedidos.",
+  "start_url": "/app?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b0b0e",
+  "theme_color": "#0b0b0e",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "https://szvkktvubyhulzipcxfk.supabase.co/functions/v1/site-config?asset=appIcon",
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "https://szvkktvubyhulzipcxfk.supabase.co/functions/v1/site-config?asset=appIcon",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ]
+}

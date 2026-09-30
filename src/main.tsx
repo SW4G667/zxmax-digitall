@@ -21,3 +21,11 @@ if (typeof window !== "undefined") {
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch((error) => {
+      if (import.meta.env.DEV) console.warn("ZXMAX service worker:", error);
+    });
+  });
+}

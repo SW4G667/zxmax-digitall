@@ -9,6 +9,7 @@ import TwoFactorPanel from "@/components/TwoFactorPanel";
 import { AdminTagsPanel, AdminTicketsPanel } from "@/components/AdminMorePanels";
 import AdminRolePermissionsPanel from "@/components/AdminRolePermissionsPanel";
 import OperatorConsole from "@/components/OperatorConsole";
+import AdminTransactionsPanel from "@/components/AdminTransactionsPanel";
 import {
   AdminStatsPanel,
   AdminPurchasesPanel,
@@ -32,7 +33,7 @@ interface WebhookLog {
 }
 
 export const ADMIN_TABS = [
-  "dashboard", "stats", "orders", "moderation", "tools", "products", "withdrawals",
+  "dashboard", "stats", "orders", "transactions", "moderation", "tools", "products", "withdrawals",
   "notices", "users", "tags", "tickets", "adminchat", "documents", "verifications", "disputes",
   "config", "webhooks", "apis", "security", "roles",
 ] as const;
@@ -363,6 +364,7 @@ export default function AdminView() {
           { id: "dashboard", label: "Dashboard", icon: ShieldCheck },
           { id: "stats", label: "Estatísticas", icon: BarChart3 },
           { id: "orders", label: "Pedidos", icon: ShoppingBag },
+          { id: "transactions", label: "Transações", icon: MoneyEmoji },
           { id: "moderation", label: "Moderação", icon: Ban },
           { id: "tools", label: "Ferramentas", icon: Wrench },
           { id: "roles", label: "Cargos", icon: Users },
@@ -833,6 +835,7 @@ export default function AdminView() {
 
       {tab === "stats" && <AdminStatsPanel />}
       {tab === "orders" && <AdminPurchasesPanel />}
+      {tab === "transactions" && <AdminTransactionsPanel />}
       {tab === "moderation" && <AdminModerationPanel />}
       {tab === "tools" && <AdminToolsPanel />}
 
@@ -871,7 +874,7 @@ export default function AdminView() {
               <label className="text-xs font-bold text-muted-foreground">Saque mínimo normal
                 <input value={minWithdraw} inputMode="decimal" onChange={(event) => setMinWithdraw(event.target.value)} placeholder="20,00" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
               </label>
-              <label className="text-xs font-bold text-muted-foreground">Taxa normal de saque
+              <label className="text-xs font-bold text-muted-foreground">Taxa do gateway por saque
                 <input value={withdrawFee} inputMode="decimal" onChange={(event) => setWithdrawFee(event.target.value)} placeholder="3,50" className="mt-1 w-full rounded-xl bg-muted p-3 text-sm text-foreground" disabled={platformLoading} />
               </label>
               <label className="text-xs font-bold text-muted-foreground">Mínimo do saque reduzido
@@ -892,7 +895,7 @@ export default function AdminView() {
           </div>
           <div className="glass-card p-6 space-y-3">
             <h3 className="font-bold text-foreground">Como as taxas são aplicadas</h3>
-            <p className="text-xs leading-5 text-muted-foreground">A taxa base do comprador é definida aqui. Na aba <strong className="text-foreground">APIs & Credenciais</strong>, cada gateway pode ter um adicional próprio. O saque normal e o saque reduzido têm mínimos próprios; o reduzido soma o adicional configurado. O saldo de vendas só fica disponível depois do prazo de segurança de 5 a 7 dias.</p>
+            <p className="text-xs leading-5 text-muted-foreground">A taxa base do comprador é definida aqui. Na aba <strong className="text-foreground">APIs & Credenciais</strong>, cada gateway pode ter um adicional próprio. A taxa de saque configurada representa o custo aplicado ao processamento pelo gateway; o saque normal e o saque reduzido têm mínimos próprios, e o reduzido soma o adicional configurado. O saldo de vendas só fica disponível depois do prazo de segurança de 5 a 7 dias.</p>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-xl bg-muted p-3"><p className="text-[10px] font-bold uppercase text-muted-foreground">Comprador</p><p className="mt-1 text-base font-black text-foreground">{formatBRL(parsePriceInput(buyerFee))}</p></div>
               <div className="rounded-xl bg-muted p-3"><p className="text-[10px] font-bold uppercase text-muted-foreground">Saque normal</p><p className="mt-1 text-base font-black text-foreground">{formatBRL(parsePriceInput(minWithdraw))}</p></div>

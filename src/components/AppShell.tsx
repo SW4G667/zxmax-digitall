@@ -20,9 +20,10 @@ const PATHS: Record<View, string> = {
 
 interface Props {
   children: React.ReactNode;
+  hideFooter?: boolean;
 }
 
-export default function AppShell({ children }: Props) {
+export default function AppShell({ children, hideFooter = false }: Props) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -48,7 +49,7 @@ export default function AppShell({ children }: Props) {
       .then(() => undefined, () => undefined);
   }, []);
 
-  const accountArea = ["/meus-produtos", "/minhas-compras", "/suporte", "/admin", "/sacar", "/perfil", "/configuracoes"]
+  const accountArea = ["/meus-produtos", "/minhas-compras", "/suporte", "/admin", "/sacar", "/perfil", "/configuracoes", "/app"]
     .some((prefix) => location.pathname.startsWith(prefix));
   return (
     <div className="min-h-screen bg-[#0b0b0e] text-white">
@@ -63,7 +64,7 @@ export default function AppShell({ children }: Props) {
         {children}
       </div>
 
-      {!accountArea ? <SiteFooter /> : null}
+      {!accountArea && !hideFooter ? <SiteFooter /> : null}
 
       <SideMenu
         open={menuOpen}

@@ -12,6 +12,7 @@ const inputClass = "w-full rounded-xl border border-white/[0.09] bg-[#0d0d11] px
 type UploadSlot =
   | "logo"
   | "favicon"
+  | "appIcon"
   | "heroBanner"
   | "socialPreview"
   | "robuxBanner"
@@ -22,6 +23,7 @@ type UploadSlot =
 type ImageField =
   | "logoUrl"
   | "faviconUrl"
+  | "appIconUrl"
   | "heroBannerUrl"
   | "socialPreviewUrl"
   | "robuxBannerUrl"
@@ -122,6 +124,7 @@ export default function AdminBranding() {
   const fieldForSlot: Record<UploadSlot, ImageField> = {
     logo: "logoUrl",
     favicon: "faviconUrl",
+    appIcon: "appIconUrl",
     heroBanner: "heroBannerUrl",
     socialPreview: "socialPreviewUrl",
     robuxBanner: "robuxBannerUrl",
@@ -177,6 +180,7 @@ export default function AdminBranding() {
   const assets: Array<{ label: string; hint: string; slot: UploadSlot; field: ImageField; compact?: boolean }> = [
     { label: "Logo do cabeçalho", hint: "Use uma marca horizontal ou símbolo simples. O cabeçalho fica limpo no celular.", slot: "logo", field: "logoUrl", compact: true },
     { label: "Favicon", hint: "Ícone mostrado na aba do navegador.", slot: "favicon", field: "faviconUrl", compact: true },
+    { label: "Ícone do aplicativo", hint: "Use uma imagem quadrada (recomendado 512×512). É a foto mostrada na tela inicial quando o ZXMAX é instalado como aplicativo.", slot: "appIcon", field: "appIconUrl", compact: true },
     { label: "Capa principal", hint: "Banner da home. Se ficar vazio, a home usa o layout sem imagem.", slot: "heroBanner", field: "heroBannerUrl" },
     { label: "Imagem ao compartilhar o link", hint: "Esta imagem aparece fora do site em previews de Discord, WhatsApp e redes sociais.", slot: "socialPreview", field: "socialPreviewUrl" },
     { label: "Banner de Robux", hint: "Imagem usada para destacar o mercado de Robux.", slot: "robuxBanner", field: "robuxBannerUrl" },
