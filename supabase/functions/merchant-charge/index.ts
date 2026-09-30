@@ -114,7 +114,16 @@ serve(async (req) => {
       }).eq("id", created.id).eq("owner_id", user.id);
       if (saveError) return json({ error: "Cobrança criada, mas não foi possível vinculá-la à conta." }, 500);
 
-      return json({ charge: { id: Number(created.id), amount, description, status: "pending", qrCode, providerPaymentId: providerId } }, 201);
+      return json({ charge: {
+        id: Number(created.id),
+        amount,
+        description,
+        status: "pending",
+        qrCode,
+        providerPaymentId: providerId,
+        createdAt: new Date().toISOString(),
+        expiresAt: Number.isFinite(expiresDate.getTime()) ? expiresDate.toISOString() : new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      } }, 201);
     }
 
     if (action === "check") {

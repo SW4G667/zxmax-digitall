@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useStore } from "@/store/StoreContext";
 import { useSiteBranding } from "@/context/SiteBrandingContext";
 import { formatBRL } from "@/lib/catalog";
+import { QRCodeSVG } from "qrcode.react";
 import AuthScreen from "@/components/AuthScreen";
 import NotificationBell from "@/components/NotificationBell";
 import DiscordIcon from "@/components/DiscordIcon";
@@ -100,6 +101,8 @@ export default function AppDashboard() {
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [chargeBusy, setChargeBusy] = useState(false);
   const [withdrawBusy, setWithdrawBusy] = useState(false);
+  const [activeCharge, setActiveCharge] = useState<DashboardData["charges"][number] | null>(null);
+  const [chargeCheckBusy, setChargeCheckBusy] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
 
@@ -148,6 +151,17 @@ export default function AppDashboard() {
       charges: Array.isArray(payload.charges) ? payload.charges : [],
       refunds: Array.isArray(payload.refunds) ? payload.refunds : [],
       dailyRevenue: Array.isArray(payload.dailyRevenue) ? payload.dailyRevenue : [],
+    });
+    setActiveCharge((current) => {
+      if (!current) return null;
+      const updated = Array.isArray(payload.charges)
+        ? payload.charges.find((item: any) => Number(item.id) === Number(current.id))
+        : null;
+      return updated ? {
+        ...current,
+        ...updated,
+        amount: Number(updated.amount ?? current.amount ?? 0),
+      } : current;
     });
   }, [user, banned]);
 
@@ -208,22 +222,39 @@ export default function AppDashboard() {
     setChargeAmount("");
     setChargeDescription("");
     setChargeOpen(false);
+    setActiveCharge({
+      id: Number(result.charge.id),
+      amount: Number(result.charge.amount ?? amount),
+      description: String(result.charge.description || description),
+      status: String(result.charge.status || "pending"),
+      qrCode: String(result.charge.qrCode || ""),
+      createdAt: String(result.charge.createdAt || new Date().toISOString()),
+      expiresAt: result.charge.expiresAt ? String(result.charge.expiresAt) : undefined,
+    });
     await load();
-    if (result.charge.qrCode) {
-      await navigator.clipboard?.writeText(String(result.charge.qrCode)).catch(() => undefined);
-      toast.success("Cobrança criada. PIX copia e cola copiado.");
-    } else toast.success("Cobrança criada.");
+    toast.success("Cobrança criada. O QR Code está pronto para pagamento.");
   };
 
-  const checkCharge = async (id: number) => {
-    const tid = toast.loading("Consultando pagamento...");
-    const { data: result, error } = await supabase.functions.invoke("merchant-charge", { body: { action: "check", chargeId: id } });
-    if (error || result?.error) {
-      toast.error(result?.error || "Não foi possível consultar a cobrança.", { id: tid });
-      return;
+  const checkCharge = async (id: number, silent = false) => {
+    if (chargeCheckBusy) return;
+    setChargeCheckBusy(true);
+    const tid = silent ? null : toast.loading("Consultando pagamento...");
+    try {
+      const { data: result, error } = await supabase.functions.invoke("merchant-charge", { body: { action: "check", chargeId: id } });
+      if (error || result?.error) {
+        if (!silent) toast.error(result?.error || "Não foi possível consultar a cobrança.", { id: tid || undefined });
+        return;
+      }
+      setActiveCharge((current) => current?.id === id ? { ...current, status: String(result?.status || (result?.paid ? "paid" : current.status)), creditedAmount: result?.credited != null ? Number(result.credited) : current.creditedAmount, platformFee: result?.platformFee != null ? Number(result.platformFee) : current.platformFee } : current);
+      if (!silent) {
+        toast.success(result?.paid ? `Pagamento confirmado. ${formatBRL(Number(result.credited || 0))} entrou no saldo Gateway.` : "Pagamento ainda pendente.", { id: tid || undefined });
+      } else if (result?.paid) {
+        toast.success("Pagamento confirmado e saldo Gateway atualizado.");
+      }
+      await load();
+    } finally {
+      setChargeCheckBusy(false);
     }
-    toast.success(result?.paid ? `Pagamento confirmado. ${formatBRL(Number(result.credited || 0))} entrou no saldo Gateway.` : "Pagamento ainda pendente.", { id: tid });
-    await load();
   };
 
   const requestGatewayWithdraw = async () => {
@@ -253,6 +284,14 @@ export default function AppDashboard() {
     await navigator.clipboard.writeText(value);
     toast.success("PIX copia e cola copiado.");
   };
+
+  useEffect(() => {
+    if (!activeCharge || activeCharge.status !== "pending") return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void checkCharge(activeCharge.id, true);
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [activeCharge?.id, activeCharge?.status]);
 
   const gatewayLedger = useMemo(() => data.ledger.filter((entry) => entry.kind === "merchant_charge_credit"), [data.ledger]);
   const maxDay = useMemo(() => Math.max(1, ...data.dailyRevenue.map((item) => Number(item.amount || 0))), [data.dailyRevenue]);
@@ -378,7 +417,7 @@ export default function AppDashboard() {
                 <div className="text-right"><p className="text-sm font-black">{formatBRL(charge.amount)}</p><p className={`mt-1 text-[8px] font-bold ${charge.status==="paid"?"text-emerald-300":charge.status==="pending"?"text-amber-300":"text-white/28"}`}>{statusLabel[charge.status]||charge.status}</p></div>
               </div>
               {charge.status==="paid" ? <p className="mt-2 text-[9px] text-white/32">Crédito líquido: <b className="text-white/70">{formatBRL(charge.creditedAmount || 0)}</b>{Number(charge.platformFee||0)>0 ? ` · taxa ZXMAX ${formatBRL(charge.platformFee)}` : ""}</p> : null}
-              {charge.status==="pending" ? <div className="mt-3 flex gap-2"><button onClick={()=>void copy(charge.qrCode)} disabled={!charge.qrCode} className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-3 py-2 text-[9px] font-bold text-white/55 disabled:opacity-30"><Copy className="h-3 w-3" /> Copiar PIX</button><button onClick={()=>void checkCharge(charge.id)} className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-bold text-white/70"><RefreshCw className="h-3 w-3" /> Verificar</button></div> : null}
+              {charge.status==="pending" ? <div className="mt-3 flex flex-wrap gap-2"><button onClick={()=>setActiveCharge(charge)} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[9px] font-black text-black"><Receipt className="h-3 w-3" /> Abrir cobrança</button><button onClick={()=>void copy(charge.qrCode)} disabled={!charge.qrCode} className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-3 py-2 text-[9px] font-bold text-white/55 disabled:opacity-30"><Copy className="h-3 w-3" /> Copiar PIX</button><button onClick={()=>void checkCharge(charge.id)} disabled={chargeCheckBusy} className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-bold text-white/70 disabled:opacity-40"><RefreshCw className={`h-3 w-3 ${chargeCheckBusy?"animate-spin":""}`} /> Verificar</button></div> : null}
             </article>
           ))}</div>}
       </section>
@@ -466,6 +505,35 @@ export default function AppDashboard() {
           </div>
           {discordInvite ? <a href={discordInvite} target="_blank" rel="noopener noreferrer" className="mt-5 flex items-center gap-3 rounded-xl border border-[#5865F2]/20 bg-[#5865F2]/[0.05] px-3 py-3 text-[10px] font-bold text-white/60"><DiscordIcon className="h-4 w-4" /> Entrar no Discord da ZXMAX</a> : null}
         </aside>
+      </div> : null}
+
+      {activeCharge ? <div className="fixed inset-0 z-[95] grid place-items-center overflow-y-auto bg-black/85 p-4 backdrop-blur-sm" onClick={()=>setActiveCharge(null)}>
+        <section role="dialog" aria-modal="true" aria-label={`Cobrança #${activeCharge.id}`} className="my-auto w-full max-w-md rounded-[26px] border border-white/[0.09] bg-[#09090b] p-5 shadow-2xl" onClick={(e)=>e.stopPropagation()}>
+          <div className="flex items-start justify-between gap-3">
+            <div><p className="text-[9px] font-black uppercase tracking-[0.14em] text-white/28">Cobrança PIX</p><h2 className="mt-1 text-lg font-black">{formatBRL(activeCharge.amount)}</h2><p className="mt-1 max-w-[280px] truncate text-[10px] text-white/40">{activeCharge.description}</p></div>
+            <button onClick={()=>setActiveCharge(null)} aria-label="Fechar cobrança" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 text-white/60"><X className="h-4 w-4" /></button>
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
+            <div className="flex items-center justify-between gap-3"><span className="text-[9px] text-white/35">Status</span><span className={`rounded-full px-2.5 py-1 text-[8px] font-black ${activeCharge.status==="paid"?"bg-emerald-300/10 text-emerald-300":activeCharge.status==="pending"?"bg-amber-300/10 text-amber-200":"bg-white/[0.06] text-white/45"}`}>{statusLabel[activeCharge.status]||activeCharge.status}</span></div>
+            <div className="mt-3 flex items-center justify-between gap-3"><span className="text-[9px] text-white/35">Cobrança</span><span className="text-[9px] font-bold text-white/65">#{activeCharge.id}</span></div>
+            {activeCharge.expiresAt ? <div className="mt-3 flex items-center justify-between gap-3"><span className="text-[9px] text-white/35">Expira em</span><span className="text-right text-[9px] font-bold text-white/65">{new Date(activeCharge.expiresAt).toLocaleString("pt-BR")}</span></div> : null}
+          </div>
+
+          {activeCharge.status==="pending" && activeCharge.qrCode ? <>
+            <div className="mx-auto mt-5 w-fit rounded-[22px] bg-white p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]">
+              <QRCodeSVG value={activeCharge.qrCode} size={218} level="M" marginSize={1} title={`QR Code da cobrança #${activeCharge.id}`} />
+            </div>
+            <p className="mt-3 text-center text-[10px] font-semibold text-white/55">Escaneie o QR Code pelo aplicativo do seu banco</p>
+            <div className="mt-4 rounded-xl border border-white/[0.07] bg-black p-3">
+              <p className="text-[8px] font-black uppercase tracking-[0.12em] text-white/25">PIX copia e cola</p>
+              <p className="mt-2 max-h-16 overflow-hidden break-all font-mono text-[9px] leading-4 text-white/50">{activeCharge.qrCode}</p>
+            </div>
+            <button onClick={()=>void copy(activeCharge.qrCode)} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white py-3 text-[11px] font-black text-black"><Copy className="h-4 w-4" /> Copiar PIX</button>
+            <button onClick={()=>void checkCharge(activeCharge.id)} disabled={chargeCheckBusy} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] py-3 text-[10px] font-bold text-white/70 disabled:opacity-40"><RefreshCw className={`h-4 w-4 ${chargeCheckBusy?"animate-spin":""}`} /> {chargeCheckBusy?"Verificando...":"Já paguei / verificar pagamento"}</button>
+            <p className="mt-3 text-center text-[8px] leading-4 text-white/24">Você pode fechar esta janela. A cobrança ficará salva em “Cobranças” e poderá ser aberta novamente até expirar ou ser paga.</p>
+          </> : activeCharge.status==="paid" ? <div className="mt-5 rounded-2xl border border-emerald-300/10 bg-emerald-300/[0.04] p-5 text-center"><CheckCircle2 className="mx-auto h-7 w-7 text-emerald-300" /><p className="mt-3 text-sm font-black text-emerald-200">Pagamento confirmado</p><p className="mt-1 text-[9px] text-emerald-100/50">O saldo Gateway já foi atualizado.</p></div> : <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-5 text-center"><p className="text-[10px] text-white/45">Esta cobrança não está mais disponível para pagamento.</p></div>}
+        </section>
       </div> : null}
 
       {chargeOpen ? <div className="fixed inset-0 z-[90] grid place-items-center bg-black/80 p-4 backdrop-blur-sm" onClick={()=>setChargeOpen(false)}>
