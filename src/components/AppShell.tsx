@@ -3,9 +3,8 @@ import Header from "@/components/Header";
 import SideMenu from "@/components/SideMenu";
 import ProfileModal from "@/components/ProfileModal";
 import AuthScreen from "@/components/AuthScreen";
-import SiteFooter from "@/components/SiteFooter";
 import { useAuth } from "@/hooks/useAuth";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 type View = "store" | "inventory" | "purchases" | "support" | "admin" | "withdraw";
 
@@ -26,7 +25,6 @@ interface Props {
 export default function AppShell({ children, hideFooter: _hideFooter = false }: Props) {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
   const [profileOpen, setProfileOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -49,8 +47,6 @@ export default function AppShell({ children, hideFooter: _hideFooter = false }: 
       .then(() => undefined, () => undefined);
   }, []);
 
-  const accountArea = ["/meus-produtos", "/minhas-compras", "/suporte", "/admin", "/sacar", "/perfil", "/configuracoes", "/app"]
-    .some((prefix) => location.pathname.startsWith(prefix));
   return (
     <div className="min-h-screen bg-[#0b0b0e] text-white">
       <Header
@@ -64,7 +60,6 @@ export default function AppShell({ children, hideFooter: _hideFooter = false }: 
         {children}
       </div>
 
-      {!accountArea && !hideFooter ? <SiteFooter /> : null}
 
       <SideMenu
         open={menuOpen}

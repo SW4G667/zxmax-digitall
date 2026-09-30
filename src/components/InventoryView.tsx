@@ -366,6 +366,7 @@ export default function InventoryView({ onOpenChat }: { onOpenChat?: (purchaseId
     if (!state.currentUser) return;
     if (editingId === null && !(await verifyDiscordMembershipNow())) return;
     if (!form.category.trim()) return toast.error("Escolha uma categoria para o anúncio.");
+    if (!form.image.trim()) return toast.error("Envie uma imagem principal. Todo anúncio precisa ter uma imagem.");
     if ((!isRobuxListing && !form.name.trim()) || !form.price.trim()) {
       return toast.error("Preencha nome e preço.");
     }

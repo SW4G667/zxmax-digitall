@@ -542,7 +542,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           withdrawFee: Number.isFinite(withdrawFee) && withdrawFee >= 0 ? withdrawFee : s.config.withdrawFee,
           smallWithdrawMin: Number.isFinite(smallWithdrawMin) && smallWithdrawMin >= 1 ? smallWithdrawMin : s.config.smallWithdrawMin,
           smallWithdrawExtraFee: Number.isFinite(smallWithdrawExtraFee) && smallWithdrawExtraFee >= 0 ? smallWithdrawExtraFee : s.config.smallWithdrawExtraFee,
-          sellerReleaseDays: Number.isFinite(sellerReleaseDays) && sellerReleaseDays >= 5 && sellerReleaseDays <= 7 ? sellerReleaseDays : s.config.sellerReleaseDays,
+          sellerReleaseDays: Number.isFinite(sellerReleaseDays) && sellerReleaseDays >= 1 && sellerReleaseDays <= 30 ? sellerReleaseDays : s.config.sellerReleaseDays,
         },
       }));
     })();
