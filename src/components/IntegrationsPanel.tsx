@@ -192,7 +192,7 @@ export default function IntegrationsPanel() {
               <div className="mt-4 rounded-lg border border-[#168cff]/20 bg-[#168cff]/[0.055] p-3.5">
                 <p className="text-[11px] font-bold text-white">Configuração do PIX principal</p>
                 <p className="mt-2 text-[10px] leading-4 text-white/45">
-                  A credencial de pagamento fica protegida no servidor e pode operar em ambiente de testes ou produção. O mesmo gateway processa os saques. Use “Validar conexão real” para conferir a taxa e os limites atuais e ajuste a taxa cobrada em Admin → Config.
+                  A credencial de pagamento fica protegida no servidor e pode operar em ambiente de testes ou produção. “Validar conexão real” também consulta a taxa de saque informada pela MagnusPay. A taxa cobrada pela ZXMAX é ajustada em Admin → Config.
                 </p>
                 <div className="mt-3 rounded-md border border-white/[0.07] bg-black/15 px-3 py-2">
                   <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-white/25">Privacidade do gateway</p>
