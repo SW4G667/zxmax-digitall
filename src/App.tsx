@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
@@ -29,6 +29,17 @@ import { SiteBrandingProvider } from "@/context/SiteBrandingContext";
 
 const queryClient = new QueryClient();
 
+const isInstalledApp = () =>
+  window.matchMedia?.("(display-mode: standalone)")?.matches === true ||
+  (navigator as Navigator & { standalone?: boolean }).standalone === true;
+
+function ManagementAppRoute() {
+  // /app is an internal start URL for the installed PWA. In a normal browser,
+  // keep ZXMAX as the marketplace and never replace the public storefront with
+  // the management dashboard.
+  return isInstalledApp() ? <AppDashboard /> : <Navigate to="/" replace />;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -47,7 +58,7 @@ const App = () => (
                     <Route path="/produto/:id" element={<Produto />} />
                     <Route path="/robux" element={<Robux />} />
                     <Route path="/favoritos" element={<Favoritos />} />
-                    <Route path="/app" element={<AppDashboard />} />
+                    <Route path="/app" element={<ManagementAppRoute />} />
 
                     <Route path="/como-funciona" element={<MarketplaceInfo kind="como-funciona" />} />
                     <Route path="/comprar" element={<MarketplaceInfo kind="comprar" />} />
