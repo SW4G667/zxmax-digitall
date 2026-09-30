@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
@@ -25,6 +25,7 @@ import AdminBranding from "./pages/AdminBranding.tsx";
 import MarketplaceHome from "./pages/MarketplaceHome.tsx";
 import MarketplaceInfo from "./pages/MarketplaceInfo.tsx";
 import AppDashboard from "./pages/AppDashboard.tsx";
+import AppInstall from "./pages/AppInstall.tsx";
 import { SiteBrandingProvider } from "@/context/SiteBrandingContext";
 
 const queryClient = new QueryClient();
@@ -34,10 +35,9 @@ const isInstalledApp = () =>
   (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
 function ManagementAppRoute() {
-  // /app is an internal start URL for the installed PWA. In a normal browser,
-  // keep ZXMAX as the marketplace and never replace the public storefront with
-  // the management dashboard.
-  return isInstalledApp() ? <AppDashboard /> : <Navigate to="/" replace />;
+  // Same URL, two contexts:
+  // browser = install/info page; installed PWA = management dashboard.
+  return isInstalledApp() ? <AppDashboard /> : <AppInstall />;
 }
 
 const App = () => (
